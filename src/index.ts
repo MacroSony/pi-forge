@@ -1,5 +1,5 @@
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -37,6 +37,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let sessionVariables: Record<string, PromptStateValue> = {};
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
+	let interceptPayloadSavePath: string | undefined;
 	let latestCompileDiagnostics: PromptStackDiagnostic[] = [];
 
 	function activeId(): string | undefined {
@@ -113,8 +114,18 @@ export default function piForge(pi: ExtensionAPI) {
 		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 	}
 
+	function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {
+		const leafId = ctx.sessionManager.getLeafId();
+		if (leafId === null) return [];
+		const sessionManager = ctx.sessionManager as {
+			getBranch?: (fromId?: string) => unknown[];
+			getEntries: () => unknown[];
+		};
+		return sessionManager.getBranch ? sessionManager.getBranch(leafId ?? undefined) : sessionManager.getEntries();
+	}
+
 	function getRestoredActiveId(ctx: ExtensionContext): string | undefined {
-		const entries = ctx.sessionManager.getEntries();
+		const entries = getCurrentBranchEntries(ctx);
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i] as { type?: string; customType?: string; data?: { activeStackId?: unknown } };
 			if (entry.type === "custom" && entry.customType === STATE_ENTRY_TYPE) {
@@ -125,7 +136,7 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	function getRestoredVariables(ctx: ExtensionContext): Record<string, PromptStateValue> {
-		const entries = ctx.sessionManager.getEntries();
+		const entries = getCurrentBranchEntries(ctx);
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i] as { type?: string; customType?: string; data?: { variables?: unknown } };
 			if (entry.type !== "custom" || entry.customType !== VARIABLE_ENTRY_TYPE) continue;
@@ -169,23 +180,35 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	function validateStateUpdate(update: StateUpdateInput, actor: StateActor): string | undefined {
-		const nameError = validateStateName(update.name);
-		if (nameError) return `${update.name || "(empty)"}: ${nameError}`;
-
-		if (actor === "agent" && !update.name.startsWith(AGENT_VAR_PREFIX)) {
-			return `${update.name}: agents may only write ${AGENT_VAR_PREFIX}* state`;
-		}
+		const permissionError = validateStateWritePermission(update.name, actor, actor === "agent" ? "write" : "set");
+		if (permissionError) return permissionError;
 
 		const definition = active?.stack.state?.definitions?.[update.name];
-		if (actor === "agent" && definition?.agentWritable === false) {
-			return `${update.name}: stack schema marks this state as not agent-writable`;
-		}
-		if (actor === "user" && definition?.userWritable === false) {
-			return `${update.name}: stack schema marks this state as not user-writable`;
-		}
 		if (definition?.type) {
 			const typeError = validateStateValueType(update.value, definition.type);
 			if (typeError) return `${update.name}: expected ${definition.type}, got ${typeError}`;
+		}
+		return undefined;
+	}
+
+	function validateStateClear(name: string, actor: StateActor): string | undefined {
+		return validateStateWritePermission(name, actor, "clear");
+	}
+
+	function validateStateWritePermission(name: string, actor: StateActor, action: "set" | "write" | "clear"): string | undefined {
+		const nameError = validateStateName(name);
+		if (nameError) return `${name || "(empty)"}: ${nameError}`;
+
+		if (actor === "agent" && !name.startsWith(AGENT_VAR_PREFIX)) {
+			return `${name}: agents may only ${action} ${AGENT_VAR_PREFIX}* state`;
+		}
+
+		const definition = active?.stack.state?.definitions?.[name];
+		if (actor === "agent" && definition?.agentWritable === false) {
+			return `${name}: stack schema marks this state as not agent-writable`;
+		}
+		if (actor === "user" && definition?.userWritable === false) {
+			return `${name}: stack schema marks this state as not user-writable`;
 		}
 		return undefined;
 	}
@@ -196,11 +219,8 @@ export default function piForge(pi: ExtensionAPI) {
 			if (error) return { ok: false, error };
 		}
 		for (const name of clears) {
-			const error = validateStateName(name);
-			if (error) return { ok: false, error: `${name || "(empty)"}: ${error}` };
-			if (actor === "agent" && !name.startsWith(AGENT_VAR_PREFIX)) {
-				return { ok: false, error: `${name}: agents may only clear ${AGENT_VAR_PREFIX}* state` };
-			}
+			const error = validateStateClear(name, actor);
+			if (error) return { ok: false, error };
 		}
 
 		for (const update of updates) {
@@ -261,20 +281,26 @@ export default function piForge(pi: ExtensionAPI) {
 		return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 	}
 
-	pi.on("session_start", async (event, ctx) => {
+	function restoreBranchScopedState(ctx: ExtensionContext): void {
 		sessionVariables = getRestoredVariables(ctx);
 		currentVariableStore = undefined;
 		const restoredActiveId = getRestoredActiveId(ctx);
 		lastPersistedActiveId = restoredActiveId;
 		reloadStacks(ctx, restoredActiveId);
+	}
+
+	pi.on("session_start", async (event, ctx) => {
+		restoreBranchScopedState(ctx);
 		notifyActivePreset(ctx, "after session " + event.reason);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
+		restoreBranchScopedState(ctx);
 		notifyActivePreset(ctx, "after tree navigation");
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
+		restoreBranchScopedState(ctx);
 		notifyActivePreset(ctx, "after compaction");
 	});
 
@@ -334,12 +360,26 @@ export default function piForge(pi: ExtensionAPI) {
 
 	pi.on("before_provider_request", async (event, ctx) => {
 		if (!interceptNextProviderPayload) return;
+		const savePath = interceptPayloadSavePath;
 		interceptNextProviderPayload = false;
+		interceptPayloadSavePath = undefined;
 		ctx.ui.setStatus("pi-forge-intercept", undefined);
 
 		const payload = safeStringify(event.payload);
+		const approxTokens = estimatePayloadTokens(payload);
+		if (savePath) {
+			if (!ctx.isProjectTrusted()) {
+				ctx.ui.notify("pi-forge: project is not trusted; refusing to save provider payload.", "warning");
+			} else {
+				const resolvedPath = savePath.startsWith("/") ? savePath : join(ctx.cwd, savePath);
+				mkdirSync(dirname(resolvedPath), { recursive: true });
+				writeFileSync(resolvedPath, payload, "utf8");
+				ctx.ui.notify(`pi-forge: provider payload saved to ${resolvedPath} (${payload.length} chars, ~${approxTokens} tokens)`, "info");
+			}
+		}
+
 		if (ctx.hasUI) {
-			await ctx.ui.editor("pi-forge: provider payload", payload);
+			await ctx.ui.editor(`pi-forge: provider payload (${payload.length} chars, ~${approxTokens} tokens)`, payload);
 			return;
 		}
 
@@ -447,12 +487,42 @@ export default function piForge(pi: ExtensionAPI) {
 		},
 	});
 
+	function armPayloadIntercept(ctx: ExtensionCommandContext, savePath?: string): void {
+		interceptNextProviderPayload = true;
+		interceptPayloadSavePath = savePath;
+		ctx.ui.setStatus("pi-forge-intercept", ctx.ui.theme.fg("warning", savePath ? "payload:armed+save" : "payload:armed"));
+		ctx.ui.notify(savePath ? `pi-forge: next provider payload will be displayed and saved to ${savePath}.` : "pi-forge: next provider payload will be displayed before sending.", "info");
+	}
+
 	pi.registerCommand("intercept", {
 		description: "Display the next provider payload before it is sent",
 		handler: async (_args, ctx) => {
-			interceptNextProviderPayload = true;
-			ctx.ui.setStatus("pi-forge-intercept", ctx.ui.theme.fg("warning", "intercept:armed"));
-			ctx.ui.notify("pi-forge: next provider payload will be displayed before sending.", "info");
+			armPayloadIntercept(ctx);
+		},
+	});
+
+	pi.registerCommand("payload", {
+		description: "Inspect or save provider payloads: /payload next [save=<path>]",
+		getArgumentCompletions: (prefix) => {
+			const parts = prefix.trimStart().split(/\s+/);
+			if (parts.length <= 1 && !prefix.endsWith(" ")) {
+				return ["next"].filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
+			}
+			if (parts[0] === "next" && parts.length <= 2) {
+				const suggestion = "save=.pi/forge/payloads/last.json";
+				return suggestion.startsWith(parts[1] ?? "") ? [{ value: `next ${suggestion}`, label: suggestion }] : null;
+			}
+			return null;
+		},
+		handler: async (args, ctx) => {
+			const [command = "next", ...rest] = args.trim() ? args.trim().split(/\s+/) : ["next"];
+			if (command !== "next") {
+				ctx.ui.notify(`Unknown /payload subcommand: ${command}`, "warning");
+				return;
+			}
+			const saveArg = rest.find((arg) => arg.startsWith("save="));
+			const savePath = saveArg?.slice("save=".length).trim() || undefined;
+			armPayloadIntercept(ctx, savePath);
 		},
 	});
 
@@ -861,6 +931,10 @@ export default function piForge(pi: ExtensionAPI) {
 		} catch (error) {
 			return `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
 		}
+	}
+
+	function estimatePayloadTokens(payload: string): number {
+		return Math.max(1, Math.ceil(payload.length / 4));
 	}
 
 	function redactPayload(value: unknown, depth = 0): unknown {

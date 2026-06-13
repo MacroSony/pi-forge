@@ -14,7 +14,8 @@ This file tracks the currently implemented feature surface for the published MVP
 
 - File-backed prompt stacks from `.pi/prompt-stacks/*.json`.
 - `default.json` auto-activation unless `autoActivate` is `false`.
-- Persisted active stack restore from session entries.
+- Branch-aware persisted active stack restore from session entries.
+- Branch-aware prompt state restore when navigating the session tree.
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
 - Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
@@ -58,6 +59,7 @@ This file tracks the currently implemented feature surface for the published MVP
 ## Prompt State
 
 - JSON-compatible session state values: string, number, boolean, null, arrays, and objects.
+- Session state snapshots restore from the current session tree branch, so tree navigation rolls state back/forward with history.
 - Stack-level `state.definitions` with type, scope, description, default, and write-permission metadata.
 - Type validation for common TypeScript-like strings such as `string`, `number`, `boolean`, `object`, `array`, `string[]`, and unions.
 - Valid `<prompt_state>` rendering from the `variables` slot.
@@ -93,6 +95,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/state get <name>`
 - `/state clear [name]`
 - `/intercept`
+- `/payload next [save=<path>]`
 
 ## SillyTavern Import
 
@@ -112,6 +115,7 @@ This file tracks the currently implemented feature surface for the published MVP
 ## Debugging and Tests
 
 - `/intercept` displays the next provider payload with redaction/truncation for secrets and large data.
+- `/payload next save=<path>` displays and saves the next redacted/truncated provider payload with char/token-ish size estimates.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.

@@ -54,6 +54,7 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /state [list|set <name> <value>|get <name>|clear [name]]
 /preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 /intercept
+/payload next [save=<path>]
 ```
 
 ## SillyTavern preset import
@@ -67,6 +68,14 @@ Import a SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json` and write a 
 By default, import refuses to overwrite existing generated stack/report files unless the UI confirmation is accepted. Use `--dry-run` to preview generated JSON and the report without writing files, or `--overwrite` to allow replacement.
 
 If a preset contains multiple `prompt_order` entries, pass the desired `character_id`. Imported stacks are created with `autoActivate: false`; activate one with `/preset use <id>` after reviewing the report.
+
+## Payload inspection
+
+`/intercept` displays the next provider payload before it is sent. `/payload next [save=<path>]` does the same and can also save the redacted/truncated payload to a file. The viewer/notification includes character and approximate token counts. Example:
+
+```txt
+/payload next save=.pi/forge/payloads/last.json
+```
 
 ## Agent tools
 
@@ -314,7 +323,7 @@ Mutable turn variables are cleared for each user message:
 {{clearvar::name}}
 ```
 
-Mutable session state persists in the Pi session as extension state:
+Mutable session state persists in the Pi session as extension state and is restored from the current session tree branch. When you navigate to an earlier message with Pi's tree controls, pi-forge restores the latest state snapshot reachable from that branch, so state rolls back with conversation history instead of leaking future branch state.
 
 ```txt
 {{setsessionvar::name::value}}
