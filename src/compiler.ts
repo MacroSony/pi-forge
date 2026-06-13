@@ -206,6 +206,8 @@ function renderSlotText(
 		}
 		case "pi-docs":
 			return renderPiDocsGuidance();
+		case "variables":
+			return renderVariables(item, stack, runtime);
 		case "chat-history":
 			return "";
 		default:
@@ -296,6 +298,52 @@ function renderPiDocsGuidance(): string {
 		"- Read Pi documentation only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI.",
 		"- Resolve docs/... against Pi's installed documentation directory and examples/... against Pi's installed examples directory.",
 	].join("\n");
+}
+
+function renderVariables(
+	item: PromptStackSlotItem,
+	stack: PromptStack,
+	runtime: PromptRuntime,
+): string {
+	const options = item.options ?? {};
+	const includeStatic = options.includeStatic !== false;
+	const includeSession = options.includeSession !== false;
+	const includeTurn = options.includeTurn !== false;
+	const store = runtime.variables;
+	const staticVars = stack.variables ?? {};
+
+	const parts: string[] = ["<prompt_variables>"];
+
+	if (includeStatic && Object.keys(staticVars).length > 0) {
+		parts.push("  <static>");
+		for (const [key, value] of Object.entries(staticVars).sort(([a], [b]) => a.localeCompare(b))) {
+			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
+		}
+		parts.push("  </static>");
+	}
+
+	if (includeSession && store && Object.keys(store.session).length > 0) {
+		parts.push("  <session>");
+		for (const [key, value] of Object.entries(store.session).sort(([a], [b]) => a.localeCompare(b))) {
+			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
+		}
+		parts.push("  </session>");
+	}
+
+	if (includeTurn && store && Object.keys(store.turn).length > 0) {
+		parts.push("  <turn>");
+		for (const [key, value] of Object.entries(store.turn).sort(([a], [b]) => a.localeCompare(b))) {
+			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
+		}
+		parts.push("  </turn>");
+	}
+
+	parts.push("</prompt_variables>");
+
+	// Don't emit empty variables block
+	if (parts.length <= 2) return "";
+
+	return parts.join("\n");
 }
 
 function expandMacros(

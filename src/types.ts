@@ -16,7 +16,8 @@ export type PromptStackSlot =
 	| "cwd"
 	| "date-cwd"
 	| "active-model"
-	| "pi-docs";
+	| "pi-docs"
+	| "variables";
 
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;
@@ -42,9 +43,22 @@ export interface PromptStackBlockItem extends PromptStackBaseItem {
 	content: string;
 }
 
+export interface VariablesSlotOptions {
+	/** Include static stack variables. Default: true. */
+	includeStatic?: boolean;
+	/** Include session variables. Default: true. */
+	includeSession?: boolean;
+	/** Include turn variables. Default: true. */
+	includeTurn?: boolean;
+}
+
 export interface PromptStackSlotOptions {
 	/** For chat-history: include the latest user message in the expanded history. Default: true. */
 	includeLastUserMessage?: boolean;
+	/** For variables: control which variable scopes are included. */
+	includeStatic?: boolean;
+	includeSession?: boolean;
+	includeTurn?: boolean;
 	[key: string]: unknown;
 }
 
@@ -121,4 +135,5 @@ export const SUPPORTED_SLOTS = new Set<PromptStackSlot>([
 	"date-cwd",
 	"active-model",
 	"pi-docs",
+	"variables",
 ]);

@@ -43,8 +43,17 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset preview [id]
 /preset validate [id]
 /preset reload
-/preset vars [clear [name]]
+/preset vars [set <name> <value>|get <name>|clear [name]]
+/intercept
 ```
+
+## Agent tools
+
+### forge_set_var
+
+Sets a persistent session variable. Only variables starting with `agent.` can be written by the agent; other variables are read-only. Useful for cross-turn state tracking in roleplay (character mood, story progress) or coding (task checkpoints, discovered facts).
+
+When the `variables` slot is active in a prompt stack, the agent sees its variable state and can update it. Without the slot, variables still work for macro substitution but the agent won't have a structured view of the state.
 
 ## Stack format
 
@@ -134,11 +143,43 @@ Supported slots:
 - `skills` — loaded Pi skills
 - `project-context` — project instructions/context files
 - `append-system-prompt` — user-provided append system prompt text
+- `variables` — static/session/turn variables rendered as structured XML
 - `date`
 - `cwd`
 - `date-cwd`
 - `active-model`
 - `pi-docs`
+
+### Variables slot
+
+Renders variable state as structured XML:
+
+```xml
+<prompt_variables>
+  <static>
+    <char>泉此方</char>
+  </static>
+  <session>
+    <agent.mood>happy</agent.mood>
+    <agent.progress>step 3</agent.progress>
+  </session>
+  <turn>
+    <recent>just happened</recent>
+  </turn>
+</prompt_variables>
+```
+
+Options:
+
+```json
+{
+  "includeStatic": true,
+  "includeSession": true,
+  "includeTurn": true
+}
+```
+
+Use this slot to give the agent visibility into mutable state that it can also update via `forge_set_var`.
 
 ## Roles
 

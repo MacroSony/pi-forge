@@ -16,53 +16,14 @@ Implemented and working:
 - `/intercept` command to display the next provider payload.
 - Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
-- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, and diagnostics.
+- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, and variables slot rendering.
+- `variables` slot that renders static/session/turn variables as structured XML, positionable in the prompt layout.
+- `/preset vars set <name> <value>` and `/preset vars get <name>` commands.
+- `forge_set_var` tool that lets the agent set `agent.*`-prefixed session variables for cross-turn state tracking.
 
-## Priority 1: Make variables first-class context
+## Priority 1 (partial): Variable metadata
 
-### 1. Add a `variables` slot
-
-Add a new slot type:
-
-```json
-{
-  "kind": "slot",
-  "id": "variables",
-  "role": "user",
-  "slot": "variables",
-  "options": {
-    "includeStatic": true,
-    "includeSession": true,
-    "includeTurn": true
-  }
-}
-```
-
-Rendered form:
-
-```xml
-<prompt_variables>
-  <static>...</static>
-  <session>...</session>
-  <turn>...</turn>
-</prompt_variables>
-```
-
-Goal: make variable state visible, auditable, and positionable instead of only using it for text substitution.
-
-### 2. Add `/preset vars set/get/clear`
-
-Current command only displays and clears variables. Add:
-
-```txt
-/preset vars set <name> <value>
-/preset vars get <name>
-/preset vars clear [name]
-```
-
-Default command scope should be session variables.
-
-### 3. Add variable metadata later
+### Add variable metadata later
 
 Current variables are strings. Later format could support:
 

@@ -1,4 +1,5 @@
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import {
 	compileMessages,
 	compileSystemPrompt,
@@ -13,6 +14,7 @@ import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableStore } fr
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
+const AGENT_VAR_PREFIX = "agent.";
 
 export default function piForge(pi: ExtensionAPI) {
 	let stacks: LoadedPromptStack[] = [];
@@ -206,6 +208,37 @@ export default function piForge(pi: ExtensionAPI) {
 		console.log(payload);
 	});
 
+	pi.registerTool({
+		name: "forge_set_var",
+		label: "Set Prompt Variable",
+		description: "Set a persistent session variable in the active prompt stack. Only variables starting with 'agent.' can be written by the agent; other variables are read-only.",
+		promptSnippet: "Set agent-scoped prompt stack variables for cross-turn state (character mood, task progress, discovered facts).",
+		promptGuidelines: [
+			"Use forge_set_var to persist state across turns — character mood, story progress, task checkpoints, or discovered facts the user might ask about later.",
+			`Only variable names starting with '${AGENT_VAR_PREFIX}' are writable. Static and manually-set variables are read-only.`,
+			"Do not use forge_set_var for prompt configuration; it is for tracked runtime state only.",
+		],
+		parameters: Type.Object({
+			name: Type.String({ description: `Variable name (must start with '${AGENT_VAR_PREFIX}')` }),
+			value: Type.String({ description: "Variable value" }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const { name, value } = params;
+			if (!name.startsWith(AGENT_VAR_PREFIX)) {
+				return {
+					content: [{ type: "text", text: `Error: only variables starting with '${AGENT_VAR_PREFIX}' are writable by the agent. Received: ${name}` }],
+					details: { error: "namespace restriction", name },
+				};
+			}
+			sessionVariables[name] = value;
+			pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
+			return {
+				content: [{ type: "text", text: `Variable ${name} set.` }],
+				details: { name, value },
+			};
+		},
+	});
+
 	pi.registerCommand("intercept", {
 		description: "Display the next provider payload before it is sent",
 		handler: async (_args, ctx) => {
@@ -228,6 +261,18 @@ export default function piForge(pi: ExtensionAPI) {
 				const fragment = parts[1] ?? "";
 				const ids = ["none", ...stacks.map((loaded) => loaded.stack.id)];
 				return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
+			}
+			if (first === "vars") {
+				const sub = parts[1] ?? "";
+				if (parts.length <= 2 && !prefix.endsWith(" ")) {
+					const subs = ["set", "get", "clear", "list"];
+					return subs.filter((s) => s.startsWith(sub)).map((s) => ({ value: `vars ${s}`, label: s }));
+				}
+				if (["set", "get", "clear"].includes(sub) && parts.length <= 3) {
+					const fragment = parts[2] ?? "";
+					const names = Object.keys(sessionVariables);
+					return names.filter((n) => n.startsWith(fragment)).map((n) => ({ value: `vars ${sub} ${n}`, label: n }));
+				}
 			}
 			return null;
 		},
@@ -252,7 +297,37 @@ export default function piForge(pi: ExtensionAPI) {
 				return;
 
 			case "vars": {
-				if (rest[0] === "clear") {
+				const sub = rest[0];
+
+				if (sub === "set") {
+					const name = rest[1];
+					const value = rest.slice(2).join(" ");
+					if (!name || value === "") {
+						ctx.ui.notify("Usage: /preset vars set <name> <value>", "warning");
+						return;
+					}
+					sessionVariables[name] = value;
+					pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
+					ctx.ui.notify(`pi-forge: set session variable ${name} = ${JSON.stringify(value)}`, "info");
+					return;
+				}
+
+				if (sub === "get") {
+					const name = rest[1];
+					if (!name) {
+						ctx.ui.notify("Usage: /preset vars get <name>", "warning");
+						return;
+					}
+					const value = sessionVariables[name];
+					if (value === undefined) {
+						await showText(ctx, `pi-forge variable: ${name}`, `# ${name}\n\n(not set)`);
+					} else {
+						await showText(ctx, `pi-forge variable: ${name}`, `# ${name}\n\n${value}`);
+					}
+					return;
+				}
+
+				if (sub === "clear") {
 					const name = rest[1];
 					if (name) delete sessionVariables[name];
 					else sessionVariables = {};
@@ -261,7 +336,9 @@ export default function piForge(pi: ExtensionAPI) {
 					ctx.ui.notify(name ? `pi-forge: cleared session variable ${name}` : "pi-forge: cleared all session variables", "info");
 					return;
 				}
-				await showText(ctx, "pi-forge variables", renderVariables());
+
+				// No subcommand or "list" — show all variables
+				await showText(ctx, "pi-forge variables", renderVariablesList());
 				return;
 			}
 
@@ -326,11 +403,11 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /preset vars [clear [name]]");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
 		return lines.join("\n");
 	}
 
-	function renderVariables(): string {
+	function renderVariablesList(): string {
 		const lines = ["# pi-forge variables", "", "## Session variables", ""];
 		const sessionEntries = Object.entries(sessionVariables).sort(([a], [b]) => a.localeCompare(b));
 		if (sessionEntries.length === 0) lines.push("(none)");

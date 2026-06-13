@@ -177,6 +177,104 @@ test("duplicate chat-history slots warn and only expand once by default", () => 
 	assert.match(result.diagnostics[0]?.message ?? "", /duplicate chat-history/);
 });
 
+test("variables slot renders all scopes as XML", () => {
+	const store = createPromptVariableStore({ mood: "happy", progress: "step 2" });
+	store.turn = { recent: "just happened" };
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-slot",
+		variables: { char: "Konata", user: "USER" },
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /<prompt_variables>/);
+	assert.match(text, /<static>/);
+	assert.match(text, /<char>Konata<\/char>/);
+	assert.match(text, /<user>USER<\/user>/);
+	assert.match(text, /<session>/);
+	assert.match(text, /<mood>happy<\/mood>/);
+	assert.match(text, /<progress>step 2<\/progress>/);
+	assert.match(text, /<turn>/);
+	assert.match(text, /<recent>just happened<\/recent>/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot respects include options", () => {
+	const store = createPromptVariableStore({ mood: "happy" });
+	store.turn = { recent: "just happened" };
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-options",
+		variables: { char: "Konata" },
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: { includeStatic: false, includeSession: true, includeTurn: false },
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /<prompt_variables>/);
+	assert.match(text, /<session>/);
+	assert.match(text, /<mood>happy<\/mood>/);
+	// Static and turn should be excluded
+	assert.doesNotMatch(text, /<static>/);
+	assert.doesNotMatch(text, /<turn>/);
+	assert.doesNotMatch(text, /Konata/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot is empty when no variables exist", () => {
+	const store = createPromptVariableStore();
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-empty",
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), [user("original")]);
+
+	// No variables block emitted — just the original message
+	assert.equal(result.messages.length, 1);
+	assert.equal(textOf(result.messages[0]), "original");
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot escapes XML in values", () => {
+	const store = createPromptVariableStore({ code: "<script>alert('xss')</script>" });
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-xml",
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /&lt;script&gt;alert/);
+	assert.doesNotMatch(text, /<script>alert/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("unsupported slots produce diagnostics", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
