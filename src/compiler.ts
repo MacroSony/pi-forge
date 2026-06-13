@@ -8,6 +8,8 @@ import type {
 	PromptStackItem,
 	PromptStackRole,
 	PromptStackSlotItem,
+	PromptStateScope,
+	PromptStateValue,
 	PromptVariableStore,
 } from "./types.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
@@ -21,7 +23,7 @@ const ZERO_USAGE = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-export function createPromptVariableStore(sessionVariables: Record<string, string> = {}): PromptVariableStore {
+export function createPromptVariableStore(sessionVariables: Record<string, PromptStateValue> = {}): PromptVariableStore {
 	return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
 }
 
@@ -306,44 +308,163 @@ function renderVariables(
 	runtime: PromptRuntime,
 ): string {
 	const options = item.options ?? {};
-	const includeStatic = options.includeStatic !== false;
-	const includeSession = options.includeSession !== false;
-	const includeTurn = options.includeTurn !== false;
+	const scopes = selectedVariableScopes(options);
+	const includeMetadata = options.includeMetadata === true;
+	const format = options.format === "json" ? "json" : "xml";
+	const includeNamespaces = normalizeStringArray(options.includeNamespaces);
+	const excludeNamespaces = normalizeStringArray(options.excludeNamespaces);
+	const maxValueChars = typeof options.maxValueChars === "number" && Number.isFinite(options.maxValueChars) && options.maxValueChars > 0
+		? Math.floor(options.maxValueChars)
+		: undefined;
 	const store = runtime.variables;
-	const staticVars = stack.variables ?? {};
+	const grouped: Record<PromptStateScope, Record<string, PromptStateValue>> = {
+		static: {},
+		session: {},
+		turn: {},
+	};
 
-	const parts: string[] = ["<prompt_variables>"];
-
-	if (includeStatic && Object.keys(staticVars).length > 0) {
-		parts.push("  <static>");
-		for (const [key, value] of Object.entries(staticVars).sort(([a], [b]) => a.localeCompare(b))) {
-			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
-		}
-		parts.push("  </static>");
+	if (scopes.has("static")) {
+		grouped.static = collectStaticVariables(stack);
+	}
+	if (scopes.has("session")) {
+		grouped.session = { ...collectDefaultVariables(stack, "session"), ...(store?.session ?? {}) };
+	}
+	if (scopes.has("turn")) {
+		grouped.turn = { ...collectDefaultVariables(stack, "turn"), ...(store?.turn ?? {}) };
 	}
 
-	if (includeSession && store && Object.keys(store.session).length > 0) {
-		parts.push("  <session>");
-		for (const [key, value] of Object.entries(store.session).sort(([a], [b]) => a.localeCompare(b))) {
-			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
-		}
-		parts.push("  </session>");
+	for (const scope of ["static", "session", "turn"] as const) {
+		grouped[scope] = Object.fromEntries(
+			Object.entries(grouped[scope]).filter(([name]) => shouldRenderVariable(name, includeNamespaces, excludeNamespaces)),
+		);
 	}
 
-	if (includeTurn && store && Object.keys(store.turn).length > 0) {
-		parts.push("  <turn>");
-		for (const [key, value] of Object.entries(store.turn).sort(([a], [b]) => a.localeCompare(b))) {
-			parts.push(`    <${escapeXml(key)}>${escapeXml(value)}</${escapeXml(key)}>`);
+	if (!Object.values(grouped).some((values) => Object.keys(values).length > 0)) return "";
+
+	if (format === "json") {
+		const payload: Record<string, unknown> = {};
+		for (const scope of ["static", "session", "turn"] as const) {
+			if (Object.keys(grouped[scope]).length === 0) continue;
+			payload[scope] = includeMetadata
+				? Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => [
+					name,
+					{
+						value,
+						...metadataForVariable(stack, name),
+					},
+				]))
+				: Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)));
 		}
-		parts.push("  </turn>");
+		return `<prompt_state format=\"json\">\n${escapeXml(JSON.stringify(payload, null, 2))}\n</prompt_state>`;
 	}
 
-	parts.push("</prompt_variables>");
+	const parts: string[] = ["<prompt_state>"];
 
-	// Don't emit empty variables block
-	if (parts.length <= 2) return "";
+	for (const scope of ["static", "session", "turn"] as const) {
+		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
+		if (entries.length === 0) continue;
+		parts.push(`  <${scope}>`);
+		for (const [name, value] of entries) {
+			const metadata = includeMetadata ? metadataForVariable(stack, name) : {};
+			const attrs = [
+				`name=\"${escapeXml(name)}\"`,
+				`type=\"${escapeXml(metadata.type ?? inferStateValueType(value))}\"`,
+			];
+			if (metadata.description) attrs.push(`description=\"${escapeXml(metadata.description)}\"`);
+			if (metadata.agentWritable !== undefined) attrs.push(`agentWritable=\"${metadata.agentWritable ? "true" : "false"}\"`);
+			if (metadata.userWritable !== undefined) attrs.push(`userWritable=\"${metadata.userWritable ? "true" : "false"}\"`);
+			parts.push(`    <var ${attrs.join(" ")}>${escapeXml(truncateValue(stateValueToPromptText(value), maxValueChars))}</var>`);
+		}
+		parts.push(`  </${scope}>`);
+	}
 
+	parts.push("</prompt_state>");
 	return parts.join("\n");
+}
+
+function selectedVariableScopes(options: Record<string, unknown>): Set<PromptStateScope> {
+	const explicit = normalizeStringArray(options.includeScopes).filter(isStateScope);
+	if (explicit.length > 0) return new Set(explicit);
+
+	const scopes = new Set<PromptStateScope>();
+	if (options.includeStatic !== false) scopes.add("static");
+	if (options.includeSession !== false) scopes.add("session");
+	if (options.includeTurn !== false) scopes.add("turn");
+	return scopes;
+}
+
+function collectStaticVariables(stack: PromptStack): Record<string, PromptStateValue> {
+	return {
+		...collectDefaultVariables(stack, "static"),
+		...(stack.variables ?? {}),
+	};
+}
+
+function collectDefaultVariables(stack: PromptStack, scope: PromptStateScope): Record<string, PromptStateValue> {
+	const values: Record<string, PromptStateValue> = {};
+	for (const [name, definition] of Object.entries(stack.state?.definitions ?? {})) {
+		if ((definition.scope ?? "session") !== scope) continue;
+		if (definition.default !== undefined) values[name] = definition.default;
+	}
+	return values;
+}
+
+function shouldRenderVariable(name: string, includePatterns: string[], excludePatterns: string[]): boolean {
+	if (includePatterns.length > 0 && !includePatterns.some((pattern) => matchesNamespace(name, pattern))) return false;
+	if (excludePatterns.some((pattern) => matchesNamespace(name, pattern))) return false;
+	return true;
+}
+
+function matchesNamespace(name: string, pattern: string): boolean {
+	if (!pattern) return false;
+	if (pattern.endsWith("*")) return name.startsWith(pattern.slice(0, -1));
+	return name === pattern;
+}
+
+function metadataForVariable(stack: PromptStack, name: string): {
+	type?: string;
+	description?: string;
+	agentWritable?: boolean;
+	userWritable?: boolean;
+} {
+	const definition = stack.state?.definitions?.[name];
+	if (!definition) return {};
+	return {
+		type: definition.type,
+		description: definition.description,
+		agentWritable: definition.agentWritable,
+		userWritable: definition.userWritable,
+	};
+}
+
+function normalizeStringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function isStateScope(value: string): value is PromptStateScope {
+	return value === "static" || value === "session" || value === "turn";
+}
+
+function inferStateValueType(value: PromptStateValue): string {
+	if (value === null) return "null";
+	if (Array.isArray(value)) return "array";
+	return typeof value;
+}
+
+function truncateValue(value: string, maxChars: number | undefined): string {
+	if (!maxChars || value.length <= maxChars) return value;
+	return `${value.slice(0, maxChars)}\n[truncated]`;
+}
+
+function stateValueToPromptText(value: PromptStateValue): string {
+	if (typeof value === "string") return value;
+	return JSON.stringify(value, null, 2);
+}
+
+function stateValueToMacroText(value: PromptStateValue | undefined): string {
+	if (value === undefined) return "";
+	if (typeof value === "string") return value;
+	return JSON.stringify(value);
 }
 
 function expandMacros(
@@ -354,7 +475,6 @@ function expandMacros(
 	itemId: string,
 ): string {
 	const policy = stack.defaults?.unresolvedMacroPolicy ?? "warn";
-	const staticVariables = stack.variables ?? {};
 	const unknown = new Set<string>();
 
 	const result = text.replace(/\{\{([^{}]+)\}\}/g, (full, rawName: string) => {
@@ -386,9 +506,9 @@ function expandMacros(
 				unknown.add(expression);
 				return full;
 			}
-			if (command === "getturnvar") return runtime.variables?.turn[name] ?? "";
-			if (command === "getsessionvar") return runtime.variables?.session[name] ?? "";
-			return getRuntimeVariable(runtime, staticVariables, name) ?? "";
+			if (command === "getturnvar") return stateValueToMacroText(runtime.variables?.turn[name]);
+			if (command === "getsessionvar") return stateValueToMacroText(runtime.variables?.session[name]);
+			return stateValueToMacroText(getRuntimeVariable(runtime, stack, name));
 		}
 
 		if (command === "clearvar" || command === "clearturnvar" || command === "clearsessionvar") {
@@ -406,8 +526,8 @@ function expandMacros(
 		const dynamicValue = getBuiltinMacro(command, runtime);
 		if (dynamicValue !== undefined) return dynamicValue;
 
-		const variableValue = getRuntimeVariable(runtime, staticVariables, command);
-		if (variableValue !== undefined) return variableValue;
+		const variableValue = getRuntimeVariable(runtime, stack, command);
+		if (variableValue !== undefined) return stateValueToMacroText(variableValue);
 
 		unknown.add(expression);
 		return full;
@@ -445,9 +565,10 @@ function getBuiltinMacro(name: string, runtime: PromptRuntime): string | undefin
 	}
 }
 
-function getRuntimeVariable(runtime: PromptRuntime, staticVariables: Record<string, string>, name: string): string | undefined {
+function getRuntimeVariable(runtime: PromptRuntime, stack: PromptStack, name: string): PromptStateValue | undefined {
 	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.turn, name)) return runtime.variables.turn[name];
 	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) return runtime.variables.session[name];
+	const staticVariables = collectStaticVariables(stack);
 	if (Object.prototype.hasOwnProperty.call(staticVariables, name)) return staticVariables[name];
 	return undefined;
 }

@@ -50,6 +50,18 @@ export interface VariablesSlotOptions {
 	includeSession?: boolean;
 	/** Include turn variables. Default: true. */
 	includeTurn?: boolean;
+	/** Include only these scopes. Overrides includeStatic/includeSession/includeTurn when present. */
+	includeScopes?: PromptStateScope[];
+	/** Include variable names matching these exact names or wildcard prefixes, e.g. agent.*. */
+	includeNamespaces?: string[];
+	/** Exclude variable names matching these exact names or wildcard prefixes. */
+	excludeNamespaces?: string[];
+	/** Include type and description metadata from stack.state.definitions. Default: false. */
+	includeMetadata?: boolean;
+	/** Render format. Default: xml. */
+	format?: "xml" | "json";
+	/** Truncate each rendered value after this many characters. */
+	maxValueChars?: number;
 }
 
 export interface PromptStackSlotOptions {
@@ -59,6 +71,12 @@ export interface PromptStackSlotOptions {
 	includeStatic?: boolean;
 	includeSession?: boolean;
 	includeTurn?: boolean;
+	includeScopes?: PromptStateScope[];
+	includeNamespaces?: string[];
+	excludeNamespaces?: string[];
+	includeMetadata?: boolean;
+	format?: "xml" | "json";
+	maxValueChars?: number;
 	[key: string]: unknown;
 }
 
@@ -69,6 +87,26 @@ export interface PromptStackSlotItem extends PromptStackBaseItem {
 }
 
 export type PromptStackItem = PromptStackBlockItem | PromptStackSlotItem;
+
+export type PromptStatePrimitive = string | number | boolean | null;
+
+export type PromptStateValue = PromptStatePrimitive | PromptStateValue[] | { [key: string]: PromptStateValue };
+
+export type PromptStateScope = "static" | "session" | "turn";
+
+export interface PromptStateDefinition {
+	type?: string;
+	scope?: PromptStateScope;
+	description?: string;
+	agentWritable?: boolean;
+	userWritable?: boolean;
+	default?: PromptStateValue;
+}
+
+export interface PromptStateConfig {
+	schemaVersion?: 1;
+	definitions?: Record<string, PromptStateDefinition>;
+}
 
 export interface PromptStack {
 	schemaVersion: 1;
@@ -81,6 +119,7 @@ export interface PromptStack {
 	defaults?: PromptStackDefaults;
 	context?: PromptStackContextOptions;
 	variables?: Record<string, string>;
+	state?: PromptStateConfig;
 	items: PromptStackItem[];
 	import?: Record<string, unknown>;
 }
@@ -100,8 +139,8 @@ export interface PromptStackDiagnostic {
 }
 
 export interface PromptVariableStore {
-	turn: Record<string, string>;
-	session: Record<string, string>;
+	turn: Record<string, PromptStateValue>;
+	session: Record<string, PromptStateValue>;
 	sessionDirty?: boolean;
 }
 

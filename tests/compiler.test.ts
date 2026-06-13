@@ -193,15 +193,15 @@ test("variables slot renders all scopes as XML", () => {
 
 	assert.equal(result.messages.length, 1);
 	const text = textOf(result.messages[0]);
-	assert.match(text, /<prompt_variables>/);
+	assert.match(text, /<prompt_state>/);
 	assert.match(text, /<static>/);
-	assert.match(text, /<char>Konata<\/char>/);
-	assert.match(text, /<user>USER<\/user>/);
+	assert.match(text, /<var name="char" type="string">Konata<\/var>/);
+	assert.match(text, /<var name="user" type="string">USER<\/var>/);
 	assert.match(text, /<session>/);
-	assert.match(text, /<mood>happy<\/mood>/);
-	assert.match(text, /<progress>step 2<\/progress>/);
+	assert.match(text, /<var name="mood" type="string">happy<\/var>/);
+	assert.match(text, /<var name="progress" type="string">step 2<\/var>/);
 	assert.match(text, /<turn>/);
-	assert.match(text, /<recent>just happened<\/recent>/);
+	assert.match(text, /<var name="recent" type="string">just happened<\/var>/);
 	assert.deepEqual(result.diagnostics, []);
 });
 
@@ -228,9 +228,9 @@ test("variables slot respects include options", () => {
 
 	assert.equal(result.messages.length, 1);
 	const text = textOf(result.messages[0]);
-	assert.match(text, /<prompt_variables>/);
+	assert.match(text, /<prompt_state>/);
 	assert.match(text, /<session>/);
-	assert.match(text, /<mood>happy<\/mood>/);
+	assert.match(text, /<var name="mood" type="string">happy<\/var>/);
 	// Static and turn should be excluded
 	assert.doesNotMatch(text, /<static>/);
 	assert.doesNotMatch(text, /<turn>/);
@@ -272,6 +272,78 @@ test("variables slot escapes XML in values", () => {
 	const text = textOf(result.messages[0]);
 	assert.match(text, /&lt;script&gt;alert/);
 	assert.doesNotMatch(text, /<script>alert/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot filters session state and includes metadata", () => {
+	const store = createPromptVariableStore({
+		"agent.count": 2,
+		"user.preference": "concise",
+		"other": "ignored",
+	});
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-filter",
+		state: {
+			schemaVersion: 1,
+			definitions: {
+				"agent.count": {
+					type: "number",
+					scope: "session",
+					description: "Number of completed steps",
+					agentWritable: true,
+				},
+			},
+		},
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: {
+					includeScopes: ["session"],
+					includeNamespaces: ["agent.*"],
+					includeMetadata: true,
+				},
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /<session>/);
+	assert.match(text, /<var name="agent.count" type="number" description="Number of completed steps" agentWritable="true">2<\/var>/);
+	assert.doesNotMatch(text, /user.preference/);
+	assert.doesNotMatch(text, /other/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("macros stringify non-string state values", () => {
+	const store = createPromptVariableStore({
+		flags: ["brief", "technical"],
+		count: 2,
+	});
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "typed-macros",
+		items: [
+			{
+				kind: "block",
+				id: "vars",
+				enabled: true,
+				role: "system",
+				content: "flags={{flags}} count={{getsessionvar::count}}",
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
+
+	assert.equal(result.systemPrompt, 'flags=["brief","technical"] count=2');
 	assert.deepEqual(result.diagnostics, []);
 });
 

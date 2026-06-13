@@ -265,6 +265,6 @@ test("generates an import report with item mapping table", () => {
 	assert.match(result.report, /Character ID.*1/);
 	assert.match(result.report, /Item mapping/);
 	assert.match(result.report, /chatHistory/);
-	assert.match(result.report, /\/preset vars set <name> <value>/);
+	assert.match(result.report, /\/state set <name> <value>/);
 	assert.doesNotMatch(result.report, /\$\{key\}/);
 });

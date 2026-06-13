@@ -50,6 +50,7 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset validate [id]
 /preset reload
 /preset vars [set <name> <value>|get <name>|clear [name]]
+/state [list|set <name> <value>|get <name>|clear [name]]
 /preset import-silly <path> [character_id]
 /intercept
 ```
@@ -66,11 +67,13 @@ If a preset contains multiple `prompt_order` entries, pass the desired `characte
 
 ## Agent tools
 
-### forge_set_var
+### forge_state_set
 
-Sets a persistent session variable. Only variables starting with `agent.` can be written by the agent; other variables are read-only. Useful for cross-turn state tracking in roleplay (character mood, story progress) or coding (task checkpoints, discovered facts).
+Batch-updates persistent prompt state. Only state names starting with `agent.` can be written by the agent; user and stack state are read-only to the agent. Useful for cross-turn state tracking in roleplay (character mood, story progress) or coding (task checkpoints, discovered facts).
 
-When the `variables` slot is active in a prompt stack, the agent sees its variable state and can update it. Without the slot, variables still work for macro substitution but the agent won't have a structured view of the state.
+When the `variables` slot is active in a prompt stack, the agent sees rendered prompt state and can update `agent.*` state with `forge_state_set`. Without the slot, state still works for macro substitution but the agent won't have a structured view of the state.
+
+`forge_set_var` remains as a compatibility alias for setting one string value. Prefer `forge_state_set` for new stacks.
 
 ## Stack format
 
@@ -167,23 +170,23 @@ Supported slots:
 - `active-model`
 - `pi-docs`
 
-### Variables slot
+### Variables / State Slot
 
-Renders variable state as structured XML:
+Renders prompt state as structured XML:
 
 ```xml
-<prompt_variables>
+<prompt_state>
   <static>
-    <char>Agent</char>
+    <var name="char" type="string">Agent</var>
   </static>
   <session>
-    <agent.mood>happy</agent.mood>
-    <agent.progress>step 3</agent.progress>
+    <var name="agent.mood" type="string">happy</var>
+    <var name="agent.progress" type="string">step 3</var>
   </session>
   <turn>
-    <recent>just happened</recent>
+    <var name="recent" type="string">just happened</var>
   </turn>
-</prompt_variables>
+</prompt_state>
 ```
 
 Options:
@@ -192,11 +195,19 @@ Options:
 {
   "includeStatic": true,
   "includeSession": true,
-  "includeTurn": true
+  "includeTurn": true,
+  "includeScopes": ["session"],
+  "includeNamespaces": ["user.*", "agent.*"],
+  "excludeNamespaces": ["agent.scratch.*"],
+  "includeMetadata": true,
+  "format": "xml",
+  "maxValueChars": 1200
 }
 ```
 
-Use this slot to give the agent visibility into mutable state that it can also update via `forge_set_var`.
+`includeScopes` overrides the older `includeStatic` / `includeSession` / `includeTurn` booleans when present. Namespace filters accept exact names or wildcard prefixes such as `agent.*`.
+
+Use this slot to give the agent visibility into mutable state that it can also update via `forge_state_set`.
 
 ## Roles
 
@@ -244,7 +255,7 @@ Supported macros in block content:
 - `{{activeModel}}`
 - custom variables from the stack `variables` object, e.g. `{{char}}`
 
-### Variables
+### Variables / Prompt State
 
 Static variables come from the stack file:
 
@@ -254,6 +265,40 @@ Static variables come from the stack file:
   "user": "USER"
 }
 ```
+
+Typed state definitions can also be declared in the stack:
+
+```json
+"state": {
+  "schemaVersion": 1,
+  "definitions": {
+    "agent.progress": {
+      "type": "string",
+      "scope": "session",
+      "description": "Concise summary of current task progress",
+      "agentWritable": true
+    },
+    "agent.openQuestions": {
+      "type": "string[]",
+      "scope": "session",
+      "description": "Questions that may need user input",
+      "agentWritable": true
+    }
+  }
+}
+```
+
+Supported type strings are intentionally small and TypeScript-like: `string`, `number`, `boolean`, `null`, `object`, `array`, `string[]`, `number[]`, `boolean[]`, `unknown`, and unions like `string | null`.
+
+Users can set typed JSON-compatible session state with:
+
+```txt
+/state set user.preference "concise answers"
+/state set user.maxExamples 2
+/state set user.flags ["brief","technical"]
+```
+
+`/preset vars set <name> <value>` remains as a legacy string-only command.
 
 Mutable turn variables are cleared for each user message:
 
@@ -266,7 +311,7 @@ Mutable turn variables are cleared for each user message:
 {{clearvar::name}}
 ```
 
-Mutable session variables persist in the Pi session as extension state:
+Mutable session state persists in the Pi session as extension state:
 
 ```txt
 {{setsessionvar::name::value}}
@@ -280,7 +325,7 @@ Mutable session variables persist in the Pi session as extension state:
 Lookup order for `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}` is:
 
 1. turn variables
-2. session variables
+2. session state
 3. static stack variables
 
-`setvar` macros output empty text. Unknown macros warn by default and are kept literally.
+`setvar` macros output empty text. Non-string state values are JSON-stringified when substituted by macros. Unknown macros warn by default and are kept literally.

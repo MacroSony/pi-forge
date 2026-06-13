@@ -353,7 +353,7 @@ export function importSillyTavernPreset(
 			reportLines.push(`- \`${key}\` = \`${val}\` — replace with your character/persona name`);
 		}
 		reportLines.push("");
-		reportLines.push("Use `/preset vars set <name> <value>` or edit the stack JSON to set real values.");
+		reportLines.push("Use `/state set <name> <value>` or edit the stack JSON to set real values.");
 		reportLines.push("");
 	}
 
@@ -377,7 +377,7 @@ export function importSillyTavernPreset(
 			reportLines.push("ST uses `setvar`/`getvar` for ephemeral state. pi-forge has a different variable model:");
 			reportLines.push("");
 			reportLines.push("- **Static variables** — set in the stack JSON's `variables` object (character names, fixed config)");
-			reportLines.push("- **Session variables** — persist across turns, set via `/preset vars set` or `forge_set_var` tool");
+			reportLines.push("- **Session state** — persists across turns, set by the user via `/state set` or by the agent via `forge_state_set` for `agent.*` names");
 			reportLines.push("- **Turn variables** — ephemeral, set via `{{setvar::name::value}}` macros in blocks");
 			reportLines.push("");
 			reportLines.push("Review ST `setvar`/`getvar` calls and migrate to the appropriate pi-forge scope.");
@@ -434,7 +434,7 @@ export function importSillyTavernPreset(
 	reportLines.push("");
 	reportLines.push("## Suggested next steps");
 	reportLines.push("");
-	reportLines.push("1. Set real values for auto-populated variables with `/preset vars set`.");
+	reportLines.push("1. Set real values for auto-populated variables with `/state set`.");
 	reportLines.push("2. Review items with migration-needed macros and rewrite for pi-forge's macro system.");
 	reportLines.push("3. Consider adding a `variables` slot for agent state visibility.");
 	reportLines.push(`4. Run \`/preset validate ${stackId}\` to check for issues.`);

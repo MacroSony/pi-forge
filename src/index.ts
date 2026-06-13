@@ -13,11 +13,19 @@ import {
 } from "./compiler.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
-import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableStore } from "./types.ts";
+import type { LoadedPromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
 const AGENT_VAR_PREFIX = "agent.";
+
+type StateActor = "agent" | "user";
+
+interface StateUpdateInput {
+	name: string;
+	value: PromptStateValue;
+	reason?: string;
+}
 
 export default function piForge(pi: ExtensionAPI) {
 	let stacks: LoadedPromptStack[] = [];
@@ -26,7 +34,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let currentLatestUserMessage: string | undefined;
 	let currentVariableStore: PromptVariableStore | undefined;
 	let contextRewritePending = false;
-	let sessionVariables: Record<string, string> = {};
+	let sessionVariables: Record<string, PromptStateValue> = {};
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
 
@@ -102,13 +110,13 @@ export default function piForge(pi: ExtensionAPI) {
 		return undefined;
 	}
 
-	function getRestoredVariables(ctx: ExtensionContext): Record<string, string> {
+	function getRestoredVariables(ctx: ExtensionContext): Record<string, PromptStateValue> {
 		const entries = ctx.sessionManager.getEntries();
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const entry = entries[i] as { type?: string; customType?: string; data?: { variables?: unknown } };
 			if (entry.type !== "custom" || entry.customType !== VARIABLE_ENTRY_TYPE) continue;
 			if (!entry.data || typeof entry.data.variables !== "object" || Array.isArray(entry.data.variables)) return {};
-			return normalizeStringRecord(entry.data.variables as Record<string, unknown>);
+			return normalizeStateRecord(entry.data.variables as Record<string, unknown>);
 		}
 		return {};
 	}
@@ -120,12 +128,123 @@ export default function piForge(pi: ExtensionAPI) {
 		markSessionVariablesClean(store);
 	}
 
-	function normalizeStringRecord(value: Record<string, unknown>): Record<string, string> {
-		const result: Record<string, string> = {};
+	function normalizeStateRecord(value: Record<string, unknown>): Record<string, PromptStateValue> {
+		const result: Record<string, PromptStateValue> = {};
 		for (const [key, raw] of Object.entries(value)) {
-			if (typeof raw === "string") result[key] = raw;
+			if (isPromptStateValue(raw)) result[key] = raw;
 		}
 		return result;
+	}
+
+	function isPromptStateValue(value: unknown): value is PromptStateValue {
+		if (value === null) return true;
+		const type = typeof value;
+		if (type === "string" || type === "boolean") return true;
+		if (type === "number") return Number.isFinite(value);
+		if (Array.isArray(value)) return value.every(isPromptStateValue);
+		if (!value || typeof value !== "object") return false;
+		return Object.values(value as Record<string, unknown>).every(isPromptStateValue);
+	}
+
+	function validateStateName(name: string): string | undefined {
+		if (!name.trim()) return "state name must not be empty";
+		if (!/^[A-Za-z0-9_.:-]+$/.test(name)) {
+			return "state name may only contain letters, numbers, underscore, dash, dot, and colon";
+		}
+		return undefined;
+	}
+
+	function validateStateUpdate(update: StateUpdateInput, actor: StateActor): string | undefined {
+		const nameError = validateStateName(update.name);
+		if (nameError) return `${update.name || "(empty)"}: ${nameError}`;
+
+		if (actor === "agent" && !update.name.startsWith(AGENT_VAR_PREFIX)) {
+			return `${update.name}: agents may only write ${AGENT_VAR_PREFIX}* state`;
+		}
+
+		const definition = active?.stack.state?.definitions?.[update.name];
+		if (actor === "agent" && definition?.agentWritable === false) {
+			return `${update.name}: stack schema marks this state as not agent-writable`;
+		}
+		if (actor === "user" && definition?.userWritable === false) {
+			return `${update.name}: stack schema marks this state as not user-writable`;
+		}
+		if (definition?.type) {
+			const typeError = validateStateValueType(update.value, definition.type);
+			if (typeError) return `${update.name}: expected ${definition.type}, got ${typeError}`;
+		}
+		return undefined;
+	}
+
+	function applyStatePatch(updates: StateUpdateInput[], clears: string[], actor: StateActor): { ok: true; updated: number; cleared: number } | { ok: false; error: string } {
+		for (const update of updates) {
+			const error = validateStateUpdate(update, actor);
+			if (error) return { ok: false, error };
+		}
+		for (const name of clears) {
+			const error = validateStateName(name);
+			if (error) return { ok: false, error: `${name || "(empty)"}: ${error}` };
+			if (actor === "agent" && !name.startsWith(AGENT_VAR_PREFIX)) {
+				return { ok: false, error: `${name}: agents may only clear ${AGENT_VAR_PREFIX}* state` };
+			}
+		}
+
+		for (const update of updates) {
+			sessionVariables[update.name] = update.value;
+			if (currentVariableStore) currentVariableStore.session[update.name] = update.value;
+		}
+		for (const name of clears) {
+			delete sessionVariables[name];
+			if (currentVariableStore) delete currentVariableStore.session[name];
+		}
+
+		pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
+		if (currentVariableStore) markSessionVariablesClean(currentVariableStore);
+		return { ok: true, updated: updates.length, cleared: clears.length };
+	}
+
+	function validateStateValueType(value: PromptStateValue, typeExpression: string): string | undefined {
+		const types = typeExpression.split("|").map((part) => part.trim()).filter(Boolean);
+		if (types.length === 0 || types.some((type) => stateValueMatchesType(value, type))) return undefined;
+		return inferRuntimeType(value);
+	}
+
+	function stateValueMatchesType(value: PromptStateValue, type: string): boolean {
+		if (type === "any" || type === "unknown" || type === "json" || type === "Json") return true;
+		if (type === "null") return value === null;
+		if (type === "array" || type === "unknown[]") return Array.isArray(value);
+		if (type === "object" || type === "Record<string, unknown>" || type === "Record<string, any>") {
+			return !!value && typeof value === "object" && !Array.isArray(value);
+		}
+		if (type.endsWith("[]")) {
+			if (!Array.isArray(value)) return false;
+			const itemType = type.slice(0, -2).trim();
+			return value.every((item) => stateValueMatchesType(item, itemType));
+		}
+		return typeof value === type;
+	}
+
+	function inferRuntimeType(value: PromptStateValue): string {
+		if (value === null) return "null";
+		if (Array.isArray(value)) return "array";
+		return typeof value;
+	}
+
+	function parseStateCommandValue(raw: string): PromptStateValue {
+		const trimmed = raw.trim();
+		if (/^(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|["[{])/.test(trimmed)) {
+			try {
+				const parsed = JSON.parse(trimmed);
+				if (isPromptStateValue(parsed)) return parsed;
+			} catch {
+				// Fall back to string for friendly command input.
+			}
+		}
+		return raw;
+	}
+
+	function formatStateValue(value: PromptStateValue): string {
+		return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 	}
 
 	pi.on("session_start", async (event, ctx) => {
@@ -212,32 +331,102 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
+		name: "forge_state_set",
+		label: "Set Prompt State",
+		description: "Batch update persistent prompt state for future turns. Only names starting with 'agent.' can be written by the agent.",
+		promptSnippet: "Batch update agent-scoped prompt state for cross-turn continuity. Use this when durable state should be visible in the prompt_state slot on future turns.",
+		promptGuidelines: [
+			"Use forge_state_set to persist concise cross-turn state such as task progress, story state, open questions, or durable facts the user asked you to remember.",
+			`Only state names starting with '${AGENT_VAR_PREFIX}' are writable by the agent. User and stack configuration state are read-only to the agent.`,
+			"Prefer one batch update at natural checkpoints instead of many small updates. Do not store secrets or large transcripts.",
+			"State written by this tool is primarily for future turns; the current prompt has already been built.",
+		],
+		parameters: Type.Object({
+			updates: Type.Optional(Type.Array(Type.Object({
+				name: Type.String({ description: `State name (must start with '${AGENT_VAR_PREFIX}')` }),
+				value: Type.Unknown({ description: "JSON-compatible value: string, number, boolean, null, array, or object" }),
+				reason: Type.Optional(Type.String({ description: "Brief reason for the update" })),
+			}))),
+			clears: Type.Optional(Type.Array(Type.String({ description: `State names to clear (must start with '${AGENT_VAR_PREFIX}')` }))),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const updatesRaw = Array.isArray(params.updates) ? params.updates : [];
+			const clears = Array.isArray(params.clears) ? params.clears.filter((name): name is string => typeof name === "string") : [];
+			const updates: StateUpdateInput[] = [];
+
+			for (const raw of updatesRaw) {
+				if (!raw || typeof raw !== "object") {
+					return {
+						content: [{ type: "text", text: "Error: every update must be an object." }],
+						details: { error: "invalid update" },
+					};
+				}
+				const update = raw as { name?: unknown; value?: unknown; reason?: unknown };
+				if (typeof update.name !== "string") {
+					return {
+						content: [{ type: "text", text: "Error: every update needs a string name." }],
+						details: { error: "invalid update name" },
+					};
+				}
+				if (!isPromptStateValue(update.value)) {
+					return {
+						content: [{ type: "text", text: `Error: ${update.name} value is not JSON-compatible.` }],
+						details: { error: "invalid value", name: update.name },
+					};
+				}
+				updates.push({
+					name: update.name,
+					value: update.value,
+					reason: typeof update.reason === "string" ? update.reason : undefined,
+				});
+			}
+
+			if (updates.length === 0 && clears.length === 0) {
+				return {
+					content: [{ type: "text", text: "No state updates or clears provided." }],
+					details: { updated: 0, cleared: 0 },
+				};
+			}
+
+			const result = applyStatePatch(updates, clears, "agent");
+			if (!result.ok) {
+				return {
+					content: [{ type: "text", text: `Error: ${result.error}` }],
+					details: { error: result.error },
+				};
+			}
+
+			return {
+				content: [{ type: "text", text: `State updated: ${result.updated} set, ${result.cleared} cleared.` }],
+				details: { updated: updates.map(({ name, value, reason }) => ({ name, value, reason })), cleared: clears },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: "forge_set_var",
 		label: "Set Prompt Variable",
-		description: "Set a persistent session variable in the active prompt stack. Only variables starting with 'agent.' can be written by the agent; other variables are read-only.",
-		promptSnippet: "Set agent-scoped prompt stack variables for cross-turn state (character mood, task progress, discovered facts).",
+		description: "Compatibility alias for forge_state_set. Set one persistent agent-scoped state value. Only variables starting with 'agent.' can be written by the agent.",
+		promptSnippet: "Compatibility alias for forge_state_set. Prefer forge_state_set for batch prompt state updates.",
 		promptGuidelines: [
-			"Use forge_set_var to persist state across turns — character mood, story progress, task checkpoints, or discovered facts the user might ask about later.",
-			`Only variable names starting with '${AGENT_VAR_PREFIX}' are writable. Static and manually-set variables are read-only.`,
-			"Do not use forge_set_var for prompt configuration; it is for tracked runtime state only.",
+			"Prefer forge_state_set when updating prompt state. forge_set_var only exists for compatibility with older prompt stacks.",
+			`Only variable names starting with '${AGENT_VAR_PREFIX}' are writable.`,
 		],
 		parameters: Type.Object({
 			name: Type.String({ description: `Variable name (must start with '${AGENT_VAR_PREFIX}')` }),
 			value: Type.String({ description: "Variable value" }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const { name, value } = params;
-			if (!name.startsWith(AGENT_VAR_PREFIX)) {
+			const result = applyStatePatch([{ name: params.name, value: params.value }], [], "agent");
+			if (!result.ok) {
 				return {
-					content: [{ type: "text", text: `Error: only variables starting with '${AGENT_VAR_PREFIX}' are writable by the agent. Received: ${name}` }],
-					details: { error: "namespace restriction", name },
+					content: [{ type: "text", text: `Error: ${result.error}` }],
+					details: { error: result.error, name: params.name },
 				};
 			}
-			sessionVariables[name] = value;
-			pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
 			return {
-				content: [{ type: "text", text: `Variable ${name} set.` }],
-				details: { name, value },
+				content: [{ type: "text", text: `Variable ${params.name} set.` }],
+				details: { name: params.name, value: params.value },
 			};
 		},
 	});
@@ -284,6 +473,28 @@ export default function piForge(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("state", {
+		description: "Manage pi-forge prompt state",
+		getArgumentCompletions: (prefix) => {
+			const parts = prefix.trimStart().split(/\s+/);
+			if (parts.length <= 1 && !prefix.endsWith(" ")) {
+				const commands = ["list", "set", "get", "clear"];
+				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
+			}
+			const first = parts[0];
+			if (["get", "clear"].includes(first) && parts.length <= 2) {
+				const fragment = parts[1] ?? "";
+				return Object.keys(sessionVariables)
+					.filter((name) => name.startsWith(fragment))
+					.map((name) => ({ value: `${first} ${name}`, label: name }));
+			}
+			return null;
+		},
+		handler: async (args, ctx) => {
+			await handleStateCommand(args, ctx);
+		},
+	});
+
 	async function handlePresetCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
 		const trimmed = args.trim();
 		const [command = "list", ...rest] = trimmed ? trimmed.split(/\s+/) : ["list"];
@@ -310,6 +521,7 @@ export default function piForge(pi: ExtensionAPI) {
 						return;
 					}
 					sessionVariables[name] = value;
+					if (currentVariableStore) currentVariableStore.session[name] = value;
 					pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
 					ctx.ui.notify(`pi-forge: set session variable ${name} = ${JSON.stringify(value)}`, "info");
 					return;
@@ -325,7 +537,7 @@ export default function piForge(pi: ExtensionAPI) {
 					if (value === undefined) {
 						await showText(ctx, `pi-forge variable: ${name}`, `# ${name}\n\n(not set)`);
 					} else {
-						await showText(ctx, `pi-forge variable: ${name}`, `# ${name}\n\n${value}`);
+						await showText(ctx, `pi-forge variable: ${name}`, `# ${name}\n\n${formatStateValue(value)}`);
 					}
 					return;
 				}
@@ -431,6 +643,62 @@ export default function piForge(pi: ExtensionAPI) {
 		}
 	}
 
+	async function handleStateCommand(args: string, ctx: ExtensionCommandContext): Promise<void> {
+		const trimmed = args.trim();
+		const [command = "list", ...rest] = trimmed ? trimmed.split(/\s+/) : ["list"];
+
+		switch (command) {
+			case "list":
+			case "status":
+				await showText(ctx, "pi-forge state", renderVariablesList());
+				return;
+
+			case "set": {
+				const name = rest[0];
+				const rawValue = rest.slice(1).join(" ");
+				if (!name || rawValue === "") {
+					ctx.ui.notify("Usage: /state set <name> <json-or-text-value>", "warning");
+					return;
+				}
+				const value = parseStateCommandValue(rawValue);
+				const result = applyStatePatch([{ name, value }], [], "user");
+				if (!result.ok) {
+					ctx.ui.notify(`pi-forge state error: ${result.error}`, "error");
+					return;
+				}
+				ctx.ui.notify(`pi-forge: set state ${name} = ${JSON.stringify(value)}`, "info");
+				return;
+			}
+
+			case "get": {
+				const name = rest[0];
+				if (!name) {
+					ctx.ui.notify("Usage: /state get <name>", "warning");
+					return;
+				}
+				const value = sessionVariables[name];
+				await showText(ctx, `pi-forge state: ${name}`, value === undefined ? `# ${name}\n\n(not set)` : `# ${name}\n\n${formatStateValue(value)}`);
+				return;
+			}
+
+			case "clear": {
+				const name = rest[0];
+				const clears = name ? [name] : Object.keys(sessionVariables);
+				const result = applyStatePatch([], clears, "user");
+				if (!result.ok) {
+					ctx.ui.notify(`pi-forge state error: ${result.error}`, "error");
+					return;
+				}
+				ctx.ui.notify(name ? `pi-forge: cleared state ${name}` : "pi-forge: cleared all session state", "info");
+				return;
+			}
+
+			default:
+				ctx.ui.notify(`Unknown /state subcommand: ${command}`, "warning");
+				return;
+		}
+	}
+
 	function renderStackList(ctx: ExtensionCommandContext): string {
 		const lines = [
 			`Prompt stack directory: ${promptStacksDir(ctx.cwd)}`,
@@ -452,12 +720,12 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
 		return lines.join("\n");
 	}
 
 	function renderVariablesList(): string {
-		const lines = ["# pi-forge variables", "", "## Session variables", ""];
+		const lines = ["# pi-forge state", "", "## Session state", ""];
 		const sessionEntries = Object.entries(sessionVariables).sort(([a], [b]) => a.localeCompare(b));
 		if (sessionEntries.length === 0) lines.push("(none)");
 		else for (const [key, value] of sessionEntries) lines.push(`${key} = ${JSON.stringify(value)}`);
@@ -466,6 +734,20 @@ export default function piForge(pi: ExtensionAPI) {
 		const staticEntries = Object.entries(active?.stack.variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
 		if (staticEntries.length === 0) lines.push("(none)");
 		else for (const [key, value] of staticEntries) lines.push(`${key} = ${JSON.stringify(value)}`);
+
+		const definitions = Object.entries(active?.stack.state?.definitions ?? {}).sort(([a], [b]) => a.localeCompare(b));
+		if (definitions.length > 0) {
+			lines.push("", "## Active stack state definitions", "");
+			for (const [name, definition] of definitions) {
+				const details = [
+					definition.type ? `type=${definition.type}` : undefined,
+					definition.scope ? `scope=${definition.scope}` : undefined,
+					definition.agentWritable !== undefined ? `agentWritable=${definition.agentWritable}` : undefined,
+					definition.userWritable !== undefined ? `userWritable=${definition.userWritable}` : undefined,
+				].filter(Boolean).join(", ");
+				lines.push(`${name}${details ? ` (${details})` : ""}${definition.description ? ` — ${definition.description}` : ""}`);
+			}
+		}
 
 		lines.push("", "Turn variables are cleared for each user message and are only visible during prompt compilation.");
 		return lines.join("\n");

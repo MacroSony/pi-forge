@@ -11,17 +11,17 @@ Implemented and working:
 - Movable `chat-history` slot.
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
-- Basic macro expansion and turn/session/static variables.
-- `/preset` commands for list/use/preview/validate/reload/vars.
+- Basic macro expansion and turn/session/static prompt state.
+- `/preset` commands for list/use/preview/validate/reload/vars, plus `/state` commands for typed session state.
 - `/preset import-silly <file> [character_id]` command that writes prompt stacks and import reports.
 - `/intercept` command to display the next provider payload.
 - Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
 - Active prompt stack status in the footer.
-- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, variables slot rendering, and SillyTavern import behavior.
-- `variables` slot that renders static/session/turn variables as structured XML, positionable in the prompt layout.
-- `/preset vars set <name> <value>` and `/preset vars get <name>` commands.
-- `forge_set_var` tool that lets the agent set `agent.*`-prefixed session variables for cross-turn state tracking.
+- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, prompt state slot rendering, and SillyTavern import behavior.
+- `variables` slot that renders static/session/turn prompt state as valid XML or JSON, with scope/namespace filters and optional stack metadata.
+- `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
+- `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
 
 ## Priority 1: Command and lifecycle test coverage
 
@@ -39,7 +39,7 @@ High-value command/event cases:
 2. `/preset use <id>` persists the selected stack and updates footer status.
 3. `/preset use none` persists the disabled selection and clears footer status.
 4. `/preset reload` preserves an explicit disabled selection instead of reactivating `default.json`.
-5. `/preset vars set/get/clear` updates session variables and persistence entries.
+5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries.
 6. `/preset validate` shows diagnostics for the requested stack.
 7. `/preset import-silly` writes the stack and report, then reloads stack state.
 8. `session_start` restores variables and active stack selection.
@@ -62,22 +62,23 @@ Importer improvements:
 - Add fixtures from real presets to catch field-shape drift.
 - Consider a dry-run mode that only shows the generated stack/report.
 
-## Priority 3: Variable metadata
+## Priority 3: Prompt state lifecycle metadata
 
-### Add variable metadata later
+### Add update metadata later
 
-Current variables are strings. Later format could support:
+Current state definitions can declare type, scope, description, and write permissions. Later stored values could support runtime metadata:
 
 ```json
 {
   "value": "...",
   "scope": "session",
   "description": "What this variable means",
+  "updatedBy": "agent",
   "updatedAt": "..."
 }
 ```
 
-Keep the current string map for now; migrate only if useful.
+Keep persisted values as plain JSON for now; add metadata only if it becomes necessary for state review, expiration, or subagent curation.
 
 ## Priority 4: Improve macro engine
 
@@ -202,7 +203,7 @@ Current and next test cases:
 13. SillyTavern importer happy path and error handling - done
 14. SillyTavern marker filtering and `lastUserMessage` handling - done
 15. context rewrite once per user turn behavior
-16. command behavior for `/preset vars`
+16. command behavior for `/state` and `/preset vars`
 17. command behavior for `/preset validate`
 18. command behavior for `/preset import-silly`
 
@@ -242,6 +243,6 @@ Prompt stacks should remain about message/system layout.
 ## Suggested next coding session
 
 1. Add a lightweight extension harness for `/preset` command and session event tests.
-2. Cover `/preset use`, `/preset reload`, `/preset vars`, `/preset validate`, and `/preset import-silly`.
+2. Cover `/preset use`, `/preset reload`, `/state`, `/preset vars`, `/preset validate`, and `/preset import-silly`.
 3. Add importer collision handling so generated files are not silently overwritten.
-4. Revisit the local writer preset and add a compact `<turn_state>` block using the `variables` slot.
+4. Add command/tool lifecycle tests for `forge_state_set` batch validation and session restoration.
