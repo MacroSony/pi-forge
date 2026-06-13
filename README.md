@@ -19,7 +19,7 @@ After starting Pi in this directory, trust the project and use `/reload` if need
 After publishing under your chosen npm package name, install it with:
 
 ```bash
-pi install npm:<published-package-name>
+pi install npm:@zihanw/pi-forge
 ```
 
 ## Prompt stacks
