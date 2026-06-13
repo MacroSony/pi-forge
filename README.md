@@ -31,7 +31,7 @@ Activation rules:
 3. `/preset use <id>` switches stacks for the session.
 4. `/preset use none` disables prompt stack replacement.
 
-When a stack is active, pi-forge replaces Pi's default system prompt by default and rebuilds message context around a movable `chat-history` slot.
+When a stack is active, pi-forge replaces Pi's default system prompt by default and rebuilds the first provider request for each user message around a movable `chat-history` slot. Tool-result follow-up turns use Pi's natural context so post-history instructions are not repeatedly re-appended after every tool call.
 
 ## Commands
 

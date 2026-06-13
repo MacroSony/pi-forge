@@ -20,6 +20,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let currentSystemPromptOptions: BuildSystemPromptOptions | undefined;
 	let currentLatestUserMessage: string | undefined;
 	let currentVariableStore: PromptVariableStore | undefined;
+	let contextRewritePending = false;
 	let sessionVariables: Record<string, string> = {};
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
@@ -126,6 +127,7 @@ export default function piForge(pi: ExtensionAPI) {
 		currentLatestUserMessage = event.prompt;
 		currentVariableStore = createPromptVariableStore(sessionVariables);
 		resetTurnVariables(currentVariableStore);
+		contextRewritePending = true;
 
 		if (!active) return;
 
@@ -140,7 +142,13 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 
 	pi.on("context", async (event, ctx) => {
-		if (!active || !currentSystemPromptOptions) return;
+		if (!active || !currentSystemPromptOptions || !contextRewritePending) return;
+
+		// Rewrite the message layout only for the first provider request of a user-submitted prompt.
+		// Tool-result follow-up turns must receive Pi's natural context; otherwise post-history
+		// prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call
+		// and the model restarts its planning instead of continuing from the tool result.
+		contextRewritePending = false;
 
 		if (!currentVariableStore) currentVariableStore = createPromptVariableStore(sessionVariables);
 		const latestUserMessage = getLatestUserMessage(event.messages) ?? currentLatestUserMessage;
@@ -158,6 +166,7 @@ export default function piForge(pi: ExtensionAPI) {
 		currentSystemPromptOptions = undefined;
 		currentLatestUserMessage = undefined;
 		currentVariableStore = undefined;
+		contextRewritePending = false;
 	});
 
 	pi.on("before_provider_request", async (event, ctx) => {
