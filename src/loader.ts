@@ -35,13 +35,17 @@ export function chooseDefaultStack(
 ): LoadedPromptStack | undefined {
 	if (preferredId) {
 		const preferred = stacks.find((loaded) => loaded.stack.id === preferredId);
-		if (preferred) return preferred;
+		if (preferred && isUsablePromptStack(preferred)) return preferred;
 	}
 
-	const defaultStack = stacks.find((loaded) => basename(loaded.filePath) === "default.json");
+	const defaultStack = stacks.find((loaded) => basename(loaded.filePath) === "default.json" && isUsablePromptStack(loaded));
 	if (defaultStack) return defaultStack;
 
-	return stacks.find((loaded) => loaded.stack.autoActivate);
+	return stacks.find((loaded) => loaded.stack.autoActivate && isUsablePromptStack(loaded));
+}
+
+export function isUsablePromptStack(loaded: LoadedPromptStack): boolean {
+	return !loaded.diagnostics.some((diagnostic) => diagnostic.level === "error");
 }
 
 function loadPromptStackFile(filePath: string): LoadedPromptStack {

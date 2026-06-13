@@ -32,6 +32,7 @@
     "typescript": "latest"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts"
   }
 }

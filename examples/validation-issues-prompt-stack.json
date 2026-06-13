@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.prompt-stack",
+  "id": "validation-issues",
+  "name": "Validation Issues Sample",
+  "description": "Deliberately invalid sample for testing /preset validate validation-issues.",
+  "autoActivate": false,
+  "mode": "replace",
+  "items": [
+    {
+      "kind": "block",
+      "id": "duplicate-id",
+      "enabled": true,
+      "role": "system",
+      "content": "This block is valid, but its id is duplicated below."
+    },
+    {
+      "kind": "block",
+      "id": "duplicate-id",
+      "enabled": true,
+      "role": "user",
+      "content": "This block intentionally duplicates the previous item id."
+    },
+    {
+      "kind": "slot",
+      "id": "unsupported-slot",
+      "enabled": true,
+      "role": "user",
+      "slot": "not-a-real-slot"
+    },
+    {
+      "kind": "block",
+      "id": "missing-role",
+      "enabled": true,
+      "content": "This enabled non-system block has no role and should be ignored."
+    }
+  ]
+}

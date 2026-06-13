@@ -64,7 +64,8 @@ export function compileSystemPrompt(
 	const mode = stack.mode ?? "replace";
 
 	if (!compiled) {
-		diagnostics.push({ level: "warning", message: "Compiled system prompt is empty." });
+		diagnostics.push({ level: "warning", message: "Compiled system prompt is empty; preserving base system prompt." });
+		return { systemPrompt: baseSystemPrompt, diagnostics };
 	}
 
 	if (mode === "append") {
