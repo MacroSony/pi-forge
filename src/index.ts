@@ -37,6 +37,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let sessionVariables: Record<string, PromptStateValue> = {};
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
+	let latestCompileDiagnostics: PromptStackDiagnostic[] = [];
 
 	function activeId(): string | undefined {
 		return active?.stack.id;
@@ -88,6 +89,8 @@ export default function piForge(pi: ExtensionAPI) {
 			ctx.ui.setStatus("pi-forge", ctx.ui.theme.fg("accent", "stack:" + active.stack.id));
 		} else {
 			ctx.ui.setStatus("pi-forge", undefined);
+			latestCompileDiagnostics = [];
+			ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 		}
 	}
 
@@ -97,6 +100,17 @@ export default function piForge(pi: ExtensionAPI) {
 		const warningCount = active.diagnostics.filter((d) => d.level === "warning").length;
 		const suffix = errorCount || warningCount ? " (" + errorCount + " errors, " + warningCount + " warnings)" : "";
 		ctx.ui.notify("pi-forge: active preset " + active.stack.id + suffix + " (" + detail + ")", errorCount ? "error" : "info");
+	}
+
+	function recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void {
+		latestCompileDiagnostics = diagnostics;
+		const errors = diagnostics.filter((d) => d.level === "error").length;
+		const warnings = diagnostics.filter((d) => d.level === "warning").length;
+		if (errors || warnings) {
+			ctx.ui.setStatus("pi-forge-diagnostics", ctx.ui.theme.fg(errors ? "error" : "warning", `forge:${errors}e/${warnings}w`));
+			return;
+		}
+		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 	}
 
 	function getRestoredActiveId(ctx: ExtensionContext): string | undefined {
@@ -283,6 +297,7 @@ export default function piForge(pi: ExtensionAPI) {
 			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date(), variables: currentVariableStore },
 			event.systemPrompt,
 		);
+		recordCompileDiagnostics(ctx, result.diagnostics);
 		persistVariablesIfDirty(currentVariableStore);
 
 		return { systemPrompt: result.systemPrompt };
@@ -304,6 +319,7 @@ export default function piForge(pi: ExtensionAPI) {
 			{ options: currentSystemPromptOptions, ctx, latestUserMessage, now: new Date(), variables: currentVariableStore },
 			event.messages,
 		);
+		recordCompileDiagnostics(ctx, [...latestCompileDiagnostics, ...result.diagnostics]);
 		persistVariablesIfDirty(currentVariableStore);
 		return { messages: result.messages };
 	});
@@ -445,7 +461,7 @@ export default function piForge(pi: ExtensionAPI) {
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "reload", "status", "vars", "import-silly"];
+				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "vars", "import-silly"];
 				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
 			}
 			const first = parts[0];
@@ -520,9 +536,11 @@ export default function piForge(pi: ExtensionAPI) {
 						ctx.ui.notify("Usage: /preset vars set <name> <value>", "warning");
 						return;
 					}
-					sessionVariables[name] = value;
-					if (currentVariableStore) currentVariableStore.session[name] = value;
-					pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: { ...sessionVariables } });
+					const result = applyStatePatch([{ name, value }], [], "user");
+					if (!result.ok) {
+						ctx.ui.notify(`pi-forge variable error: ${result.error}`, "error");
+						return;
+					}
 					ctx.ui.notify(`pi-forge: set session variable ${name} = ${JSON.stringify(value)}`, "info");
 					return;
 				}
@@ -544,10 +562,12 @@ export default function piForge(pi: ExtensionAPI) {
 
 				if (sub === "clear") {
 					const name = rest[1];
-					if (name) delete sessionVariables[name];
-					else sessionVariables = {};
-					currentVariableStore = createPromptVariableStore(sessionVariables);
-					pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: sessionVariables });
+					const clears = name ? [name] : Object.keys(sessionVariables);
+					const result = applyStatePatch([], clears, "user");
+					if (!result.ok) {
+						ctx.ui.notify(`pi-forge variable error: ${result.error}`, "error");
+						return;
+					}
 					ctx.ui.notify(name ? `pi-forge: cleared session variable ${name}` : "pi-forge: cleared all session variables", "info");
 					return;
 				}
@@ -591,12 +611,27 @@ export default function piForge(pi: ExtensionAPI) {
 				return;
 			}
 
+			case "diagnostics": {
+				await showText(ctx, "pi-forge diagnostics", renderCurrentDiagnostics());
+				return;
+			}
+
 			case "import-silly": {
-				const sourcePath = rest[0];
-				if (!sourcePath) {
-					ctx.ui.notify("Usage: /preset import-silly <path> [character_id]", "warning");
+				if (!ctx.isProjectTrusted()) {
+					ctx.ui.notify("pi-forge: project is not trusted; refusing to write imported prompt stacks.", "warning");
 					return;
 				}
+
+				const sourcePath = rest[0];
+				if (!sourcePath) {
+					ctx.ui.notify("Usage: /preset import-silly <path> [character_id] [--dry-run] [--overwrite]", "warning");
+					return;
+				}
+
+				const charIdToken = rest[1]?.startsWith("--") ? undefined : rest[1];
+				const flags = new Set(rest.slice(charIdToken ? 2 : 1));
+				const dryRun = flags.has("--dry-run");
+				let overwrite = flags.has("--overwrite");
 
 				const resolvedPath = sourcePath.startsWith("/") ? sourcePath : join(ctx.cwd, sourcePath);
 				if (!existsSync(resolvedPath)) {
@@ -604,10 +639,9 @@ export default function piForge(pi: ExtensionAPI) {
 					return;
 				}
 
-				const charIdStr = rest[1];
-				const charId = charIdStr ? Number(charIdStr) : undefined;
-				if (charIdStr && (Number.isNaN(charId) || !Number.isFinite(charId))) {
-					ctx.ui.notify(`Invalid character_id: ${charIdStr}`, "error");
+				const charId = charIdToken ? Number(charIdToken) : undefined;
+				if (charIdToken && (Number.isNaN(charId) || !Number.isFinite(charId))) {
+					ctx.ui.notify(`Invalid character_id: ${charIdToken}`, "error");
 					return;
 				}
 
@@ -617,16 +651,33 @@ export default function piForge(pi: ExtensionAPI) {
 					return;
 				}
 
-				// Write the prompt stack
 				const stacksDir = promptStacksDir(ctx.cwd);
-				if (!existsSync(stacksDir)) mkdirSync(stacksDir, { recursive: true });
 				const stackPath = join(stacksDir, `${result.stack.id}.json`);
+				const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
+				const reportPath = join(reportDir, `${result.stack.id}.md`);
+
+				if (dryRun) {
+					await showText(ctx, `pi-forge import dry run: ${result.stack.id}`, `Would write stack to: ${stackPath}\nWould write report to: ${reportPath}\n\n## Generated stack JSON\n\n\`\`\`json\n${JSON.stringify(result.stack, null, 2)}\n\`\`\`\n\n${result.report}`);
+					return;
+				}
+
+				const existingPaths = [stackPath, reportPath].filter((path) => existsSync(path));
+				if (existingPaths.length > 0 && !overwrite) {
+					if (!ctx.hasUI) {
+						ctx.ui.notify(`pi-forge: import would overwrite existing file(s): ${existingPaths.join(", ")}. Re-run with --overwrite.`, "error");
+						return;
+					}
+					overwrite = await ctx.ui.confirm("Overwrite pi-forge import output?", `These file(s) already exist:\n${existingPaths.join("\n")}\n\nOverwrite them?`);
+					if (!overwrite) {
+						ctx.ui.notify("pi-forge: import cancelled; existing files were left unchanged.", "info");
+						return;
+					}
+				}
+
+				if (!existsSync(stacksDir)) mkdirSync(stacksDir, { recursive: true });
 				writeFileSync(stackPath, JSON.stringify(result.stack, null, 2), "utf8");
 
-				// Write the import report
-				const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
 				if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
-				const reportPath = join(reportDir, `${result.stack.id}.md`);
 				writeFileSync(reportPath, result.report, "utf8");
 
 				// Reload stacks to pick up the new one
@@ -720,7 +771,16 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset diagnostics", "  /preset reload", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
+		return lines.join("\n");
+	}
+
+	function renderCurrentDiagnostics(): string {
+		const lines = ["# pi-forge diagnostics", ""];
+		lines.push("## Active stack load/validation diagnostics", "");
+		lines.push(active ? renderDiagnostics(active.diagnostics) : "No active prompt stack.");
+		lines.push("", "## Latest runtime compile diagnostics", "");
+		lines.push(renderDiagnostics(latestCompileDiagnostics));
 		return lines.join("\n");
 	}
 
@@ -795,9 +855,49 @@ export default function piForge(pi: ExtensionAPI) {
 
 	function safeStringify(value: unknown): string {
 		try {
-			return JSON.stringify(value, null, 2);
+			const text = JSON.stringify(redactPayload(value), null, 2);
+			const maxChars = 200_000;
+			return text.length > maxChars ? `${text.slice(0, maxChars)}\n\n[pi-forge: payload truncated after ${maxChars} chars]` : text;
 		} catch (error) {
 			return `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
 		}
+	}
+
+	function redactPayload(value: unknown, depth = 0): unknown {
+		if (depth > 8) return "[pi-forge: max depth reached]";
+		if (typeof value === "string") return redactLongString(value);
+		if (value === null || typeof value !== "object") return value;
+		if (Array.isArray(value)) {
+			const maxItems = 80;
+			const items = value.slice(0, maxItems).map((item) => redactPayload(item, depth + 1));
+			if (value.length > maxItems) items.push(`[pi-forge: ${value.length - maxItems} more items omitted]`);
+			return items;
+		}
+
+		const result: Record<string, unknown> = {};
+		let count = 0;
+		for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+			if (++count > 120) {
+				result["[pi-forge: omitted]"] = "object has more than 120 keys";
+				break;
+			}
+			if (isSecretKey(key)) {
+				result[key] = "[redacted]";
+				continue;
+			}
+			result[key] = redactPayload(raw, depth + 1);
+		}
+		return result;
+	}
+
+	function isSecretKey(key: string): boolean {
+		return /(api[-_]?key|authorization|bearer|token|secret|password|cookie|credential)/i.test(key);
+	}
+
+	function redactLongString(value: string): string {
+		if (/^data:image\//.test(value)) return "[image data omitted]";
+		if (value.length > 8_000 && /^[A-Za-z0-9+/=\r\n]+$/.test(value)) return `[base64-like data omitted: ${value.length} chars]`;
+		if (value.length > 12_000) return `${value.slice(0, 12_000)}\n[pi-forge: string truncated from ${value.length} chars]`;
+		return value;
 	}
 }

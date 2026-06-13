@@ -30,7 +30,30 @@ export function loadPromptStacks(cwd: string): LoadedPromptStack[] {
 		return [];
 	}
 
-	return entries.sort().map((name) => loadPromptStackFile(join(dir, name)));
+	const loaded = entries.sort().map((name) => loadPromptStackFile(join(dir, name)));
+	annotateDuplicateStackIds(loaded);
+	return loaded;
+}
+
+function annotateDuplicateStackIds(stacks: LoadedPromptStack[]): void {
+	const byId = new Map<string, LoadedPromptStack[]>();
+	for (const loaded of stacks) {
+		const id = loaded.stack.id;
+		const matches = byId.get(id) ?? [];
+		matches.push(loaded);
+		byId.set(id, matches);
+	}
+
+	for (const [id, matches] of byId) {
+		if (matches.length <= 1) continue;
+		const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
+		for (const loaded of matches) {
+			loaded.diagnostics.push({
+				level: "error",
+				message: `Duplicate stack id: ${id} appears in multiple files (${files}).`,
+			});
+		}
+	}
 }
 
 export function chooseDefaultStack(

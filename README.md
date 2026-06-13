@@ -48,10 +48,11 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset use <id|none>
 /preset preview [id]
 /preset validate [id]
+/preset diagnostics
 /preset reload
 /preset vars [set <name> <value>|get <name>|clear [name]]
 /state [list|set <name> <value>|get <name>|clear [name]]
-/preset import-silly <path> [character_id]
+/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 /intercept
 ```
 
@@ -60,8 +61,10 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 Import a SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json` and write a migration report to `.pi/forge/import-reports/<id>.md`:
 
 ```txt
-/preset import-silly <path> [character_id]
+/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 ```
+
+By default, import refuses to overwrite existing generated stack/report files unless the UI confirmation is accepted. Use `--dry-run` to preview generated JSON and the report without writing files, or `--overwrite` to allow replacement.
 
 If a preset contains multiple `prompt_order` entries, pass the desired `character_id`. Imported stacks are created with `autoActivate: false`; activate one with `/preset use <id>` after reviewing the report.
 

@@ -12,9 +12,9 @@ Implemented and working:
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
 - Basic macro expansion and turn/session/static prompt state.
-- `/preset` commands for list/use/preview/validate/reload/vars, plus `/state` commands for typed session state.
-- `/preset import-silly <file> [character_id]` command that writes prompt stacks and import reports.
-- `/intercept` command to display the next provider payload.
+- `/preset` commands for list/use/preview/validate/diagnostics/reload/vars, plus `/state` commands for typed session state.
+- `/preset import-silly <file> [character_id] [--dry-run] [--overwrite]` command that writes prompt stacks and import reports.
+- `/intercept` command to display the next provider payload with basic redaction/truncation.
 - Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
 - Active prompt stack status in the footer.
@@ -25,9 +25,9 @@ Implemented and working:
 
 ## Priority 1: Command and lifecycle test coverage
 
-Pure compiler/loader/importer tests are in place. The next reliability gap is the extension command/event surface in `src/index.ts`.
+Pure compiler/loader/importer tests are in place, plus an initial mocked command/event harness for `src/index.ts`. The next reliability gap is broadening that harness across more lifecycle cases.
 
-Add a small test harness that can instantiate the extension with mocked:
+Extend the test harness that can instantiate the extension with mocked:
 
 - `ExtensionAPI` command/tool/event registration
 - `ExtensionContext` cwd, UI, trust, and session manager
@@ -35,13 +35,13 @@ Add a small test harness that can instantiate the extension with mocked:
 
 High-value command/event cases:
 
-1. `/preset` second-level completions keep the subcommand in the inserted value, e.g. `use default`.
+1. `/preset` second-level completions keep the subcommand in the inserted value, e.g. `use default`. - initial coverage done
 2. `/preset use <id>` persists the selected stack and updates footer status.
 3. `/preset use none` persists the disabled selection and clears footer status.
 4. `/preset reload` preserves an explicit disabled selection instead of reactivating `default.json`.
-5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries.
+5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries. - initial validation coverage done
 6. `/preset validate` shows diagnostics for the requested stack.
-7. `/preset import-silly` writes the stack and report, then reloads stack state.
+7. `/preset import-silly` writes the stack and report, then reloads stack state. - collision coverage done
 8. `session_start` restores variables and active stack selection.
 9. `turn_start` persists active stack selection only when needed.
 
@@ -51,8 +51,8 @@ The first importer command is implemented. Next work should make it safer and mo
 
 Remaining immediate fixes:
 
-- Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists.
-- Add tests around command-level import behavior, not only the pure importer.
+- Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
+- Add tests around command-level import behavior, not only the pure importer. - initial coverage done
 
 Importer improvements:
 
@@ -60,7 +60,7 @@ Importer improvements:
 - Preserve more SillyTavern metadata in `import.source`.
 - Expand the unsupported macro report with suggested pi-forge replacements where clear.
 - Add fixtures from real presets to catch field-shape drift.
-- Consider a dry-run mode that only shows the generated stack/report.
+- Consider a dry-run mode that only shows the generated stack/report. - done
 
 ## Priority 3: Prompt state lifecycle metadata
 
@@ -203,9 +203,9 @@ Current and next test cases:
 13. SillyTavern importer happy path and error handling - done
 14. SillyTavern marker filtering and `lastUserMessage` handling - done
 15. context rewrite once per user turn behavior
-16. command behavior for `/state` and `/preset vars`
+16. command behavior for `/state` and `/preset vars` - initial validation coverage done
 17. command behavior for `/preset validate`
-18. command behavior for `/preset import-silly`
+18. command behavior for `/preset import-silly` - collision coverage done
 
 ## Priority 8: Payload/debug tools
 
@@ -218,7 +218,7 @@ Improve `/intercept`:
 /payload next save=.pi/forge/payloads/last.json
 ```
 
-- redact API keys and large binary/image content
+- redact API keys and large binary/image content - basic redaction/truncation done; needs broader payload-shape tests
 - show token-ish size estimates if possible
 
 ## Priority 9: Agent profiles later
@@ -242,7 +242,7 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add a lightweight extension harness for `/preset` command and session event tests.
-2. Cover `/preset use`, `/preset reload`, `/state`, `/preset vars`, `/preset validate`, and `/preset import-silly`.
-3. Add importer collision handling so generated files are not silently overwritten.
-4. Add command/tool lifecycle tests for `forge_state_set` batch validation and session restoration.
+1. Broaden the mocked extension harness for command/lifecycle tests.
+2. Cover `/preset use`, `/preset reload`, `/state get/clear`, `/preset validate`, and more `/preset import-silly` flag cases.
+3. Add command/tool lifecycle tests for `forge_state_set` batch validation and session restoration.
+4. Start a minimal UI surface: diagnostics/state/stack manager panels over plain editor dumps.

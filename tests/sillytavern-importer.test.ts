@@ -268,3 +268,33 @@ test("generates an import report with item mapping table", () => {
 	assert.match(result.report, /\/state set <name> <value>/);
 	assert.doesNotMatch(result.report, /\$\{key\}/);
 });
+
+test("detects camelCase SillyTavern macros after normalization", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-st-import-"));
+	const path = writePreset(cwd, "camel.json", {
+		prompts: [
+			{ identifier: "chatHistory", name: "History", marker: true },
+			{ identifier: "post", role: "user", content: "Latest: {{lastUserMessage}} {{charPrompt}} {{mesExamplesRaw}}" },
+		],
+		prompt_order: [
+			{
+				character_id: 1,
+				order: [
+					{ identifier: "chatHistory", enabled: true },
+					{ identifier: "post", enabled: true },
+				],
+			},
+		],
+	});
+
+	const result = importSillyTavernPreset(path);
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	const history = result.stack.items.find((item) => item.kind === "slot" && item.slot === "chat-history");
+	assert.ok(history?.kind === "slot");
+	if (history?.kind === "slot") assert.equal(history.options?.includeLastUserMessage, false);
+	assert.match(result.report, /\{\{lastUserMessage\}\}/);
+	assert.match(result.report, /\{\{charPrompt\}\}/);
+	assert.match(result.report, /\{\{mesExamplesRaw\}\}/);
+});

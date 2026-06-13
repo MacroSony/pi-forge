@@ -55,13 +55,32 @@ const MARKER_SKIP = new Set([
 // ── ST macros that pi-forge handles natively ───────────────────────────────
 
 const NATIVE_MACROS = new Set([
-	"char",           // → static variable
-	"user",           // → static variable
-	"lastUserMessage", // → handled by pi-forge runtime
+	"char",            // → static variable
+	"user",            // → static variable
+	"lastusermessage", // → handled by pi-forge runtime
 	"cwd",
 	"date",
 	"time",
 ]);
+
+const MACRO_DISPLAY_NAMES: Record<string, string> = {
+	lastusermessage: "lastUserMessage",
+	groupnotmuted: "groupNotMuted",
+	notchar: "notChar",
+	charifnotgroup: "charIfNotGroup",
+	mesexamples: "mesExamples",
+	mesexamplesraw: "mesExamplesRaw",
+	charprompt: "charPrompt",
+	charinstruction: "charInstruction",
+	charversion: "charVersion",
+	charfirstmessage: "charFirstMessage",
+	wibefore: "wiBefore",
+	wiafter: "wiAfter",
+	lorebefore: "loreBefore",
+	loreafter: "loreAfter",
+	anchorbefore: "anchorBefore",
+	anchorafter: "anchorAfter",
+};
 
 // ── ST macros that need manual migration ───────────────────────────────────
 
@@ -78,26 +97,26 @@ const MACRO_NEEDS_MIGRATION: Record<string, string> = {
 	"original": "SillyTavern-specific — no direct equivalent; set as session variable if needed",
 	"outlet": "SillyTavern extension outlet — no pi-forge equivalent",
 	"group": "SillyTavern group chat — no pi-forge equivalent",
-	"groupNotMuted": "SillyTavern group chat — no pi-forge equivalent",
-	"notChar": "SillyTavern group chat — no pi-forge equivalent",
-	"charIfNotGroup": "SillyTavern group chat — no pi-forge equivalent",
+	"groupnotmuted": "SillyTavern group chat — no pi-forge equivalent",
+	"notchar": "SillyTavern group chat — no pi-forge equivalent",
+	"charifnotgroup": "SillyTavern group chat — no pi-forge equivalent",
 	"description": "ST character card field — set as session variable or static variable if needed",
 	"personality": "ST character card field — set as session variable or static variable if needed",
 	"scenario": "ST character card field — set as session variable or static variable if needed",
 	"persona": "ST persona field — set as session variable or static variable if needed",
-	"mesExamples": "ST character dialogue examples — add inline or as context file if needed",
-	"mesExamplesRaw": "ST character dialogue examples — add inline or as context file if needed",
-	"charPrompt": "ST character prompt override — merge into system prompt blocks if needed",
-	"charInstruction": "ST character instruction override — merge into post-history blocks if needed",
-	"charVersion": "ST character version — set as static variable if needed",
-	"charFirstMessage": "ST character first message — add as static variable if needed",
+	"mesexamples": "ST character dialogue examples — add inline or as context file if needed",
+	"mesexamplesraw": "ST character dialogue examples — add inline or as context file if needed",
+	"charprompt": "ST character prompt override — merge into system prompt blocks if needed",
+	"charinstruction": "ST character instruction override — merge into post-history blocks if needed",
+	"charversion": "ST character version — set as static variable if needed",
+	"charfirstmessage": "ST character first message — add as static variable if needed",
 	"system": "ST context template system prompt — handled by pi-forge system prompt replacement",
-	"wiBefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
-	"wiAfter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
-	"loreBefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
-	"loreAfter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
-	"anchorBefore": "ST extension injection point — no pi-forge equivalent",
-	"anchorAfter": "ST extension injection point — no pi-forge equivalent",
+	"wibefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"wiafter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"lorebefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"loreafter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"anchorbefore": "ST extension injection point — no pi-forge equivalent",
+	"anchorafter": "ST extension injection point — no pi-forge equivalent",
 };
 
 // ── Macros we can strip entirely (produce no output) ───────────────────────
@@ -219,8 +238,8 @@ export function importSillyTavernPreset(
 			continue;
 		}
 
-		// Detect {{lastUserMessage}} usage
-		if (content.includes("{{lastUserMessage}}")) {
+		// Detect {{lastUserMessage}} usage, case-insensitively.
+		if (/\{\{\s*lastUserMessage\b/i.test(content)) {
 			usesLastUserMessage = true;
 		}
 
@@ -285,7 +304,8 @@ export function importSillyTavernPreset(
 		},
 	};
 
-	// Add chat-history option if {{lastUserMessage}} is used after history
+	// Add chat-history option if {{lastUserMessage}} is used after history.
+	if (macroUsage.detected.has("lastusermessage")) usesLastUserMessage = true;
 	if (usesLastUserMessage) {
 		const chatHistoryItem = items.find(
 			(item) => item.kind === "slot" && item.slot === "chat-history",
@@ -366,7 +386,7 @@ export function importSillyTavernPreset(
 		reportLines.push("");
 		for (const [name, count] of migrationEntries) {
 			const note = MACRO_NEEDS_MIGRATION[name] ?? "no mapping available";
-			reportLines.push(`- **\`{{${name}}}\`** (${count} occurrence${count > 1 ? "s" : ""}) — ${note}`);
+			reportLines.push(`- **\`{{${displayMacroName(name)}}}\`** (${count} occurrence${count > 1 ? "s" : ""}) — ${note}`);
 		}
 		reportLines.push("");
 
@@ -391,12 +411,13 @@ export function importSillyTavernPreset(
 		reportLines.push("## Handled macros");
 		reportLines.push("");
 		for (const name of nativeDetected) {
+			const displayName = displayMacroName(name);
 			if (name === "char" || name === "user") {
-				reportLines.push(`- \`{{${name}}}\` → auto-populated as static variable`);
-			} else if (name === "lastUserMessage") {
-				reportLines.push(`- \`{{${name}}}\` → handled by pi-forge runtime (chat-history slot)`);
+				reportLines.push(`- \`{{${displayName}}}\` → auto-populated as static variable`);
+			} else if (name === "lastusermessage") {
+				reportLines.push(`- \`{{${displayName}}}\` → handled by pi-forge runtime (chat-history slot)`);
 			} else {
-				reportLines.push(`- \`{{${name}}}\` → handled natively by pi-forge`);
+				reportLines.push(`- \`{{${displayName}}}\` → handled natively by pi-forge`);
 			}
 		}
 		reportLines.push("");
@@ -494,6 +515,10 @@ function detectMacros(conversionItems: StConversionItem[]): MacroDetection {
 }
 
 // ── Content cleaning ──────────────────────────────────────────────────────
+
+function displayMacroName(name: string): string {
+	return MACRO_DISPLAY_NAMES[name] ?? name;
+}
 
 function cleanContent(content: string): string {
 	// Collapse multiple blank lines (max 1 blank line between paragraphs)

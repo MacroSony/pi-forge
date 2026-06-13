@@ -107,3 +107,24 @@ test("chooseDefaultStack honors an explicit disabled selection", () => {
 
 	assert.equal(chosen, undefined);
 });
+
+test("loadPromptStacks flags duplicate stack ids as errors", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	for (const name of ["a.json", "b.json"]) {
+		writeStack(cwd, name, {
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "same",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		});
+	}
+
+	const stacks = loadPromptStacks(cwd);
+
+	assert.equal(stacks.length, 2);
+	for (const loaded of stacks) {
+		assert.equal(isUsablePromptStack(loaded), false);
+		assert.match(loaded.diagnostics.find((d) => d.level === "error")?.message ?? "", /Duplicate stack id: same/);
+	}
+	assert.equal(chooseDefaultStack(stacks), undefined);
+});

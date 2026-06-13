@@ -17,7 +17,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - Persisted active stack restore from session entries.
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
-- Stack validation for duplicate item IDs, unsupported slots, missing chat-history slots, and ignored items.
+- Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
 
 ## Prompt Compilation
 
@@ -84,9 +84,10 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/preset use <id|none>`
 - `/preset preview [id]`
 - `/preset validate [id]`
+- `/preset diagnostics`
 - `/preset reload`
 - `/preset vars [set <name> <value>|get <name>|clear [name]]`
-- `/preset import-silly <path> [character_id]`
+- `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
 - `/state list`
 - `/state set <name> <json-or-text-value>`
 - `/state get <name>`
@@ -98,18 +99,21 @@ This file tracks the currently implemented feature surface for the published MVP
 - Import SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json`.
 - Generate import reports under `.pi/forge/import-reports/<id>.md`.
 - Select a specific `character_id` when multiple prompt orders exist.
+- Protect existing generated stack/report files from accidental overwrite, with confirmation or `--overwrite`.
+- Preview generated output without writing files via `--dry-run`.
 - Convert prompt order into prompt stack items.
 - Preserve original SillyTavern identifiers in item source metadata.
 - Convert `chatHistory` marker to a movable `chat-history` slot.
 - Skip unsupported SillyTavern marker items and report omissions.
 - Detect `{{lastUserMessage}}` and configure chat history accordingly.
 - Strip SillyTavern comments and `{{trim}}` markers.
-- Report macros that need manual migration.
+- Report macros that need manual migration, including normalized camelCase SillyTavern macro names.
 
 ## Debugging and Tests
 
-- `/intercept` displays the next provider payload.
-- Node built-in tests cover compiler, loader, and SillyTavern importer behavior.
+- `/intercept` displays the next provider payload with redaction/truncation for secrets and large data.
+- Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
+- Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
