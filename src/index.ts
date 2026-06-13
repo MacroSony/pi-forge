@@ -11,6 +11,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let currentSystemPromptOptions: BuildSystemPromptOptions | undefined;
 	let currentLatestUserMessage: string | undefined;
 	let lastPersistedActiveId: string | undefined;
+	let interceptNextProviderPayload = false;
 
 	function activeId(): string | undefined {
 		return active?.stack.id;
@@ -107,6 +108,29 @@ export default function piForge(pi: ExtensionAPI) {
 	pi.on("agent_end", async () => {
 		currentSystemPromptOptions = undefined;
 		currentLatestUserMessage = undefined;
+	});
+
+	pi.on("before_provider_request", async (event, ctx) => {
+		if (!interceptNextProviderPayload) return;
+		interceptNextProviderPayload = false;
+		ctx.ui.setStatus("pi-forge-intercept", undefined);
+
+		const payload = safeStringify(event.payload);
+		if (ctx.hasUI) {
+			await ctx.ui.editor("pi-forge: provider payload", payload);
+			return;
+		}
+
+		console.log(payload);
+	});
+
+	pi.registerCommand("intercept", {
+		description: "Display the next provider payload before it is sent",
+		handler: async (_args, ctx) => {
+			interceptNextProviderPayload = true;
+			ctx.ui.setStatus("pi-forge-intercept", ctx.ui.theme.fg("warning", "intercept:armed"));
+			ctx.ui.notify("pi-forge: next provider payload will be displayed before sending.", "info");
+		},
 	});
 
 	pi.registerCommand("preset", {
@@ -247,5 +271,13 @@ export default function piForge(pi: ExtensionAPI) {
 			return;
 		}
 		console.log(text);
+	}
+
+	function safeStringify(value: unknown): string {
+		try {
+			return JSON.stringify(value, null, 2);
+		} catch (error) {
+			return `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
+		}
 	}
 }
