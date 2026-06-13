@@ -39,7 +39,7 @@ interface StConversionItem {
 	orderIndex: number;
 }
 
-// ── Marker identifiers we know about ───────────────────────────────────────
+// ── Marker identifiers ─────────────────────────────────────────────────────
 
 const MARKER_CHAT_HISTORY = "chatHistory";
 const MARKER_SKIP = new Set([
@@ -51,6 +51,59 @@ const MARKER_SKIP = new Set([
 	"scenario",
 	"dialogueExamples",
 ]);
+
+// ── ST macros that pi-forge handles natively ───────────────────────────────
+
+const NATIVE_MACROS = new Set([
+	"char",           // → static variable
+	"user",           // → static variable
+	"lastUserMessage", // → handled by pi-forge runtime
+	"cwd",
+	"date",
+	"time",
+]);
+
+// ── ST macros that need manual migration ───────────────────────────────────
+
+const MACRO_NEEDS_MIGRATION: Record<string, string> = {
+	"setvar": "pi-forge {{setvar::name::value}} / {{setsessionvar::name::value}} — scoping differs",
+	"getvar": "pi-forge {{getvar::name}} — lookup order: turn → session → static",
+	"addvar": "use pi-forge {{getvar::name}} + math, or setvar with computed value",
+	"getglobalvar": "use pi-forge session variables via {{getsessionvar::name}}",
+	"setglobalvar": "use pi-forge {{setsessionvar::name::value}}",
+	"random": "use pi-forge conditionals (Priority 2) or precompute",
+	"pick": "use pi-forge conditionals (Priority 2) or precompute",
+	"roll": "use pi-forge conditionals (Priority 2) or precompute",
+	"if": "use pi-forge conditionals (Priority 2)",
+	"original": "SillyTavern-specific — no direct equivalent; set as session variable if needed",
+	"outlet": "SillyTavern extension outlet — no pi-forge equivalent",
+	"group": "SillyTavern group chat — no pi-forge equivalent",
+	"groupNotMuted": "SillyTavern group chat — no pi-forge equivalent",
+	"notChar": "SillyTavern group chat — no pi-forge equivalent",
+	"charIfNotGroup": "SillyTavern group chat — no pi-forge equivalent",
+	"description": "ST character card field — set as session variable or static variable if needed",
+	"personality": "ST character card field — set as session variable or static variable if needed",
+	"scenario": "ST character card field — set as session variable or static variable if needed",
+	"persona": "ST persona field — set as session variable or static variable if needed",
+	"mesExamples": "ST character dialogue examples — add inline or as context file if needed",
+	"mesExamplesRaw": "ST character dialogue examples — add inline or as context file if needed",
+	"charPrompt": "ST character prompt override — merge into system prompt blocks if needed",
+	"charInstruction": "ST character instruction override — merge into post-history blocks if needed",
+	"charVersion": "ST character version — set as static variable if needed",
+	"charFirstMessage": "ST character first message — add as static variable if needed",
+	"system": "ST context template system prompt — handled by pi-forge system prompt replacement",
+	"wiBefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"wiAfter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"loreBefore": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"loreAfter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
+	"anchorBefore": "ST extension injection point — no pi-forge equivalent",
+	"anchorAfter": "ST extension injection point — no pi-forge equivalent",
+};
+
+// ── Macros we can strip entirely (produce no output) ───────────────────────
+
+const COMMENT_MACRO_RE = /\{\{\s*\/\/[\s\S]*?\}\}/g;
+const TRIM_MACRO_RE = /\{\{\s*trim\s*\}\}/gi;
 
 // ── Public result types ────────────────────────────────────────────────────
 
@@ -103,11 +156,6 @@ export function importSillyTavernPreset(
 	}
 
 	// Build ordered, enabled conversion items
-	const orderMap = new Map<string, boolean>();
-	for (const item of selectedEntry.order ?? []) {
-		orderMap.set(item.identifier, item.enabled);
-	}
-
 	const conversionItems: StConversionItem[] = [];
 	const promptMap = new Map<string, StPromptDef>();
 	for (const def of allPrompts) {
@@ -122,8 +170,11 @@ export function importSillyTavernPreset(
 		}
 	}
 
+	// First pass: detect macros across all content
+	const macroUsage = detectMacros(conversionItems);
+
 	// Build pi-forge items
-	const reportLines: string[] = [];
+	const reportNotes: string[] = [];
 	let nextId = 1;
 	const items: PromptStackItem[] = [];
 	let usesLastUserMessage = false;
@@ -149,8 +200,20 @@ export function importSillyTavernPreset(
 			continue;
 		}
 
-		// Skip empty content items
-		const content = def.content ?? "";
+		// Clean content: strip comments, handle trim
+		let content = def.content ?? "";
+		if (!content.trim()) {
+			disabledCount.empty++;
+			continue;
+		}
+
+		// Strip ST comment macros
+		content = content.replace(COMMENT_MACRO_RE, "");
+
+		// Strip {{trim}} — it's a formatting hint for newline removal, not meaningful content
+		content = content.replace(TRIM_MACRO_RE, "");
+
+		// After stripping comments/trim, check if content is still meaningful
 		if (!content.trim()) {
 			disabledCount.empty++;
 			continue;
@@ -177,7 +240,7 @@ export function importSillyTavernPreset(
 			name: def.name,
 			enabled: orderEnabled,
 			role,
-			content: content.trim(),
+			content: cleanContent(content),
 			source: {
 				previousId: def.identifier,
 				previousName: def.name,
@@ -199,6 +262,11 @@ export function importSillyTavernPreset(
 	const styleName = preset.names_behavior === 1 ? "names" : preset.names_behavior === 2 ? "nonames" : "default";
 	const stackId = fileName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "imported";
 
+	// Build static variables
+	const variables: Record<string, string> = {};
+	if (macroUsage.detected.has("char")) variables.char = "{{char}}";
+	if (macroUsage.detected.has("user")) variables.user = "{{user}}";
+
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		type: "pi-forge.prompt-stack",
@@ -206,7 +274,7 @@ export function importSillyTavernPreset(
 		name: preset["preset_name"] || preset["name"] || fileName,
 		autoActivate: false,
 		mode: "replace",
-		variables: {},
+		variables: Object.keys(variables).length > 0 ? variables : undefined,
 		context: { allowDuplicateChatHistory: false },
 		items,
 		import: {
@@ -228,6 +296,7 @@ export function importSillyTavernPreset(
 	}
 
 	// Build report
+	const reportLines: string[] = [];
 	reportLines.push(`# SillyTavern Import Report: ${fileName}`);
 	reportLines.push("");
 	reportLines.push(`- **Source file**: ${filePath}`);
@@ -239,6 +308,16 @@ export function importSillyTavernPreset(
 	reportLines.push(`- **Converted items**: ${items.length}`);
 	reportLines.push("");
 
+	// Stripped content
+	if (macroUsage.commentsStripped > 0) {
+		reportLines.push(`- **Comments stripped**: ${macroUsage.commentsStripped} ST comment blocks removed`);
+	}
+	if (macroUsage.trimStripped > 0) {
+		reportLines.push(`- **Trim markers removed**: ${macroUsage.trimStripped} {{trim}} markers (ST formatting hint)`);
+	}
+	reportLines.push("");
+
+	// Skipped items
 	if (disabledCount.marker > 0 || disabledCount.empty > 0 || disabledCount.orderDisable > 0) {
 		reportLines.push("## Skipped items");
 		reportLines.push("");
@@ -254,6 +333,7 @@ export function importSillyTavernPreset(
 		reportLines.push("");
 	}
 
+	// Missing identifiers
 	if (missingIdentifiers.length > 0) {
 		reportLines.push("## ⚠️ Missing identifiers in prompts array");
 		reportLines.push("");
@@ -263,6 +343,66 @@ export function importSillyTavernPreset(
 		reportLines.push("");
 	}
 
+	// Auto-populated variables
+	if (Object.keys(variables).length > 0) {
+		reportLines.push("## Auto-populated variables");
+		reportLines.push("");
+		reportLines.push("These ST built-in macros were auto-populated as static variables with placeholder values:");
+		reportLines.push("");
+		for (const [key, val] of Object.entries(variables)) {
+			reportLines.push(`- \`${key}\` = \`${val}\` — replace with your character/persona name`);
+		}
+		reportLines.push("");
+		reportLines.push("Use `/preset vars set ${key} <value>` or edit the stack JSON to set real values.");
+		reportLines.push("");
+	}
+
+	// Macros needing migration
+	const migrationEntries = Object.entries(macroUsage.migrationNeeded).sort(([, a], [, b]) => b - a);
+	if (migrationEntries.length > 0) {
+		reportLines.push("## ⚠️ Macros needing manual migration");
+		reportLines.push("");
+		reportLines.push("These ST macros appear in the preset but have no direct pi-forge equivalent:");
+		reportLines.push("");
+		for (const [name, count] of migrationEntries) {
+			const note = MACRO_NEEDS_MIGRATION[name] ?? "no mapping available";
+			reportLines.push(`- **\`{{${name}}}\`** (${count} occurrence${count > 1 ? "s" : ""}) — ${note}`);
+		}
+		reportLines.push("");
+
+		// Specific guidance for heavy variable usage
+		if (macroUsage.migrationNeeded.setvar || macroUsage.migrationNeeded.getvar) {
+			reportLines.push("### Variable system migration");
+			reportLines.push("");
+			reportLines.push("ST uses `setvar`/`getvar` for ephemeral state. pi-forge has a different variable model:");
+			reportLines.push("");
+			reportLines.push("- **Static variables** — set in the stack JSON's `variables` object (character names, fixed config)");
+			reportLines.push("- **Session variables** — persist across turns, set via `/preset vars set` or `forge_set_var` tool");
+			reportLines.push("- **Turn variables** — ephemeral, set via `{{setvar::name::value}}` macros in blocks");
+			reportLines.push("");
+			reportLines.push("Review ST `setvar`/`getvar` calls and migrate to the appropriate pi-forge scope.");
+			reportLines.push("");
+		}
+	}
+
+	// Native macros handled
+	const nativeDetected = [...macroUsage.detected].filter((m) => NATIVE_MACROS.has(m));
+	if (nativeDetected.length > 0) {
+		reportLines.push("## Handled macros");
+		reportLines.push("");
+		for (const name of nativeDetected) {
+			if (name === "char" || name === "user") {
+				reportLines.push(`- \`{{${name}}}\` → auto-populated as static variable`);
+			} else if (name === "lastUserMessage") {
+				reportLines.push(`- \`{{${name}}}\` → handled by pi-forge runtime (chat-history slot)`);
+			} else {
+				reportLines.push(`- \`{{${name}}}\` → handled natively by pi-forge`);
+			}
+		}
+		reportLines.push("");
+	}
+
+	// Item mapping table
 	reportLines.push(`## Item mapping`);
 	reportLines.push("");
 	reportLines.push(`| # | ST Identifier | ST Name | pi-forge ID | Role | Enabled | Kind |`);
@@ -277,28 +417,87 @@ export function importSillyTavernPreset(
 	}
 
 	reportLines.push("");
-	reportLines.push("## Notes");
+	reportLines.push("## General notes");
 	reportLines.push("");
 
 	if (usesLastUserMessage) {
 		reportLines.push("- Auto-detected `{{lastUserMessage}}` in post-history content. `chat-history` slot set with `includeLastUserMessage: false`.");
 	}
 
+	if (macroUsage.commentsStripped > 0 || macroUsage.trimStripped > 0) {
+		reportLines.push(`- ${macroUsage.commentsStripped} ST comment blocks and ${macroUsage.trimStripped} TRIM markers were stripped during import.`);
+	}
+
 	reportLines.push("- All items are assigned sequential numeric IDs. Original SillyTavern identifiers are preserved in `source.previousId`.");
 	reportLines.push("- Marker items for world info, character description, persona, scenario, and dialogue examples are omitted — these are handled by the SillyTavern frontend and have no direct pi-forge equivalent.");
-	reportLines.push("- The stack is set with `autoActivate: false`. Use `/preset use ${stackId}` to activate.");
+	reportLines.push(`- The stack is set with \`autoActivate: false\`. Use \`/preset use ${stackId}\` to activate.`);
 	reportLines.push("");
 	reportLines.push("## Suggested next steps");
 	reportLines.push("");
-	reportLines.push("1. Review the stack items and adjust IDs/names as needed.");
-	reportLines.push("2. Consider adding a `variables` slot for agent state visibility.");
-	reportLines.push("3. Verify the prompt order matches your expectations.");
+	reportLines.push("1. Set real values for auto-populated variables with `/preset vars set`.");
+	reportLines.push("2. Review items with migration-needed macros and rewrite for pi-forge's macro system.");
+	reportLines.push("3. Consider adding a `variables` slot for agent state visibility.");
 	reportLines.push(`4. Run \`/preset validate ${stackId}\` to check for issues.`);
 
 	return {
 		stack,
 		report: reportLines.join("\n"),
 	};
+}
+
+// ── Macro detection ────────────────────────────────────────────────────────
+
+interface MacroDetection {
+	detected: Set<string>;
+	commentsStripped: number;
+	trimStripped: number;
+	migrationNeeded: Record<string, number>;
+}
+
+function detectMacros(conversionItems: StConversionItem[]): MacroDetection {
+	const detected = new Set<string>();
+	let commentsStripped = 0;
+	let trimStripped = 0;
+	const migrationNeeded: Record<string, number> = {};
+
+	// Regex to find {{macroName...}} — captures the first word/identifier
+	const macroFindRe = /\{\{(?!\/\/)([a-zA-Z_][a-zA-Z0-9_-]*)/gi;
+
+	for (const { def } of conversionItems) {
+		const content = def.content ?? "";
+		if (!content) continue;
+
+		// Count comments
+		const commentMatches = content.match(COMMENT_MACRO_RE);
+		if (commentMatches) commentsStripped += commentMatches.length;
+
+		// Count trims
+		const trimMatches = content.match(TRIM_MACRO_RE);
+		if (trimMatches) trimStripped += trimMatches.length;
+
+		// Work on a copy with comments stripped so we don't flag // as a macro
+		const cleaned = content.replace(COMMENT_MACRO_RE, "").replace(TRIM_MACRO_RE, "");
+
+		let match: RegExpExecArray | null;
+		macroFindRe.lastIndex = 0;
+		while ((match = macroFindRe.exec(cleaned)) !== null) {
+			const name = match[1].toLowerCase();
+			detected.add(name);
+
+			if (MACRO_NEEDS_MIGRATION[name]) {
+				migrationNeeded[name] = (migrationNeeded[name] ?? 0) + 1;
+			}
+		}
+	}
+
+	return { detected, commentsStripped, trimStripped, migrationNeeded };
+}
+
+// ── Content cleaning ──────────────────────────────────────────────────────
+
+function cleanContent(content: string): string {
+	// Collapse multiple blank lines (max 1 blank line between paragraphs)
+	return content.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
