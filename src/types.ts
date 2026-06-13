@@ -42,9 +42,16 @@ export interface PromptStackBlockItem extends PromptStackBaseItem {
 	content: string;
 }
 
+export interface PromptStackSlotOptions {
+	/** For chat-history: include the latest user message in the expanded history. Default: true. */
+	includeLastUserMessage?: boolean;
+	[key: string]: unknown;
+}
+
 export interface PromptStackSlotItem extends PromptStackBaseItem {
 	kind: "slot";
 	slot: PromptStackSlot | string;
+	options?: PromptStackSlotOptions;
 }
 
 export type PromptStackItem = PromptStackBlockItem | PromptStackSlotItem;
@@ -78,11 +85,18 @@ export interface PromptStackDiagnostic {
 	itemId?: string;
 }
 
+export interface PromptVariableStore {
+	turn: Record<string, string>;
+	session: Record<string, string>;
+	sessionDirty?: boolean;
+}
+
 export interface PromptRuntime {
 	options: BuildSystemPromptOptions;
 	ctx?: ExtensionContext;
 	latestUserMessage?: string;
 	now: Date;
+	variables?: PromptVariableStore;
 }
 
 export interface CompileSystemPromptResult {

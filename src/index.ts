@@ -1,15 +1,26 @@
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compileMessages, compileSystemPrompt, getLatestUserMessage, renderPreviewMessages } from "./compiler.ts";
+import {
+	compileMessages,
+	compileSystemPrompt,
+	createPromptVariableStore,
+	getLatestUserMessage,
+	markSessionVariablesClean,
+	renderPreviewMessages,
+	resetTurnVariables,
+} from "./compiler.ts";
 import { chooseDefaultStack, loadPromptStacks, promptStacksDir } from "./loader.ts";
-import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
+import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableStore } from "./types.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
+const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
 
 export default function piForge(pi: ExtensionAPI) {
 	let stacks: LoadedPromptStack[] = [];
 	let active: LoadedPromptStack | undefined;
 	let currentSystemPromptOptions: BuildSystemPromptOptions | undefined;
 	let currentLatestUserMessage: string | undefined;
+	let currentVariableStore: PromptVariableStore | undefined;
+	let sessionVariables: Record<string, string> = {};
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
 
@@ -64,7 +75,35 @@ export default function piForge(pi: ExtensionAPI) {
 		return undefined;
 	}
 
+	function getRestoredVariables(ctx: ExtensionContext): Record<string, string> {
+		const entries = ctx.sessionManager.getEntries();
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const entry = entries[i] as { type?: string; customType?: string; data?: { variables?: unknown } };
+			if (entry.type !== "custom" || entry.customType !== VARIABLE_ENTRY_TYPE) continue;
+			if (!entry.data || typeof entry.data.variables !== "object" || Array.isArray(entry.data.variables)) return {};
+			return normalizeStringRecord(entry.data.variables as Record<string, unknown>);
+		}
+		return {};
+	}
+
+	function persistVariablesIfDirty(store: PromptVariableStore | undefined): void {
+		if (!store?.sessionDirty) return;
+		sessionVariables = { ...store.session };
+		pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: sessionVariables });
+		markSessionVariablesClean(store);
+	}
+
+	function normalizeStringRecord(value: Record<string, unknown>): Record<string, string> {
+		const result: Record<string, string> = {};
+		for (const [key, raw] of Object.entries(value)) {
+			if (typeof raw === "string") result[key] = raw;
+		}
+		return result;
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
+		sessionVariables = getRestoredVariables(ctx);
+		currentVariableStore = undefined;
 		reloadStacks(ctx, getRestoredActiveId(ctx));
 		if (active) {
 			const errorCount = active.diagnostics.filter((d) => d.level === "error").length;
@@ -85,14 +124,17 @@ export default function piForge(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, ctx) => {
 		currentSystemPromptOptions = event.systemPromptOptions;
 		currentLatestUserMessage = event.prompt;
+		currentVariableStore = createPromptVariableStore(sessionVariables);
+		resetTurnVariables(currentVariableStore);
 
 		if (!active) return;
 
 		const result = compileSystemPrompt(
 			active.stack,
-			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() },
+			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date(), variables: currentVariableStore },
 			event.systemPrompt,
 		);
+		persistVariablesIfDirty(currentVariableStore);
 
 		return { systemPrompt: result.systemPrompt };
 	});
@@ -100,14 +142,22 @@ export default function piForge(pi: ExtensionAPI) {
 	pi.on("context", async (event, ctx) => {
 		if (!active || !currentSystemPromptOptions) return;
 
+		if (!currentVariableStore) currentVariableStore = createPromptVariableStore(sessionVariables);
 		const latestUserMessage = getLatestUserMessage(event.messages) ?? currentLatestUserMessage;
-		const result = compileMessages(active.stack, { options: currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() }, event.messages);
+		const result = compileMessages(
+			active.stack,
+			{ options: currentSystemPromptOptions, ctx, latestUserMessage, now: new Date(), variables: currentVariableStore },
+			event.messages,
+		);
+		persistVariablesIfDirty(currentVariableStore);
 		return { messages: result.messages };
 	});
 
 	pi.on("agent_end", async () => {
+		persistVariablesIfDirty(currentVariableStore);
 		currentSystemPromptOptions = undefined;
 		currentLatestUserMessage = undefined;
+		currentVariableStore = undefined;
 	});
 
 	pi.on("before_provider_request", async (event, ctx) => {
@@ -134,11 +184,11 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("preset", {
-		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload",
+		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload, vars",
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "reload", "status"];
+				const commands = ["list", "use", "preview", "validate", "reload", "status", "vars"];
 				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
 			}
 			const first = parts[0];
@@ -168,6 +218,20 @@ export default function piForge(pi: ExtensionAPI) {
 				reloadStacks(ctx, activeId());
 				ctx.ui.notify(`pi-forge: reloaded ${stacks.length} prompt stack(s).`, "info");
 				return;
+
+			case "vars": {
+				if (rest[0] === "clear") {
+					const name = rest[1];
+					if (name) delete sessionVariables[name];
+					else sessionVariables = {};
+					currentVariableStore = createPromptVariableStore(sessionVariables);
+					pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: sessionVariables });
+					ctx.ui.notify(name ? `pi-forge: cleared session variable ${name}` : "pi-forge: cleared all session variables", "info");
+					return;
+				}
+				await showText(ctx, "pi-forge variables", renderVariables());
+				return;
+			}
 
 			case "use": {
 				const id = rest[0];
@@ -230,7 +294,22 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset reload", "  /preset vars [clear [name]]");
+		return lines.join("\n");
+	}
+
+	function renderVariables(): string {
+		const lines = ["# pi-forge variables", "", "## Session variables", ""];
+		const sessionEntries = Object.entries(sessionVariables).sort(([a], [b]) => a.localeCompare(b));
+		if (sessionEntries.length === 0) lines.push("(none)");
+		else for (const [key, value] of sessionEntries) lines.push(`${key} = ${JSON.stringify(value)}`);
+
+		lines.push("", "## Active stack static variables", "");
+		const staticEntries = Object.entries(active?.stack.variables ?? {}).sort(([a], [b]) => a.localeCompare(b));
+		if (staticEntries.length === 0) lines.push("(none)");
+		else for (const [key, value] of staticEntries) lines.push(`${key} = ${JSON.stringify(value)}`);
+
+		lines.push("", "Turn variables are cleared for each user message and are only visible during prompt compilation.");
 		return lines.join("\n");
 	}
 
@@ -238,7 +317,8 @@ export default function piForge(pi: ExtensionAPI) {
 		const options = ctx.getSystemPromptOptions();
 		const sessionContext = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
 		const latestUserMessage = getLatestUserMessage(sessionContext.messages);
-		const runtime = { options, ctx, latestUserMessage, now: new Date() };
+		const previewVariables = createPromptVariableStore(sessionVariables);
+		const runtime = { options, ctx, latestUserMessage, now: new Date(), variables: previewVariables };
 		const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
 		const messages = compileMessages(target.stack, runtime, sessionContext.messages);
 		const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];

@@ -8,6 +8,7 @@ import type {
 	PromptStackItem,
 	PromptStackRole,
 	PromptStackSlotItem,
+	PromptVariableStore,
 } from "./types.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
 
@@ -19,6 +20,19 @@ const ZERO_USAGE = {
 	totalTokens: 0,
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
+
+export function createPromptVariableStore(sessionVariables: Record<string, string> = {}): PromptVariableStore {
+	return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
+}
+
+export function resetTurnVariables(store: PromptVariableStore): void {
+	store.turn = {};
+	store.sessionDirty = false;
+}
+
+export function markSessionVariablesClean(store: PromptVariableStore): void {
+	store.sessionDirty = false;
+}
 
 export function compileSystemPrompt(
 	stack: PromptStack,
@@ -83,7 +97,7 @@ export function compileMessages(
 				});
 				continue;
 			}
-			messages.push(...originalMessages);
+			messages.push(...getChatHistoryMessages(originalMessages, item));
 			insertedHistory = true;
 			continue;
 		}
@@ -133,6 +147,22 @@ export function renderPreviewMessages(messages: AgentMessage[], maxChars = 8000)
 		if (text.length > maxChars) return `${text.slice(0, maxChars)}\n\n[preview truncated]`;
 	}
 	return text.trimStart();
+}
+
+function getChatHistoryMessages(messages: AgentMessage[], item: PromptStackSlotItem): AgentMessage[] {
+	if (item.options?.includeLastUserMessage !== false) return messages;
+
+	const lastUserIndex = findLastUserMessageIndex(messages);
+	if (lastUserIndex === -1) return messages;
+
+	return messages.filter((_message, index) => index !== lastUserIndex);
+}
+
+function findLastUserMessageIndex(messages: AgentMessage[]): number {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === "user") return i;
+	}
+	return -1;
 }
 
 function enabledItems(stack: PromptStack): PromptStackItem[] {
@@ -275,31 +305,63 @@ function expandMacros(
 	itemId: string,
 ): string {
 	const policy = stack.defaults?.unresolvedMacroPolicy ?? "warn";
-	const variables = stack.variables ?? {};
+	const staticVariables = stack.variables ?? {};
 	const unknown = new Set<string>();
 
 	const result = text.replace(/\{\{([^{}]+)\}\}/g, (full, rawName: string) => {
-		const name = rawName.trim();
-		if (Object.prototype.hasOwnProperty.call(variables, name)) return variables[name];
+		const expression = rawName.trim();
+		const parts = expression.split("::");
+		const command = parts[0]?.trim();
 
-		switch (name) {
-			case "cwd":
-				return runtime.options.cwd;
-			case "date":
-				return formatDate(runtime.now);
-			case "lastUserMessage":
-				return runtime.latestUserMessage ?? "";
-			case "selectedTools":
-			case "tools":
-				return (runtime.options.selectedTools ?? []).join(", ");
-			case "activeModel": {
-				const model = runtime.ctx?.model;
-				return model ? `${model.provider}/${model.id}` : "";
-			}
-			default:
-				unknown.add(name);
+		if (!command) return full;
+
+		// SillyTavern-style mutable variables. By default, setvar is turn-scoped and returns empty text.
+		if (command === "setvar" || command === "setturnvar" || command === "setsessionvar") {
+			const scoped = command === "setvar" && (parts[1] === "turn" || parts[1] === "session");
+			const scope = command === "setsessionvar" || (scoped && parts[1] === "session") ? "session" : "turn";
+			const nameIndex = scoped ? 2 : 1;
+			const valueIndex = nameIndex + 1;
+			const name = parts[nameIndex]?.trim();
+			const value = parts.slice(valueIndex).join("::");
+			if (!name) {
+				unknown.add(expression);
 				return full;
+			}
+			setRuntimeVariable(runtime, scope, name, value);
+			return "";
 		}
+
+		if (command === "getvar" || command === "var" || command === "getturnvar" || command === "getsessionvar") {
+			const name = parts[1]?.trim();
+			if (!name) {
+				unknown.add(expression);
+				return full;
+			}
+			if (command === "getturnvar") return runtime.variables?.turn[name] ?? "";
+			if (command === "getsessionvar") return runtime.variables?.session[name] ?? "";
+			return getRuntimeVariable(runtime, staticVariables, name) ?? "";
+		}
+
+		if (command === "clearvar" || command === "clearturnvar" || command === "clearsessionvar") {
+			const scoped = command === "clearvar" && (parts[1] === "turn" || parts[1] === "session");
+			const scope = command === "clearsessionvar" || (scoped && parts[1] === "session") ? "session" : "turn";
+			const name = parts[scoped ? 2 : 1]?.trim();
+			if (!name) {
+				unknown.add(expression);
+				return full;
+			}
+			clearRuntimeVariable(runtime, scope, name);
+			return "";
+		}
+
+		const dynamicValue = getBuiltinMacro(command, runtime);
+		if (dynamicValue !== undefined) return dynamicValue;
+
+		const variableValue = getRuntimeVariable(runtime, staticVariables, command);
+		if (variableValue !== undefined) return variableValue;
+
+		unknown.add(expression);
+		return full;
 	});
 
 	for (const name of unknown) {
@@ -312,6 +374,57 @@ function expandMacros(
 	}
 
 	return result;
+}
+
+function getBuiltinMacro(name: string, runtime: PromptRuntime): string | undefined {
+	switch (name) {
+		case "cwd":
+			return runtime.options.cwd;
+		case "date":
+			return formatDate(runtime.now);
+		case "lastUserMessage":
+			return runtime.latestUserMessage ?? "";
+		case "selectedTools":
+		case "tools":
+			return (runtime.options.selectedTools ?? []).join(", ");
+		case "activeModel": {
+			const model = runtime.ctx?.model;
+			return model ? `${model.provider}/${model.id}` : "";
+		}
+		default:
+			return undefined;
+	}
+}
+
+function getRuntimeVariable(runtime: PromptRuntime, staticVariables: Record<string, string>, name: string): string | undefined {
+	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.turn, name)) return runtime.variables.turn[name];
+	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) return runtime.variables.session[name];
+	if (Object.prototype.hasOwnProperty.call(staticVariables, name)) return staticVariables[name];
+	return undefined;
+}
+
+function setRuntimeVariable(runtime: PromptRuntime, scope: "turn" | "session", name: string, value: string): void {
+	if (!runtime.variables) return;
+	if (scope === "session") {
+		if (runtime.variables.session[name] !== value) {
+			runtime.variables.session[name] = value;
+			runtime.variables.sessionDirty = true;
+		}
+		return;
+	}
+	runtime.variables.turn[name] = value;
+}
+
+function clearRuntimeVariable(runtime: PromptRuntime, scope: "turn" | "session", name: string): void {
+	if (!runtime.variables) return;
+	if (scope === "session") {
+		if (Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) {
+			delete runtime.variables.session[name];
+			runtime.variables.sessionDirty = true;
+		}
+		return;
+	}
+	delete runtime.variables.turn[name];
 }
 
 function createSyntheticMessage(role: Exclude<PromptStackRole, "system">, content: string, stack: PromptStack, runtime: PromptRuntime): AgentMessage {

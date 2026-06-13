@@ -41,6 +41,7 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset preview [id]
 /preset validate [id]
 /preset reload
+/preset vars [clear [name]]
 ```
 
 ## Stack format
@@ -146,6 +147,22 @@ Supported slots:
 
 `chat-history` expands to the live conversation at its position. By default, only the first enabled `chat-history` slot is expanded.
 
+To omit the latest user message from a chat history slot, use:
+
+```json
+{
+  "kind": "slot",
+  "id": "chat-history",
+  "enabled": true,
+  "slot": "chat-history",
+  "options": {
+    "includeLastUserMessage": false
+  }
+}
+```
+
+This is useful for SillyTavern-style stacks that re-insert `{{lastUserMessage}}` later as a post-history instruction.
+
 To intentionally duplicate history:
 
 ```json
@@ -167,4 +184,43 @@ Supported macros in block content:
 - `{{activeModel}}`
 - custom variables from the stack `variables` object, e.g. `{{char}}`
 
-Unknown macros warn by default and are kept literally.
+### Variables
+
+Static variables come from the stack file:
+
+```json
+"variables": {
+  "char": "泉此方",
+  "user": "USER"
+}
+```
+
+Mutable turn variables are cleared for each user message:
+
+```txt
+{{setvar::name::value}}
+{{setturnvar::name::value}}
+{{getvar::name}}
+{{getturnvar::name}}
+{{var::name}}
+{{clearvar::name}}
+```
+
+Mutable session variables persist in the Pi session as extension state:
+
+```txt
+{{setsessionvar::name::value}}
+{{setvar::session::name::value}}
+{{getsessionvar::name}}
+{{getvar::name}}
+{{clearsessionvar::name}}
+{{clearvar::session::name}}
+```
+
+Lookup order for `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}` is:
+
+1. turn variables
+2. session variables
+3. static stack variables
+
+`setvar` macros output empty text. Unknown macros warn by default and are kept literally.

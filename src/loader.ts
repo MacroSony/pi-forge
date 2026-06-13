@@ -123,7 +123,7 @@ function normalizeItem(raw: unknown, index: number, diagnostics: PromptStackDiag
 
 	const obj = raw as Record<string, unknown>;
 	const kind = obj.kind === "slot" ? "slot" : "block";
-	const id = typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : fallbackId;
+	const id = normalizeId(obj.id, fallbackId);
 	const base = {
 		kind,
 		id,
@@ -139,6 +139,7 @@ function normalizeItem(raw: unknown, index: number, diagnostics: PromptStackDiag
 			...base,
 			kind: "slot",
 			slot: typeof obj.slot === "string" ? obj.slot : "",
+			options: isPlainObject(obj.options) ? obj.options : undefined,
 		};
 	}
 
@@ -189,6 +190,12 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 	}
 
 	return diagnostics;
+}
+
+function normalizeId(value: unknown, fallback: string): string {
+	if (typeof value === "string" && value.trim()) return value.trim();
+	if (typeof value === "number" && Number.isFinite(value)) return String(value);
+	return fallback;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
