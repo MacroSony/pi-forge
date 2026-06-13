@@ -243,7 +243,7 @@ test("generates an import report with item mapping table", () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-st-import-"));
 	const path = writePreset(cwd, "report.json", {
 		prompts: [
-			{ identifier: "main", name: "Main Prompt", role: "system", content: "You are helpful." },
+			{ identifier: "main", name: "Main Prompt", role: "system", content: "You are {{char}}." },
 			{ identifier: "chatHistory", name: "Chat History", marker: true },
 		],
 		prompt_order: [
@@ -265,4 +265,6 @@ test("generates an import report with item mapping table", () => {
 	assert.match(result.report, /Character ID.*1/);
 	assert.match(result.report, /Item mapping/);
 	assert.match(result.report, /chatHistory/);
+	assert.match(result.report, /\/preset vars set <name> <value>/);
+	assert.doesNotMatch(result.report, /\$\{key\}/);
 });

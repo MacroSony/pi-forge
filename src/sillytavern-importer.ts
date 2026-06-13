@@ -353,7 +353,7 @@ export function importSillyTavernPreset(
 			reportLines.push(`- \`${key}\` = \`${val}\` — replace with your character/persona name`);
 		}
 		reportLines.push("");
-		reportLines.push("Use `/preset vars set ${key} <value>` or edit the stack JSON to set real values.");
+		reportLines.push("Use `/preset vars set <name> <value>` or edit the stack JSON to set real values.");
 		reportLines.push("");
 	}
 

@@ -16,6 +16,12 @@ For local development in this checkout, `.pi/settings.json` points at the packag
 
 After starting Pi in this directory, trust the project and use `/reload` if needed.
 
+After publishing under your chosen npm package name, install it with:
+
+```bash
+pi install npm:<published-package-name>
+```
+
 ## Prompt stacks
 
 Prompt stacks live in:
@@ -44,8 +50,19 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset validate [id]
 /preset reload
 /preset vars [set <name> <value>|get <name>|clear [name]]
+/preset import-silly <path> [character_id]
 /intercept
 ```
+
+## SillyTavern preset import
+
+Import a SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json` and write a migration report to `.pi/forge/import-reports/<id>.md`:
+
+```txt
+/preset import-silly <path> [character_id]
+```
+
+If a preset contains multiple `prompt_order` entries, pass the desired `character_id`. Imported stacks are created with `autoActivate: false`; activate one with `/preset use <id>` after reviewing the report.
 
 ## Agent tools
 
@@ -157,7 +174,7 @@ Renders variable state as structured XML:
 ```xml
 <prompt_variables>
   <static>
-    <char>泉此方</char>
+    <char>Agent</char>
   </static>
   <session>
     <agent.mood>happy</agent.mood>
@@ -233,7 +250,7 @@ Static variables come from the stack file:
 
 ```json
 "variables": {
-  "char": "泉此方",
+  "char": "Assistant",
   "user": "USER"
 }
 ```

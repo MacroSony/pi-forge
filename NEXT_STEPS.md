@@ -13,15 +13,56 @@ Implemented and working:
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
 - Basic macro expansion and turn/session/static variables.
 - `/preset` commands for list/use/preview/validate/reload/vars.
+- `/preset import-silly <file> [character_id]` command that writes prompt stacks and import reports.
 - `/intercept` command to display the next provider payload.
 - Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
-- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, and variables slot rendering.
+- Active prompt stack status in the footer.
+- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, variables slot rendering, and SillyTavern import behavior.
 - `variables` slot that renders static/session/turn variables as structured XML, positionable in the prompt layout.
 - `/preset vars set <name> <value>` and `/preset vars get <name>` commands.
 - `forge_set_var` tool that lets the agent set `agent.*`-prefixed session variables for cross-turn state tracking.
 
-## Priority 1 (partial): Variable metadata
+## Priority 1: Command and lifecycle test coverage
+
+Pure compiler/loader/importer tests are in place. The next reliability gap is the extension command/event surface in `src/index.ts`.
+
+Add a small test harness that can instantiate the extension with mocked:
+
+- `ExtensionAPI` command/tool/event registration
+- `ExtensionContext` cwd, UI, trust, and session manager
+- `appendEntry`, `setStatus`, `notify`, and editor calls
+
+High-value command/event cases:
+
+1. `/preset` second-level completions keep the subcommand in the inserted value, e.g. `use default`.
+2. `/preset use <id>` persists the selected stack and updates footer status.
+3. `/preset use none` persists the disabled selection and clears footer status.
+4. `/preset reload` preserves an explicit disabled selection instead of reactivating `default.json`.
+5. `/preset vars set/get/clear` updates session variables and persistence entries.
+6. `/preset validate` shows diagnostics for the requested stack.
+7. `/preset import-silly` writes the stack and report, then reloads stack state.
+8. `session_start` restores variables and active stack selection.
+9. `turn_start` persists active stack selection only when needed.
+
+## Priority 2: Harden SillyTavern importer
+
+The first importer command is implemented. Next work should make it safer and more ergonomic.
+
+Remaining immediate fixes:
+
+- Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists.
+- Add tests around command-level import behavior, not only the pure importer.
+
+Importer improvements:
+
+- Choose a prompt order interactively when multiple `prompt_order` entries exist and no `character_id` was supplied.
+- Preserve more SillyTavern metadata in `import.source`.
+- Expand the unsupported macro report with suggested pi-forge replacements where clear.
+- Add fixtures from real presets to catch field-shape drift.
+- Consider a dry-run mode that only shows the generated stack/report.
+
+## Priority 3: Variable metadata
 
 ### Add variable metadata later
 
@@ -38,7 +79,7 @@ Current variables are strings. Later format could support:
 
 Keep the current string map for now; migrate only if useful.
 
-## Priority 2: Improve macro engine
+## Priority 4: Improve macro engine
 
 ### 1. Replace regex-only parsing with a small macro parser
 
@@ -82,7 +123,7 @@ Useful low-risk transforms:
 
 `xml` escaping is especially useful for generated XML context blocks.
 
-## Priority 3: Better chat-history controls
+## Priority 5: Better chat-history controls
 
 Current option:
 
@@ -113,7 +154,7 @@ Potential filters:
 - include/exclude tool result messages
 - summarize old history later
 
-## Priority 4: Prompt-stack lifecycle controls
+## Priority 6: Prompt-stack lifecycle controls
 
 The current behavior rewrites context only once per user turn. That fixed tool-call loops.
 
@@ -134,39 +175,15 @@ Possible future values:
 
 Also add diagnostics warning if a stack has post-history COT blocks and uses `every-provider-request`.
 
-## Priority 5: SillyTavern importer
+## Priority 7: Tests
 
-Current conversion was manual/scripted. Implement a command:
-
-```txt
-/preset import-silly .pi/MySillyTavernPreset.json
-```
-
-Importer requirements:
-
-- choose prompt order interactively when multiple `prompt_order` entries exist
-- generate simple numeric IDs by default
-- preserve original SillyTavern identifiers in `source.previousId`
-- map `chatHistory` to `chat-history`
-- map common boilerplate markers to disabled slots or removed import report entries
-- set `chat-history.options.includeLastUserMessage=false` when preset already uses `{{lastUserMessage}}` later
-- produce an import report
-
-Output:
-
-```txt
-.pi/prompt-stacks/<name>.json
-.pi/forge/import-reports/<name>.md
-```
-
-## Priority 6: Tests
-
-Initial pure compiler/loader tests exist. Keep extending them before the system grows much more.
+Pure compiler/loader/importer tests exist. Keep extending them before the command surface grows much more.
 
 Suggested setup:
 
-- use `vitest` or Node's built-in test runner
-- test pure compiler functions first
+- keep Node's built-in test runner for now
+- add a narrow extension harness before command tests
+- keep pure compiler/loader/importer tests separate from command/event tests
 
 Current and next test cases:
 
@@ -181,11 +198,15 @@ Current and next test cases:
 9. duplicate chat-history warning - done
 10. unsupported slot warning - done
 11. invalid default stack selection - done
-12. context rewrite once per user turn behavior
-13. command behavior for `/preset vars`
-14. command behavior for `/preset validate`
+12. variables slot rendering - done
+13. SillyTavern importer happy path and error handling - done
+14. SillyTavern marker filtering and `lastUserMessage` handling - done
+15. context rewrite once per user turn behavior
+16. command behavior for `/preset vars`
+17. command behavior for `/preset validate`
+18. command behavior for `/preset import-silly`
 
-## Priority 7: Payload/debug tools
+## Priority 8: Payload/debug tools
 
 Improve `/intercept`:
 
@@ -199,7 +220,7 @@ Improve `/intercept`:
 - redact API keys and large binary/image content
 - show token-ish size estimates if possible
 
-## Priority 8: Agent profiles later
+## Priority 9: Agent profiles later
 
 Keep out of prompt-stack MVP for now, but design around:
 
@@ -220,8 +241,7 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add the `variables` slot.
-2. Add `/preset vars set/get/clear`.
-3. Add tests around context rewrite lifecycle and command handlers.
-4. Implement a proper SillyTavern importer command.
-5. Then revisit the local writer preset and add a compact `<turn_state>` block using the new variables slot.
+1. Add a lightweight extension harness for `/preset` command and session event tests.
+2. Cover `/preset use`, `/preset reload`, `/preset vars`, `/preset validate`, and `/preset import-silly`.
+3. Add importer collision handling so generated files are not silently overwritten.
+4. Revisit the local writer preset and add a compact `<turn_state>` block using the `variables` slot.
