@@ -1,3 +1,5 @@
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -10,6 +12,7 @@ import {
 	resetTurnVariables,
 } from "./compiler.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir } from "./loader.ts";
+import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableStore } from "./types.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
@@ -253,7 +256,7 @@ export default function piForge(pi: ExtensionAPI) {
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "reload", "status", "vars"];
+				const commands = ["list", "use", "preview", "validate", "reload", "status", "vars", "import-silly"];
 				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
 			}
 			const first = parts[0];
@@ -373,6 +376,52 @@ export default function piForge(pi: ExtensionAPI) {
 					return;
 				}
 				await showText(ctx, `pi-forge validation: ${target.stack.id}`, renderDiagnostics(target.diagnostics));
+				return;
+			}
+
+			case "import-silly": {
+				const sourcePath = rest[0];
+				if (!sourcePath) {
+					ctx.ui.notify("Usage: /preset import-silly <path> [character_id]", "warning");
+					return;
+				}
+
+				const resolvedPath = sourcePath.startsWith("/") ? sourcePath : join(ctx.cwd, sourcePath);
+				if (!existsSync(resolvedPath)) {
+					ctx.ui.notify(`File not found: ${resolvedPath}`, "error");
+					return;
+				}
+
+				const charIdStr = rest[1];
+				const charId = charIdStr ? Number(charIdStr) : undefined;
+				if (charIdStr && (Number.isNaN(charId) || !Number.isFinite(charId))) {
+					ctx.ui.notify(`Invalid character_id: ${charIdStr}`, "error");
+					return;
+				}
+
+				const result = importSillyTavernPreset(resolvedPath, charId);
+				if ("error" in result) {
+					ctx.ui.notify(`pi-forge import error: ${result.error}`, "error");
+					return;
+				}
+
+				// Write the prompt stack
+				const stacksDir = promptStacksDir(ctx.cwd);
+				if (!existsSync(stacksDir)) mkdirSync(stacksDir, { recursive: true });
+				const stackPath = join(stacksDir, `${result.stack.id}.json`);
+				writeFileSync(stackPath, JSON.stringify(result.stack, null, 2), "utf8");
+
+				// Write the import report
+				const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
+				if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
+				const reportPath = join(reportDir, `${result.stack.id}.md`);
+				writeFileSync(reportPath, result.report, "utf8");
+
+				// Reload stacks to pick up the new one
+				reloadStacks(ctx, selectedActiveId());
+
+				ctx.ui.notify(`pi-forge: imported ${result.stack.id} (${result.stack.items.length} items)`, "info");
+				await showText(ctx, `pi-forge import report: ${result.stack.id}`, `Stack written to: ${stackPath}\nReport written to: ${reportPath}\n\n${result.report}`);
 				return;
 			}
 
