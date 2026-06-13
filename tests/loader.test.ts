@@ -71,3 +71,39 @@ test("chooseDefaultStack still prefers a usable default file", () => {
 
 	assert.equal(chosen?.stack.id, "default");
 });
+
+test("chooseDefaultStack skips default.json when autoActivate is false", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		autoActivate: false,
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeStack(cwd, "other.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "other",
+		autoActivate: true,
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const chosen = chooseDefaultStack(loadPromptStacks(cwd));
+
+	assert.equal(chosen?.stack.id, "other");
+});
+
+test("chooseDefaultStack honors an explicit disabled selection", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const chosen = chooseDefaultStack(loadPromptStacks(cwd), "none");
+
+	assert.equal(chosen, undefined);
+});

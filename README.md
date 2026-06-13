@@ -26,10 +26,12 @@ Prompt stacks live in:
 
 Activation rules:
 
-1. `.pi/prompt-stacks/default.json` auto-activates when present.
-2. Otherwise, the first stack with `"autoActivate": true` is used.
-3. `/preset use <id>` switches stacks for the session.
-4. `/preset use none` disables prompt stack replacement.
+1. A restored `/preset use <id>` selection is used first when that stack still exists and has no validation errors.
+2. A restored `/preset use none` selection disables prompt stack replacement.
+3. `.pi/prompt-stacks/default.json` auto-activates when present unless the stack sets `"autoActivate": false`.
+4. Otherwise, the first stack with `"autoActivate": true` is used.
+5. `/preset use <id>` switches stacks for the session and persists that choice.
+6. `/preset use none` disables prompt stack replacement and persists that choice.
 
 When a stack is active, pi-forge replaces Pi's default system prompt by default and rebuilds the first provider request for each user message around a movable `chat-history` slot. Tool-result follow-up turns use Pi's natural context so post-history instructions are not repeatedly re-appended after every tool call.
 

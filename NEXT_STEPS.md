@@ -6,7 +6,7 @@ Implemented and working:
 
 - Pi package setup with `src/index.ts` as the extension entrypoint.
 - File-backed prompt stacks under `.pi/prompt-stacks/*.json`.
-- `default.json` auto-activation.
+- `default.json` auto-activation unless `autoActivate` is `false`, with persisted `/preset use none` opt-out.
 - Prompt stack system prompt replacement.
 - Movable `chat-history` slot.
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.

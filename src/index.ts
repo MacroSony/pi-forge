@@ -8,7 +8,7 @@ import {
 	renderPreviewMessages,
 	resetTurnVariables,
 } from "./compiler.ts";
-import { chooseDefaultStack, loadPromptStacks, promptStacksDir } from "./loader.ts";
+import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir } from "./loader.ts";
 import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableStore } from "./types.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
@@ -29,9 +29,21 @@ export default function piForge(pi: ExtensionAPI) {
 		return active?.stack.id;
 	}
 
+	function selectedActiveId(): string | undefined {
+		if (active) return active.stack.id;
+		return isDisabledPromptStackId(lastPersistedActiveId) ? "none" : undefined;
+	}
+
+	function persistActiveSelection(id: string): void {
+		if (id === lastPersistedActiveId) return;
+		pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: id });
+		lastPersistedActiveId = id;
+	}
+
 	function setActive(id: string | undefined, ctx?: ExtensionContext): boolean {
-		if (!id || id === "none" || id === "off") {
+		if (!id || isDisabledPromptStackId(id)) {
 			active = undefined;
+			if (id) persistActiveSelection("none");
 			if (ctx) updateStatus(ctx);
 			return true;
 		}
@@ -39,6 +51,7 @@ export default function piForge(pi: ExtensionAPI) {
 		const found = stacks.find((candidate) => candidate.stack.id === id);
 		if (!found) return false;
 		active = found;
+		persistActiveSelection(found.stack.id);
 		if (ctx) updateStatus(ctx);
 		return true;
 	}
@@ -59,10 +72,18 @@ export default function piForge(pi: ExtensionAPI) {
 
 	function updateStatus(ctx: ExtensionContext): void {
 		if (active) {
-			ctx.ui.setStatus("pi-forge", ctx.ui.theme.fg("accent", `stack:${active.stack.id}`));
+			ctx.ui.setStatus("pi-forge", ctx.ui.theme.fg("accent", "stack:" + active.stack.id));
 		} else {
 			ctx.ui.setStatus("pi-forge", undefined);
 		}
+	}
+
+	function notifyActivePreset(ctx: ExtensionContext, detail: string): void {
+		if (!active) return;
+		const errorCount = active.diagnostics.filter((d) => d.level === "error").length;
+		const warningCount = active.diagnostics.filter((d) => d.level === "warning").length;
+		const suffix = errorCount || warningCount ? " (" + errorCount + " errors, " + warningCount + " warnings)" : "";
+		ctx.ui.notify("pi-forge: active preset " + active.stack.id + suffix + " (" + detail + ")", errorCount ? "error" : "info");
 	}
 
 	function getRestoredActiveId(ctx: ExtensionContext): string | undefined {
@@ -102,24 +123,26 @@ export default function piForge(pi: ExtensionAPI) {
 		return result;
 	}
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		sessionVariables = getRestoredVariables(ctx);
 		currentVariableStore = undefined;
-		reloadStacks(ctx, getRestoredActiveId(ctx));
-		if (active) {
-			const errorCount = active.diagnostics.filter((d) => d.level === "error").length;
-			const warningCount = active.diagnostics.filter((d) => d.level === "warning").length;
-			const suffix = errorCount || warningCount ? ` (${errorCount} errors, ${warningCount} warnings)` : "";
-			ctx.ui.notify(`pi-forge: active prompt stack ${active.stack.id}${suffix}`, errorCount ? "error" : "info");
-		}
+		const restoredActiveId = getRestoredActiveId(ctx);
+		lastPersistedActiveId = restoredActiveId;
+		reloadStacks(ctx, restoredActiveId);
+		notifyActivePreset(ctx, "after session " + event.reason);
+	});
+
+	pi.on("session_tree", async (_event, ctx) => {
+		notifyActivePreset(ctx, "after tree navigation");
+	});
+
+	pi.on("session_compact", async (_event, ctx) => {
+		notifyActivePreset(ctx, "after compaction");
 	});
 
 	pi.on("turn_start", async () => {
 		const id = activeId();
-		if (id && id !== lastPersistedActiveId) {
-			pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: id });
-			lastPersistedActiveId = id;
-		}
+		if (id) persistActiveSelection(id);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
@@ -204,7 +227,7 @@ export default function piForge(pi: ExtensionAPI) {
 			if (["use", "preview", "validate"].includes(first)) {
 				const fragment = parts[1] ?? "";
 				const ids = ["none", ...stacks.map((loaded) => loaded.stack.id)];
-				return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: id, label: id }));
+				return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
 			}
 			return null;
 		},
@@ -224,7 +247,7 @@ export default function piForge(pi: ExtensionAPI) {
 				return;
 
 			case "reload":
-				reloadStacks(ctx, activeId());
+				reloadStacks(ctx, selectedActiveId());
 				ctx.ui.notify(`pi-forge: reloaded ${stacks.length} prompt stack(s).`, "info");
 				return;
 
