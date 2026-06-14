@@ -48,7 +48,7 @@ This file tracks the currently implemented feature surface for the published MVP
 
 ## Macros
 
-- Built-in macros: `{{cwd}}`, `{{date}}`, `{{lastUserMessage}}`, `{{selectedTools}}`, `{{tools}}`, `{{activeModel}}`.
+- Built-in macros: `{{cwd}}`, `{{date}}`, `{{time}}`, `{{lastUserMessage}}`, `{{selectedTools}}`, `{{tools}}`, `{{activeModel}}`.
 - Static stack variables from `stack.variables`.
 - Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.
 - Turn variable mutation through `{{setvar::name::value}}`, `{{setturnvar::name::value}}`, and `{{clearvar::name}}`.
@@ -61,6 +61,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - JSON-compatible session state values: string, number, boolean, null, arrays, and objects.
 - Session state snapshots restore from the current session tree branch, so tree navigation rolls state back/forward with history.
 - Stack-level `state.definitions` with type, scope, description, default, and write-permission metadata.
+- Definition defaults render in the `variables` slot without initializing persisted session state.
 - Type validation for common TypeScript-like strings such as `string`, `number`, `boolean`, `object`, `array`, `string[]`, and unions.
 - Valid `<prompt_state>` rendering from the `variables` slot.
 - XML state entries rendered as `<var name="..." type="...">...</var>`.
@@ -91,6 +92,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/preset vars [set <name> <value>|get <name>|clear [name]]`
 - `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
 - `/state list`
+- `/state status`
 - `/state set <name> <json-or-text-value>`
 - `/state get <name>`
 - `/state clear [name]`
@@ -121,4 +123,3 @@ This file tracks the currently implemented feature surface for the published MVP
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
-

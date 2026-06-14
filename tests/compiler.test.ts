@@ -142,6 +142,19 @@ test("variables resolve in turn, session, then static order", () => {
 	assert.equal(store.sessionDirty, true);
 });
 
+test("time macro renders from the runtime clock", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "time",
+		items: [{ kind: "block", id: "clock", enabled: true, role: "system", content: "{{date}} {{time}}" }],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ now: new Date(2026, 5, 13, 9, 8, 7) }), "base");
+
+	assert.equal(result.systemPrompt, "2026-06-13 09:08:07");
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("unknown macros are kept and diagnosed", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,

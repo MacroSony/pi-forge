@@ -184,7 +184,7 @@ Pure compiler/loader/importer tests exist. Keep extending them before the comman
 Suggested setup:
 
 - keep Node's built-in test runner for now
-- add a narrow extension harness before command tests
+- keep extending the narrow extension harness for command/event behavior
 - keep pure compiler/loader/importer tests separate from command/event tests
 
 Current and next test cases:

@@ -45,13 +45,14 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 
 ```txt
 /preset list
+/preset status
 /preset use <id|none>
 /preset preview [id]
 /preset validate [id]
 /preset diagnostics
 /preset reload
 /preset vars [set <name> <value>|get <name>|clear [name]]
-/state [list|set <name> <value>|get <name>|clear [name]]
+/state [list|status|set <name> <value>|get <name>|clear [name]]
 /preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 /intercept
 /payload next [save=<path>]
@@ -175,7 +176,7 @@ Supported slots:
 - `skills` — loaded Pi skills
 - `project-context` — project instructions/context files
 - `append-system-prompt` — user-provided append system prompt text
-- `variables` — static/session/turn variables rendered as structured XML
+- `variables` — static/session/turn prompt state rendered as structured XML or JSON
 - `date`
 - `cwd`
 - `date-cwd`
@@ -184,7 +185,7 @@ Supported slots:
 
 ### Variables / State Slot
 
-Renders prompt state as structured XML:
+Renders prompt state as structured XML by default:
 
 ```xml
 <prompt_state>
@@ -219,7 +220,7 @@ Options:
 
 `includeScopes` overrides the older `includeStatic` / `includeSession` / `includeTurn` booleans when present. Namespace filters accept exact names or wildcard prefixes such as `agent.*`.
 
-Use this slot to give the agent visibility into mutable state that it can also update via `forge_state_set`.
+Use this slot to give the agent visibility into mutable state that it can also update via `forge_state_set`. Set `"format": "json"` to render the same state payload as escaped JSON inside `<prompt_state>`.
 
 ## Roles
 
@@ -262,6 +263,7 @@ Supported macros in block content:
 
 - `{{cwd}}`
 - `{{date}}`
+- `{{time}}`
 - `{{lastUserMessage}}`
 - `{{selectedTools}}` / `{{tools}}`
 - `{{activeModel}}`
@@ -301,6 +303,8 @@ Typed state definitions can also be declared in the stack:
 ```
 
 Supported type strings are intentionally small and TypeScript-like: `string`, `number`, `boolean`, `null`, `object`, `array`, `string[]`, `number[]`, `boolean[]`, `unknown`, and unions like `string | null`.
+
+Definition defaults are shown by the `variables` slot when their scope is included. Defaults do not initialize persisted session state, so `/state get <name>` can still show `(not set)` until the user, agent, or a macro writes that value.
 
 Users can set typed JSON-compatible session state with:
 
