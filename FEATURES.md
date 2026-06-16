@@ -119,7 +119,30 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/intercept` displays the next provider payload with redaction/truncation for secrets and large data.
 - `/payload next save=<path>` displays and saves the next redacted/truncated provider payload with char/token-ish size estimates.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
+- `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
+
+## Web Stack Editor
+
+- `/preset ui`, `/preset ui restart`, and `/preset ui stop`.
+- Local editor server bound to `127.0.0.1` with a random URL token.
+- Stack list with active/error/warning indicators.
+- Collapsible prompt-stack sidebar.
+- Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
+- Reorder items by drag-and-drop.
+- Add and delete stack items.
+- Toggle item enabled state from the item list.
+- Edit block content in a full-height text editor area.
+- Edit slot kind, role, slot type, and common slot options through form controls.
+- Fall back to raw JSON editing for advanced slot options.
+- Validate and preview edited stack state before saving.
+- Save existing stack JSON and immediately reload pi-forge stack state.
+- Import stack JSON into `.pi/prompt-stacks`.
+- Export the current edited stack JSON from the browser.
+- Fork the current stack into a new stack file, with optional activation.
+- Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
+- Trust and path guardrails for save/import/fork/delete writes.
+- Smoke tests cover editor server token checks, save, create/fork, collision handling, delete, and stop behavior.

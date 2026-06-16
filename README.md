@@ -73,6 +73,8 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 
 Saving, importing, forking, and deleting are only allowed for trusted projects and only write files under `.pi/prompt-stacks`.
 
+Save, import, fork, delete, activate, disable, and reload actions update pi-forge's in-memory stack list immediately for the current Pi session. Export only downloads JSON from the browser and does not change the runtime.
+
 ## SillyTavern preset import
 
 Import a SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json` and write a migration report to `.pi/forge/import-reports/<id>.md`:

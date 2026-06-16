@@ -23,6 +23,7 @@ Implemented and working:
 - Branch-aware prompt state restoration during session tree navigation.
 - `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
 - `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
+- `/preset ui` lightweight localhost web editor for prompt-stack editing, validation, preview, import/export, fork, delete, activation, and disable flows.
 
 ## Priority 1: Command and lifecycle test coverage
 
@@ -45,6 +46,8 @@ High-value command/event cases:
 7. `/preset import-silly` writes the stack and report, then reloads stack state. - collision coverage done
 8. `session_start` restores variables and active stack selection. - done
 9. `turn_start` persists active stack selection only when needed.
+10. `/preset ui` starts/stops the local editor and protects the API with a URL token. - smoke coverage done
+11. Web editor save/create/delete operations reload current Pi stack state. - smoke coverage done
 
 ## Priority 2: Harden SillyTavern importer
 
@@ -63,7 +66,22 @@ Importer improvements:
 - Add fixtures from real presets to catch field-shape drift.
 - Consider a dry-run mode that only shows the generated stack/report. - done
 
-## Priority 3: Prompt state lifecycle metadata
+## Priority 3: Web editor polish
+
+The lightweight web editor is implemented and usable. Future polish should stay focused rather than turning it into a separate full application too early.
+
+High-value follow-ups:
+
+- Unsaved-change indicator tied to the selected stack and item.
+- Copy-to-clipboard export fallback in addition to JSON download.
+- Inline validation badges beside specific stack items.
+- More structured editors for stack `variables`, `state.definitions`, and `context` options.
+- Better import flow for pasted JSON, not only file selection.
+- Browser-level smoke screenshots if a browser test dependency is added later.
+
+Keep slash-command fallbacks for terminal-first workflows.
+
+## Priority 4: Prompt state lifecycle metadata
 
 ### Add update metadata later
 
@@ -81,7 +99,7 @@ Current state definitions can declare type, scope, description, and write permis
 
 Keep persisted values as plain JSON for now; add metadata only if it becomes necessary for state review, expiration, or subagent curation.
 
-## Priority 4: Improve macro engine
+## Priority 5: Improve macro engine
 
 ### 1. Replace regex-only parsing with a small macro parser
 
@@ -125,7 +143,7 @@ Useful low-risk transforms:
 
 `xml` escaping is especially useful for generated XML context blocks.
 
-## Priority 5: Better chat-history controls
+## Priority 6: Better chat-history controls
 
 Current option:
 
@@ -156,7 +174,7 @@ Potential filters:
 - include/exclude tool result messages
 - summarize old history later
 
-## Priority 6: Prompt-stack lifecycle controls
+## Priority 7: Prompt-stack lifecycle controls
 
 The current behavior rewrites context only once per user turn. That fixed tool-call loops.
 
@@ -177,7 +195,7 @@ Possible future values:
 
 Also add diagnostics warning if a stack has post-history COT blocks and uses `every-provider-request`.
 
-## Priority 7: Tests
+## Priority 8: Tests
 
 Pure compiler/loader/importer tests exist. Keep extending them before the command surface grows much more.
 
@@ -209,8 +227,9 @@ Current and next test cases:
 18. command behavior for `/preset import-silly` - collision coverage done
 19. command/tool lifecycle tests for `forge_state_set` - validation coverage done
 20. `/payload next save=<path>` redaction/save behavior - done
+21. `/preset ui` API smoke test for serve/save/create/delete - done
 
-## Priority 8: Payload/debug tools
+## Priority 9: Payload/debug tools
 
 Improve `/intercept`:
 
@@ -225,7 +244,7 @@ Improve `/intercept`:
 - show token-ish size estimates if possible - basic char/approx-token display done
 - add broader payload-shape tests for provider-specific payloads
 
-## Priority 9: Agent profiles later
+## Priority 10: Agent profiles later
 
 Keep out of prompt-stack MVP for now, but design around:
 
@@ -246,8 +265,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add broader provider payload redaction tests and any remaining untrusted-project write refusals.
-2. Start a minimal UI surface: diagnostics/state/stack manager panels over plain editor dumps.
+1. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
+2. Add broader provider payload redaction tests and any remaining untrusted-project write refusals.
 3. Begin macro parser replacement for nested macros and safe transforms.
 4. Add richer chat-history controls (`maxMessages`, `maxApproxChars`, tool-call/result filters).
 5. Consider explicit global/non-branch state scope if users need state that intentionally survives tree rollback.

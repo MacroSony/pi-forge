@@ -73,6 +73,8 @@ pi install npm:@zihanw/pi-forge
 
 只有受信任项目允许保存、导入、fork 和删除，并且写入范围限制在 `.pi/prompt-stacks` 下。
 
+保存、导入、fork、删除、激活、禁用和重新加载操作会立即更新当前 Pi 会话中的 pi-forge 内存提示栈列表。导出只会在浏览器中下载 JSON，不会改变运行时状态。
+
 ## SillyTavern 预设导入
 
 将 SillyTavern 预设 JSON 导入为 `.pi/prompt-stacks/<id>.json`，并把迁移报告写入 `.pi/forge/import-reports/<id>.md`：
