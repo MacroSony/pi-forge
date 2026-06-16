@@ -2,112 +2,30 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-用于提示栈和代理配置管理的 Pi 扩展包。当前第一个里程碑实现了基于文件的提示栈。
+**pi-forge** 让你自定义 Pi 的思考方式和行为。它提供 prompt stack（提示栈）：这些 JSON 文件可以替换、追加到或插入到 Pi 的默认系统提示词之前，并控制 AI 的性格、可见工具、对话历史布局和跨轮次状态。
 
-## 包设置
+可以把它理解为 AI agent 的角色卡。
 
-这个仓库是一个 Pi 包。`package.json` 通过 `pi.extensions` 暴露 `./src/index.ts` 作为扩展入口。
+## 能做什么
 
-在这个 checkout 中做本地开发时，`.pi/settings.json` 指向包根目录：
+- **赋予 Pi 个性** — 把它变成创意写手、角色扮演搭档、严格的代码审查员，或任何你想要的风格。
+- **一键切换模式** — 在"写代码"、"写小说"、"做翻译"之间用一条命令切换。
+- **控制 AI 看到什么** — 选择每个 prompt 中出现哪些工具、技能和项目上下文。
+- **跨轮次记忆** — 让 agent 跟踪进度、存储笔记、记住用户偏好。
+- **导入 SillyTavern 预设** — 一条命令把 ST 角色预设迁移到 Pi。
+- **调试 prompt** — 拦截并查看实际发给模型的内容。
 
-```json
-{
-  "packages": [".."]
-}
-```
+## 快速上手
 
-启动 Pi 后，信任当前项目；如有需要，使用 `/reload` 重新加载。
-
-发布到你选择的 npm 包名后，可以这样安装：
+### 安装
 
 ```bash
 pi install npm:@zihanw/pi-forge
 ```
 
-## 提示栈
+### 第一个 prompt stack
 
-提示栈文件放在：
-
-```txt
-.pi/prompt-stacks/*.json
-```
-
-激活规则：
-
-1. 如果恢复出的 `/preset use <id>` 选择仍然存在，并且该栈没有校验错误，则优先使用它。
-2. 如果恢复出的是 `/preset use none`，则禁用提示栈替换。
-3. 如果 `.pi/prompt-stacks/default.json` 存在，且该栈没有设置 `"autoActivate": false`，则自动激活它。
-4. 否则，使用第一个设置了 `"autoActivate": true` 的提示栈。
-5. `/preset use <id>` 会切换当前会话的提示栈，并持久化这个选择。
-6. `/preset use none` 会禁用提示栈替换，并持久化这个选择。
-
-当某个提示栈处于激活状态时，pi-forge 默认会替换 Pi 的默认 system prompt，并围绕一个可移动的 `chat-history` 插槽重建每条用户消息对应的第一次 provider request。工具结果后的后续回合会使用 Pi 的自然上下文，因此 post-history 指令不会在每次工具调用后反复追加。
-
-## 命令
-
-```txt
-/preset list
-/preset status
-/preset use <id|none>
-/preset preview [id]
-/preset validate [id]
-/preset diagnostics
-/preset reload
-/preset ui [stop|restart]
-/preset vars [set <name> <value>|get <name>|clear [name]]
-/state [list|status|set <name> <value>|get <name>|clear [name]]
-/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
-/intercept
-/payload next [save=<path>]
-```
-
-## Web 提示栈编辑器
-
-`/preset ui` 会启动一个绑定到 `127.0.0.1` 的轻量级本地编辑器，并在 Pi 中显示访问 URL。URL 包含随机 session token。你可以用它编辑提示栈文件，包括条目拖拽排序、block 内容编辑、slot 设置、校验、预览、保存、导入/导出、fork、删除、激活和禁用。
-
-```txt
-/preset ui
-/preset ui restart
-/preset ui stop
-```
-
-只有受信任项目允许保存、导入、fork 和删除，并且写入范围限制在 `.pi/prompt-stacks` 下。
-
-保存、导入、fork、删除、激活、禁用和重新加载操作会立即更新当前 Pi 会话中的 pi-forge 内存提示栈列表。导出只会在浏览器中下载 JSON，不会改变运行时状态。
-
-## SillyTavern 预设导入
-
-将 SillyTavern 预设 JSON 导入为 `.pi/prompt-stacks/<id>.json`，并把迁移报告写入 `.pi/forge/import-reports/<id>.md`：
-
-```txt
-/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
-```
-
-默认情况下，如果目标栈文件或报告文件已经存在，导入会拒绝覆盖，除非用户在 UI 确认中同意。使用 `--dry-run` 可以只预览生成的 JSON 和报告而不写入文件；使用 `--overwrite` 可以允许替换已有文件。
-
-如果一个预设包含多个 `prompt_order` 条目，请传入想使用的 `character_id`。导入出的提示栈会设置为 `autoActivate: false`；检查报告后，可用 `/preset use <id>` 激活。
-
-## Payload 检查
-
-`/intercept` 会在下一次 provider payload 发送前显示它。`/payload next [save=<path>]` 做同样的事，并且可以把脱敏和截断后的 payload 保存到文件。查看器或通知中会包含字符数和粗略 token 数。例如：
-
-```txt
-/payload next save=.pi/forge/payloads/last.json
-```
-
-## 代理工具
-
-### forge_state_set
-
-批量更新持久提示状态。只有以 `agent.` 开头的状态名允许由代理写入；用户状态和提示栈状态对代理只读。它适合跨回合状态跟踪，例如 roleplay 中的角色情绪、故事进度，或 coding 中的任务检查点、已发现事实。
-
-当提示栈启用了 `variables` 插槽时，代理会看到渲染后的提示状态，并可用 `forge_state_set` 更新 `agent.*` 状态。没有这个插槽时，状态仍可用于宏替换，但代理不会看到结构化状态视图。
-
-`forge_set_var` 保留为兼容性别名，用于设置一个字符串值。新提示栈应优先使用 `forge_state_set`。
-
-## 提示栈格式
-
-最小示例：
+创建 `.pi/prompt-stacks/default.json`：
 
 ```json
 {
@@ -119,142 +37,259 @@ pi install npm:@zihanw/pi-forge
   "items": [
     {
       "kind": "block",
-      "id": "main-role",
+      "id": "role",
+      "name": "主要角色",
       "enabled": true,
       "role": "system",
-      "content": "You are a precise coding assistant."
+      "content": "你是一个友好简洁的编程助手，回答时优先给出简短说明和代码示例。"
     },
     {
       "kind": "slot",
       "id": "tools",
+      "name": "可用工具",
       "enabled": true,
       "role": "system",
       "slot": "tools"
     },
     {
-      "kind": "block",
-      "id": "history-open",
-      "enabled": true,
-      "role": "user",
-      "content": "<conversation_context>"
-    },
-    {
       "kind": "slot",
       "id": "chat-history",
+      "name": "对话历史",
       "enabled": true,
       "slot": "chat-history"
-    },
-    {
-      "kind": "block",
-      "id": "history-close",
-      "enabled": true,
-      "role": "user",
-      "content": "</conversation_context>"
     }
   ]
 }
 ```
 
-## 条目
+搞定。重启 Pi 或执行 `/preset reload`。如果当前没有选中其他栈，`default.json` 会自动启用；如果你之前执行过 `/preset use none` 或选择了别的栈，请执行 `/preset use default`。
 
-### Blocks
+### 可视化编辑器
 
-静态文本：
+不想手写 JSON？pi-forge 内置了 Web 编辑器：
+
+```
+/preset ui
+```
+
+拖拽、编辑、校验、预览、导入、导出、fork、删除栈 —— 全在浏览器里完成。
+
+编辑器运行在 `127.0.0.1`，并带有会话 token。写入需要项目被信任，且只会写入 `.pi/prompt-stacks`；保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
+
+## 使用场景
+
+### 🎭 角色扮演 & 创意写作
+
+让 Pi 扮演一个角色。在系统提示词中定义性格，用 user message 注入写作风格规则，用 `{{lastUserMessage}}` 在对话历史之后重新插入用户输入。
+
+常用模式：
+- 把长期角色规则放在 `system` block。
+- 把 Pi 运行时上下文（工具、技能、项目）放在 `user` slot。
+- 把 `chat-history` slot 设为跳过最新用户消息。
+- 在最后加一个带 `{{lastUserMessage}}` 的 `user` block。
+
+这样最新请求会更清晰，也不会重复出现。
+
+可复制的起步示例见 [examples/default-prompt-stack.json](examples/default-prompt-stack.json)。
+
+### 🧑‍💻 专注代码审查
+
+创建一个 `reviewer.json` 栈，加入严格的审查规则，例如“优先检查正确性、回归风险、安全问题和缺失测试”。保留 `tools`、`project-context`、`variables` 和 `chat-history` slot，这样 Pi 仍然能检查仓库并记住审查状态。
+
+如果你想保留 Pi 原本的编程行为，只额外加上更严格的审查视角，可以使用 `mode: "append"`。
+
+### 🌐 翻译模式
+
+创建一个小型 `translator.json` 栈，用一个 system block 指定语气和目标语言，再保留 `chat-history` 和 `{{lastUserMessage}}` 的布局。这样可以在双语润色、直译、产品本地化审查之间快速切换，而不影响默认助手。
+
+### 🔀 多模式切换
+
+为不同任务创建独立的栈：
+
+```
+.pi/prompt-stacks/
+  coder.json       # 严格编程助手
+  writer.json      # 创意写作搭档
+  translator.json  # 双语翻译
+```
+
+用 `/preset use coder`、`/preset use writer` 等命令切换。
+
+### 🧠 跨轮次记忆
+
+定义 agent 可读写的状态：
+
+```json
+"state": {
+  "definitions": {
+    "agent.progress": {
+      "type": "string",
+      "scope": "session",
+      "description": "当前任务进度",
+      "agentWritable": true
+    }
+  }
+}
+```
+
+Agent 用 `forge_state_set` 更新状态。你也可以手动设置：
+
+```
+/state set user.preference "用 TypeScript，别用 JavaScript"
+```
+
+### 📦 SillyTavern 迁移
+
+把 ST 预设导入 Pi：
+
+```
+/preset import-silly ~/SillyTavern/presets/my-preset.json
+```
+
+pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪些已处理、哪些需要手动调整。
+
+### 🔍 Prompt 调试
+
+查看实际发给模型的内容：
+
+```
+/payload next save=.pi/forge/payloads/last.json
+```
+
+或者不发送只预览编译结果：
+
+```
+/preset preview
+```
+
+## 工作原理
+
+一个 prompt stack 是一个 JSON 文件，包含两种条目：
+
+| 类型 | 作用 |
+|------|------|
+| **Block** | 在指定位置插入的静态文本（系统提示词、用户消息、助手消息） |
+| **Slot** | 来自 Pi 运行时的动态内容 —— 工具、技能、对话历史、日期、项目上下文等 |
+
+条目按顺序排列。当栈激活时，pi-forge 会：
+
+1. 用你的 `system` 角色 block 和 slot 生成系统提示词，然后按照栈的 `mode` 应用。
+2. 在对话历史周围插入 `user`/`assistant` 角色的 block 和 slot。
+3. 展开 `{{宏}}`，如 `{{lastUserMessage}}`、`{{date}}` 和自定义变量。
+
+### Slot 一览
+
+| Slot | 插入的内容 |
+|------|-----------|
+| `chat-history` | 当前对话 |
+| `tools` | 可用工具及其描述 |
+| `tool-guidelines` | 工具使用指导 |
+| `skills` | 已加载的 Pi 技能 |
+| `project-context` | 项目指令和上下文文件 |
+| `variables` | Agent 和用户状态（进度、偏好、笔记） |
+| `date` / `cwd` / `date-cwd` | 当前日期和工作目录 |
+| `active-model` | 当前使用的模型 |
+| `append-system-prompt` | 用户追加的系统提示词 |
+| `pi-docs` | Pi 文档指导 |
+
+### 模式
+
+- **replace**（默认）— 你的栈完全替换 Pi 的系统提示词。
+- **append** — 你的栈追加在 Pi 默认系统提示词之后。
+- **prepend** — 你的栈插入在 Pi 默认系统提示词之前。
+
+## 常用命令
+
+### 管理 prompt stack
+
+| 命令 | 作用 |
+|------|------|
+| `/preset list` | 显示所有可用栈 |
+| `/preset use <id>` | 激活一个栈 |
+| `/preset use none` | 在当前会话中禁用 prompt stack |
+| `/preset preview [id]` | 查看编译后的 prompt |
+| `/preset validate [id]` | 检查栈是否有问题 |
+| `/preset status` | 显示当前激活栈和诊断摘要 |
+| `/preset diagnostics` | 显示运行时诊断 |
+| `/preset reload` | 从磁盘重新加载栈 |
+| `/preset ui [stop\|restart]` | 打开、停止或重启 Web 编辑器 |
+
+### 状态管理
+
+| 命令 | 作用 |
+|------|------|
+| `/state list` | 显示所有会话状态 |
+| `/state status` | 显示状态定义和当前值 |
+| `/state set <name> <value>` | 设置状态变量 |
+| `/state get <name>` | 读取状态变量 |
+| `/state clear [name]` | 清除状态（全部或按名称） |
+| `/preset vars ...` | 为旧栈保留的兼容变量命令 |
+
+### 导入 & 调试
+
+| 命令 | 作用 |
+|------|------|
+| `/preset import-silly <path>` | 导入 SillyTavern 预设 |
+| `/intercept` | 显示下一条 provider payload |
+| `/payload next [save=<path>]` | 显示并可保存下一条 payload |
+
+## 常用宏
+
+在 block 内容中使用这些宏来插入动态值：
+
+| 宏 | 展开为 |
+|----|--------|
+| `{{lastUserMessage}}` | 用户最新消息 |
+| `{{date}}` | 当前日期 (YYYY-MM-DD) |
+| `{{time}}` | 当前时间 (HH:MM:SS) |
+| `{{cwd}}` | 当前工作目录 |
+| `{{tools}}` | 逗号分隔的工具名 |
+| `{{selectedTools}}` | 所选工具名的别名 |
+| `{{activeModel}}` | 当前模型 (provider/id) |
+| `{{char}}` / `{{user}}` | 栈中定义的自定义变量 |
+
+### 变量宏
+
+```
+{{setvar::name::value}}        设置轮次变量（每条消息清空）
+{{setsessionvar::name::value}} 设置会话变量（持久化）
+{{setvar::session::name::value}} 也可设置会话变量
+{{getvar::name}}               读取变量（轮次 → 会话 → 静态）
+{{getturnvar::name}}           只读取轮次变量
+{{getsessionvar::name}}        只读取会话变量
+{{clearvar::name}}             清除变量
+{{clearturnvar::name}}         清除轮次变量
+{{clearsessionvar::name}}      清除会话变量
+```
+
+## Stack 参考
+
+### 完整条目类型
+
+**Block：**
 
 ```json
 {
   "kind": "block",
-  "id": "post-history-nudge",
-  "enabled": true,
-  "role": "user",
-  "content": "Reason carefully about the latest request before answering."
-}
-```
-
-### Slots
-
-来自 Pi 运行时的动态内容：
-
-```json
-{
-  "kind": "slot",
-  "id": "skills",
+  "id": "unique-id",
+  "name": "可读标签",
   "enabled": true,
   "role": "system",
-  "slot": "skills"
+  "content": "你的文本。用 {{宏}} 插入动态内容。"
 }
 ```
 
-支持的插槽：
+有效角色：`system`、`user`、`assistant`、`custom`。
 
-- `chat-history`：当前 Pi 会话中的对话上下文
-- `tools`：已启用工具的名称和 prompt snippet
-- `tool-guidelines`：已启用工具的使用指导
-- `skills`：已加载的 Pi skills
-- `project-context`：项目指令和上下文文件
-- `append-system-prompt`：用户追加的 system prompt 文本
-- `variables`：以结构化 XML 或 JSON 渲染的 static/session/turn 提示状态
-- `date`
-- `cwd`
-- `date-cwd`
-- `active-model`
-- `pi-docs`
-
-### Variables / State Slot
-
-默认以结构化 XML 渲染提示状态：
-
-```xml
-<prompt_state>
-  <static>
-    <var name="char" type="string">Agent</var>
-  </static>
-  <session>
-    <var name="agent.mood" type="string">happy</var>
-    <var name="agent.progress" type="string">step 3</var>
-  </session>
-  <turn>
-    <var name="recent" type="string">just happened</var>
-  </turn>
-</prompt_state>
-```
-
-选项：
-
-```json
-{
-  "includeStatic": true,
-  "includeSession": true,
-  "includeTurn": true,
-  "includeScopes": ["session"],
-  "includeNamespaces": ["user.*", "agent.*"],
-  "excludeNamespaces": ["agent.scratch.*"],
-  "includeMetadata": true,
-  "format": "xml",
-  "maxValueChars": 1200
-}
-```
-
-提供 `includeScopes` 时，它会覆盖较旧的 `includeStatic`、`includeSession`、`includeTurn` 布尔选项。命名空间过滤支持精确名称，也支持 `agent.*` 这样的通配前缀。
-
-使用这个插槽可以让代理看到可变状态；代理也可以通过 `forge_state_set` 更新这些状态中的 `agent.*`。将 `"format": "json"` 设为 JSON 时，同一份状态 payload 会作为转义后的 JSON 放在 `<prompt_state>` 内。
-
-## Roles
-
-- `system` 条目会编译进替换后的 system prompt。
-- `user` 条目会插入为临时 user message。
-- `assistant` 条目会插入为临时 assistant message。
-- `custom` 条目会插入为隐藏的 Pi custom message，并由 Pi 转换成 user context。
-
-`chat-history` 会在它所在的位置展开为实时对话。默认情况下，只有第一个启用的 `chat-history` 插槽会被展开。
-
-如果要从 chat history 插槽中省略最新的用户消息，可以这样写：
+**Slot：**
 
 ```json
 {
   "kind": "slot",
-  "id": "chat-history",
+  "id": "unique-id",
+  "name": "对话历史",
   "enabled": true,
+  "role": "user",
   "slot": "chat-history",
   "options": {
     "includeLastUserMessage": false
@@ -262,42 +297,36 @@ pi install npm:@zihanw/pi-forge
 }
 ```
 
-这对 SillyTavern 风格的提示栈很有用，因为它们常常会在 post-history 指令中重新插入 `{{lastUserMessage}}`。
+### Chat history 选项
 
-如果确实想重复插入历史：
+```json
+"options": {
+  "includeLastUserMessage": false
+}
+```
+
+当你在 history 之后使用 `{{lastUserMessage}}` 时设为 `false`，避免用户消息出现两次。
+
+### Variables slot 选项
 
 ```json
 {
-  "context": {
-    "allowDuplicateChatHistory": true
+  "kind": "slot",
+  "id": "state",
+  "enabled": true,
+  "role": "user",
+  "slot": "variables",
+  "options": {
+    "includeScopes": ["session"],
+    "includeNamespaces": ["user.*", "agent.*"],
+    "includeMetadata": true,
+    "format": "xml",
+    "maxValueChars": 1200
   }
 }
 ```
 
-## 宏
-
-block content 中支持的宏：
-
-- `{{cwd}}`
-- `{{date}}`
-- `{{time}}`
-- `{{lastUserMessage}}`
-- `{{selectedTools}}` / `{{tools}}`
-- `{{activeModel}}`
-- 来自提示栈 `variables` 对象的自定义变量，例如 `{{char}}`
-
-### Variables / Prompt State
-
-静态变量来自提示栈文件：
-
-```json
-"variables": {
-  "char": "Assistant",
-  "user": "USER"
-}
-```
-
-提示栈中也可以声明 typed state definitions：
+### 状态定义
 
 ```json
 "state": {
@@ -306,59 +335,59 @@ block content 中支持的宏：
     "agent.progress": {
       "type": "string",
       "scope": "session",
-      "description": "Concise summary of current task progress",
+      "description": "当前任务进度",
       "agentWritable": true
     },
-    "agent.openQuestions": {
-      "type": "string[]",
+    "user.preference": {
+      "type": "string",
       "scope": "session",
-      "description": "Questions that may need user input",
-      "agentWritable": true
+      "description": "用户在本会话中的偏好",
+      "userWritable": true
     }
   }
 }
 ```
 
-支持的类型字符串刻意保持较小，并接近 TypeScript 写法：`string`、`number`、`boolean`、`null`、`object`、`array`、`string[]`、`number[]`、`boolean[]`、`unknown`，以及 `string | null` 这样的 union。
+支持的类型：`string`、`number`、`boolean`、`null`、`object`、`array`、`string[]`、`number[]`、`boolean[]`、`unknown`，以及 `string | null` 这样的联合类型。
 
-definition default 会在对应 scope 被包含时显示在 `variables` 插槽中。默认值不会初始化持久 session state，所以在用户、代理或宏写入该值之前，`/state get <name>` 仍可能显示 `(not set)`。
+## Agent 工具
 
-用户可以通过下面的命令设置 typed JSON-compatible session state：
+pi-forge 注册了两个 AI agent 可以调用的工具：
 
-```txt
-/state set user.preference "concise answers"
-/state set user.maxExamples 2
-/state set user.flags ["brief","technical"]
+### `forge_state_set`
+
+批量更新持久状态。只有 `agent.*` 名称可写。用于跨轮次跟踪：
+
+- 任务进度 (`agent.progress`)
+- 待解决问题 (`agent.openQuestions`)
+- 故事状态 (`agent.storyState`)
+- 用户要求的笔记 (`agent.notes`)
+
+### `forge_set_var`
+
+设置单个字符串值的兼容性别名。推荐使用 `forge_state_set`。
+
+## 开发环境搭建
+
+```bash
+git clone <repo>
+cd pi-forge
+# .pi/settings.json 已指向包根目录
+pi    # 启动 Pi，信任项目，必要时 /reload
 ```
 
-`/preset vars set <name> <value>` 保留为旧的字符串专用命令。
+运行测试：
 
-可变 turn variables 会在每条用户消息开始时清空：
-
-```txt
-{{setvar::name::value}}
-{{setturnvar::name::value}}
-{{getvar::name}}
-{{getturnvar::name}}
-{{var::name}}
-{{clearvar::name}}
+```bash
+npm test
 ```
 
-可变 session state 会作为扩展状态持久化到 Pi 会话中，并从当前 session tree 分支恢复。当你用 Pi 的 tree 控件跳转到更早的消息时，pi-forge 会恢复该分支可到达的最新状态快照，因此状态会随对话历史回滚，而不会泄漏来自未来分支的状态。
+类型检查：
 
-```txt
-{{setsessionvar::name::value}}
-{{setvar::session::name::value}}
-{{getsessionvar::name}}
-{{getvar::name}}
-{{clearsessionvar::name}}
-{{clearvar::session::name}}
+```bash
+npm run typecheck
 ```
 
-`{{getvar::name}}`、`{{var::name}}` 和 bare `{{name}}` 的查找顺序是：
+## License
 
-1. turn variables
-2. session state
-3. static stack variables
-
-`setvar` 宏输出空文本。非字符串状态值在宏替换时会被 JSON 字符串化。未知宏默认产生 warning，并保持原样。
+MIT

@@ -2,112 +2,30 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Pi extension package for prompt stack and agent profile management. This first milestone implements file-backed prompt stacks.
+**pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, and cross-turn state.
 
-## Package setup
+Think of it as a character sheet for your AI agent.
 
-This repository is a Pi package. Its package manifest exposes `./src/index.ts` as the extension entrypoint.
+## What you can do with it
 
-For local development in this checkout, `.pi/settings.json` points at the package root:
+- **Give Pi a personality** — turn it into a creative writer, a roleplay partner, a strict code reviewer, or anything in between.
+- **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
+- **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
+- **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
+- **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
+- **Debug your prompts** — intercept and inspect exactly what gets sent to the model.
 
-```json
-{
-  "packages": [".."]
-}
-```
+## Quick start
 
-After starting Pi in this directory, trust the project and use `/reload` if needed.
-
-After publishing under your chosen npm package name, install it with:
+### Install
 
 ```bash
 pi install npm:@zihanw/pi-forge
 ```
 
-## Prompt stacks
+### Your first prompt stack
 
-Prompt stacks live in:
-
-```txt
-.pi/prompt-stacks/*.json
-```
-
-Activation rules:
-
-1. A restored `/preset use <id>` selection is used first when that stack still exists and has no validation errors.
-2. A restored `/preset use none` selection disables prompt stack replacement.
-3. `.pi/prompt-stacks/default.json` auto-activates when present unless the stack sets `"autoActivate": false`.
-4. Otherwise, the first stack with `"autoActivate": true` is used.
-5. `/preset use <id>` switches stacks for the session and persists that choice.
-6. `/preset use none` disables prompt stack replacement and persists that choice.
-
-When a stack is active, pi-forge replaces Pi's default system prompt by default and rebuilds the first provider request for each user message around a movable `chat-history` slot. Tool-result follow-up turns use Pi's natural context so post-history instructions are not repeatedly re-appended after every tool call.
-
-## Commands
-
-```txt
-/preset list
-/preset status
-/preset use <id|none>
-/preset preview [id]
-/preset validate [id]
-/preset diagnostics
-/preset reload
-/preset ui [stop|restart]
-/preset vars [set <name> <value>|get <name>|clear [name]]
-/state [list|status|set <name> <value>|get <name>|clear [name]]
-/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
-/intercept
-/payload next [save=<path>]
-```
-
-## Web stack editor
-
-`/preset ui` starts a lightweight localhost editor bound to `127.0.0.1` and shows the URL in Pi. The URL includes a random session token. Use it to edit prompt stack files with item reordering, block content editing, slot settings, validation, preview, save, import/export, fork, delete, activation, and disable actions.
-
-```txt
-/preset ui
-/preset ui restart
-/preset ui stop
-```
-
-Saving, importing, forking, and deleting are only allowed for trusted projects and only write files under `.pi/prompt-stacks`.
-
-Save, import, fork, delete, activate, disable, and reload actions update pi-forge's in-memory stack list immediately for the current Pi session. Export only downloads JSON from the browser and does not change the runtime.
-
-## SillyTavern preset import
-
-Import a SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json` and write a migration report to `.pi/forge/import-reports/<id>.md`:
-
-```txt
-/preset import-silly <path> [character_id] [--dry-run] [--overwrite]
-```
-
-By default, import refuses to overwrite existing generated stack/report files unless the UI confirmation is accepted. Use `--dry-run` to preview generated JSON and the report without writing files, or `--overwrite` to allow replacement.
-
-If a preset contains multiple `prompt_order` entries, pass the desired `character_id`. Imported stacks are created with `autoActivate: false`; activate one with `/preset use <id>` after reviewing the report.
-
-## Payload inspection
-
-`/intercept` displays the next provider payload before it is sent. `/payload next [save=<path>]` does the same and can also save the redacted/truncated payload to a file. The viewer/notification includes character and approximate token counts. Example:
-
-```txt
-/payload next save=.pi/forge/payloads/last.json
-```
-
-## Agent tools
-
-### forge_state_set
-
-Batch-updates persistent prompt state. Only state names starting with `agent.` can be written by the agent; user and stack state are read-only to the agent. Useful for cross-turn state tracking in roleplay (character mood, story progress) or coding (task checkpoints, discovered facts).
-
-When the `variables` slot is active in a prompt stack, the agent sees rendered prompt state and can update `agent.*` state with `forge_state_set`. Without the slot, state still works for macro substitution but the agent won't have a structured view of the state.
-
-`forge_set_var` remains as a compatibility alias for setting one string value. Prefer `forge_state_set` for new stacks.
-
-## Stack format
-
-Minimal example:
+Create `.pi/prompt-stacks/default.json`:
 
 ```json
 {
@@ -119,142 +37,259 @@ Minimal example:
   "items": [
     {
       "kind": "block",
-      "id": "main-role",
+      "id": "role",
+      "name": "Main Role",
       "enabled": true,
       "role": "system",
-      "content": "You are a precise coding assistant."
+      "content": "You are a friendly and concise coding assistant. Prefer short answers with code examples."
     },
     {
       "kind": "slot",
       "id": "tools",
+      "name": "Available Tools",
       "enabled": true,
       "role": "system",
       "slot": "tools"
     },
     {
-      "kind": "block",
-      "id": "history-open",
-      "enabled": true,
-      "role": "user",
-      "content": "<conversation_context>"
-    },
-    {
       "kind": "slot",
       "id": "chat-history",
+      "name": "Chat History",
       "enabled": true,
       "slot": "chat-history"
-    },
-    {
-      "kind": "block",
-      "id": "history-close",
-      "enabled": true,
-      "role": "user",
-      "content": "</conversation_context>"
     }
   ]
 }
 ```
 
-## Items
+That's it. Restart Pi or run `/preset reload`. If no stack is already selected, `default.json` auto-activates. If you previously chose another stack or `/preset use none`, run `/preset use default`.
 
-### Blocks
+### Visual editor
 
-Static text:
+Prefer clicking over typing JSON? pi-forge has a built-in web editor:
+
+```
+/preset ui
+```
+
+Drag, drop, edit, validate, preview, import, export, fork, and delete stacks — all in your browser.
+
+The editor runs on `127.0.0.1` with a session token. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+
+## Use cases
+
+### 🎭 Roleplay & creative writing
+
+Turn Pi into a character. Define their personality in the system prompt, inject writing style rules as user messages, and use `{{lastUserMessage}}` to re-insert the user's input after the conversation history.
+
+Useful pattern:
+- Put long-term character rules in a `system` block.
+- Keep Pi runtime context (tools, skills, project) in `user` slots.
+- Set the `chat-history` slot to skip the latest user message.
+- Add a final `user` block with `{{lastUserMessage}}`.
+
+This keeps the latest request clear and avoids duplicating it.
+
+For a copyable starter stack, see [examples/default-prompt-stack.json](examples/default-prompt-stack.json).
+
+### 🧑‍💻 Focused code review
+
+Create a `reviewer.json` stack with a strict review block: "prioritize correctness, regressions, security, and missing tests." Keep the `tools`, `project-context`, `variables`, and `chat-history` slots enabled so Pi can still inspect the repo and remember review state.
+
+Use `mode: "append"` if you want to keep Pi's normal coding behavior and only add the sharper review lens.
+
+### 🌐 Translation mode
+
+Create a small `translator.json` stack with one system block for tone and target language, then keep `chat-history` and `{{lastUserMessage}}` in the layout. This works well for switching between bilingual editing, literal translation, and localization review without changing your default assistant.
+
+### 🔀 Multi-mode switching
+
+Create separate stacks for different tasks:
+
+```
+.pi/prompt-stacks/
+  coder.json       # strict coding assistant
+  writer.json      # creative writing partner
+  translator.json  # bilingual translator
+```
+
+Switch with `/preset use coder`, `/preset use writer`, etc.
+
+### 🧠 Cross-turn memory
+
+Define state the agent can read and write:
+
+```json
+"state": {
+  "definitions": {
+    "agent.progress": {
+      "type": "string",
+      "scope": "session",
+      "description": "What we're working on",
+      "agentWritable": true
+    }
+  }
+}
+```
+
+The agent updates it with `forge_state_set`. You can also set state manually:
+
+```
+/state set user.preference "use TypeScript, not JavaScript"
+```
+
+### 📦 SillyTavern migration
+
+Bring your ST presets into Pi:
+
+```
+/preset import-silly ~/SillyTavern/presets/my-preset.json
+```
+
+pi-forge converts the preset to a prompt stack and generates a migration report showing what was handled and what needs manual tweaking.
+
+### 🔍 Prompt debugging
+
+See exactly what gets sent to the model:
+
+```
+/payload next save=.pi/forge/payloads/last.json
+```
+
+Or preview your compiled prompt without sending anything:
+
+```
+/preset preview
+```
+
+## How it works
+
+A prompt stack is a JSON file with two kinds of items:
+
+| Kind | What it does |
+|------|-------------|
+| **Block** | Static text inserted at a specific position (system prompt, user message, assistant message) |
+| **Slot** | Dynamic content from Pi's runtime — tools, skills, chat history, date, project context, etc. |
+
+Items are arranged in order. When the stack is active, pi-forge:
+
+1. Builds a system prompt from your `system`-role blocks and slots, then applies it with the stack's `mode`.
+2. Inserts `user`/`assistant` blocks and slots around the conversation history.
+3. Expands `{{macros}}` like `{{lastUserMessage}}`, `{{date}}`, and custom variables.
+
+### Slots at a glance
+
+| Slot | What it inserts |
+|------|----------------|
+| `chat-history` | The current conversation |
+| `tools` | Available tools and their descriptions |
+| `tool-guidelines` | Tool usage instructions |
+| `skills` | Loaded Pi skills |
+| `project-context` | Project instructions and context files |
+| `variables` | Agent and user state (progress, preferences, notes) |
+| `date` / `cwd` / `date-cwd` | Current date and working directory |
+| `active-model` | Which model is being used |
+| `append-system-prompt` | User's appended system prompt text |
+| `pi-docs` | Pi documentation guidance |
+
+### Modes
+
+- **replace** (default) — your stack replaces Pi's system prompt entirely.
+- **append** — your stack is added after Pi's default system prompt.
+- **prepend** — your stack is added before Pi's default system prompt.
+
+## Common commands
+
+### Managing stacks
+
+| Command | What it does |
+|---------|-------------|
+| `/preset list` | Show all available stacks |
+| `/preset use <id>` | Activate a stack |
+| `/preset use none` | Disable prompt stacks for the session |
+| `/preset preview [id]` | See the compiled prompt |
+| `/preset validate [id]` | Check a stack for issues |
+| `/preset status` | Show the active stack and diagnostics summary |
+| `/preset diagnostics` | Show runtime diagnostics |
+| `/preset reload` | Reload stacks from disk |
+| `/preset ui [stop\|restart]` | Open, stop, or restart the web editor |
+
+### State management
+
+| Command | What it does |
+|---------|-------------|
+| `/state list` | Show all session state |
+| `/state status` | Show state definitions and current values |
+| `/state set <name> <value>` | Set a state variable |
+| `/state get <name>` | Read a state variable |
+| `/state clear [name]` | Clear state (all or by name) |
+| `/preset vars ...` | Legacy variable commands kept for older stacks |
+
+### Import & debug
+
+| Command | What it does |
+|---------|-------------|
+| `/preset import-silly <path>` | Import a SillyTavern preset |
+| `/intercept` | Show the next provider payload |
+| `/payload next [save=<path>]` | Show and optionally save the next payload |
+
+## Common macros
+
+Use these in block content to insert dynamic values:
+
+| Macro | Expands to |
+|-------|-----------|
+| `{{lastUserMessage}}` | The user's latest message |
+| `{{date}}` | Current date (YYYY-MM-DD) |
+| `{{time}}` | Current time (HH:MM:SS) |
+| `{{cwd}}` | Current working directory |
+| `{{tools}}` | Comma-separated tool names |
+| `{{selectedTools}}` | Alias for selected tool names |
+| `{{activeModel}}` | Current model (provider/id) |
+| `{{char}}` / `{{user}}` | Custom variables from your stack |
+
+### Variable macros
+
+```
+{{setvar::name::value}}       set a turn variable (cleared each message)
+{{setsessionvar::name::value}} set a session variable (persists)
+{{setvar::session::name::value}} also set a session variable
+{{getvar::name}}              read a variable (turn → session → static)
+{{getturnvar::name}}          read only a turn variable
+{{getsessionvar::name}}       read only a session variable
+{{clearvar::name}}            clear a variable
+{{clearturnvar::name}}        clear a turn variable
+{{clearsessionvar::name}}     clear a session variable
+```
+
+## Stack reference
+
+### Full item types
+
+**Block:**
 
 ```json
 {
   "kind": "block",
-  "id": "post-history-nudge",
-  "enabled": true,
-  "role": "user",
-  "content": "Reason carefully about the latest request before answering."
-}
-```
-
-### Slots
-
-Live Pi runtime content:
-
-```json
-{
-  "kind": "slot",
-  "id": "skills",
+  "id": "unique-id",
+  "name": "Readable label",
   "enabled": true,
   "role": "system",
-  "slot": "skills"
+  "content": "Your text here. Use {{macros}} for dynamic content."
 }
 ```
 
-Supported slots:
+Valid roles: `system`, `user`, `assistant`, `custom`.
 
-- `chat-history` — current Pi conversation context from the session
-- `tools` — active tool names and prompt snippets
-- `tool-guidelines` — active tool guidance
-- `skills` — loaded Pi skills
-- `project-context` — project instructions/context files
-- `append-system-prompt` — user-provided append system prompt text
-- `variables` — static/session/turn prompt state rendered as structured XML or JSON
-- `date`
-- `cwd`
-- `date-cwd`
-- `active-model`
-- `pi-docs`
-
-### Variables / State Slot
-
-Renders prompt state as structured XML by default:
-
-```xml
-<prompt_state>
-  <static>
-    <var name="char" type="string">Agent</var>
-  </static>
-  <session>
-    <var name="agent.mood" type="string">happy</var>
-    <var name="agent.progress" type="string">step 3</var>
-  </session>
-  <turn>
-    <var name="recent" type="string">just happened</var>
-  </turn>
-</prompt_state>
-```
-
-Options:
-
-```json
-{
-  "includeStatic": true,
-  "includeSession": true,
-  "includeTurn": true,
-  "includeScopes": ["session"],
-  "includeNamespaces": ["user.*", "agent.*"],
-  "excludeNamespaces": ["agent.scratch.*"],
-  "includeMetadata": true,
-  "format": "xml",
-  "maxValueChars": 1200
-}
-```
-
-`includeScopes` overrides the older `includeStatic` / `includeSession` / `includeTurn` booleans when present. Namespace filters accept exact names or wildcard prefixes such as `agent.*`.
-
-Use this slot to give the agent visibility into mutable state that it can also update via `forge_state_set`. Set `"format": "json"` to render the same state payload as escaped JSON inside `<prompt_state>`.
-
-## Roles
-
-- `system` items are compiled into the replacement system prompt.
-- `user` items are inserted as ephemeral user messages.
-- `assistant` items are inserted as ephemeral assistant messages.
-- `custom` items are inserted as hidden Pi custom messages and converted to user context by Pi.
-
-`chat-history` expands to the live conversation at its position. By default, only the first enabled `chat-history` slot is expanded.
-
-To omit the latest user message from a chat history slot, use:
+**Slot:**
 
 ```json
 {
   "kind": "slot",
-  "id": "chat-history",
+  "id": "unique-id",
+  "name": "Chat History",
   "enabled": true,
+  "role": "user",
   "slot": "chat-history",
   "options": {
     "includeLastUserMessage": false
@@ -262,42 +297,36 @@ To omit the latest user message from a chat history slot, use:
 }
 ```
 
-This is useful for SillyTavern-style stacks that re-insert `{{lastUserMessage}}` later as a post-history instruction.
+### Chat history options
 
-To intentionally duplicate history:
+```json
+"options": {
+  "includeLastUserMessage": false
+}
+```
+
+Set to `false` when you use `{{lastUserMessage}}` after the history — prevents the user's message from appearing twice.
+
+### Variables slot options
 
 ```json
 {
-  "context": {
-    "allowDuplicateChatHistory": true
+  "kind": "slot",
+  "id": "state",
+  "enabled": true,
+  "role": "user",
+  "slot": "variables",
+  "options": {
+    "includeScopes": ["session"],
+    "includeNamespaces": ["user.*", "agent.*"],
+    "includeMetadata": true,
+    "format": "xml",
+    "maxValueChars": 1200
   }
 }
 ```
 
-## Macros
-
-Supported macros in block content:
-
-- `{{cwd}}`
-- `{{date}}`
-- `{{time}}`
-- `{{lastUserMessage}}`
-- `{{selectedTools}}` / `{{tools}}`
-- `{{activeModel}}`
-- custom variables from the stack `variables` object, e.g. `{{char}}`
-
-### Variables / Prompt State
-
-Static variables come from the stack file:
-
-```json
-"variables": {
-  "char": "Assistant",
-  "user": "USER"
-}
-```
-
-Typed state definitions can also be declared in the stack:
+### State definitions
 
 ```json
 "state": {
@@ -306,59 +335,59 @@ Typed state definitions can also be declared in the stack:
     "agent.progress": {
       "type": "string",
       "scope": "session",
-      "description": "Concise summary of current task progress",
+      "description": "Current task progress",
       "agentWritable": true
     },
-    "agent.openQuestions": {
-      "type": "string[]",
+    "user.preference": {
+      "type": "string",
       "scope": "session",
-      "description": "Questions that may need user input",
-      "agentWritable": true
+      "description": "User's preference for this session",
+      "userWritable": true
     }
   }
 }
 ```
 
-Supported type strings are intentionally small and TypeScript-like: `string`, `number`, `boolean`, `null`, `object`, `array`, `string[]`, `number[]`, `boolean[]`, `unknown`, and unions like `string | null`.
+Supported types: `string`, `number`, `boolean`, `null`, `object`, `array`, `string[]`, `number[]`, `boolean[]`, `unknown`, and unions like `string | null`.
 
-Definition defaults are shown by the `variables` slot when their scope is included. Defaults do not initialize persisted session state, so `/state get <name>` can still show `(not set)` until the user, agent, or a macro writes that value.
+## Agent tools
 
-Users can set typed JSON-compatible session state with:
+pi-forge registers two tools that the AI agent can call:
 
-```txt
-/state set user.preference "concise answers"
-/state set user.maxExamples 2
-/state set user.flags ["brief","technical"]
+### `forge_state_set`
+
+Batch-update persistent state. Only `agent.*` names are writable. Use for cross-turn tracking:
+
+- Task progress (`agent.progress`)
+- Open questions (`agent.openQuestions`)
+- Story state (`agent.storyState`)
+- User-requested notes (`agent.notes`)
+
+### `forge_set_var`
+
+Legacy alias for setting a single string value. Prefer `forge_state_set`.
+
+## Package setup for development
+
+```bash
+git clone <repo>
+cd pi-forge
+# .pi/settings.json already points at the package root
+pi    # start Pi, trust the project, /reload if needed
 ```
 
-`/preset vars set <name> <value>` remains as a legacy string-only command.
+Run tests:
 
-Mutable turn variables are cleared for each user message:
-
-```txt
-{{setvar::name::value}}
-{{setturnvar::name::value}}
-{{getvar::name}}
-{{getturnvar::name}}
-{{var::name}}
-{{clearvar::name}}
+```bash
+npm test
 ```
 
-Mutable session state persists in the Pi session as extension state and is restored from the current session tree branch. When you navigate to an earlier message with Pi's tree controls, pi-forge restores the latest state snapshot reachable from that branch, so state rolls back with conversation history instead of leaking future branch state.
+Typecheck:
 
-```txt
-{{setsessionvar::name::value}}
-{{setvar::session::name::value}}
-{{getsessionvar::name}}
-{{getvar::name}}
-{{clearsessionvar::name}}
-{{clearvar::session::name}}
+```bash
+npm run typecheck
 ```
 
-Lookup order for `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}` is:
+## License
 
-1. turn variables
-2. session state
-3. static stack variables
-
-`setvar` macros output empty text. Non-string state values are JSON-stringified when substituted by macros. Unknown macros warn by default and are kept literally.
+MIT
