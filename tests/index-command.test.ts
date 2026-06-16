@@ -384,6 +384,103 @@ test("/payload next saves a redacted provider payload", async () => {
 	assert.match(editors.at(-1)?.title ?? "", /pi-forge: provider payload \(\d+ chars, ~\d+ tokens\)/);
 });
 
+test("/preset ui serves and saves through the local stack editor API", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		name: "Original",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const { ctx, editors, statuses } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", ctx);
+		assert.match(statuses["pi-forge-editor"] ?? "", /editor:\d+/);
+		const editorText = editors.at(-1)?.text ?? "";
+		const urlMatch = editorText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
+		assert.ok(urlMatch);
+		const editorUrl = new URL(urlMatch[0]);
+		const token = editorUrl.searchParams.get("token")!;
+		const apiUrl = new URL("/api/stacks", editorUrl);
+
+		const pageResponse = await fetch(editorUrl);
+		assert.equal(pageResponse.status, 200);
+		const pageHtml = await pageResponse.text();
+		assert.match(pageHtml, /sidebarToggleBtn/);
+		assert.match(pageHtml, /slotOptionsFormBtn/);
+		assert.match(pageHtml, /forkBtn/);
+		assert.match(pageHtml, /importBtn/);
+		assert.match(pageHtml, /exportBtn/);
+		assert.match(pageHtml, /deleteStackBtn/);
+
+		const rejected = await fetch(apiUrl);
+		assert.equal(rejected.status, 403);
+
+		const listResponse = await fetch(apiUrl, { headers: { "x-pi-forge-token": token } });
+		assert.equal(listResponse.status, 200);
+		const list = await listResponse.json() as { stacks: Array<{ id: string; active: boolean }> };
+		assert.deepEqual(list.stacks.map((stack) => stack.id), ["default"]);
+		assert.equal(list.stacks[0]?.active, true);
+
+		const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(stackResponse.status, 200);
+		const loaded = await stackResponse.json() as { stack: any };
+		loaded.stack.name = "Edited in UI";
+		loaded.stack.items.push({ kind: "block", id: "after", enabled: true, role: "user", content: "After history" });
+
+		const saveResponse = await fetch(new URL("/api/stacks/default", editorUrl), {
+			method: "PUT",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: loaded.stack }),
+		});
+		assert.equal(saveResponse.status, 200);
+		const saveResult = await saveResponse.json() as { stack: { id: string; itemCount: number }; stacks: unknown[] };
+		assert.equal(saveResult.stack.id, "default");
+		assert.equal(saveResult.stack.itemCount, 2);
+
+		const saved = readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8");
+		assert.match(saved, /Edited in UI/);
+		assert.match(saved, /After history/);
+
+		const fork = { ...loaded.stack, id: "forked", name: "Forked Stack", autoActivate: false };
+		const createResponse = await fetch(apiUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: fork, activate: true }),
+		});
+		assert.equal(createResponse.status, 200);
+		const createResult = await createResponse.json() as { stack: { id: string; active: boolean }; stacks: Array<{ id: string; active: boolean }> };
+		assert.equal(createResult.stack.id, "forked");
+		assert.equal(createResult.stack.active, true);
+		assert.ok(createResult.stacks.some((stack) => stack.id === "forked" && stack.active));
+		assert.match(readFileSync(join(promptStacksDir(cwd), "forked.json"), "utf8"), /Forked Stack/);
+
+		const collisionResponse = await fetch(apiUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: fork }),
+		});
+		assert.equal(collisionResponse.status, 409);
+
+		const deleteResponse = await fetch(new URL("/api/stacks/forked", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(deleteResponse.status, 200);
+		const deleteResult = await deleteResponse.json() as { activeId?: string; stacks: Array<{ id: string; active: boolean }> };
+		assert.equal(deleteResult.activeId, undefined);
+		assert.deepEqual(deleteResult.stacks.map((stack) => stack.id), ["default"]);
+		assert.equal(existsSync(join(promptStacksDir(cwd), "forked.json")), false);
+	} finally {
+		await harness.commands.preset.handler("ui stop", ctx);
+	}
+	assert.equal(statuses["pi-forge-editor"], undefined);
+});
+
 test("turn_start persists default active stack only once", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {

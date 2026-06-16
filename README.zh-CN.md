@@ -53,12 +53,25 @@ pi install npm:@zihanw/pi-forge
 /preset validate [id]
 /preset diagnostics
 /preset reload
+/preset ui [stop|restart]
 /preset vars [set <name> <value>|get <name>|clear [name]]
 /state [list|status|set <name> <value>|get <name>|clear [name]]
 /preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 /intercept
 /payload next [save=<path>]
 ```
+
+## Web 提示栈编辑器
+
+`/preset ui` 会启动一个绑定到 `127.0.0.1` 的轻量级本地编辑器，并在 Pi 中显示访问 URL。URL 包含随机 session token。你可以用它编辑提示栈文件，包括条目拖拽排序、block 内容编辑、slot 设置、校验、预览、保存、导入/导出、fork、删除、激活和禁用。
+
+```txt
+/preset ui
+/preset ui restart
+/preset ui stop
+```
+
+只有受信任项目允许保存、导入、fork 和删除，并且写入范围限制在 `.pi/prompt-stacks` 下。
 
 ## SillyTavern 预设导入
 

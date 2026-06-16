@@ -53,12 +53,25 @@ When a stack is active, pi-forge replaces Pi's default system prompt by default 
 /preset validate [id]
 /preset diagnostics
 /preset reload
+/preset ui [stop|restart]
 /preset vars [set <name> <value>|get <name>|clear [name]]
 /state [list|status|set <name> <value>|get <name>|clear [name]]
 /preset import-silly <path> [character_id] [--dry-run] [--overwrite]
 /intercept
 /payload next [save=<path>]
 ```
+
+## Web stack editor
+
+`/preset ui` starts a lightweight localhost editor bound to `127.0.0.1` and shows the URL in Pi. The URL includes a random session token. Use it to edit prompt stack files with item reordering, block content editing, slot settings, validation, preview, save, import/export, fork, delete, activation, and disable actions.
+
+```txt
+/preset ui
+/preset ui restart
+/preset ui stop
+```
+
+Saving, importing, forking, and deleting are only allowed for trusted projects and only write files under `.pi/prompt-stacks`.
 
 ## SillyTavern preset import
 

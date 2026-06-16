@@ -1,5 +1,5 @@
-import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -11,9 +11,10 @@ import {
 	renderPreviewMessages,
 	resetTurnVariables,
 } from "./compiler.ts";
-import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir } from "./loader.ts";
+import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
-import type { LoadedPromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
+import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
+import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -39,6 +40,8 @@ export default function piForge(pi: ExtensionAPI) {
 	let interceptNextProviderPayload = false;
 	let interceptPayloadSavePath: string | undefined;
 	let latestCompileDiagnostics: PromptStackDiagnostic[] = [];
+	let webEditor: WebEditorServer | undefined;
+	let webEditorCwd: string | undefined;
 
 	function activeId(): string | undefined {
 		return active?.stack.id;
@@ -112,6 +115,187 @@ export default function piForge(pi: ExtensionAPI) {
 			return;
 		}
 		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
+	}
+
+	function stackSummary(loaded: LoadedPromptStack): WebEditorStackSummary {
+		const errors = loaded.diagnostics.filter((d) => d.level === "error").length;
+		const warnings = loaded.diagnostics.filter((d) => d.level === "warning").length;
+		return {
+			id: loaded.stack.id,
+			name: loaded.stack.name,
+			filePath: loaded.filePath,
+			active: loaded === active,
+			autoActivate: loaded.stack.autoActivate,
+			mode: loaded.stack.mode ?? "replace",
+			itemCount: loaded.stack.items.length,
+			errors,
+			warnings,
+			diagnostics: loaded.diagnostics,
+		};
+	}
+
+	function stackSummaries(): WebEditorStackSummary[] {
+		return stacks.map(stackSummary);
+	}
+
+	function createWebEditorHost(ctx: ExtensionCommandContext): WebEditorHost {
+		return {
+			cwd: ctx.cwd,
+			listStacks: () => stackSummaries(),
+			getStack: (id) => {
+				const loaded = stacks.find((candidate) => candidate.stack.id === id);
+				return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;
+			},
+			createStack: (stack, options) => createStackFile(ctx, stack, options),
+			saveStack: (id, stack) => {
+				if (!ctx.isProjectTrusted()) {
+					return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
+				}
+
+				const target = stacks.find((candidate) => candidate.stack.id === id);
+				if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+				if (!isInsidePromptStacksDir(ctx.cwd, target.filePath)) {
+					return { ok: false, status: 403, error: "Refusing to save outside .pi/prompt-stacks." };
+				}
+
+				writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
+				const preferredId = active?.stack.id === id ? stack.id : selectedActiveId();
+				reloadStacks(ctx, preferredId);
+				const saved = stacks.find((candidate) => candidate.stack.id === stack.id) ?? stacks.find((candidate) => candidate.filePath === target.filePath);
+				if (!saved) return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
+				return { ok: true, stack: stackSummary(saved), stacks: stackSummaries() };
+			},
+			deleteStack: (id) => deleteStackFile(ctx, id),
+			validateStack: (stack) => validatePromptStack(stack),
+			previewStack: (id, stack) => {
+				const target = stacks.find((candidate) => candidate.stack.id === id);
+				if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+				const diagnostics = validatePromptStack(stack);
+				const text = renderPreview(ctx, { stack, filePath: target.filePath, diagnostics });
+				return { ok: true, text, diagnostics };
+			},
+			activateStack: (id) => {
+				if (!setActive(id, ctx)) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
+			},
+			disableStacks: () => {
+				setActive("none", ctx);
+				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
+			},
+			reloadStacks: () => {
+				reloadStacks(ctx, selectedActiveId());
+				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
+			},
+		};
+	}
+
+	function createStackFile(
+		ctx: ExtensionCommandContext,
+		stack: PromptStack,
+		options: WebEditorCreateStackOptions,
+	): { ok: true; stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] } | { ok: false; status?: number; error: string } {
+		if (!ctx.isProjectTrusted()) {
+			return { ok: false, status: 403, error: "Project is not trusted; refusing to create prompt stacks." };
+		}
+
+		const idError = validateWebStackId(stack.id);
+		if (idError) return { ok: false, status: 400, error: idError };
+
+		const stacksDir = promptStacksDir(ctx.cwd);
+		const targetPath = join(stacksDir, `${stack.id}.json`);
+		if (!isInsidePromptStacksDir(ctx.cwd, targetPath)) {
+			return { ok: false, status: 403, error: "Refusing to create outside .pi/prompt-stacks." };
+		}
+
+		const existingById = stacks.find((candidate) => candidate.stack.id === stack.id);
+		if (existingById && resolve(existingById.filePath) !== resolve(targetPath)) {
+			return { ok: false, status: 409, error: `Stack id already exists in ${existingById.filePath}.` };
+		}
+		if ((existsSync(targetPath) || existingById) && !options.overwrite) {
+			return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
+		}
+
+		const previousSelection = selectedActiveId();
+		mkdirSync(stacksDir, { recursive: true });
+		writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
+		reloadStacks(ctx, options.activate ? stack.id : (previousSelection ?? "none"));
+		if (options.activate) setActive(stack.id, ctx);
+
+		const created = stacks.find((candidate) => candidate.stack.id === stack.id);
+		if (!created) return { ok: false, status: 500, error: "Created stack could not be reloaded." };
+		return { ok: true, stack: stackSummary(created), stacks: stackSummaries() };
+	}
+
+	function deleteStackFile(
+		ctx: ExtensionCommandContext,
+		id: string,
+	): { ok: true; activeId?: string; stacks: WebEditorStackSummary[] } | { ok: false; status?: number; error: string } {
+		if (!ctx.isProjectTrusted()) {
+			return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
+		}
+
+		const target = stacks.find((candidate) => candidate.stack.id === id);
+		if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+		if (!isInsidePromptStacksDir(ctx.cwd, target.filePath)) {
+			return { ok: false, status: 403, error: "Refusing to delete outside .pi/prompt-stacks." };
+		}
+
+		const wasActive = active?.stack.id === id;
+		unlinkSync(target.filePath);
+		if (wasActive) {
+			setActive("none", ctx);
+			reloadStacks(ctx, "none");
+		} else {
+			reloadStacks(ctx, selectedActiveId());
+		}
+		return { ok: true, activeId: activeId(), stacks: stackSummaries() };
+	}
+
+	function validateWebStackId(id: string): string | undefined {
+		if (!id.trim()) return "Stack id must not be empty.";
+		if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+			return "Stack id may only contain letters, numbers, underscore, and dash.";
+		}
+		return undefined;
+	}
+
+	async function openWebEditor(ctx: ExtensionCommandContext, mode: "open" | "restart" = "open"): Promise<void> {
+		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd)) {
+			await webEditor.close();
+			webEditor = undefined;
+			webEditorCwd = undefined;
+			ctx.ui.setStatus("pi-forge-editor", undefined);
+		}
+
+		if (!webEditor) {
+			webEditor = await startWebEditorServer(createWebEditorHost(ctx));
+			webEditorCwd = ctx.cwd;
+			ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
+			ctx.ui.notify(`pi-forge: stack editor running at ${webEditor.url}`, "info");
+		} else {
+			ctx.ui.notify(`pi-forge: stack editor already running at ${webEditor.url}`, "info");
+		}
+
+		await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1 for project:\n${webEditorCwd}`);
+	}
+
+	async function stopWebEditor(ctx: ExtensionCommandContext): Promise<void> {
+		if (!webEditor) {
+			ctx.ui.notify("pi-forge: stack editor is not running.", "info");
+			return;
+		}
+		await webEditor.close();
+		webEditor = undefined;
+		webEditorCwd = undefined;
+		ctx.ui.setStatus("pi-forge-editor", undefined);
+		ctx.ui.notify("pi-forge: stack editor stopped.", "info");
+	}
+
+	function isInsidePromptStacksDir(cwd: string, filePath: string): boolean {
+		const root = resolve(promptStacksDir(cwd));
+		const target = resolve(filePath);
+		const rel = relative(root, target);
+		return !!rel && !rel.startsWith("..") && !isAbsolute(rel);
 	}
 
 	function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {
@@ -527,11 +711,11 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("preset", {
-		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload, vars",
+		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload, vars, ui",
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "vars", "import-silly"];
+				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "vars", "import-silly", "ui"];
 				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
 			}
 			const first = parts[0];
@@ -551,6 +735,11 @@ export default function piForge(pi: ExtensionAPI) {
 					const names = Object.keys(sessionVariables);
 					return names.filter((n) => n.startsWith(fragment)).map((n) => ({ value: `vars ${sub} ${n}`, label: n }));
 				}
+			}
+			if (first === "ui" && parts.length <= 2) {
+				const fragment = parts[1] ?? "";
+				const subs = ["stop", "restart"];
+				return subs.filter((s) => s.startsWith(fragment)).map((s) => ({ value: `ui ${s}`, label: s }));
 			}
 			return null;
 		},
@@ -595,6 +784,16 @@ export default function piForge(pi: ExtensionAPI) {
 				reloadStacks(ctx, selectedActiveId());
 				ctx.ui.notify(`pi-forge: reloaded ${stacks.length} prompt stack(s).`, "info");
 				return;
+
+			case "ui": {
+				const sub = rest[0];
+				if (sub === "stop") {
+					await stopWebEditor(ctx);
+					return;
+				}
+				await openWebEditor(ctx, sub === "restart" ? "restart" : "open");
+				return;
+			}
 
 			case "vars": {
 				const sub = rest[0];
@@ -841,7 +1040,7 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset diagnostics", "  /preset reload", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset diagnostics", "  /preset reload", "  /preset ui [stop|restart]", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
 		return lines.join("\n");
 	}
 
