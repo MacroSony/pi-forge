@@ -1,5 +1,7 @@
 # pi-forge
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Pi extension package for prompt stack and agent profile management. This first milestone implements file-backed prompt stacks.
 
 ## Package setup

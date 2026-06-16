@@ -50,6 +50,7 @@
     "src/",
     "examples/",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE*"
   ],
   "publishConfig": {
