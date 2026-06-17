@@ -138,18 +138,24 @@ export function renderPreviewMessages(messages: AgentMessage[], maxChars = 8000)
 	for (const message of messages) {
 		const role = message.role;
 		text += `\n--- ${role} ---\n`;
-		text += contentToText((message as { content?: unknown; summary?: string; command?: string; output?: string }).content);
-		if (role === "bashExecution") {
-			const bash = message as { command?: string; output?: string };
-			text += `Ran ${bash.command ?? ""}\n${bash.output ?? ""}`;
-		}
-		if (role === "branchSummary" || role === "compactionSummary") {
-			text += (message as { summary?: string }).summary ?? "";
-		}
+		text += agentMessageToPreviewText(message);
 		text += "\n";
 		if (text.length > maxChars) return `${text.slice(0, maxChars)}\n\n[preview truncated]`;
 	}
 	return text.trimStart();
+}
+
+export function agentMessageToPreviewText(message: AgentMessage): string {
+	let text = contentToText((message as { content?: unknown; summary?: string; command?: string; output?: string }).content);
+	const role = message.role;
+	if (role === "bashExecution") {
+		const bash = message as { command?: string; output?: string };
+		text += `Ran ${bash.command ?? ""}\n${bash.output ?? ""}`;
+	}
+	if (role === "branchSummary" || role === "compactionSummary") {
+		text += (message as { summary?: string }).summary ?? "";
+	}
+	return text;
 }
 
 function getChatHistoryMessages(messages: AgentMessage[], item: PromptStackSlotItem): AgentMessage[] {
@@ -339,21 +345,49 @@ function renderVariables(
 		);
 	}
 
-	if (!Object.values(grouped).some((values) => Object.keys(values).length > 0)) return "";
+	const unsetDefinitions: Record<PromptStateScope, string[]> = {
+		static: [],
+		session: [],
+		turn: [],
+	};
+	if (includeMetadata) {
+		for (const [name, definition] of Object.entries(stack.state?.definitions ?? {})) {
+			const scope = definition.scope ?? "session";
+			if (!scopes.has(scope)) continue;
+			if (!shouldRenderVariable(name, includeNamespaces, excludeNamespaces)) continue;
+			if (Object.prototype.hasOwnProperty.call(grouped[scope], name)) continue;
+			unsetDefinitions[scope].push(name);
+		}
+	}
+
+	const hasRenderedState = Object.values(grouped).some((values) => Object.keys(values).length > 0)
+		|| Object.values(unsetDefinitions).some((names) => names.length > 0);
+	if (!hasRenderedState) return "";
 
 	if (format === "json") {
 		const payload: Record<string, unknown> = {};
 		for (const scope of ["static", "session", "turn"] as const) {
-			if (Object.keys(grouped[scope]).length === 0) continue;
-			payload[scope] = includeMetadata
-				? Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => [
+			if (Object.keys(grouped[scope]).length === 0 && unsetDefinitions[scope].length === 0) continue;
+			if (!includeMetadata) {
+				payload[scope] = Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)));
+				continue;
+			}
+			payload[scope] = Object.fromEntries([
+				...Object.entries(grouped[scope]).map(([name, value]) => [
 					name,
 					{
 						value,
 						...metadataForVariable(stack, name),
 					},
-				]))
-				: Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)));
+				]),
+				...unsetDefinitions[scope].map((name) => [
+					name,
+					{
+						unset: true,
+						...metadataForVariable(stack, name),
+					},
+				]),
+			].sort(([a], [b]) => String(a).localeCompare(String(b))));
 		}
 		return `<prompt_state format=\"json\">\n${escapeXml(JSON.stringify(payload, null, 2))}\n</prompt_state>`;
 	}
@@ -362,7 +396,8 @@ function renderVariables(
 
 	for (const scope of ["static", "session", "turn"] as const) {
 		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
-		if (entries.length === 0) continue;
+		const unsetNames = unsetDefinitions[scope].sort((a, b) => a.localeCompare(b));
+		if (entries.length === 0 && unsetNames.length === 0) continue;
 		parts.push(`  <${scope}>`);
 		for (const [name, value] of entries) {
 			const metadata = includeMetadata ? metadataForVariable(stack, name) : {};
@@ -374,6 +409,18 @@ function renderVariables(
 			if (metadata.agentWritable !== undefined) attrs.push(`agentWritable=\"${metadata.agentWritable ? "true" : "false"}\"`);
 			if (metadata.userWritable !== undefined) attrs.push(`userWritable=\"${metadata.userWritable ? "true" : "false"}\"`);
 			parts.push(`    <var ${attrs.join(" ")}>${escapeXml(truncateValue(stateValueToPromptText(value), maxValueChars))}</var>`);
+		}
+		for (const name of unsetNames) {
+			const metadata = metadataForVariable(stack, name);
+			const attrs = [
+				`name=\"${escapeXml(name)}\"`,
+				`type=\"${escapeXml(metadata.type ?? "unknown")}\"`,
+				`unset=\"true\"`,
+			];
+			if (metadata.description) attrs.push(`description=\"${escapeXml(metadata.description)}\"`);
+			if (metadata.agentWritable !== undefined) attrs.push(`agentWritable=\"${metadata.agentWritable ? "true" : "false"}\"`);
+			if (metadata.userWritable !== undefined) attrs.push(`userWritable=\"${metadata.userWritable ? "true" : "false"}\"`);
+			parts.push(`    <var ${attrs.join(" ")}></var>`);
 		}
 		parts.push(`  </${scope}>`);
 	}

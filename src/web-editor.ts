@@ -26,10 +26,28 @@ export interface WebEditorHost {
 	saveStack(id: string, stack: PromptStack): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>;
 	deleteStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	validateStack(stack: PromptStack): PromptStackDiagnostic[];
-	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; diagnostics: PromptStackDiagnostic[] }>;
+	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>;
 	activateStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	disableStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	reloadStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
+}
+
+export interface WebEditorPreviewSection {
+	id: string;
+	title: string;
+	role?: string;
+	content: string;
+	chars: number;
+	approxTokens: number;
+}
+
+export interface WebEditorPreview {
+	stackId: string;
+	generatedAt: string;
+	system: WebEditorPreviewSection;
+	messages: WebEditorPreviewSection[];
+	totalChars: number;
+	approxTokens: number;
 }
 
 export interface WebEditorCreateStackOptions {
@@ -753,16 +771,103 @@ html, body {
 }
 .preview {
   display: none;
-  border-top: 1px solid var(--line);
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  align-items: stretch;
+  justify-content: center;
+  background: rgba(15, 23, 42, .38);
+  color: var(--text);
+  margin: 0;
+  padding: 24px;
+  overflow: hidden;
+}
+.preview.open {
+  display: flex;
+}
+.preview-dialog {
+  width: min(1220px, calc(100vw - 48px));
+  height: min(900px, calc(100vh - 48px));
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #f8fafc;
+  box-shadow: 0 18px 60px rgba(15, 23, 42, .24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--pane);
+  flex: 0 0 auto;
+}
+.preview-body {
+  padding: 10px 12px 14px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.preview-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.preview-title {
+  font-weight: 650;
+}
+.preview-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.preview-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.preview-section summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 1px solid transparent;
+}
+.preview-section[open] summary {
+  border-bottom-color: var(--line);
+}
+.preview-section summary::-webkit-details-marker {
+  display: none;
+}
+.preview-section summary::before {
+  content: "▶";
+  color: var(--muted);
+  font-size: 10px;
+}
+.preview-section[open] summary::before {
+  content: "▼";
+}
+.preview-text {
+  margin: 0;
+  padding: 10px;
   background: #111827;
   color: #e5e7eb;
-  margin: 0;
-  padding: 12px;
-  flex: 0 0 260px;
-  max-height: 260px;
   overflow: auto;
+  max-height: min(62vh, 680px);
   white-space: pre-wrap;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.preview-copy {
+  min-height: 26px;
+  padding: 2px 8px;
+  font-size: 12px;
 }
 @media (max-width: 900px) {
   .shell, .workspace, .settings, .item-fields {
@@ -831,7 +936,7 @@ html, body {
       <div class="editor-pane">
         <div id="itemEditor" class="item-editor"></div>
         <div id="diagnostics" class="diagnostics"></div>
-        <pre id="preview" class="preview"></pre>
+        <div id="preview" class="preview"></div>
       </div>
     </section>
   </main>
@@ -850,6 +955,7 @@ let optionsText = "";
 let optionsError = "";
 let sidebarCollapsed = false;
 let slotOptionsMode = "form";
+let previewCopyTexts = [];
 
 const slotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
@@ -918,7 +1024,7 @@ function renderAll(diagnostics = []) {
   renderItemList();
   renderItemEditor();
   renderDiagnostics(diagnostics);
-  el("preview").style.display = "none";
+  hidePreview();
 }
 
 function renderStackList() {
@@ -1331,7 +1437,7 @@ async function validateStack() {
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/validate", { method: "POST", body: { stack } });
   renderDiagnostics(data.diagnostics || []);
-  el("preview").style.display = "none";
+  hidePreview();
   setStatus("Validation complete", "success");
 }
 
@@ -1339,9 +1445,71 @@ async function previewStack() {
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/preview", { method: "POST", body: { stack } });
   renderDiagnostics(data.diagnostics || []);
-  el("preview").textContent = data.text || "";
-  el("preview").style.display = "block";
+  renderPreviewInspector(data);
   setStatus("Preview rendered", "success");
+}
+
+function hidePreview() {
+  const pane = el("preview");
+  pane.classList.remove("open");
+  pane.innerHTML = "";
+  previewCopyTexts = [];
+}
+
+function renderPreviewInspector(data) {
+  const pane = el("preview");
+  const preview = data.preview;
+  if (!preview) {
+    previewCopyTexts = [data.text || ""];
+    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
+      '<div class="preview-head"><div><div class="preview-title">Preview</div><div class="preview-meta">Plain text fallback</div></div>' +
+      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0">Copy</button><button data-preview-close="true">Close</button></div></div>' +
+      '<div class="preview-body"><pre class="preview-text">' + escapeHtml(data.text || "") + '</pre></div></div>';
+    pane.classList.add("open");
+    return;
+  }
+
+  const sections = [preview.system, ...(preview.messages || [])];
+  previewCopyTexts = [data.text || "", ...sections.map((section) => section.content || "")];
+  const sectionHtml = sections.map((section, index) => {
+    const open = index === 0 ? " open" : "";
+    const label = section.role ? section.role + " · " : "";
+    return '<details class="preview-section"' + open + '>' +
+      '<summary><span class="preview-title">' + escapeHtml(section.title || section.id) + '</span>' +
+      '<span class="preview-meta">' + escapeHtml(label + formatCount(section.chars) + " chars · ~" + formatCount(section.approxTokens) + " tokens") + '</span>' +
+      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" onclick="event.preventDefault()">Copy</button></summary>' +
+      '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
+      '</details>';
+  }).join("");
+
+  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
+    '<div class="preview-head"><div><div class="preview-title">Prompt preview: ' + escapeHtml(preview.stackId || selectedId) + '</div>' +
+    '<div class="preview-meta">' + escapeHtml(formatCount(preview.totalChars) + " chars · ~" + formatCount(preview.approxTokens) + " tokens · " + (preview.messages || []).length + " messages") + '</div></div>' +
+    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0">Copy full</button><button data-preview-close="true">Close</button></div></div>' +
+    '<div class="preview-body">' + sectionHtml + '</div></div>';
+  pane.classList.add("open");
+}
+
+function formatCount(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+async function copyPreviewText(index) {
+  const text = previewCopyTexts[index] || "";
+  if (!text) return;
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+  setStatus("Copied preview text", "success");
 }
 
 async function activateStack() {
@@ -1479,10 +1647,24 @@ el("importBtn").onclick = () => run(importStackJson);
 el("exportBtn").onclick = () => run(exportStackJson);
 el("importFileInput").onchange = (event) => run(() => handleImportFile(event));
 el("deleteStackBtn").onclick = () => run(deleteCurrentStack);
+el("preview").onclick = (event) => {
+  if (event.target === el("preview") || event.target.closest?.("[data-preview-close]")) {
+    hidePreview();
+    return;
+  }
+  const button = event.target.closest?.("[data-copy-index]");
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  run(() => copyPreviewText(Number(button.dataset.copyIndex)));
+};
 el("addBlockBtn").onclick = () => addItem("block");
 el("addSlotBtn").onclick = () => addItem("slot");
 el("deleteItemBtn").onclick = deleteSelectedItem;
 window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && el("preview").classList.contains("open")) hidePreview();
+});
 
 run(() => loadStacks());
 </script>

@@ -335,6 +335,93 @@ test("variables slot filters session state and includes metadata", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("variables slot renders metadata-only state definitions as unset", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-unset-definitions",
+		state: {
+			schemaVersion: 1,
+			definitions: {
+				"agent.progress": {
+					type: "string",
+					scope: "session",
+					description: "Current progress",
+					agentWritable: true,
+				},
+				"user.preference": {
+					type: "string",
+					scope: "session",
+					description: "User preference",
+					userWritable: true,
+				},
+				"internal.hidden": {
+					type: "string",
+					scope: "session",
+				},
+			},
+		},
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: {
+					includeScopes: ["session"],
+					includeNamespaces: ["agent.*", "user.*"],
+					includeMetadata: true,
+				},
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: createPromptVariableStore() }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /<prompt_state>/);
+	assert.match(text, /<var name="agent.progress" type="string" unset="true" description="Current progress" agentWritable="true"><\/var>/);
+	assert.match(text, /<var name="user.preference" type="string" unset="true" description="User preference" userWritable="true"><\/var>/);
+	assert.doesNotMatch(text, /internal.hidden/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot omits unset state definitions unless metadata is enabled", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-no-metadata",
+		state: {
+			definitions: {
+				"agent.progress": {
+					type: "string",
+					scope: "session",
+					agentWritable: true,
+				},
+			},
+		},
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: {
+					includeScopes: ["session"],
+					includeNamespaces: ["agent.*"],
+				},
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: createPromptVariableStore() }), [user("original")]);
+
+	assert.equal(result.messages.length, 1);
+	assert.equal(textOf(result.messages[0]), "original");
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("macros stringify non-string state values", () => {
 	const store = createPromptVariableStore({
 		flags: ["brief", "technical"],

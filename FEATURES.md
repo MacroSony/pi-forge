@@ -69,6 +69,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - Scope filtering with `includeScopes`.
 - Namespace filtering with exact names and wildcard prefixes such as `agent.*`.
 - Optional metadata rendering from stack state definitions.
+- Metadata-enabled state slots show matching definitions as `unset` entries before values exist, so the agent can see writable state names and descriptions.
 - Per-value truncation with `maxValueChars`.
 - Default example stack includes visible `user.*` and `agent.*` session state.
 
@@ -139,7 +140,8 @@ This file tracks the currently implemented feature surface for the published MVP
 - Edit block content in a full-height text editor area.
 - Edit slot kind, role, slot type, and common slot options through form controls.
 - Fall back to raw JSON editing for advanced slot options.
-- Validate and preview edited stack state before saving.
+- Validate and inspect edited stack state before saving.
+- Full-screen structured preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Save existing stack JSON and immediately reload pi-forge stack state.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Export the current edited stack JSON from the browser.

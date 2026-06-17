@@ -455,7 +455,8 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(stackResponse.status, 200);
 		const loaded = await stackResponse.json() as { stack: any };
 		loaded.stack.name = "Edited in UI";
-		loaded.stack.items.push({ kind: "block", id: "after", enabled: true, role: "user", content: "After history" });
+		const longPreviewContent = "After history " + "x".repeat(9000);
+		loaded.stack.items.push({ kind: "block", id: "after", enabled: true, role: "user", content: longPreviewContent });
 
 		const saveResponse = await fetch(new URL("/api/stacks/default", editorUrl), {
 			method: "PUT",
@@ -470,6 +471,24 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const saved = readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8");
 		assert.match(saved, /Edited in UI/);
 		assert.match(saved, /After history/);
+
+		const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: loaded.stack }),
+		});
+		assert.equal(previewResponse.status, 200);
+		const previewResult = await previewResponse.json() as {
+			text: string;
+			preview?: { system: { content: string }; messages: Array<{ role: string; content: string; chars: number }> };
+		};
+		assert.ok(previewResult.preview);
+		assert.match(previewResult.preview?.system.content ?? "", /base system/);
+		const longMessage = previewResult.preview?.messages.find((message) => message.content.includes("After history"));
+		assert.ok(longMessage);
+		assert.equal(longMessage?.content.length, longPreviewContent.length);
+		assert.ok((longMessage?.chars ?? 0) > 9000);
+		assert.match(previewResult.text, /preview truncated/);
 
 		const fork = { ...loaded.stack, id: "forked", name: "Forked Stack", autoActivate: false };
 		const createResponse = await fetch(apiUrl, {
@@ -692,4 +711,112 @@ test("session_tree before any state clears restored prompt state", async () => {
 	await harness.events.session_tree({ type: "session_tree", oldLeafId: "state", newLeafId: "first-message" }, context.ctx);
 	await harness.commands.state.handler("get agent.progress", context.ctx);
 	assert.match(context.editors.at(-1)?.text ?? "", /not set/);
+});
+
+test("/preset vars get shows existing and missing values", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const entries = [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { mood: "happy", count: 3 } } },
+	];
+	const harness = createHarness();
+	const { ctx, editors } = createContext(cwd, entries);
+	await startSession(harness, ctx);
+
+	await harness.commands.preset.handler("vars get mood", ctx);
+	assert.equal(editors.at(-1)?.title, "pi-forge variable: mood");
+	assert.match(editors.at(-1)?.text ?? "", /happy/);
+
+	await harness.commands.preset.handler("vars get count", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /3/);
+
+	await harness.commands.preset.handler("vars get missing", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
+});
+
+test("/preset vars clear removes single and all session variables", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const entries = [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { a: "keep", b: "remove", c: "also-keep" } } },
+	];
+	const harness = createHarness();
+	const { ctx, editors, notifications } = createContext(cwd, entries);
+	await startSession(harness, ctx);
+
+	await harness.commands.preset.handler("vars clear b", ctx);
+	assert.match(notifications.at(-1)?.message ?? "", /cleared session variable b/);
+	const afterSingle = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
+	assert.deepEqual(Object.keys(afterSingle).sort(), ["a", "c"]);
+	assert.equal(afterSingle.a, "keep");
+	assert.equal(afterSingle.c, "also-keep");
+
+	await harness.commands.preset.handler("vars clear", ctx);
+	assert.match(notifications.at(-1)?.message ?? "", /cleared all session variables/);
+	const afterAll = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
+	assert.deepEqual(afterAll, {});
+
+	await harness.commands.preset.handler("vars get a", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
+});
+
+test("/state get shows existing and missing values", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const entries = [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "agent.progress": "step 5", flags: ["a", "b"] } } },
+	];
+	const harness = createHarness();
+	const { ctx, editors } = createContext(cwd, entries);
+	await startSession(harness, ctx);
+
+	await harness.commands.state.handler("get agent.progress", ctx);
+	assert.equal(editors.at(-1)?.title, "pi-forge state: agent.progress");
+	assert.match(editors.at(-1)?.text ?? "", /step 5/);
+
+	await harness.commands.state.handler("get flags", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /"a"/);
+	assert.match(editors.at(-1)?.text ?? "", /"b"/);
+
+	await harness.commands.state.handler("get missing", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
+});
+
+test("/state clear without a name removes all session state", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const entries = [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { x: "1", y: "2", z: "3" } } },
+	];
+	const harness = createHarness();
+	const { ctx, editors, notifications } = createContext(cwd, entries);
+	await startSession(harness, ctx);
+
+	await harness.commands.state.handler("clear", ctx);
+	assert.match(notifications.at(-1)?.message ?? "", /cleared all session state/);
+	const cleared = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
+	assert.deepEqual(cleared, {});
+
+	await harness.commands.state.handler("get x", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
 });

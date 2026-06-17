@@ -72,7 +72,7 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 /preset ui
 ```
 
-Drag, drop, edit, validate, preview, import, export, fork, and delete stacks — all in your browser.
+Drag, drop, edit, validate, inspect full previews, import, export, fork, and delete stacks — all in your browser.
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 

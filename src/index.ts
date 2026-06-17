@@ -6,6 +6,7 @@ import {
 	compileMessages,
 	compileSystemPrompt,
 	createPromptVariableStore,
+	agentMessageToPreviewText,
 	getLatestUserMessage,
 	markSessionVariablesClean,
 	renderPreviewMessages,
@@ -14,7 +15,7 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
+import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -171,8 +172,8 @@ export default function piForge(pi: ExtensionAPI) {
 				const target = stacks.find((candidate) => candidate.stack.id === id);
 				if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
 				const diagnostics = validatePromptStack(stack);
-				const text = renderPreview(ctx, { stack, filePath: target.filePath, diagnostics });
-				return { ok: true, text, diagnostics };
+				const preview = buildPreview(ctx, { stack, filePath: target.filePath, diagnostics });
+				return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
 			},
 			activateStack: (id) => {
 				if (!setActive(id, ctx)) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
@@ -1137,6 +1138,10 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	function renderPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack): string {
+		return buildPreview(ctx, target).text;
+	}
+
+	function buildPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
 		const options = ctx.getSystemPromptOptions();
 		const sessionContext = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
 		const latestUserMessage = getLatestUserMessage(sessionContext.messages);
@@ -1145,8 +1150,22 @@ export default function piForge(pi: ExtensionAPI) {
 		const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
 		const messages = compileMessages(target.stack, runtime, sessionContext.messages);
 		const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
+		const messageSections = messages.messages.map((message, index) => {
+			const content = agentMessageToPreviewText(message);
+			return previewSection(`message-${index}`, `${index + 1}. ${message.role}`, content, message.role);
+		});
+		const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)");
+		const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);
+		const preview: WebEditorPreview = {
+			stackId: target.stack.id,
+			generatedAt: new Date().toISOString(),
+			system: systemSection,
+			messages: messageSections,
+			totalChars,
+			approxTokens: estimatePayloadTokens(`${system.systemPrompt}\n${messageSections.map((section) => section.content).join("\n")}`),
+		};
 
-		return [
+		const text = [
 			`# Prompt stack preview: ${target.stack.id}`,
 			"",
 			"## System prompt",
@@ -1161,6 +1180,19 @@ export default function piForge(pi: ExtensionAPI) {
 			"",
 			renderDiagnostics(diagnostics),
 		].join("\n");
+
+		return { text, preview, diagnostics };
+	}
+
+	function previewSection(id: string, title: string, content: string, role?: string): WebEditorPreviewSection {
+		return {
+			id,
+			title,
+			role,
+			content,
+			chars: content.length,
+			approxTokens: estimatePayloadTokens(content),
+		};
 	}
 
 	function renderDiagnostics(diagnostics: PromptStackDiagnostic[]): string {

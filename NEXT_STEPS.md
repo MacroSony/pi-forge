@@ -24,8 +24,28 @@ Implemented and working:
 - `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
 - `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
 - `/preset ui` lightweight fixed-port localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows.
+- Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 
-## Priority 1: Command and lifecycle test coverage
+## Priority 1: Web inspector and state editing
+
+The next product gap is observability and editability from the web UI. Slash-command preview and payload intercept remain useful fallbacks, but large prompt stacks are hard to inspect as plain text.
+
+Immediate inspector work:
+
+- Replace the web editor's plain preview pane with a full-screen structured preview inspector. - first slice done
+- Show system prompt and message layout as separate collapsible sections with char and approximate token counts.
+- Avoid early truncation in the browser preview; large sections should render collapsed instead.
+- Add copy controls for full preview and individual sections.
+- Later, capture `/payload next` results into a web UI payload inspector with collapsible JSON and redaction preserved.
+
+State editing work:
+
+- Add structured editors for stack `variables`, `state.definitions`, and `context` options.
+- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`.
+- Keep metadata-enabled state definitions visible in previews even before runtime values exist. - done
+- Keep raw JSON editing available for advanced fields and recovery.
+
+## Priority 2: Command and lifecycle test coverage
 
 Pure compiler/loader/importer tests are in place, plus an initial mocked command/event harness for `src/index.ts`. The next reliability gap is broadening that harness across more lifecycle cases.
 
@@ -41,7 +61,7 @@ High-value command/event cases:
 2. `/preset use <id>` persists the selected stack and updates footer status. - done
 3. `/preset use none` persists the disabled selection and clears footer status. - done
 4. `/preset reload` preserves an explicit disabled selection instead of reactivating `default.json`. - done
-5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries. - partial coverage done; add get/clear cases
+5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries. - get/clear coverage added
 6. `/preset validate` shows diagnostics for the requested stack. - done
 7. `/preset import-silly` writes the stack and report, then reloads stack state. - collision coverage done
 8. `session_start` restores variables and active stack selection. - done
@@ -49,7 +69,7 @@ High-value command/event cases:
 10. `/preset ui` starts/stops the local editor and protects the API with a URL token. - smoke coverage done
 11. Web editor save/create/delete operations reload current Pi stack state. - smoke coverage done
 
-## Priority 2: Harden SillyTavern importer
+## Priority 3: Harden SillyTavern importer
 
 The first importer command is implemented. Next work should make it safer and more ergonomic.
 
@@ -81,7 +101,7 @@ TGbreak migration notes:
 - The preset has enough display-only regex that full ST regex compatibility would add complexity without useful TUI behavior.
 - The importer should help users distinguish prompt semantics from ST presentation polish.
 
-## Priority 3: Web editor polish
+## Priority 4: Web editor polish
 
 The lightweight web editor is implemented and usable. Future polish should stay focused rather than turning it into a separate full application too early.
 
@@ -96,7 +116,7 @@ High-value follow-ups:
 
 Keep slash-command fallbacks for terminal-first workflows.
 
-## Priority 4: Prompt state lifecycle metadata
+## Priority 5: Prompt state lifecycle metadata
 
 ### Add update metadata later
 
@@ -114,7 +134,7 @@ Current state definitions can declare type, scope, description, and write permis
 
 Keep persisted values as plain JSON for now; add metadata only if it becomes necessary for state review, expiration, or subagent curation.
 
-## Priority 5: Improve macro engine
+## Priority 6: Improve macro engine
 
 ### 1. Replace regex-only parsing with a small macro parser
 
@@ -158,7 +178,7 @@ Useful low-risk transforms:
 
 `xml` escaping is especially useful for generated XML context blocks.
 
-## Priority 6: Better chat-history controls
+## Priority 7: Better chat-history controls
 
 Current option:
 
@@ -189,7 +209,7 @@ Potential filters:
 - include/exclude tool result messages
 - summarize old history later
 
-## Priority 7: Prompt-stack lifecycle controls
+## Priority 8: Prompt-stack lifecycle controls
 
 The current behavior rewrites context only once per user turn. That fixed tool-call loops.
 
@@ -210,7 +230,7 @@ Possible future values:
 
 Also add diagnostics warning if a stack has post-history COT blocks and uses `every-provider-request`.
 
-## Priority 8: Tests
+## Priority 9: Tests
 
 Pure compiler/loader/importer tests exist. Keep extending them before the command surface grows much more.
 
@@ -245,7 +265,7 @@ Current and next test cases:
 21. `/preset ui` API smoke test for serve/save/create/delete - done
 22. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
 
-## Priority 9: Payload/debug tools
+## Priority 10: Payload/debug tools
 
 Improve `/intercept`:
 
@@ -260,7 +280,7 @@ Improve `/intercept`:
 - show token-ish size estimates if possible - basic char/approx-token display done
 - add broader payload-shape tests for provider-specific payloads
 
-## Priority 10: Agent profiles later
+## Priority 11: Agent profiles later
 
 Keep out of prompt-stack MVP for now, but design around:
 
@@ -281,8 +301,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
-2. Start macro/state migration work around TGbreak-style heavy `setvar`/`getvar` usage.
-3. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
-4. Add broader provider payload redaction tests and any remaining untrusted-project write refusals.
-5. Add richer chat-history controls (`maxMessages`, `maxApproxChars`, tool-call/result filters).
+1. Add structured UI editors for stack `variables` and `state.definitions`.
+2. Add a runtime session-state UI equivalent to `/state list/set/get/clear`.
+3. Capture `/payload next` results into the web inspector with collapsible JSON and redaction preserved.
+4. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
+5. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
