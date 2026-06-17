@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { importSillyTavernPreset } from "../src/sillytavern-importer.ts";
+import { convertSillyTavernPreset, importSillyTavernPreset } from "../src/sillytavern-importer.ts";
 
 function writePreset(cwd: string, name: string, value: unknown): string {
 	const dir = join(cwd, "st");
@@ -46,6 +46,37 @@ test("imports a basic preset with one character_id", () => {
 	assert.equal(result.stack.items[1].slot, "chat-history");
 	assert.equal(result.stack.items[2].kind, "block");
 	assert.equal(result.stack.items[2].content, "Finish the task.");
+});
+
+test("converts an uploaded preset object with source name", () => {
+	const result = convertSillyTavernPreset(
+		{
+			preset_name: "Uploaded Writer",
+			prompts: [
+				{ identifier: "main", name: "Main", role: "system", content: "You are {{char}}." },
+				{ identifier: "chatHistory", name: "Chat History", marker: true },
+			],
+			prompt_order: [
+				{
+					character_id: 7,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "chatHistory", enabled: true },
+					],
+				},
+			],
+		},
+		{ sourceName: "Uploaded Writer.json" },
+	);
+
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.equal(result.stack.id, "uploaded-writer");
+	assert.equal(result.stack.name, "Uploaded Writer");
+	assert.equal(result.stack.import?.source, "sillytavern");
+	assert.equal(result.stack.import?.sourceFile, "Uploaded Writer");
+	assert.match(result.report, /Source file.*Uploaded Writer\.json/);
 });
 
 test("imports with a specific character_id when multiple exist", () => {

@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 
+import { convertSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
 
 export interface WebEditorStackSummary {
@@ -43,17 +45,28 @@ export interface WebEditorServer {
 	close(): Promise<void>;
 }
 
-export async function startWebEditorServer(host: WebEditorHost): Promise<WebEditorServer> {
+export const DEFAULT_WEB_EDITOR_PORT = 41738;
+
+export interface WebEditorServerOptions {
+	port?: number;
+}
+
+export async function startWebEditorServer(host: WebEditorHost, options: WebEditorServerOptions = {}): Promise<WebEditorServer> {
 	const token = randomBytes(24).toString("base64url");
+	const sockets = new Set<Socket>();
 	const server = createServer((req, res) => {
 		void handleRequest(host, token, req, res).catch((error) => {
 			sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
 		});
 	});
+	server.on("connection", (socket) => {
+		sockets.add(socket);
+		socket.on("close", () => sockets.delete(socket));
+	});
 
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(0, "127.0.0.1", () => {
+		server.listen(options.port ?? DEFAULT_WEB_EDITOR_PORT, "127.0.0.1", () => {
 			server.off("error", reject);
 			resolve();
 		});
@@ -61,7 +74,7 @@ export async function startWebEditorServer(host: WebEditorHost): Promise<WebEdit
 
 	const address = server.address();
 	if (!address || typeof address === "string") {
-		await closeServer(server);
+		await closeServer(server, sockets);
 		throw new Error("Failed to start pi-forge editor server.");
 	}
 
@@ -69,7 +82,7 @@ export async function startWebEditorServer(host: WebEditorHost): Promise<WebEdit
 	return {
 		url,
 		port: address.port,
-		close: () => closeServer(server),
+		close: () => closeServer(server, sockets),
 	};
 }
 
@@ -112,7 +125,12 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 		const options = isPlainObject(body)
 			? { activate: body.activate === true, overwrite: body.overwrite === true }
 			: {};
-		sendOperation(res, host.createStack(parsed.stack, options));
+		const result = host.createStack(parsed.stack, options);
+		if (result.ok && parsed.importFormat) {
+			sendJson(res, 200, { ...result, importFormat: parsed.importFormat, importReport: parsed.importReport });
+			return;
+		}
+		sendOperation(res, result);
 		return;
 	}
 
@@ -203,9 +221,18 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 	return text.trim() ? JSON.parse(text) : {};
 }
 
-function readStackPayload(body: unknown): { ok: true; stack: PromptStack } | { ok: false; error: string } {
+function readStackPayload(body: unknown): { ok: true; stack: PromptStack; importFormat?: "sillytavern"; importReport?: string } | { ok: false; error: string } {
 	const rawStack = isPlainObject(body) && "stack" in body ? body.stack : body;
 	if (!isPlainObject(rawStack)) return { ok: false, error: "Stack payload must be a JSON object." };
+
+	if (isSillyTavernPresetPayload(rawStack)) {
+		const sourceName = isPlainObject(body) && typeof body.sourceName === "string" ? body.sourceName : undefined;
+		const characterId = readCharacterId(body);
+		const result = convertSillyTavernPreset(rawStack, { sourceName, characterId });
+		if ("error" in result) return { ok: false, error: `SillyTavern import error: ${result.error}` };
+		return { ok: true, stack: result.stack, importFormat: "sillytavern", importReport: result.report };
+	}
+
 	if (typeof rawStack.id !== "string" || !rawStack.id.trim()) return { ok: false, error: "Stack id must be a non-empty string." };
 	if (!Array.isArray(rawStack.items)) return { ok: false, error: "Stack items must be an array." };
 
@@ -220,6 +247,21 @@ function readStackPayload(body: unknown): { ok: true; stack: PromptStack } | { o
 	return { ok: true, stack: rawStack as unknown as PromptStack };
 }
 
+function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
+	return Array.isArray(value.prompts) && !Array.isArray(value.items);
+}
+
+function readCharacterId(body: unknown): number | undefined {
+	if (!isPlainObject(body)) return undefined;
+	const raw = body.characterId;
+	if (typeof raw === "number" && Number.isInteger(raw)) return raw;
+	if (typeof raw === "string" && raw.trim()) {
+		const parsed = Number(raw.trim());
+		if (Number.isInteger(parsed)) return parsed;
+	}
+	return undefined;
+}
+
 function sendOperation<T>(res: ServerResponse, result: WebEditorOperationResult<T>): void {
 	if (!result.ok) {
 		sendJson(res, result.status ?? 400, { error: result.error });
@@ -232,6 +274,7 @@ function sendHtml(res: ServerResponse, html: string): void {
 	res.writeHead(200, {
 		"content-type": "text/html; charset=utf-8",
 		"cache-control": "no-store",
+		"connection": "close",
 	});
 	res.end(html);
 }
@@ -240,6 +283,7 @@ function sendText(res: ServerResponse, status: number, text: string): void {
 	res.writeHead(status, {
 		"content-type": "text/plain; charset=utf-8",
 		"cache-control": "no-store",
+		"connection": "close",
 	});
 	res.end(text);
 }
@@ -248,13 +292,15 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
 	res.writeHead(status, {
 		"content-type": "application/json; charset=utf-8",
 		"cache-control": "no-store",
+		"connection": "close",
 	});
 	res.end(JSON.stringify(value));
 }
 
-function closeServer(server: Server): Promise<void> {
+function closeServer(server: Server, sockets: Set<Socket>): Promise<void> {
 	return new Promise((resolve, reject) => {
 		server.close((error) => error ? reject(error) : resolve());
+		for (const socket of sockets) socket.destroy();
 	});
 }
 
@@ -762,7 +808,7 @@ html, body {
       <button id="validateBtn">Validate</button>
       <button id="previewBtn">Preview</button>
       <button id="forkBtn">Fork</button>
-      <button id="importBtn">Import JSON</button>
+      <button id="importBtn" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
       <button id="exportBtn">Export JSON</button>
       <span class="action-spacer"></span>
       <button id="deleteStackBtn" class="danger">Delete stack</button>
@@ -1172,13 +1218,14 @@ async function createStackRemote(stack, options = {}) {
   }
 }
 
-async function openImportedStack(stack, activate, actionLabel) {
-  const data = await createStackRemote(stack, { activate });
+async function openImportedStack(stack, activate, actionLabel, extraOptions = {}) {
+  const data = await createStackRemote(stack, { ...extraOptions, activate });
   stacks = data.stacks || stacks;
   selectedId = data.stack?.id || stack.id;
   dirty = false;
   await selectStack(selectedId, { keepDirty: true });
-  setStatus(actionLabel + " " + selectedId, "success");
+  const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
+  setStatus(actionLabel + converted + " " + selectedId, "success");
 }
 
 async function importStackJson() {
@@ -1190,8 +1237,17 @@ async function handleImportFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const text = await file.text();
-  const stack = JSON.parse(text);
-  if (!stack || typeof stack !== "object" || Array.isArray(stack)) throw new Error("Imported JSON must be a prompt stack object.");
+  const imported = JSON.parse(text);
+  if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Imported JSON must be an object.");
+  if (isSillyTavernImport(imported)) {
+    const characterId = promptSillyTavernCharacterId(imported);
+    if (characterId === null) return;
+    const activate = confirm("Convert and activate imported SillyTavern stack now?");
+    await openImportedStack(imported, activate, "Imported", { sourceName: file.name, characterId });
+    return;
+  }
+
+  const stack = imported;
   if (!stack.id || typeof stack.id !== "string") {
     const promptedId = prompt("Stack id", sanitizeStackId(file.name.replace(/\.json$/i, "")));
     if (!promptedId) return;
@@ -1202,6 +1258,27 @@ async function handleImportFile(event) {
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   const activate = confirm("Activate imported stack now?");
   await openImportedStack(stack, activate, "Imported");
+}
+
+function isSillyTavernImport(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.prompts) && !Array.isArray(value.items);
+}
+
+function promptSillyTavernCharacterId(value) {
+  const ids = Array.isArray(value.prompt_order)
+    ? value.prompt_order
+      .map((entry) => entry && entry.character_id)
+      .filter((id) => Number.isInteger(id))
+    : [];
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length <= 1) return undefined;
+  const answer = prompt("SillyTavern character_id (" + uniqueIds.join(", ") + ")", String(uniqueIds[0]));
+  if (answer === null) return null;
+  const parsed = Number(answer.trim());
+  if (!Number.isInteger(parsed) || !uniqueIds.includes(parsed)) {
+    throw new Error("Choose one of these character_id values: " + uniqueIds.join(", "));
+  }
+  return parsed;
 }
 
 async function forkStack() {

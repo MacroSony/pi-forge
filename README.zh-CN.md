@@ -74,7 +74,19 @@ pi install npm:@zihanw/pi-forge
 
 拖拽、编辑、校验、预览、导入、导出、fork、删除栈 —— 全在浏览器里完成。
 
-编辑器运行在 `127.0.0.1`，并带有会话 token。写入需要项目被信任，且只会写入 `.pi/prompt-stacks`；保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
+导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
+
+编辑器默认运行在 `127.0.0.1:41738`，并带有会话 token。写入需要项目被信任，且只会写入 `.pi/prompt-stacks`；保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
+
+如果要使用别的固定端口，可以创建 `.pi/forge/config.json`：
+
+```json
+{
+  "webEditor": {
+    "port": 41738
+  }
+}
+```
 
 ## 使用场景
 

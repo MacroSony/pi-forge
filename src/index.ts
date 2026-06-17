@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -14,7 +14,7 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
+import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -260,7 +260,10 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	async function openWebEditor(ctx: ExtensionCommandContext, mode: "open" | "restart" = "open"): Promise<void> {
-		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd)) {
+		const settings = loadWebEditorSettings(ctx);
+		for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
+
+		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd || webEditor.port !== settings.port)) {
 			await webEditor.close();
 			webEditor = undefined;
 			webEditorCwd = undefined;
@@ -268,7 +271,14 @@ export default function piForge(pi: ExtensionAPI) {
 		}
 
 		if (!webEditor) {
-			webEditor = await startWebEditorServer(createWebEditorHost(ctx));
+			try {
+				webEditor = await startWebEditorServer(createWebEditorHost(ctx), { port: settings.port });
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				ctx.ui.setStatus("pi-forge-editor", undefined);
+				ctx.ui.notify(`pi-forge: failed to start stack editor on 127.0.0.1:${settings.port}: ${detail}. Change ${settings.configPath} or stop the process using that port.`, "error");
+				return;
+			}
 			webEditorCwd = ctx.cwd;
 			ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
 			ctx.ui.notify(`pi-forge: stack editor running at ${webEditor.url}`, "info");
@@ -276,7 +286,51 @@ export default function piForge(pi: ExtensionAPI) {
 			ctx.ui.notify(`pi-forge: stack editor already running at ${webEditor.url}`, "info");
 		}
 
-		await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1 for project:\n${webEditorCwd}`);
+		await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1:${webEditor.port}\nOptional config: ${settings.configPath}\nProject: ${webEditorCwd}`);
+	}
+
+	function loadWebEditorSettings(ctx: ExtensionCommandContext): { port: number; configPath: string; warnings: string[] } {
+		const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
+		if (!ctx.isProjectTrusted() || !existsSync(configPath)) {
+			return { port: DEFAULT_WEB_EDITOR_PORT, configPath, warnings: [] };
+		}
+
+		let raw: unknown;
+		try {
+			raw = JSON.parse(readFileSync(configPath, "utf8"));
+		} catch (error) {
+			return {
+				port: DEFAULT_WEB_EDITOR_PORT,
+				configPath,
+				warnings: [`pi-forge: failed to read ${configPath}; using editor port ${DEFAULT_WEB_EDITOR_PORT}. ${error instanceof Error ? error.message : String(error)}`],
+			};
+		}
+
+		if (!isPlainObject(raw)) {
+			return {
+				port: DEFAULT_WEB_EDITOR_PORT,
+				configPath,
+				warnings: [`pi-forge: ${configPath} must be a JSON object; using editor port ${DEFAULT_WEB_EDITOR_PORT}.`],
+			};
+		}
+
+		const webEditorConfig = isPlainObject(raw.webEditor) ? raw.webEditor : undefined;
+		const rawPort = webEditorConfig?.port ?? raw.webEditorPort;
+		if (rawPort === undefined) return { port: DEFAULT_WEB_EDITOR_PORT, configPath, warnings: [] };
+
+		if (typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535) {
+			return { port: rawPort, configPath, warnings: [] };
+		}
+
+		return {
+			port: DEFAULT_WEB_EDITOR_PORT,
+			configPath,
+			warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using editor port ${DEFAULT_WEB_EDITOR_PORT}.`],
+		};
+	}
+
+	function isPlainObject(value: unknown): value is Record<string, unknown> {
+		return !!value && typeof value === "object" && !Array.isArray(value);
 	}
 
 	async function stopWebEditor(ctx: ExtensionCommandContext): Promise<void> {

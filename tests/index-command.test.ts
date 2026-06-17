@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -17,6 +18,27 @@ function writePreset(cwd: string, name: string, value: unknown): string {
 	const path = join(dir, name);
 	writeFileSync(path, JSON.stringify(value, null, 2));
 	return path;
+}
+
+async function getFreePort(): Promise<number> {
+	const server = createNetServer();
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			server.off("error", reject);
+			resolve();
+		});
+	});
+	const address = server.address();
+	await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+	assert.ok(address && typeof address !== "string");
+	return address.port;
+}
+
+function writeForgeConfig(cwd: string, value: unknown): void {
+	const dir = join(cwd, ".pi", "forge");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "config.json"), JSON.stringify(value, null, 2));
 }
 
 function createHarness() {
@@ -386,6 +408,8 @@ test("/payload next saves a redacted provider payload", async () => {
 
 test("/preset ui serves and saves through the local stack editor API", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const editorPort = await getFreePort();
+	writeForgeConfig(cwd, { webEditor: { port: editorPort } });
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
 		type: "pi-forge.prompt-stack",
@@ -404,6 +428,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const urlMatch = editorText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
 		assert.ok(urlMatch);
 		const editorUrl = new URL(urlMatch[0]);
+		assert.equal(editorUrl.port, String(editorPort));
 		const token = editorUrl.searchParams.get("token")!;
 		const apiUrl = new URL("/api/stacks", editorUrl);
 
@@ -475,6 +500,64 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(deleteResult.activeId, undefined);
 		assert.deepEqual(deleteResult.stacks.map((stack) => stack.id), ["default"]);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "forked.json")), false);
+
+		const sillyPreset = {
+			preset_name: "UI Silly Import",
+			prompts: [
+				{ identifier: "main", name: "Main", role: "system", content: "You are {{char}}." },
+				{ identifier: "chatHistory", name: "Chat History", marker: true },
+				{ identifier: "post", name: "Post", role: "user", content: "Latest: {{lastUserMessage}}" },
+			],
+			prompt_order: [
+				{ character_id: 1, order: [{ identifier: "main", enabled: true }] },
+				{
+					character_id: 2,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "chatHistory", enabled: true },
+						{ identifier: "post", enabled: true },
+					],
+				},
+			],
+		};
+		const sillyResponse = await fetch(apiUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: sillyPreset, sourceName: "UI Silly Import.json", characterId: 2 }),
+		});
+		assert.equal(sillyResponse.status, 200);
+		const sillyResult = await sillyResponse.json() as {
+			stack: { id: string; itemCount: number };
+			importFormat?: string;
+			importReport?: string;
+			stacks: Array<{ id: string }>;
+		};
+		assert.equal(sillyResult.stack.id, "ui-silly-import");
+		assert.equal(sillyResult.stack.itemCount, 3);
+		assert.equal(sillyResult.importFormat, "sillytavern");
+		assert.match(sillyResult.importReport ?? "", /Character ID.*2/);
+		assert.ok(sillyResult.stacks.some((stack) => stack.id === "ui-silly-import"));
+		const sillySaved = readFileSync(join(promptStacksDir(cwd), "ui-silly-import.json"), "utf8");
+		assert.match(sillySaved, /"source": "sillytavern"/);
+		assert.match(sillySaved, /"includeLastUserMessage": false/);
+
+		const sillyDeleteResponse = await fetch(new URL("/api/stacks/ui-silly-import", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(sillyDeleteResponse.status, 200);
+		assert.equal(existsSync(join(promptStacksDir(cwd), "ui-silly-import.json")), false);
+
+		await harness.commands.preset.handler("ui stop", ctx);
+		assert.equal(statuses["pi-forge-editor"], undefined);
+		await harness.commands.preset.handler("ui", ctx);
+		const reopenedText = editors.at(-1)?.text ?? "";
+		const reopenedMatch = reopenedText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
+		assert.ok(reopenedMatch);
+		const reopenedUrl = new URL(reopenedMatch[0]);
+		assert.equal(reopenedUrl.port, String(editorPort));
+		const reopenedPage = await fetch(reopenedUrl);
+		assert.equal(reopenedPage.status, 200);
 	} finally {
 		await harness.commands.preset.handler("ui stop", ctx);
 	}

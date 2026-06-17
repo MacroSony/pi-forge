@@ -23,7 +23,7 @@ Implemented and working:
 - Branch-aware prompt state restoration during session tree navigation.
 - `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
 - `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
-- `/preset ui` lightweight localhost web editor for prompt-stack editing, validation, preview, import/export, fork, delete, activation, and disable flows.
+- `/preset ui` lightweight fixed-port localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows.
 
 ## Priority 1: Command and lifecycle test coverage
 
@@ -65,6 +65,21 @@ Importer improvements:
 - Expand the unsupported macro report with suggested pi-forge replacements where clear.
 - Add fixtures from real presets to catch field-shape drift.
 - Consider a dry-run mode that only shows the generated stack/report. - done
+
+SillyTavern regex script boundary:
+
+- Detect `extensions.regex_scripts` during import and classify each enabled script by `promptOnly`, `markdownOnly`, both, disabled, and script name.
+- Preserve enough regex metadata in the import report for manual migration; do not silently drop it.
+- Use `.pi/TGbreak😺V3.1.1.json` as the stress fixture: 13 enabled regex scripts, with 5 prompt-only, 6 display-only, and 2 mixed prompt/display scripts.
+- Treat `markdownOnly` HTML/CSS decoration scripts as non-portable to Pi TUI; examples like action-option beautification should become report notes, not runtime behavior.
+- Treat DOM/browser automation, toasts, preset-panel toggles, and embedded JavaScript as out of scope for pi-forge runtime.
+- Consider a small opt-in prompt-transform subset only if real presets need it: deterministic regex replace before provider request, no DOM, no JavaScript eval, no UI rewriting, disabled by default, and visible in validation/report output.
+
+TGbreak migration notes:
+
+- Heavy ST state macros (`setvar`/`getvar`) should drive pi-forge state/macro work before regex runtime work.
+- The preset has enough display-only regex that full ST regex compatibility would add complexity without useful TUI behavior.
+- The importer should help users distinguish prompt semantics from ST presentation polish.
 
 ## Priority 3: Web editor polish
 
@@ -228,6 +243,7 @@ Current and next test cases:
 19. command/tool lifecycle tests for `forge_state_set` - validation coverage done
 20. `/payload next save=<path>` redaction/save behavior - done
 21. `/preset ui` API smoke test for serve/save/create/delete - done
+22. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
 
 ## Priority 9: Payload/debug tools
 
@@ -265,8 +281,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
-2. Add broader provider payload redaction tests and any remaining untrusted-project write refusals.
-3. Begin macro parser replacement for nested macros and safe transforms.
-4. Add richer chat-history controls (`maxMessages`, `maxApproxChars`, tool-call/result filters).
-5. Consider explicit global/non-branch state scope if users need state that intentionally survives tree rollback.
+1. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
+2. Start macro/state migration work around TGbreak-style heavy `setvar`/`getvar` usage.
+3. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
+4. Add broader provider payload redaction tests and any remaining untrusted-project write refusals.
+5. Add richer chat-history controls (`maxMessages`, `maxApproxChars`, tool-call/result filters).

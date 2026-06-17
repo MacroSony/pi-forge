@@ -128,7 +128,8 @@ This file tracks the currently implemented feature surface for the published MVP
 ## Web Stack Editor
 
 - `/preset ui`, `/preset ui restart`, and `/preset ui stop`.
-- Local editor server bound to `127.0.0.1` with a random URL token.
+- Local editor server bound to `127.0.0.1:41738` by default with a random URL token.
+- Fixed editor port can be configured through `.pi/forge/config.json` using `webEditor.port`.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
@@ -140,9 +141,9 @@ This file tracks the currently implemented feature surface for the published MVP
 - Fall back to raw JSON editing for advanced slot options.
 - Validate and preview edited stack state before saving.
 - Save existing stack JSON and immediately reload pi-forge stack state.
-- Import stack JSON into `.pi/prompt-stacks`.
+- Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Export the current edited stack JSON from the browser.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
-- Smoke tests cover editor server token checks, save, create/fork, collision handling, delete, and stop behavior.
+- Smoke tests cover editor server token checks, save, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.

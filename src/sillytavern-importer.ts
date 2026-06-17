@@ -137,6 +137,12 @@ export interface SillyTavernImportError {
 
 export type SillyTavernImportOutcome = SillyTavernImportResult | SillyTavernImportError;
 
+export interface SillyTavernConvertOptions {
+	sourceName?: string;
+	sourcePath?: string;
+	characterId?: number;
+}
+
 // ── Importer ───────────────────────────────────────────────────────────────
 
 export function importSillyTavernPreset(
@@ -154,7 +160,25 @@ export function importSillyTavernPreset(
 		return { error: "Preset root must be a JSON object." };
 	}
 
+	return convertSillyTavernPreset(raw, { sourceName: filePath, sourcePath: filePath, characterId });
+}
+
+export function convertSillyTavernPreset(
+	raw: unknown,
+	options: SillyTavernConvertOptions = {},
+): SillyTavernImportOutcome {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+		return { error: "Preset root must be a JSON object." };
+	}
+
 	const preset = raw as StPreset;
+	const fallbackName = typeof preset.preset_name === "string" && preset.preset_name.trim()
+		? preset.preset_name
+		: typeof preset.name === "string" && preset.name.trim()
+			? preset.name
+			: "imported.json";
+	const sourceName = options.sourceName ?? fallbackName;
+	const sourcePath = options.sourcePath ?? sourceName;
 	const allPrompts = preset.prompts ?? [];
 	const promptOrder = preset.prompt_order ?? [];
 
@@ -163,14 +187,14 @@ export function importSillyTavernPreset(
 	}
 
 	// Select character_id
-	const selectedEntry = selectCharacterEntry(promptOrder, characterId);
+	const selectedEntry = selectCharacterEntry(promptOrder, options.characterId);
 	if (!selectedEntry) {
 		const ids = promptOrder.map((entry) => entry.character_id);
 		if (ids.length === 0) {
-			return { error: "Preset has no prompt_order entries. Specify a character_id with /preset import-silly <path> <character_id>." };
+			return { error: "Preset has no prompt_order entries. Choose a character_id and retry." };
 		}
 		return {
-			error: `Multiple character configs found: [${ids.join(", ")}]. Re-run with /preset import-silly <path> <character_id>.`,
+			error: `Multiple character configs found: [${ids.join(", ")}]. Choose a character_id and retry.`,
 		};
 	}
 
@@ -277,7 +301,7 @@ export function importSillyTavernPreset(
 	}
 
 	// Build stack name from file
-	const fileName = basename(filePath, ".json");
+	const fileName = basename(sourceName).replace(/\.json$/i, "") || "imported";
 	const styleName = preset.names_behavior === 1 ? "names" : preset.names_behavior === 2 ? "nonames" : "default";
 	const stackId = fileName.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "imported";
 
@@ -319,7 +343,7 @@ export function importSillyTavernPreset(
 	const reportLines: string[] = [];
 	reportLines.push(`# SillyTavern Import Report: ${fileName}`);
 	reportLines.push("");
-	reportLines.push(`- **Source file**: ${filePath}`);
+	reportLines.push(`- **Source file**: ${sourcePath}`);
 	reportLines.push(`- **Character ID**: ${selectedEntry.character_id}`);
 	reportLines.push(`- **Output stack ID**: ${stackId}`);
 	reportLines.push(`- **Names behavior**: ${styleName} (ST value ${preset.names_behavior ?? "?"})`);

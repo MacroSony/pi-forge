@@ -74,7 +74,19 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 
 Drag, drop, edit, validate, preview, import, export, fork, and delete stacks — all in your browser.
 
-The editor runs on `127.0.0.1` with a session token. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
+
+The editor runs on `127.0.0.1:41738` by default with a session token. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+
+To use a different fixed port, create `.pi/forge/config.json`:
+
+```json
+{
+  "webEditor": {
+    "port": 41738
+  }
+}
+```
 
 ## Use cases
 
