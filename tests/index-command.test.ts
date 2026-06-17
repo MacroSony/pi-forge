@@ -415,6 +415,14 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		name: "Original",
+		variables: { char: "Konata" },
+		state: {
+			schemaVersion: 1,
+			definitions: {
+				"user.preference": { type: "string", scope: "session", userWritable: true },
+				"user.locked": { type: "string", scope: "session", userWritable: false },
+			},
+		},
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
 	});
 	const harness = createHarness();
@@ -441,6 +449,9 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /importBtn/);
 		assert.match(pageHtml, /exportBtn/);
 		assert.match(pageHtml, /deleteStackBtn/);
+		assert.match(pageHtml, /variablesBtn/);
+		assert.match(pageHtml, /stateSchemaBtn/);
+		assert.match(pageHtml, /sessionStateBtn/);
 
 		const rejected = await fetch(apiUrl);
 		assert.equal(rejected.status, 403);
@@ -489,6 +500,43 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(longMessage?.content.length, longPreviewContent.length);
 		assert.ok((longMessage?.chars ?? 0) > 9000);
 		assert.match(previewResult.text, /preview truncated/);
+
+		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(stateResponse.status, 200);
+		const stateSnapshot = await stateResponse.json() as {
+			activeStackId?: string;
+			session: Record<string, unknown>;
+			definitions: Record<string, { type?: string; userWritable?: boolean }>;
+		};
+		assert.equal(stateSnapshot.activeStackId, "default");
+		assert.deepEqual(stateSnapshot.session, {});
+		assert.equal(stateSnapshot.definitions["user.preference"]?.type, "string");
+
+		const stateSetResponse = await fetch(new URL("/api/state/user.preference", editorUrl), {
+			method: "PUT",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ value: "brief" }),
+		});
+		assert.equal(stateSetResponse.status, 200);
+		const stateSet = await stateSetResponse.json() as { session: Record<string, unknown> };
+		assert.equal(stateSet.session["user.preference"], "brief");
+		assert.equal(harness.appended.at(-1)?.type, "pi-forge-variable-state");
+		assert.deepEqual((harness.appended.at(-1)?.data as { variables: unknown }).variables, { "user.preference": "brief" });
+
+		const stateBlockedResponse = await fetch(new URL("/api/state/user.locked", editorUrl), {
+			method: "PUT",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ value: "blocked" }),
+		});
+		assert.equal(stateBlockedResponse.status, 400);
+
+		const stateClearResponse = await fetch(new URL("/api/state/user.preference", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(stateClearResponse.status, 200);
+		const stateClear = await stateClearResponse.json() as { session: Record<string, unknown> };
+		assert.deepEqual(stateClear.session, {});
 
 		const fork = { ...loaded.stack, id: "forked", name: "Forked Stack", autoActivate: false };
 		const createResponse = await fetch(apiUrl, {

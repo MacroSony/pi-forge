@@ -15,7 +15,7 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary } from "./web-editor.ts";
+import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -174,6 +174,19 @@ export default function piForge(pi: ExtensionAPI) {
 				const diagnostics = validatePromptStack(stack);
 				const preview = buildPreview(ctx, { stack, filePath: target.filePath, diagnostics });
 				return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
+			},
+			getState: () => ({ ok: true, ...webStateSnapshot() }),
+			setState: (name, value) => {
+				if (!isPromptStateValue(value)) return { ok: false, status: 400, error: "State value must be JSON-compatible." };
+				const result = applyStatePatch([{ name, value }], [], "user");
+				if (!result.ok) return { ok: false, status: 400, error: result.error };
+				return { ok: true, ...webStateSnapshot() };
+			},
+			clearState: (name) => {
+				const clears = name ? [name] : Object.keys(sessionVariables);
+				const result = applyStatePatch([], clears, "user");
+				if (!result.ok) return { ok: false, status: 400, error: result.error };
+				return { ok: true, ...webStateSnapshot() };
 			},
 			activateStack: (id) => {
 				if (!setActive(id, ctx)) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
@@ -1135,6 +1148,14 @@ export default function piForge(pi: ExtensionAPI) {
 
 		lines.push("", "Turn variables are cleared for each user message and are only visible during prompt compilation.");
 		return lines.join("\n");
+	}
+
+	function webStateSnapshot(): WebEditorStateSnapshot {
+		return {
+			activeStackId: active?.stack.id,
+			session: { ...sessionVariables },
+			definitions: { ...(active?.stack.state?.definitions ?? {}) },
+		};
 	}
 
 	function renderPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack): string {

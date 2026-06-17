@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from "node:net";
 
 import { convertSillyTavernPreset } from "./sillytavern-importer.ts";
-import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
+import type { PromptStack, PromptStackDiagnostic, PromptStateDefinition, PromptStateValue } from "./types.ts";
 
 export interface WebEditorStackSummary {
 	id: string;
@@ -27,6 +27,9 @@ export interface WebEditorHost {
 	deleteStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	validateStack(stack: PromptStack): PromptStackDiagnostic[];
 	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>;
+	getState(): WebEditorOperationResult<WebEditorStateSnapshot>;
+	setState(name: string, value: PromptStateValue): WebEditorOperationResult<WebEditorStateSnapshot>;
+	clearState(name?: string): WebEditorOperationResult<WebEditorStateSnapshot>;
 	activateStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	disableStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	reloadStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
@@ -48,6 +51,12 @@ export interface WebEditorPreview {
 	messages: WebEditorPreviewSection[];
 	totalChars: number;
 	approxTokens: number;
+}
+
+export interface WebEditorStateSnapshot {
+	activeStackId?: string;
+	session: Record<string, PromptStateValue>;
+	definitions: Record<string, PromptStateDefinition>;
 }
 
 export interface WebEditorCreateStackOptions {
@@ -200,6 +209,27 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 		return;
 	}
 
+	if (req.method === "GET" && parts[1] === "state" && parts.length === 2) {
+		sendOperation(res, host.getState());
+		return;
+	}
+
+	if ((req.method === "PUT" || req.method === "POST") && parts[1] === "state" && parts.length === 3) {
+		const body = await readJsonBody(req);
+		const parsed = readStatePayload(body);
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		sendOperation(res, host.setState(parts[2]!, parsed.value));
+		return;
+	}
+
+	if (req.method === "DELETE" && parts[1] === "state" && (parts.length === 2 || parts.length === 3)) {
+		sendOperation(res, host.clearState(parts[2]));
+		return;
+	}
+
 	if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "activate") {
 		sendOperation(res, host.activateStack(parts[2]!));
 		return;
@@ -265,6 +295,12 @@ function readStackPayload(body: unknown): { ok: true; stack: PromptStack; import
 	return { ok: true, stack: rawStack as unknown as PromptStack };
 }
 
+function readStatePayload(body: unknown): { ok: true; value: PromptStateValue } | { ok: false; error: string } {
+	const value = isPlainObject(body) && Object.prototype.hasOwnProperty.call(body, "value") ? body.value : body;
+	if (!isPromptStateValue(value)) return { ok: false, error: "State value must be JSON-compatible." };
+	return { ok: true, value };
+}
+
 function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
 	return Array.isArray(value.prompts) && !Array.isArray(value.items);
 }
@@ -324,6 +360,16 @@ function closeServer(server: Server, sockets: Set<Socket>): Promise<void> {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPromptStateValue(value: unknown): value is PromptStateValue {
+	if (value === null) return true;
+	const type = typeof value;
+	if (type === "string" || type === "boolean") return true;
+	if (type === "number") return Number.isFinite(value);
+	if (Array.isArray(value)) return value.every(isPromptStateValue);
+	if (!isPlainObject(value)) return false;
+	return Object.values(value).every(isPromptStateValue);
 }
 
 function renderEditorHtml(): string {
@@ -869,6 +915,110 @@ html, body {
   padding: 2px 8px;
   font-size: 12px;
 }
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  align-items: stretch;
+  justify-content: center;
+  background: rgba(15, 23, 42, .34);
+  padding: 24px;
+}
+.modal.open {
+  display: flex;
+}
+.modal-dialog {
+  width: min(1280px, calc(100vw - 48px));
+  height: min(860px, calc(100vh - 48px));
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--pane);
+  box-shadow: 0 18px 60px rgba(15, 23, 42, .22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  font-weight: 650;
+}
+.modal-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.modal-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #fbfcfe;
+}
+.modal-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.modal-spacer {
+  flex: 1;
+}
+.data-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.data-row {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+}
+.data-row.header {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  background: transparent;
+  border-color: transparent;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.variable-row {
+  grid-template-columns: minmax(160px, 260px) minmax(220px, 1fr) 86px;
+}
+.definition-row {
+  grid-template-columns: minmax(150px, 210px) minmax(100px, 140px) minmax(90px, 120px) minmax(180px, 1fr) minmax(190px, 260px) minmax(110px, 130px) minmax(110px, 130px) 86px;
+}
+.session-row {
+  grid-template-columns: minmax(160px, 240px) minmax(220px, 1fr) minmax(180px, 260px) 168px;
+}
+.data-row textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+.row-actions {
+  display: flex;
+  gap: 6px;
+}
+.state-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
 @media (max-width: 900px) {
   .shell, .workspace, .settings, .item-fields {
     grid-template-columns: 1fr;
@@ -886,6 +1036,9 @@ html, body {
   }
   .item-list {
     max-height: 260px;
+  }
+  .variable-row, .definition-row, .session-row {
+    grid-template-columns: 1fr;
   }
 }
 </style>
@@ -912,6 +1065,9 @@ html, body {
       <button id="saveBtn" class="primary">Save</button>
       <button id="validateBtn">Validate</button>
       <button id="previewBtn">Preview</button>
+      <button id="variablesBtn">Variables</button>
+      <button id="stateSchemaBtn">State schema</button>
+      <button id="sessionStateBtn">Session state</button>
       <button id="forkBtn">Fork</button>
       <button id="importBtn" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
       <button id="exportBtn">Export JSON</button>
@@ -941,6 +1097,7 @@ html, body {
     </section>
   </main>
 </div>
+<div id="stackModal" class="modal"></div>
 <script>
 const token = new URLSearchParams(location.search).get("token") || "";
 let stacks = [];
@@ -956,6 +1113,8 @@ let optionsError = "";
 let sidebarCollapsed = false;
 let slotOptionsMode = "form";
 let previewCopyTexts = [];
+let stackVariablesError = "";
+let stackDefinitionsError = "";
 
 const slotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
@@ -963,6 +1122,7 @@ const slotNames = [
   "active-model", "pi-docs"
 ];
 const roles = ["", "system", "user", "assistant", "custom"];
+const stateScopes = ["", "static", "session", "turn"];
 
 const el = (id) => document.getElementById(id);
 
@@ -1014,6 +1174,8 @@ async function selectStack(id, options = {}) {
   selectedItemIndex = currentStack.items.length ? 0 : -1;
   dirty = false;
   optionsError = "";
+  stackVariablesError = "";
+  stackDefinitionsError = "";
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + currentStack.id);
 }
@@ -1272,6 +1434,307 @@ function optionText(key, label, value) {
 
 function optionNumber(key, label, value) {
   return '<div class="field"><label>' + escapeHtml(label) + '</label><input type="number" min="1" data-option="' + attr(key) + '" value="' + attr(value) + '"></div>';
+}
+
+function showStackModal(title, meta, body) {
+  const pane = el("stackModal");
+  pane.innerHTML = '<div class="modal-dialog" role="dialog" aria-modal="true" aria-label="' + attr(title) + '">' +
+    '<div class="modal-head"><div><div class="modal-title">' + escapeHtml(title) + '</div><div class="modal-meta">' + escapeHtml(meta || "") + '</div></div>' +
+    '<div class="modal-actions"><button data-modal-close="true">Close</button></div></div>' +
+    '<div class="modal-body">' + body + '</div></div>';
+  pane.classList.add("open");
+}
+
+function closeStackModal() {
+  const pane = el("stackModal");
+  pane.classList.remove("open");
+  pane.innerHTML = "";
+}
+
+function openVariablesEditor() {
+  if (!currentStack) return;
+  const rows = Object.entries(currentStack.variables || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => variableRowHtml(name, value))
+    .join("");
+  showStackModal(
+    "Stack variables",
+    "Static string variables available to macros and variables slots.",
+    '<div class="modal-toolbar"><button id="addVariableBtn">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
+      '<div class="data-table" id="variablesRows">' +
+      '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
+      rows +
+      '</div>',
+  );
+  bindVariablesEditor();
+}
+
+function variableRowHtml(name = "", value = "") {
+  return '<div class="data-row variable-row" data-var-row>' +
+    '<input data-var-name value="' + attr(name) + '" placeholder="char">' +
+    '<input data-var-value value="' + attr(value) + '" placeholder="泉此方">' +
+    '<button type="button" class="danger" data-delete-row="true">Delete</button>' +
+    '</div>';
+}
+
+function bindVariablesEditor() {
+  el("addVariableBtn").onclick = () => {
+    el("variablesRows").insertAdjacentHTML("beforeend", variableRowHtml(uniqueVariableName()));
+    bindVariablesEditor();
+    syncVariablesFromModal();
+  };
+  document.querySelectorAll("[data-var-row] input").forEach((input) => {
+    input.oninput = () => syncVariablesFromModal();
+  });
+  document.querySelectorAll("[data-var-row] [data-delete-row]").forEach((button) => {
+    button.onclick = (event) => {
+      event.target.closest("[data-var-row]").remove();
+      syncVariablesFromModal();
+    };
+  });
+}
+
+function uniqueVariableName() {
+  const existing = new Set(Object.keys(currentStack?.variables || {}));
+  let index = existing.size + 1;
+  let name = "var" + index;
+  while (existing.has(name)) name = "var" + (++index);
+  return name;
+}
+
+function syncVariablesFromModal() {
+  if (!currentStack) return;
+  const variables = {};
+  const seen = new Set();
+  let duplicate = false;
+  document.querySelectorAll("[data-var-row]").forEach((row) => {
+    const name = row.querySelector("[data-var-name]").value.trim();
+    const value = row.querySelector("[data-var-value]").value;
+    if (!name) return;
+    if (seen.has(name)) duplicate = true;
+    seen.add(name);
+    variables[name] = value;
+  });
+  if (Object.keys(variables).length) currentStack.variables = variables;
+  else delete currentStack.variables;
+  stackVariablesError = duplicate ? "Duplicate stack variable names." : "";
+  markDirty();
+  if (duplicate) setStatus(stackVariablesError, "error");
+}
+
+function openStateSchemaEditor() {
+  if (!currentStack) return;
+  const definitions = currentStack.state?.definitions || {};
+  const rows = Object.entries(definitions)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, definition]) => definitionRowHtml(name, definition))
+    .join("");
+  showStackModal(
+    "State schema",
+    "Definitions describe session state names, metadata, defaults, and write permissions.",
+    '<div class="modal-toolbar"><button id="addDefinitionBtn">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Empty default means no default value.</span></div>' +
+      '<div class="data-table" id="definitionRows">' +
+      '<div class="data-row header definition-row"><div>Name</div><div>Type</div><div>Scope</div><div>Description</div><div>Default JSON</div><div>Agent write</div><div>User write</div><div></div></div>' +
+      rows +
+      '</div>',
+  );
+  bindStateSchemaEditor();
+}
+
+function definitionRowHtml(name = "", definition = {}) {
+  return '<div class="data-row definition-row" data-definition-row>' +
+    '<input data-definition-name value="' + attr(name) + '" placeholder="agent.progress">' +
+    '<input data-definition-type value="' + attr(definition.type || "") + '" placeholder="string">' +
+    '<select data-definition-scope>' + stateScopes.map((scope) => '<option value="' + attr(scope) + '"' + ((definition.scope || "") === scope ? " selected" : "") + '>' + escapeHtml(scope || "(default)") + '</option>').join("") + '</select>' +
+    '<input data-definition-description value="' + attr(definition.description || "") + '" placeholder="Short description">' +
+    '<textarea class="state-value" data-definition-default placeholder="optional default JSON">' + escapeHtml(definition.default === undefined ? "" : JSON.stringify(definition.default, null, 2)) + '</textarea>' +
+    permissionSelect("data-definition-agent", definition.agentWritable) +
+    permissionSelect("data-definition-user", definition.userWritable) +
+    '<button type="button" class="danger" data-delete-row="true">Delete</button>' +
+    '</div>';
+}
+
+function permissionSelect(attribute, value) {
+  const current = value === true ? "true" : value === false ? "false" : "";
+  return '<select ' + attribute + '>' +
+    '<option value=""' + (current === "" ? " selected" : "") + '>default</option>' +
+    '<option value="true"' + (current === "true" ? " selected" : "") + '>allowed</option>' +
+    '<option value="false"' + (current === "false" ? " selected" : "") + '>blocked</option>' +
+    '</select>';
+}
+
+function bindStateSchemaEditor() {
+  el("addDefinitionBtn").onclick = () => {
+    el("definitionRows").insertAdjacentHTML("beforeend", definitionRowHtml(uniqueDefinitionName()));
+    bindStateSchemaEditor();
+    syncStateDefinitionsFromModal();
+  };
+  document.querySelectorAll("[data-definition-row] input, [data-definition-row] textarea, [data-definition-row] select").forEach((control) => {
+    control.oninput = () => syncStateDefinitionsFromModal();
+    control.onchange = () => syncStateDefinitionsFromModal();
+  });
+  document.querySelectorAll("[data-definition-row] [data-delete-row]").forEach((button) => {
+    button.onclick = (event) => {
+      event.target.closest("[data-definition-row]").remove();
+      syncStateDefinitionsFromModal();
+    };
+  });
+}
+
+function uniqueDefinitionName() {
+  const existing = new Set(Object.keys(currentStack?.state?.definitions || {}));
+  let index = existing.size + 1;
+  let name = "agent.state" + index;
+  while (existing.has(name)) name = "agent.state" + (++index);
+  return name;
+}
+
+function syncStateDefinitionsFromModal() {
+  if (!currentStack) return;
+  const definitions = {};
+  const seen = new Set();
+  const errors = [];
+  document.querySelectorAll("[data-definition-row]").forEach((row) => {
+    const name = row.querySelector("[data-definition-name]").value.trim();
+    if (!name) return;
+    if (seen.has(name)) errors.push("Duplicate state definition: " + name);
+    seen.add(name);
+    const definition = {};
+    setOptionalObjectString(definition, "type", row.querySelector("[data-definition-type]").value);
+    setOptionalObjectString(definition, "scope", row.querySelector("[data-definition-scope]").value);
+    setOptionalObjectString(definition, "description", row.querySelector("[data-definition-description]").value);
+    const defaultText = row.querySelector("[data-definition-default]").value.trim();
+    if (defaultText) {
+      try {
+        const parsed = JSON.parse(defaultText);
+        if (!isJsonStateValue(parsed)) errors.push(name + ": default must be JSON-compatible.");
+        else definition.default = parsed;
+      } catch (error) {
+        errors.push(name + ": invalid default JSON.");
+      }
+    }
+    const agent = row.querySelector("[data-definition-agent]").value;
+    if (agent === "true") definition.agentWritable = true;
+    else if (agent === "false") definition.agentWritable = false;
+    const user = row.querySelector("[data-definition-user]").value;
+    if (user === "true") definition.userWritable = true;
+    else if (user === "false") definition.userWritable = false;
+    definitions[name] = definition;
+  });
+
+  if (Object.keys(definitions).length) {
+    currentStack.state = { ...(currentStack.state || {}), schemaVersion: currentStack.state?.schemaVersion || 1, definitions };
+  } else if (currentStack.state?.schemaVersion) {
+    currentStack.state = { schemaVersion: currentStack.state.schemaVersion };
+  } else {
+    delete currentStack.state;
+  }
+  stackDefinitionsError = errors[0] || "";
+  markDirty();
+  if (stackDefinitionsError) setStatus(stackDefinitionsError, "error");
+}
+
+async function openSessionStateEditor() {
+  const snapshot = await api("/api/state");
+  renderSessionStateEditor(snapshot);
+}
+
+function renderSessionStateEditor(snapshot) {
+  const names = [...new Set([...Object.keys(snapshot.session || {}), ...Object.keys(snapshot.definitions || {})])].sort((a, b) => a.localeCompare(b));
+  const rows = names.map((name) => sessionRowHtml(name, snapshot.session?.[name], snapshot.definitions?.[name], Object.prototype.hasOwnProperty.call(snapshot.session || {}, name))).join("");
+  showStackModal(
+    "Session state",
+    "Runtime state persisted in the current Pi session branch.",
+    '<div class="modal-toolbar"><button id="addSessionStateBtn">Add state</button><button id="refreshSessionStateBtn">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger">Clear all</button></div>' +
+      '<div class="data-table" id="sessionStateRows">' +
+      '<div class="data-row header session-row"><div>Name</div><div>Value</div><div>Definition</div><div></div></div>' +
+      rows +
+      '</div>',
+  );
+  bindSessionStateEditor();
+}
+
+function sessionRowHtml(name = "", value = undefined, definition = undefined, isSet = false) {
+  const details = definition
+    ? [
+      definition.type ? "type=" + definition.type : undefined,
+      definition.scope ? "scope=" + definition.scope : undefined,
+      definition.agentWritable !== undefined ? "agent=" + definition.agentWritable : undefined,
+      definition.userWritable !== undefined ? "user=" + definition.userWritable : undefined,
+      definition.description || undefined,
+    ].filter(Boolean).join(" | ")
+    : "(none)";
+  return '<div class="data-row session-row" data-session-row>' +
+    '<input data-session-name value="' + attr(name) + '" placeholder="agent.progress">' +
+    '<textarea class="state-value" data-session-value placeholder="text or JSON">' + escapeHtml(isSet ? formatStateInput(value) : "") + '</textarea>' +
+    '<div class="modal-meta">' + escapeHtml(details) + '</div>' +
+    '<div class="row-actions"><button type="button" data-session-set="true">Set</button><button type="button" class="danger" data-session-clear="true">Clear</button></div>' +
+    '</div>';
+}
+
+function bindSessionStateEditor() {
+  el("addSessionStateBtn").onclick = () => {
+    el("sessionStateRows").insertAdjacentHTML("beforeend", sessionRowHtml());
+    bindSessionStateEditor();
+  };
+  el("refreshSessionStateBtn").onclick = () => run(openSessionStateEditor);
+  el("clearAllSessionStateBtn").onclick = () => run(async () => {
+    if (!confirm("Clear all session state?")) return;
+    const snapshot = await api("/api/state", { method: "DELETE" });
+    renderSessionStateEditor(snapshot);
+    setStatus("Cleared all session state", "success");
+  });
+  document.querySelectorAll("[data-session-set]").forEach((button) => {
+    button.onclick = (event) => run(() => setSessionStateFromRow(event.target.closest("[data-session-row]")));
+  });
+  document.querySelectorAll("[data-session-clear]").forEach((button) => {
+    button.onclick = (event) => run(() => clearSessionStateFromRow(event.target.closest("[data-session-row]")));
+  });
+}
+
+async function setSessionStateFromRow(row) {
+  const name = row.querySelector("[data-session-name]").value.trim();
+  if (!name) throw new Error("State name is required.");
+  const value = parseStateInput(row.querySelector("[data-session-value]").value);
+  const snapshot = await api("/api/state/" + encodeURIComponent(name), { method: "PUT", body: { value } });
+  renderSessionStateEditor(snapshot);
+  setStatus("Set session state " + name, "success");
+}
+
+async function clearSessionStateFromRow(row) {
+  const name = row.querySelector("[data-session-name]").value.trim();
+  if (!name) throw new Error("State name is required.");
+  const snapshot = await api("/api/state/" + encodeURIComponent(name), { method: "DELETE" });
+  renderSessionStateEditor(snapshot);
+  setStatus("Cleared session state " + name, "success");
+}
+
+function parseStateInput(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|["[{])/.test(trimmed)) {
+    return JSON.parse(trimmed);
+  }
+  return value;
+}
+
+function formatStateInput(value) {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function isJsonStateValue(value) {
+  if (value === null) return true;
+  const type = typeof value;
+  if (type === "string" || type === "boolean") return true;
+  if (type === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonStateValue);
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value).every(isJsonStateValue);
+}
+
+function setOptionalObjectString(target, key, value) {
+  const trimmed = value.trim();
+  if (trimmed) target[key] = trimmed;
 }
 
 function addItem(kind) {
@@ -1558,6 +2021,8 @@ async function reloadFromDisk() {
 function stackForSubmit() {
   if (!currentStack) throw new Error("No stack selected.");
   if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
+  if (stackVariablesError) throw new Error(stackVariablesError);
+  if (stackDefinitionsError) throw new Error(stackDefinitionsError);
   const clone = structuredClone(currentStack);
   if (!clone.type) clone.type = "pi-forge.prompt-stack";
   if (!clone.schemaVersion) clone.schemaVersion = 1;
@@ -1642,11 +2107,19 @@ el("activateBtn").onclick = () => run(activateStack);
 el("saveBtn").onclick = () => run(saveStack);
 el("validateBtn").onclick = () => run(validateStack);
 el("previewBtn").onclick = () => run(previewStack);
+el("variablesBtn").onclick = openVariablesEditor;
+el("stateSchemaBtn").onclick = openStateSchemaEditor;
+el("sessionStateBtn").onclick = () => run(openSessionStateEditor);
 el("forkBtn").onclick = () => run(forkStack);
 el("importBtn").onclick = () => run(importStackJson);
 el("exportBtn").onclick = () => run(exportStackJson);
 el("importFileInput").onchange = (event) => run(() => handleImportFile(event));
 el("deleteStackBtn").onclick = () => run(deleteCurrentStack);
+el("stackModal").onclick = (event) => {
+  if (event.target === el("stackModal") || event.target.closest?.("[data-modal-close]")) {
+    closeStackModal();
+  }
+};
 el("preview").onclick = (event) => {
   if (event.target === el("preview") || event.target.closest?.("[data-preview-close]")) {
     hidePreview();
@@ -1663,7 +2136,9 @@ el("addSlotBtn").onclick = () => addItem("slot");
 el("deleteItemBtn").onclick = deleteSelectedItem;
 window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && el("preview").classList.contains("open")) hidePreview();
+  if (event.key !== "Escape") return;
+  if (el("preview").classList.contains("open")) hidePreview();
+  else if (el("stackModal").classList.contains("open")) closeStackModal();
 });
 
 run(() => loadStacks());

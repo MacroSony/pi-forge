@@ -40,8 +40,8 @@ Immediate inspector work:
 
 State editing work:
 
-- Add structured editors for stack `variables`, `state.definitions`, and `context` options.
-- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`.
+- Add structured editors for stack `variables`, `state.definitions`, and `context` options. - variables and state definitions done; context still open
+- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`. - done
 - Keep metadata-enabled state definitions visible in previews even before runtime values exist. - done
 - Keep raw JSON editing available for advanced fields and recovery.
 
