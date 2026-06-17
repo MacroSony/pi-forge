@@ -15,13 +15,14 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
+import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
 const AGENT_VAR_PREFIX = "agent.";
 
 type StateActor = "agent" | "user";
+type PayloadDisplayTarget = "editor" | "web";
 
 interface StateUpdateInput {
 	name: string;
@@ -40,6 +41,9 @@ export default function piForge(pi: ExtensionAPI) {
 	let lastPersistedActiveId: string | undefined;
 	let interceptNextProviderPayload = false;
 	let interceptPayloadSavePath: string | undefined;
+	let interceptPayloadDisplayTarget: PayloadDisplayTarget = "editor";
+	let payloadCaptureArmedAt: string | undefined;
+	let latestProviderPayloadCapture: WebEditorPayloadCapture | undefined;
 	let latestCompileDiagnostics: PromptStackDiagnostic[] = [];
 	let webEditor: WebEditorServer | undefined;
 	let webEditorCwd: string | undefined;
@@ -187,6 +191,15 @@ export default function piForge(pi: ExtensionAPI) {
 				const result = applyStatePatch([], clears, "user");
 				if (!result.ok) return { ok: false, status: 400, error: result.error };
 				return { ok: true, ...webStateSnapshot() };
+			},
+			getPayload: () => ({ ok: true, ...webPayloadSnapshot() }),
+			armPayload: (savePath) => {
+				armPayloadIntercept(ctx, savePath, "web");
+				return { ok: true, ...webPayloadSnapshot() };
+			},
+			clearPayload: () => {
+				clearPayloadCapture(ctx);
+				return { ok: true, ...webPayloadSnapshot() };
 			},
 			activateStack: (id) => {
 				if (!setActive(id, ctx)) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
@@ -613,29 +626,36 @@ export default function piForge(pi: ExtensionAPI) {
 	pi.on("before_provider_request", async (event, ctx) => {
 		if (!interceptNextProviderPayload) return;
 		const savePath = interceptPayloadSavePath;
+		const displayTarget = interceptPayloadDisplayTarget;
 		interceptNextProviderPayload = false;
 		interceptPayloadSavePath = undefined;
+		interceptPayloadDisplayTarget = "editor";
+		payloadCaptureArmedAt = undefined;
 		ctx.ui.setStatus("pi-forge-intercept", undefined);
 
-		const payload = safeStringify(event.payload);
-		const approxTokens = estimatePayloadTokens(payload);
+		const capture = captureProviderPayload(event.payload, savePath);
 		if (savePath) {
 			if (!ctx.isProjectTrusted()) {
 				ctx.ui.notify("pi-forge: project is not trusted; refusing to save provider payload.", "warning");
 			} else {
 				const resolvedPath = savePath.startsWith("/") ? savePath : join(ctx.cwd, savePath);
 				mkdirSync(dirname(resolvedPath), { recursive: true });
-				writeFileSync(resolvedPath, payload, "utf8");
-				ctx.ui.notify(`pi-forge: provider payload saved to ${resolvedPath} (${payload.length} chars, ~${approxTokens} tokens)`, "info");
+				writeFileSync(resolvedPath, capture.text, "utf8");
+				ctx.ui.notify(`pi-forge: provider payload saved to ${resolvedPath} (${capture.chars} chars, ~${capture.approxTokens} tokens)`, "info");
 			}
 		}
 
-		if (ctx.hasUI) {
-			await ctx.ui.editor(`pi-forge: provider payload (${payload.length} chars, ~${approxTokens} tokens)`, payload);
+		if (displayTarget === "web") {
+			ctx.ui.notify(`pi-forge: provider payload captured for web editor (${capture.chars} chars, ~${capture.approxTokens} tokens).`, "info");
 			return;
 		}
 
-		console.log(payload);
+		if (ctx.hasUI) {
+			await ctx.ui.editor(`pi-forge: provider payload (${capture.chars} chars, ~${capture.approxTokens} tokens)`, capture.text);
+			return;
+		}
+
+		console.log(capture.text);
 	});
 
 	pi.registerTool({
@@ -739,11 +759,27 @@ export default function piForge(pi: ExtensionAPI) {
 		},
 	});
 
-	function armPayloadIntercept(ctx: ExtensionCommandContext, savePath?: string): void {
+	function armPayloadIntercept(ctx: ExtensionCommandContext, savePath?: string, displayTarget: PayloadDisplayTarget = "editor"): void {
 		interceptNextProviderPayload = true;
 		interceptPayloadSavePath = savePath;
+		interceptPayloadDisplayTarget = displayTarget;
+		payloadCaptureArmedAt = new Date().toISOString();
+		latestProviderPayloadCapture = undefined;
 		ctx.ui.setStatus("pi-forge-intercept", ctx.ui.theme.fg("warning", savePath ? "payload:armed+save" : "payload:armed"));
+		if (displayTarget === "web") {
+			ctx.ui.notify(savePath ? `pi-forge: next provider payload will be captured in the web editor and saved to ${savePath}.` : "pi-forge: next provider payload will be captured in the web editor.", "info");
+			return;
+		}
 		ctx.ui.notify(savePath ? `pi-forge: next provider payload will be displayed and saved to ${savePath}.` : "pi-forge: next provider payload will be displayed before sending.", "info");
+	}
+
+	function clearPayloadCapture(ctx: ExtensionCommandContext): void {
+		interceptNextProviderPayload = false;
+		interceptPayloadSavePath = undefined;
+		interceptPayloadDisplayTarget = "editor";
+		payloadCaptureArmedAt = undefined;
+		latestProviderPayloadCapture = undefined;
+		ctx.ui.setStatus("pi-forge-intercept", undefined);
 	}
 
 	pi.registerCommand("intercept", {
@@ -1158,6 +1194,23 @@ export default function piForge(pi: ExtensionAPI) {
 		};
 	}
 
+	function webPayloadSnapshot(): WebEditorPayloadSnapshot {
+		if (interceptNextProviderPayload) {
+			return {
+				status: "armed",
+				armedAt: payloadCaptureArmedAt,
+				savePath: interceptPayloadSavePath,
+			};
+		}
+		if (latestProviderPayloadCapture) {
+			return {
+				status: "captured",
+				capture: latestProviderPayloadCapture,
+			};
+		}
+		return { status: "idle" };
+	}
+
 	function renderPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack): string {
 		return buildPreview(ctx, target).text;
 	}
@@ -1229,13 +1282,47 @@ export default function piForge(pi: ExtensionAPI) {
 		console.log(text);
 	}
 
-	function safeStringify(value: unknown): string {
+	function captureProviderPayload(value: unknown, savePath?: string): WebEditorPayloadCapture {
+		const formatted = formatProviderPayload(value);
+		const capture: WebEditorPayloadCapture = {
+			capturedAt: new Date().toISOString(),
+			stackId: active?.stack.id,
+			savePath,
+			payload: formatted.payload,
+			text: formatted.text,
+			chars: formatted.chars,
+			approxTokens: formatted.approxTokens,
+			truncated: formatted.truncated,
+			error: formatted.error,
+		};
+		latestProviderPayloadCapture = capture;
+		return capture;
+	}
+
+	function formatProviderPayload(value: unknown): { payload?: unknown; text: string; chars: number; approxTokens: number; truncated: boolean; error?: string } {
 		try {
-			const text = JSON.stringify(redactPayload(value), null, 2);
+			const payload = redactPayload(value);
+			const renderedJson = JSON.stringify(payload, null, 2);
+			const text = renderedJson === undefined ? String(payload) : renderedJson;
 			const maxChars = 200_000;
-			return text.length > maxChars ? `${text.slice(0, maxChars)}\n\n[pi-forge: payload truncated after ${maxChars} chars]` : text;
+			const truncated = text.length > maxChars;
+			const rendered = truncated ? `${text.slice(0, maxChars)}\n\n[pi-forge: payload truncated after ${maxChars} chars]` : text;
+			return {
+				payload: truncated ? undefined : payload,
+				text: rendered,
+				chars: rendered.length,
+				approxTokens: estimatePayloadTokens(rendered),
+				truncated,
+			};
 		} catch (error) {
-			return `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
+			const text = `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
+			return {
+				text,
+				chars: text.length,
+				approxTokens: estimatePayloadTokens(text),
+				truncated: false,
+				error: text,
+			};
 		}
 	}
 

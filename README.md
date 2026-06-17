@@ -168,6 +168,8 @@ See exactly what gets sent to the model:
 /payload next save=.pi/forge/payloads/last.json
 ```
 
+Or open `/preset ui`, click **Arm payload**, send the next Pi prompt, and inspect the redacted provider payload in the browser.
+
 Or preview your compiled prompt without sending anything:
 
 ```
@@ -243,7 +245,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 |---------|-------------|
 | `/preset import-silly <path>` | Import a SillyTavern preset |
 | `/intercept` | Show the next provider payload |
-| `/payload next [save=<path>]` | Show and optionally save the next payload |
+| `/payload next [save=<path>]` | Show, save, and expose the next payload to the web editor |
 
 ## Common macros
 

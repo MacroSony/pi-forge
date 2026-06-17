@@ -18,36 +18,41 @@ Implemented and working:
 - Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
 - Active prompt stack status in the footer.
-- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, prompt state slot rendering, and SillyTavern import behavior.
+- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, prompt state slot rendering, SillyTavern import behavior, command/event behavior, and web-editor API smoke flows.
 - `variables` slot that renders static/session/turn prompt state as valid XML or JSON, with scope/namespace filters and optional stack metadata.
 - Branch-aware prompt state restoration during session tree navigation.
 - `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
 - `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
 - `/preset ui` lightweight fixed-port localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows.
 - Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
+- Web payload capture inspector that can arm the next provider request, display captures from UI or `/payload next`, preserve redaction, and show collapsible top-level JSON sections.
+- Structured web editors for stack static `variables` and `state.definitions`.
+- Web runtime session-state editor that can view, set, and clear state using the same validation and persistence path as `/state`.
+- Metadata-enabled variables slots render matching state definitions as `unset` entries before runtime values exist.
 
 ## Priority 1: Web inspector and state editing
 
-The next product gap is observability and editability from the web UI. Slash-command preview and payload intercept remain useful fallbacks, but large prompt stacks are hard to inspect as plain text.
+Core web observability and state editing are now in place. Slash-command preview and payload intercept remain useful fallbacks, while the browser handles the larger structured views.
 
-Immediate inspector work:
+Completed inspector/state work:
 
-- Replace the web editor's plain preview pane with a full-screen structured preview inspector. - first slice done
+- Replace the web editor's plain preview pane with a full-screen structured preview inspector.
 - Show system prompt and message layout as separate collapsible sections with char and approximate token counts.
-- Avoid early truncation in the browser preview; large sections should render collapsed instead.
+- Avoid early truncation in the browser preview; large sections render collapsed instead.
 - Add copy controls for full preview and individual sections.
-- Later, capture `/payload next` results into a web UI payload inspector with collapsible JSON and redaction preserved.
+- Add structured editors for stack `variables` and `state.definitions`.
+- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`.
+- Keep metadata-enabled state definitions visible in previews even before runtime values exist.
+- Capture provider payloads into the web editor with collapsible JSON, redaction preserved, char/token estimates, copy controls, and arm/clear actions.
 
-State editing work:
+Remaining inspector/state work:
 
-- Add structured editors for stack `variables`, `state.definitions`, and `context` options. - variables and state definitions done; context still open
-- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`. - done
-- Keep metadata-enabled state definitions visible in previews even before runtime values exist. - done
-- Keep raw JSON editing available for advanced fields and recovery.
+- Add a structured editor for stack `context` options.
+- Add a small raw JSON stack view or recovery path for advanced stack-level fields not covered by forms.
 
 ## Priority 2: Command and lifecycle test coverage
 
-Pure compiler/loader/importer tests are in place, plus an initial mocked command/event harness for `src/index.ts`. The next reliability gap is broadening that harness across more lifecycle cases.
+Pure compiler/loader/importer tests are in place, plus a mocked command/event harness for `src/index.ts`. Most high-value command and lifecycle cases are covered now; keep extending the harness as new command, event, and web-editor behavior lands.
 
 Extend the test harness that can instantiate the extension with mocked:
 
@@ -55,7 +60,7 @@ Extend the test harness that can instantiate the extension with mocked:
 - `ExtensionContext` cwd, UI, trust, and session manager
 - `appendEntry`, `setStatus`, `notify`, and editor calls
 
-High-value command/event cases:
+Current command/event coverage:
 
 1. `/preset` second-level completions keep the subcommand in the inserted value, e.g. `use default`. - done
 2. `/preset use <id>` persists the selected stack and updates footer status. - done
@@ -65,18 +70,20 @@ High-value command/event cases:
 6. `/preset validate` shows diagnostics for the requested stack. - done
 7. `/preset import-silly` writes the stack and report, then reloads stack state. - collision coverage done
 8. `session_start` restores variables and active stack selection. - done
-9. `turn_start` persists active stack selection only when needed.
+9. `turn_start` persists active stack selection only when needed. - done
 10. `/preset ui` starts/stops the local editor and protects the API with a URL token. - smoke coverage done
 11. Web editor save/create/delete operations reload current Pi stack state. - smoke coverage done
+12. Web editor runtime state API uses `/state` validation and persistence semantics. - smoke coverage done
 
 ## Priority 3: Harden SillyTavern importer
 
 The first importer command is implemented. Next work should make it safer and more ergonomic.
 
-Remaining immediate fixes:
+Completed hardening:
 
 - Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
 - Add tests around command-level import behavior, not only the pure importer. - initial coverage done
+- Preview generated output without writing files via `--dry-run`. - done
 
 Importer improvements:
 
@@ -84,7 +91,6 @@ Importer improvements:
 - Preserve more SillyTavern metadata in `import.source`.
 - Expand the unsupported macro report with suggested pi-forge replacements where clear.
 - Add fixtures from real presets to catch field-shape drift.
-- Consider a dry-run mode that only shows the generated stack/report. - done
 
 SillyTavern regex script boundary:
 
@@ -110,7 +116,7 @@ High-value follow-ups:
 - Unsaved-change indicator tied to the selected stack and item.
 - Copy-to-clipboard export fallback in addition to JSON download.
 - Inline validation badges beside specific stack items.
-- More structured editors for stack `variables`, `state.definitions`, and `context` options.
+- Structured editor for stack `context` options.
 - Better import flow for pasted JSON, not only file selection.
 - Browser-level smoke screenshots if a browser test dependency is added later.
 
@@ -257,13 +263,15 @@ Current and next test cases:
 13. SillyTavern importer happy path and error handling - done
 14. SillyTavern marker filtering and `lastUserMessage` handling - done
 15. context rewrite once per user turn behavior - done
-16. command behavior for `/state` and `/preset vars` - partial validation coverage done
+16. command behavior for `/state` and `/preset vars` - get/clear and validation coverage done
 17. command behavior for `/preset validate` - done
 18. command behavior for `/preset import-silly` - collision coverage done
 19. command/tool lifecycle tests for `forge_state_set` - validation coverage done
 20. `/payload next save=<path>` redaction/save behavior - done
-21. `/preset ui` API smoke test for serve/save/create/delete - done
-22. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
+21. `/preset ui` API smoke test for serve/save/create/delete and runtime state set/clear - done
+22. Web preview inspector returns full structured sections without browser-side truncation - done
+23. Web payload capture API arms, captures, redacts, exposes, and clears provider payloads - done
+24. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
 
 ## Priority 10: Payload/debug tools
 
@@ -278,6 +286,7 @@ Improve `/intercept`:
 
 - redact API keys and large binary/image content - basic redaction/truncation done
 - show token-ish size estimates if possible - basic char/approx-token display done
+- mirror captured payloads into the web editor inspector with collapsible JSON - done
 - add broader payload-shape tests for provider-specific payloads
 
 ## Priority 11: Agent profiles later
@@ -301,8 +310,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add structured UI editors for stack `variables` and `state.definitions`.
-2. Add a runtime session-state UI equivalent to `/state list/set/get/clear`.
-3. Capture `/payload next` results into the web inspector with collapsible JSON and redaction preserved.
-4. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
-5. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
+1. Add a structured editor for stack `context` options.
+2. Add a small raw JSON stack view or recovery path for advanced stack-level fields.
+3. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
+4. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
+5. Improve pasted JSON import flow for native and SillyTavern stacks.

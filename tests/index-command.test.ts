@@ -452,6 +452,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /variablesBtn/);
 		assert.match(pageHtml, /stateSchemaBtn/);
 		assert.match(pageHtml, /sessionStateBtn/);
+		assert.match(pageHtml, /payloadBtn/);
 
 		const rejected = await fetch(apiUrl);
 		assert.equal(rejected.status, 403);
@@ -537,6 +538,55 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(stateClearResponse.status, 200);
 		const stateClear = await stateClearResponse.json() as { session: Record<string, unknown> };
 		assert.deepEqual(stateClear.session, {});
+
+		const payloadIdleResponse = await fetch(new URL("/api/payload", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(payloadIdleResponse.status, 200);
+		const payloadIdle = await payloadIdleResponse.json() as { status: string };
+		assert.equal(payloadIdle.status, "idle");
+
+		const payloadArmResponse = await fetch(new URL("/api/payload/arm", editorUrl), {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({}),
+		});
+		assert.equal(payloadArmResponse.status, 200);
+		const payloadArmed = await payloadArmResponse.json() as { status: string; armedAt?: string };
+		assert.equal(payloadArmed.status, "armed");
+		assert.ok(payloadArmed.armedAt);
+		assert.equal(statuses["pi-forge-intercept"], "payload:armed");
+
+		const editorCountBeforePayload = editors.length;
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: {
+				Authorization: "Bearer web-secret",
+				model: "test-model",
+				messages: [{ role: "user", content: "web capture" }],
+			},
+		}, ctx);
+		assert.equal(editors.length, editorCountBeforePayload);
+
+		const payloadCapturedResponse = await fetch(new URL("/api/payload", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(payloadCapturedResponse.status, 200);
+		const payloadCaptured = await payloadCapturedResponse.json() as {
+			status: string;
+			capture?: { stackId?: string; text: string; payload?: Record<string, unknown>; chars: number; approxTokens: number };
+		};
+		assert.equal(payloadCaptured.status, "captured");
+		assert.equal(payloadCaptured.capture?.stackId, "default");
+		assert.match(payloadCaptured.capture?.text ?? "", /"Authorization": "\[redacted\]"/);
+		assert.equal((payloadCaptured.capture?.payload as { Authorization?: string } | undefined)?.Authorization, "[redacted]");
+		assert.ok((payloadCaptured.capture?.chars ?? 0) > 0);
+		assert.ok((payloadCaptured.capture?.approxTokens ?? 0) > 0);
+		assert.equal(statuses["pi-forge-intercept"], undefined);
+
+		const payloadClearResponse = await fetch(new URL("/api/payload", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(payloadClearResponse.status, 200);
+		const payloadCleared = await payloadClearResponse.json() as { status: string };
+		assert.equal(payloadCleared.status, "idle");
 
 		const fork = { ...loaded.stack, id: "forked", name: "Forked Stack", autoActivate: false };
 		const createResponse = await fetch(apiUrl, {

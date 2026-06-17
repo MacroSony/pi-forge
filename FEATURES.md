@@ -1,6 +1,6 @@
 # pi-forge Implemented Features
 
-This file tracks the currently implemented feature surface for the published MVP and the typed prompt-state follow-up.
+This file tracks the currently implemented feature surface for the published MVP, typed prompt-state follow-up, and web editor inspector/state work.
 
 ## Package and Runtime
 
@@ -90,6 +90,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/preset validate [id]`
 - `/preset diagnostics`
 - `/preset reload`
+- `/preset ui [stop|restart]`
 - `/preset vars [set <name> <value>|get <name>|clear [name]]`
 - `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
 - `/state list`
@@ -119,6 +120,7 @@ This file tracks the currently implemented feature surface for the published MVP
 
 - `/intercept` displays the next provider payload with redaction/truncation for secrets and large data.
 - `/payload next save=<path>` displays and saves the next redacted/truncated provider payload with char/token-ish size estimates.
+- The web editor can arm, poll, clear, and inspect the next redacted provider payload in a full-screen collapsible JSON inspector.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
@@ -144,11 +146,14 @@ This file tracks the currently implemented feature surface for the published MVP
 - Fall back to raw JSON editing for advanced slot options.
 - Validate and inspect edited stack state before saving.
 - Full-screen structured preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
-- View, set, and clear runtime session state from the web editor using the same validation path as `/state`.
+- Arm and inspect the next provider payload from the web editor; captures triggered by `/payload next` are also available to the browser while the editor is open.
+- Provider payload inspector shows top-level JSON sections, redacted full text, char/token estimates, and copy controls.
+- View, set, and clear runtime session state from the web editor using the same validation and persistence path as `/state`.
+- Session state editor shows active stack definitions next to current runtime values.
 - Save existing stack JSON and immediately reload pi-forge stack state.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Export the current edited stack JSON from the browser.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
-- Smoke tests cover editor server token checks, save, runtime state set/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.
+- Smoke tests cover editor server token checks, save, runtime state set/clear, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.
