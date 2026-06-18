@@ -135,15 +135,20 @@ This file tracks the currently implemented feature surface for the published MVP
 - Fixed editor port can be configured through `.pi/forge/config.json` using `webEditor.port`.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
+- Light/dark theme toggle, button icons, and tooltips for common actions.
+- Unsaved-change badge in the top bar.
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
+- Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
 - Edit stack `state.definitions`, including type, scope, description, defaults, and write permissions.
 - Reorder items by drag-and-drop.
 - Add and delete stack items.
 - Toggle item enabled state from the item list.
+- Inline item validation badges when diagnostics point at a specific item.
 - Edit block content in a full-height text editor area.
 - Edit slot kind, role, slot type, and common slot options through form controls.
 - Fall back to raw JSON editing for advanced slot options.
+- View, copy, and apply raw stack JSON as a recovery path for advanced stack-level fields.
 - Validate and inspect edited stack state before saving.
 - Full-screen structured preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Arm and inspect the next provider payload from the web editor; captures triggered by `/payload next` are also available to the browser while the editor is open.
@@ -152,8 +157,8 @@ This file tracks the currently implemented feature surface for the published MVP
 - Session state editor shows active stack definitions next to current runtime values.
 - Save existing stack JSON and immediately reload pi-forge stack state.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
-- Export the current edited stack JSON from the browser.
+- Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
-- Smoke tests cover editor server token checks, save, runtime state set/clear, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.
+- Smoke tests cover editor server token checks, bundled page/script markers, save, runtime state set/clear, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.

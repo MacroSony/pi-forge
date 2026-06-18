@@ -433,6 +433,35 @@ function renderEditorHtml(): string {
   --error-bg: #fde8e7;
   --success: #1f7a3a;
   --control: #ffffff;
+  --control-muted: #f3f5f8;
+  --pane-soft: #fbfcfe;
+  --row: #ffffff;
+  --code-bg: #111827;
+  --code-text: #e5e7eb;
+  --shadow: rgba(15, 23, 42, .24);
+}
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111315;
+  --pane: #181a1d;
+  --line: #32363b;
+  --line-strong: #525a63;
+  --text: #edf0f2;
+  --muted: #a0a8b2;
+  --accent: #2aa889;
+  --accent-bg: #15362f;
+  --warning: #e4b75f;
+  --warning-bg: #3a2d13;
+  --error: #f06f64;
+  --error-bg: #3c1d1a;
+  --success: #69c98c;
+  --control: #202327;
+  --control-muted: #25292e;
+  --pane-soft: #151719;
+  --row: #1c1f23;
+  --code-bg: #0b0d10;
+  --code-text: #e8edf2;
+  --shadow: rgba(0, 0, 0, .42);
 }
 * { box-sizing: border-box; }
 body {
@@ -455,6 +484,17 @@ button {
   border-radius: 6px;
   cursor: pointer;
 }
+button[data-icon]::before {
+  content: attr(data-icon);
+  display: inline-block;
+  min-width: 1em;
+  margin-right: 6px;
+  text-align: center;
+  color: currentColor;
+}
+button.icon[data-icon]::before {
+  margin-right: 0;
+}
 button.primary {
   border-color: var(--accent);
   background: var(--accent);
@@ -475,7 +515,7 @@ button:disabled {
 input, select, textarea {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
-  background: white;
+  background: var(--control);
   color: var(--text);
   padding: 6px 8px;
   width: 100%;
@@ -511,6 +551,19 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.dirty-badge {
+  display: none;
+  flex: 0 0 auto;
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.dirty-badge.visible {
+  display: inline-block;
 }
 .shell {
   display: grid;
@@ -618,7 +671,7 @@ html, body {
   gap: 10px;
   padding: 12px;
   border-bottom: 1px solid var(--line);
-  background: #fbfcfe;
+  background: var(--pane-soft);
   flex: 0 0 auto;
 }
 .settings textarea {
@@ -681,7 +734,7 @@ html, body {
   width: 100%;
   text-align: left;
   border: 1px solid var(--line);
-  background: white;
+  background: var(--row);
   border-radius: 6px;
   padding: 8px;
   margin-bottom: 6px;
@@ -726,8 +779,27 @@ html, body {
 }
 .item-toggle.disabled {
   border-color: var(--line-strong);
-  background: #f3f5f8;
+  background: var(--control-muted);
   color: var(--muted);
+}
+.item-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid var(--line);
+}
+.item-badge.error {
+  color: var(--error);
+  background: var(--error-bg);
+  border-color: var(--error);
+}
+.item-badge.warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning);
 }
 .item-title {
   font-weight: 650;
@@ -743,7 +815,7 @@ html, body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #fbfcfe;
+  background: var(--pane-soft);
 }
 .item-editor {
   flex: 1;
@@ -873,8 +945,8 @@ html, body {
   height: min(900px, calc(100vh - 48px));
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: #f8fafc;
-  box-shadow: 0 18px 60px rgba(15, 23, 42, .24);
+  background: var(--pane-soft);
+  box-shadow: 0 18px 60px var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -910,7 +982,7 @@ html, body {
 .preview-section {
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--row);
   margin-bottom: 8px;
   overflow: hidden;
 }
@@ -940,8 +1012,8 @@ html, body {
 .preview-text {
   margin: 0;
   padding: 10px;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--code-bg);
+  color: var(--code-text);
   overflow: auto;
   max-height: min(62vh, 680px);
   white-space: pre-wrap;
@@ -971,7 +1043,7 @@ html, body {
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--pane);
-  box-shadow: 0 18px 60px rgba(15, 23, 42, .22);
+  box-shadow: 0 18px 60px var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1001,13 +1073,17 @@ html, body {
   min-height: 0;
   overflow: auto;
   padding: 12px;
-  background: #fbfcfe;
+  background: var(--pane-soft);
 }
 .modal-toolbar {
   display: flex;
   gap: 8px;
   align-items: center;
   margin-bottom: 10px;
+}
+.modal-body.json-modal {
+  display: flex;
+  flex-direction: column;
 }
 .modal-spacer {
   flex: 1;
@@ -1024,7 +1100,7 @@ html, body {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--row);
 }
 .data-row.header {
   color: var(--muted);
@@ -1056,6 +1132,14 @@ html, body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
+.raw-json-editor {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  resize: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
 @media (max-width: 900px) {
   .shell, .workspace, .settings, .item-fields {
     grid-template-columns: 1fr;
@@ -1082,11 +1166,13 @@ html, body {
 </head>
 <body>
 <header class="topbar">
-  <button id="sidebarToggleBtn" class="icon" title="Toggle prompt stacks sidebar">☰</button>
+  <button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle prompt stacks sidebar" aria-label="Toggle prompt stacks sidebar"></button>
   <div class="brand">pi-forge stack editor</div>
   <div id="status" class="status">Loading</div>
-  <button id="reloadBtn">Reload</button>
-  <button id="disableBtn">Disable stack</button>
+  <span id="dirtyBadge" class="dirty-badge" title="The current stack has unsaved edits">Unsaved</span>
+  <button id="themeBtn" data-icon="◐" title="Toggle light or dark theme">Theme</button>
+  <button id="reloadBtn" data-icon="↻" title="Reload prompt stacks from disk">Reload</button>
+  <button id="disableBtn" data-icon="■" title="Disable the active prompt stack">Disable stack</button>
 </header>
 <div id="shell" class="shell">
   <aside class="sidebar">
@@ -1098,20 +1184,22 @@ html, body {
   </aside>
   <main class="main">
     <div class="main-actions">
-      <button id="activateBtn" class="primary">Activate</button>
-      <button id="saveBtn" class="primary">Save</button>
-      <button id="validateBtn">Validate</button>
-      <button id="previewBtn">Preview</button>
-      <button id="payloadBtn">Arm payload</button>
-      <button id="variablesBtn">Variables</button>
-      <button id="stateSchemaBtn">State schema</button>
-      <button id="sessionStateBtn">Session state</button>
-      <button id="forkBtn">Fork</button>
-      <button id="importBtn" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
-      <button id="exportBtn">Export JSON</button>
+      <button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session">Activate</button>
+      <button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk">Save</button>
+      <button id="validateBtn" data-icon="!" title="Validate the edited stack without saving">Validate</button>
+      <button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it">Preview</button>
+      <button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
+      <button id="contextBtn" data-icon="☷" title="Edit stack-level context behavior">Context</button>
+      <button id="variablesBtn" data-icon="$" title="Edit stack static variables">Variables</button>
+      <button id="stateSchemaBtn" data-icon="#" title="Edit prompt state definitions and permissions">State schema</button>
+      <button id="sessionStateBtn" data-icon="◇" title="View and edit runtime session state">Session state</button>
+      <button id="stackJsonBtn" data-icon="{}" title="View, copy, or apply raw stack JSON">Stack JSON</button>
+      <button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
+      <button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
+      <button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
       <span class="action-spacer"></span>
-      <button id="deleteStackBtn" class="danger">Delete stack</button>
-      <button id="deleteItemBtn" class="danger">Delete item</button>
+      <button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
+      <button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
       <input id="importFileInput" type="file" accept="application/json,.json" hidden>
     </div>
     <section id="settings" class="settings"></section>
@@ -1122,8 +1210,8 @@ html, body {
           <span id="itemCount" class="stack-meta"></span>
         </div>
         <div class="item-tools">
-          <button id="addBlockBtn">Add block</button>
-          <button id="addSlotBtn">Add slot</button>
+          <button id="addBlockBtn" data-icon="+" title="Add a static block item">Add block</button>
+          <button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
         </div>
         <div id="itemList" class="item-list"></div>
       </div>
@@ -1152,8 +1240,10 @@ let sidebarCollapsed = false;
 let slotOptionsMode = "form";
 let previewCopyTexts = [];
 let payloadSnapshot = { status: "idle" };
+let latestDiagnostics = [];
 let stackVariablesError = "";
 let stackDefinitionsError = "";
+let currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 
 const slotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
@@ -1164,6 +1254,41 @@ const roles = ["", "system", "user", "assistant", "custom"];
 const stateScopes = ["", "static", "session", "turn"];
 
 const el = (id) => document.getElementById(id);
+
+function applyTheme(theme) {
+  currentTheme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = currentTheme;
+  const button = el("themeBtn");
+  if (button) {
+    button.textContent = currentTheme === "dark" ? "Light" : "Dark";
+    button.title = currentTheme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+  }
+}
+
+function toggleTheme() {
+  const next = currentTheme === "dark" ? "light" : "dark";
+  writeStoredTheme(next);
+  applyTheme(next);
+  setStatus(next === "dark" ? "Dark theme enabled" : "Light theme enabled", "success");
+}
+
+applyTheme(currentTheme);
+
+function readStoredTheme() {
+  try {
+    return localStorage.getItem("pi-forge-theme");
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredTheme(theme) {
+  try {
+    localStorage.setItem("pi-forge-theme", theme);
+  } catch {
+    // Ignore storage failures; the current page can still switch themes.
+  }
+}
 
 async function api(path, options = {}) {
   const headers = { "x-pi-forge-token": token, ...(options.headers || {}) };
@@ -1190,7 +1315,14 @@ function setStatus(text, tone = "") {
 
 function markDirty() {
   dirty = true;
+  renderDirtyState();
   setStatus("Unsaved changes");
+}
+
+function renderDirtyState() {
+  const badge = el("dirtyBadge");
+  if (!badge) return;
+  badge.classList.toggle("visible", dirty);
 }
 
 async function loadStacks(preferId = selectedId) {
@@ -1215,11 +1347,13 @@ async function selectStack(id, options = {}) {
   optionsError = "";
   stackVariablesError = "";
   stackDefinitionsError = "";
+  renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + currentStack.id);
 }
 
 function renderAll(diagnostics = []) {
+  latestDiagnostics = diagnostics;
   renderStackList();
   renderSettings();
   renderItemList();
@@ -1271,13 +1405,22 @@ function renderItemList() {
   list.innerHTML = "";
   if (!currentStack) return;
   el("itemCount").textContent = currentStack.items.length + " total";
+  const diagnosticsByItem = diagnosticsForItems();
   currentStack.items.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = "item-row" + (index === selectedItemIndex ? " selected" : "") + (item.enabled === false ? " disabled" : "");
     row.draggable = true;
     const enabled = item.enabled !== false;
+    const itemDiagnostics = diagnosticsByItem[item.id] || [];
+    const errors = itemDiagnostics.filter((diag) => diag.level === "error").length;
+    const warnings = itemDiagnostics.filter((diag) => diag.level === "warning").length;
+    const diagBadge = errors
+      ? '<span class="item-badge error" title="' + attr(diagnosticTitle(itemDiagnostics)) + '">' + errors + 'E</span>'
+      : warnings
+        ? '<span class="item-badge warning" title="' + attr(diagnosticTitle(itemDiagnostics)) + '">' + warnings + 'W</span>'
+        : "";
     row.innerHTML = '<div class="drag-handle" title="Drag to reorder">≡</div>' +
-      '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + '</div>' +
+      '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + diagBadge + '</div>' +
       '<div class="item-meta">' + escapeHtml(item.kind) + ' | id: ' + escapeHtml(item.id) + (item.role ? " | " + escapeHtml(item.role) : "") + (item.kind === "slot" ? " | " + escapeHtml(item.slot || "") : "") + '</div></div>' +
       '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="Toggle item">' + (enabled ? "On" : "Off") + '</button>';
     row.onclick = (event) => {
@@ -1309,6 +1452,20 @@ function renderItemList() {
     };
     list.appendChild(row);
   });
+}
+
+function diagnosticsForItems() {
+  const grouped = {};
+  for (const diagnostic of latestDiagnostics || []) {
+    if (!diagnostic.itemId) continue;
+    if (!grouped[diagnostic.itemId]) grouped[diagnostic.itemId] = [];
+    grouped[diagnostic.itemId].push(diagnostic);
+  }
+  return grouped;
+}
+
+function diagnosticTitle(diagnostics) {
+  return diagnostics.map((diag) => (diag.level || "info").toUpperCase() + ": " + (diag.message || "")).join("\n");
 }
 
 function renderItemEditor() {
@@ -1458,29 +1615,45 @@ function defaultSlotOptionValue(key) {
 }
 
 function optionCheckbox(key, label, checked) {
-  return '<label class="checkline"><input type="checkbox" data-option="' + attr(key) + '" ' + (checked ? "checked" : "") + '> ' + escapeHtml(label) + '</label>';
+  return '<label class="checkline" title="' + attr(optionHelp(key)) + '"><input type="checkbox" data-option="' + attr(key) + '" ' + (checked ? "checked" : "") + '> ' + escapeHtml(label) + '</label>';
 }
 
 function optionSelect(key, label, value, choices) {
-  return '<div class="field"><label>' + escapeHtml(label) + '</label><select data-option="' + attr(key) + '">' +
+  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><select data-option="' + attr(key) + '">' +
     choices.map((choice) => '<option value="' + attr(choice) + '"' + (choice === value ? " selected" : "") + '>' + escapeHtml(choice) + '</option>').join("") +
     '</select></div>';
 }
 
 function optionText(key, label, value) {
-  return '<div class="field"><label>' + escapeHtml(label) + '</label><input data-option="' + attr(key) + '" data-array="true" value="' + attr(value) + '" placeholder="comma,separated"></div>';
+  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><input data-option="' + attr(key) + '" data-array="true" value="' + attr(value) + '" placeholder="comma,separated"></div>';
 }
 
 function optionNumber(key, label, value) {
-  return '<div class="field"><label>' + escapeHtml(label) + '</label><input type="number" min="1" data-option="' + attr(key) + '" value="' + attr(value) + '"></div>';
+  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><input type="number" min="1" data-option="' + attr(key) + '" value="' + attr(value) + '"></div>';
 }
 
-function showStackModal(title, meta, body) {
+function optionHelp(key) {
+  const descriptions = {
+    includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
+    includeStatic: "Include stack variables and static state defaults in this variables slot.",
+    includeSession: "Include persisted session state in this variables slot.",
+    includeTurn: "Include temporary turn state created during prompt compilation.",
+    includeMetadata: "Include state definition metadata such as type, description, and write permissions.",
+    format: "Choose XML or JSON rendering for prompt state.",
+    includeScopes: "Limit output to specific scopes such as static, session, or turn.",
+    includeNamespaces: "Only include state names matching these names or wildcard prefixes.",
+    excludeNamespaces: "Hide state names matching these names or wildcard prefixes.",
+    maxValueChars: "Truncate each rendered value after this many characters.",
+  };
+  return descriptions[key] || "Advanced slot option.";
+}
+
+function showStackModal(title, meta, body, options = {}) {
   const pane = el("stackModal");
   pane.innerHTML = '<div class="modal-dialog" role="dialog" aria-modal="true" aria-label="' + attr(title) + '">' +
     '<div class="modal-head"><div><div class="modal-title">' + escapeHtml(title) + '</div><div class="modal-meta">' + escapeHtml(meta || "") + '</div></div>' +
-    '<div class="modal-actions"><button data-modal-close="true">Close</button></div></div>' +
-    '<div class="modal-body">' + body + '</div></div>';
+    '<div class="modal-actions"><button data-modal-close="true" data-icon="×" title="Close this dialog">Close</button></div></div>' +
+    '<div class="modal-body ' + attr(options.bodyClass || "") + '">' + body + '</div></div>';
   pane.classList.add("open");
 }
 
@@ -1488,6 +1661,97 @@ function closeStackModal() {
   const pane = el("stackModal");
   pane.classList.remove("open");
   pane.innerHTML = "";
+}
+
+function openContextEditor() {
+  if (!currentStack) return;
+  showStackModal(
+    "Context options",
+    "Stack-level behavior for how pi-forge rewrites Pi conversation context.",
+    '<div class="modal-toolbar"><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
+      '<div class="data-table">' +
+      '<div class="data-row">' +
+      '<label class="checkline" title="Allow multiple enabled chat-history slots. When off, only the first enabled chat-history slot is expanded.">' +
+      '<input id="allowDuplicateChatHistoryInput" type="checkbox" ' + (currentStack.context?.allowDuplicateChatHistory === true ? "checked" : "") + '> Allow duplicate chat-history slots</label>' +
+      '<div class="option-note">Keep this off unless you intentionally want the same conversation history injected more than once.</div>' +
+      '</div>' +
+      '</div>',
+  );
+  el("allowDuplicateChatHistoryInput").onchange = (event) => {
+    setContextOption("allowDuplicateChatHistory", event.target.checked, false);
+    markDirty();
+  };
+}
+
+function setContextOption(key, value, defaultValue) {
+  const context = { ...(currentStack.context || {}) };
+  if (value === defaultValue || value === undefined) delete context[key];
+  else context[key] = value;
+  if (Object.keys(context).length) currentStack.context = context;
+  else delete currentStack.context;
+}
+
+function openRawStackJsonEditor() {
+  if (!currentStack) return;
+  const json = JSON.stringify(stackForDisplay(), null, 2);
+  showStackModal(
+    "Stack JSON",
+    "Raw recovery view for advanced fields. Apply updates the editor; Save writes to disk.",
+    '<div class="modal-toolbar">' +
+      '<button id="copyStackJsonBtn" data-icon="□" title="Copy this JSON to the clipboard">Copy</button>' +
+      '<button id="applyStackJsonBtn" class="primary" data-icon="✓" title="Apply this JSON to the editor without saving">Apply to editor</button>' +
+      '<span class="modal-spacer"></span><span id="stackJsonStatus" class="modal-meta">Unsaved stack JSON draft.</span>' +
+      '</div>' +
+      '<textarea id="stackJsonText" class="raw-json-editor" spellcheck="false">' + escapeHtml(json) + '</textarea>',
+    { bodyClass: "json-modal" },
+  );
+  el("copyStackJsonBtn").onclick = () => run(copyRawStackJson);
+  el("applyStackJsonBtn").onclick = () => run(applyRawStackJson);
+}
+
+function stackForDisplay() {
+  if (!currentStack) throw new Error("No stack selected.");
+  const clone = structuredClone(currentStack);
+  if (!clone.type) clone.type = "pi-forge.prompt-stack";
+  if (!clone.schemaVersion) clone.schemaVersion = 1;
+  return clone;
+}
+
+async function copyRawStackJson() {
+  await copyTextToClipboard(el("stackJsonText").value);
+  el("stackJsonStatus").textContent = "Copied JSON.";
+  setStatus("Copied stack JSON", "success");
+}
+
+async function applyRawStackJson() {
+  const text = el("stackJsonText").value;
+  const parsed = JSON.parse(text);
+  validateRawStackJson(parsed);
+  currentStack = parsed;
+  if (!currentStack.schemaVersion) currentStack.schemaVersion = 1;
+  if (!currentStack.type) currentStack.type = "pi-forge.prompt-stack";
+  selectedItemIndex = currentStack.items.length ? Math.min(Math.max(selectedItemIndex, 0), currentStack.items.length - 1) : -1;
+  optionsError = "";
+  stackVariablesError = "";
+  stackDefinitionsError = "";
+  closeStackModal();
+  markDirty();
+  renderAll(latestDiagnostics);
+  setStatus("Applied stack JSON to editor", "success");
+}
+
+function validateRawStackJson(stack) {
+  if (!stack || typeof stack !== "object" || Array.isArray(stack)) throw new Error("Stack JSON must be an object.");
+  if (typeof stack.id !== "string" || !stack.id.trim()) throw new Error("Stack JSON needs a non-empty string id.");
+  if (!Array.isArray(stack.items)) throw new Error("Stack JSON needs an items array.");
+  stack.items.forEach((item, index) => {
+    const label = "Item " + (index + 1);
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(label + " must be an object.");
+    if (item.kind !== "block" && item.kind !== "slot") throw new Error(label + " kind must be block or slot.");
+    if (typeof item.id !== "string" || !item.id.trim()) throw new Error(label + " needs a non-empty string id.");
+    if (item.kind === "block" && typeof item.content !== "string") throw new Error(label + " block content must be a string.");
+    if (item.kind === "slot" && typeof item.slot !== "string") throw new Error(label + " slot must be a string.");
+  });
 }
 
 function openVariablesEditor() {
@@ -1499,7 +1763,7 @@ function openVariablesEditor() {
   showStackModal(
     "Stack variables",
     "Static string variables available to macros and variables slots.",
-    '<div class="modal-toolbar"><button id="addVariableBtn">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
+    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
       '<div class="data-table" id="variablesRows">' +
       '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
       rows +
@@ -1512,7 +1776,7 @@ function variableRowHtml(name = "", value = "") {
   return '<div class="data-row variable-row" data-var-row>' +
     '<input data-var-name value="' + attr(name) + '" placeholder="char">' +
     '<input data-var-value value="' + attr(value) + '" placeholder="泉此方">' +
-    '<button type="button" class="danger" data-delete-row="true">Delete</button>' +
+    '<button type="button" class="danger" data-delete-row="true" data-icon="×" title="Delete this stack variable">Delete</button>' +
     '</div>';
 }
 
@@ -1571,7 +1835,7 @@ function openStateSchemaEditor() {
   showStackModal(
     "State schema",
     "Definitions describe session state names, metadata, defaults, and write permissions.",
-    '<div class="modal-toolbar"><button id="addDefinitionBtn">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Empty default means no default value.</span></div>' +
+    '<div class="modal-toolbar"><button id="addDefinitionBtn" data-icon="+" title="Add a prompt state definition">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Empty default means no default value.</span></div>' +
       '<div class="data-table" id="definitionRows">' +
       '<div class="data-row header definition-row"><div>Name</div><div>Type</div><div>Scope</div><div>Description</div><div>Default JSON</div><div>Agent write</div><div>User write</div><div></div></div>' +
       rows +
@@ -1589,7 +1853,7 @@ function definitionRowHtml(name = "", definition = {}) {
     '<textarea class="state-value" data-definition-default placeholder="optional default JSON">' + escapeHtml(definition.default === undefined ? "" : JSON.stringify(definition.default, null, 2)) + '</textarea>' +
     permissionSelect("data-definition-agent", definition.agentWritable) +
     permissionSelect("data-definition-user", definition.userWritable) +
-    '<button type="button" class="danger" data-delete-row="true">Delete</button>' +
+    '<button type="button" class="danger" data-delete-row="true" data-icon="×" title="Delete this state definition">Delete</button>' +
     '</div>';
 }
 
@@ -1684,7 +1948,7 @@ function renderSessionStateEditor(snapshot) {
   showStackModal(
     "Session state",
     "Runtime state persisted in the current Pi session branch.",
-    '<div class="modal-toolbar"><button id="addSessionStateBtn">Add state</button><button id="refreshSessionStateBtn">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger">Clear all</button></div>' +
+    '<div class="modal-toolbar"><button id="addSessionStateBtn" data-icon="+" title="Add a runtime session state row">Add state</button><button id="refreshSessionStateBtn" data-icon="↻" title="Reload session state from Pi">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger" data-icon="×" title="Clear all writable runtime session state">Clear all</button></div>' +
       '<div class="data-table" id="sessionStateRows">' +
       '<div class="data-row header session-row"><div>Name</div><div>Value</div><div>Definition</div><div></div></div>' +
       rows +
@@ -1707,7 +1971,7 @@ function sessionRowHtml(name = "", value = undefined, definition = undefined, is
     '<input data-session-name value="' + attr(name) + '" placeholder="agent.progress">' +
     '<textarea class="state-value" data-session-value placeholder="text or JSON">' + escapeHtml(isSet ? formatStateInput(value) : "") + '</textarea>' +
     '<div class="modal-meta">' + escapeHtml(details) + '</div>' +
-    '<div class="row-actions"><button type="button" data-session-set="true">Set</button><button type="button" class="danger" data-session-clear="true">Clear</button></div>' +
+    '<div class="row-actions"><button type="button" data-session-set="true" data-icon="✓" title="Set this session state value">Set</button><button type="button" class="danger" data-session-clear="true" data-icon="×" title="Clear this session state value">Clear</button></div>' +
     '</div>';
 }
 
@@ -1810,6 +2074,7 @@ async function saveStack() {
   selectedId = data.stack?.id || stack.id;
   currentStack = structuredClone(stack);
   dirty = false;
+  renderDirtyState();
   renderAll(data.stack?.diagnostics || []);
   setStatus("Saved " + selectedId, "success");
   await selectStack(selectedId, { keepDirty: true });
@@ -1831,6 +2096,7 @@ async function openImportedStack(stack, activate, actionLabel, extraOptions = {}
   stacks = data.stacks || stacks;
   selectedId = data.stack?.id || stack.id;
   dirty = false;
+  renderDirtyState();
   await selectStack(selectedId, { keepDirty: true });
   const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
   setStatus(actionLabel + converted + " " + selectedId, "success");
@@ -1902,19 +2168,34 @@ async function forkStack() {
   await openImportedStack(fork, activate, "Forked");
 }
 
-function exportStackJson() {
+async function exportStackJson() {
   const stack = stackForSubmit();
   const json = JSON.stringify(stack, null, 2) + "\n";
-  const blob = new Blob([json], { type: "application/json" });
+  const downloaded = downloadTextFile(sanitizeStackId(stack.id || "prompt-stack") + ".json", json, "application/json");
+  if (downloaded) {
+    setStatus("Exported " + (stack.id || "prompt stack"), "success");
+    return;
+  }
+  await copyTextToClipboard(json);
+  setStatus("Copied " + (stack.id || "prompt stack") + " JSON", "success");
+}
+
+function downloadTextFile(filename, text, type) {
+  if (typeof Blob === "undefined" || typeof URL === "undefined" || !URL.createObjectURL) return false;
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
+  if (!("download" in link)) {
+    URL.revokeObjectURL(url);
+    return false;
+  }
   link.href = url;
-  link.download = sanitizeStackId(stack.id || "prompt-stack") + ".json";
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  setStatus("Exported " + (stack.id || "prompt stack"), "success");
+  return true;
 }
 
 function uniqueForkId(baseId) {
@@ -1939,6 +2220,7 @@ async function validateStack() {
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/validate", { method: "POST", body: { stack } });
   renderDiagnostics(data.diagnostics || []);
+  renderItemList();
   hidePreview();
   setStatus("Validation complete", "success");
 }
@@ -1947,6 +2229,7 @@ async function previewStack() {
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/preview", { method: "POST", body: { stack } });
   renderDiagnostics(data.diagnostics || []);
+  renderItemList();
   renderPreviewInspector(data);
   setStatus("Preview rendered", "success");
 }
@@ -2020,7 +2303,7 @@ function renderPreviewInspector(data) {
     previewCopyTexts = [data.text || ""];
     pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
       '<div class="preview-head"><div><div class="preview-title">Preview</div><div class="preview-meta">Plain text fallback</div></div>' +
-      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0">Copy</button><button data-preview-close="true">Close</button></div></div>' +
+      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full preview text">Copy</button><button data-preview-close="true" data-icon="×" title="Close the preview">Close</button></div></div>' +
       '<div class="preview-body"><pre class="preview-text">' + escapeHtml(data.text || "") + '</pre></div></div>';
     pane.classList.add("open");
     return;
@@ -2034,7 +2317,7 @@ function renderPreviewInspector(data) {
     return '<details class="preview-section"' + open + '>' +
       '<summary><span class="preview-title">' + escapeHtml(section.title || section.id) + '</span>' +
       '<span class="preview-meta">' + escapeHtml(label + formatCount(section.chars) + " chars · ~" + formatCount(section.approxTokens) + " tokens") + '</span>' +
-      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" onclick="event.preventDefault()">Copy</button></summary>' +
+      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="Copy this preview section" onclick="event.preventDefault()">Copy</button></summary>' +
       '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
       '</details>';
   }).join("");
@@ -2042,7 +2325,7 @@ function renderPreviewInspector(data) {
   pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
     '<div class="preview-head"><div><div class="preview-title">Prompt preview: ' + escapeHtml(preview.stackId || selectedId) + '</div>' +
     '<div class="preview-meta">' + escapeHtml(formatCount(preview.totalChars) + " chars · ~" + formatCount(preview.approxTokens) + " tokens · " + (preview.messages || []).length + " messages") + '</div></div>' +
-    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0">Copy full</button><button data-preview-close="true">Close</button></div></div>' +
+    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full prompt preview">Copy full</button><button data-preview-close="true" data-icon="×" title="Close the preview">Close</button></div></div>' +
     '<div class="preview-body">' + sectionHtml + '</div></div>';
   pane.classList.add("open");
 }
@@ -2053,7 +2336,7 @@ function renderPayloadInspector(snapshot) {
     previewCopyTexts = [];
     pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
       '<div class="preview-head"><div><div class="preview-title">Provider payload</div><div class="preview-meta">No payload captured.</div></div>' +
-      '<div class="preview-actions"><button data-payload-arm="true">Arm next</button><button data-preview-close="true">Close</button></div></div>' +
+      '<div class="preview-actions"><button data-payload-arm="true" data-icon="◆" title="Capture the next provider payload">Arm next</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
       '<div class="preview-body"><div class="empty">Arm capture, then send the next prompt in Pi. The provider payload will appear here before it is sent.</div></div></div>';
     pane.classList.add("open");
     return;
@@ -2064,7 +2347,7 @@ function renderPayloadInspector(snapshot) {
     previewCopyTexts = [];
     pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
       '<div class="preview-head"><div><div class="preview-title">Payload capture armed</div><div class="preview-meta">' + escapeHtml(meta) + '</div></div>' +
-      '<div class="preview-actions"><button class="danger" data-payload-clear="true">Clear</button><button data-preview-close="true">Close</button></div></div>' +
+      '<div class="preview-actions"><button class="danger" data-payload-clear="true" data-icon="×" title="Clear the armed payload capture">Clear</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
       '<div class="preview-body"><div class="empty">Send the next prompt in Pi. The exact provider payload will be captured here and redacted before display.</div></div></div>';
     pane.classList.add("open");
     return;
@@ -2078,7 +2361,7 @@ function renderPayloadInspector(snapshot) {
     return '<details class="preview-section"' + open + '>' +
       '<summary><span class="preview-title">' + escapeHtml(section.title) + '</span>' +
       '<span class="preview-meta">' + escapeHtml(section.meta) + '</span>' +
-      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" onclick="event.preventDefault()">Copy</button></summary>' +
+      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="Copy this payload section" onclick="event.preventDefault()">Copy</button></summary>' +
       '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
       '</details>';
   }).join("");
@@ -2091,7 +2374,7 @@ function renderPayloadInspector(snapshot) {
   pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
     '<div class="preview-head"><div><div class="preview-title">Provider payload</div>' +
     '<div class="preview-meta">' + escapeHtml(metaParts.join(" · ") + (capture.capturedAt ? " · " + capture.capturedAt : "")) + '</div></div>' +
-    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0">Copy full</button><button data-payload-arm="true">Arm again</button><button class="danger" data-payload-clear="true">Clear</button><button data-preview-close="true">Close</button></div></div>' +
+    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full redacted payload">Copy full</button><button data-payload-arm="true" data-icon="◆" title="Capture the next provider payload">Arm again</button><button class="danger" data-payload-clear="true" data-icon="×" title="Clear the captured payload">Clear</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
     '<div class="preview-body">' + sectionHtml + '</div></div>';
   pane.classList.add("open");
 }
@@ -2133,6 +2416,11 @@ function formatCount(value) {
 async function copyPreviewText(index) {
   const text = previewCopyTexts[index] || "";
   if (!text) return;
+  await copyTextToClipboard(text);
+  setStatus("Copied text", "success");
+}
+
+async function copyTextToClipboard(text) {
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(text);
   } else {
@@ -2145,7 +2433,6 @@ async function copyPreviewText(index) {
     document.execCommand("copy");
     area.remove();
   }
-  setStatus("Copied text", "success");
 }
 
 async function activateStack() {
@@ -2171,6 +2458,7 @@ async function deleteCurrentStack() {
   const data = await api("/api/stacks/" + encodeURIComponent(id), { method: "DELETE" });
   stacks = data.stacks || [];
   dirty = false;
+  renderDirtyState();
   const next = stacks.find((stack) => stack.active) || stacks[0];
   if (next) {
     await selectStack(next.id, { keepDirty: true });
@@ -2203,12 +2491,13 @@ function stackForSubmit() {
 }
 
 function renderDiagnostics(diagnostics) {
+  latestDiagnostics = diagnostics || [];
   const pane = el("diagnostics");
-  if (!diagnostics.length) {
+  if (!latestDiagnostics.length) {
     pane.innerHTML = '<div class="diagnostic info">No diagnostics.</div>';
     return;
   }
-  pane.innerHTML = diagnostics.map((diag) => {
+  pane.innerHTML = latestDiagnostics.map((diag) => {
     const level = diag.level || "info";
     const item = diag.itemId ? " [" + escapeHtml(diag.itemId) + "]" : "";
     return '<div class="diagnostic ' + attr(level) + '"><strong>' + escapeHtml(level.toUpperCase()) + item + '</strong>: ' + escapeHtml(diag.message || "") + '</div>';
@@ -2218,6 +2507,8 @@ function renderDiagnostics(diagnostics) {
 function renderEmpty() {
   currentStack = null;
   selectedId = "";
+  dirty = false;
+  renderDirtyState();
   el("settings").innerHTML = "";
   el("itemList").innerHTML = "";
   el("itemEditor").innerHTML = '<div class="empty">No prompt stacks found.</div>';
@@ -2274,6 +2565,7 @@ function toggleSidebar() {
 }
 
 el("sidebarToggleBtn").onclick = toggleSidebar;
+el("themeBtn").onclick = toggleTheme;
 el("reloadBtn").onclick = () => run(reloadFromDisk);
 el("disableBtn").onclick = () => run(disableStacks);
 el("activateBtn").onclick = () => run(activateStack);
@@ -2281,9 +2573,11 @@ el("saveBtn").onclick = () => run(saveStack);
 el("validateBtn").onclick = () => run(validateStack);
 el("previewBtn").onclick = () => run(previewStack);
 el("payloadBtn").onclick = () => run(openPayloadCapture);
+el("contextBtn").onclick = openContextEditor;
 el("variablesBtn").onclick = openVariablesEditor;
 el("stateSchemaBtn").onclick = openStateSchemaEditor;
 el("sessionStateBtn").onclick = () => run(openSessionStateEditor);
+el("stackJsonBtn").onclick = openRawStackJsonEditor;
 el("forkBtn").onclick = () => run(forkStack);
 el("importBtn").onclick = () => run(importStackJson);
 el("exportBtn").onclick = () => run(exportStackJson);

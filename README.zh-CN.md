@@ -72,7 +72,7 @@ pi install npm:@zihanw/pi-forge
 /preset ui
 ```
 
-拖拽、编辑、校验、查看完整预览、管理变量和状态、导入、导出、fork、删除栈 —— 全在浏览器里完成。
+拖拽、编辑、校验、查看完整预览和捕获的 payload、管理变量/状态/context、切换深色模式、通过原始 stack JSON 修复高级字段、导入、导出、fork、删除栈 —— 全在浏览器里完成。
 
 导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
 

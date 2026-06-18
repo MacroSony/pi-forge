@@ -26,7 +26,9 @@ Implemented and working:
 - `/preset ui` lightweight fixed-port localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows.
 - Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Web payload capture inspector that can arm the next provider request, display captures from UI or `/payload next`, preserve redaction, and show collapsible top-level JSON sections.
-- Structured web editors for stack static `variables` and `state.definitions`.
+- Structured web editors for stack static `variables`, `state.definitions`, and `context` options.
+- Raw stack JSON view/apply recovery path for advanced fields that do not have dedicated controls yet.
+- Web editor polish for dark mode, button icons/tooltips, unsaved-change badge, export clipboard fallback, and inline item validation badges.
 - Web runtime session-state editor that can view, set, and clear state using the same validation and persistence path as `/state`.
 - Metadata-enabled variables slots render matching state definitions as `unset` entries before runtime values exist.
 
@@ -44,11 +46,12 @@ Completed inspector/state work:
 - Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`.
 - Keep metadata-enabled state definitions visible in previews even before runtime values exist.
 - Capture provider payloads into the web editor with collapsible JSON, redaction preserved, char/token estimates, copy controls, and arm/clear actions.
+- Add a structured editor for stack `context` options.
+- Add a raw JSON stack view/apply recovery path for advanced stack-level fields.
 
 Remaining inspector/state work:
 
-- Add a structured editor for stack `context` options.
-- Add a small raw JSON stack view or recovery path for advanced stack-level fields not covered by forms.
+- No immediate Priority 1 blockers. Keep new inspector and state work focused on real prompt-debugging pain points.
 
 ## Priority 2: Command and lifecycle test coverage
 
@@ -111,14 +114,20 @@ TGbreak migration notes:
 
 The lightweight web editor is implemented and usable. Future polish should stay focused rather than turning it into a separate full application too early.
 
-High-value follow-ups:
+Completed polish:
 
-- Unsaved-change indicator tied to the selected stack and item.
+- Unsaved-change indicator tied to the selected stack.
 - Copy-to-clipboard export fallback in addition to JSON download.
 - Inline validation badges beside specific stack items.
 - Structured editor for stack `context` options.
+- Raw stack JSON view/apply recovery path for advanced stack-level fields.
+- Light/dark theme toggle, toolbar/modal/inspector button icons, and hover tooltips.
+
+High-value follow-ups:
+
 - Better import flow for pasted JSON, not only file selection.
 - Browser-level smoke screenshots if a browser test dependency is added later.
+- Keyboard shortcuts for save, validate, preview, and close dialog once the UI settles.
 
 Keep slash-command fallbacks for terminal-first workflows.
 
@@ -271,7 +280,8 @@ Current and next test cases:
 21. `/preset ui` API smoke test for serve/save/create/delete and runtime state set/clear - done
 22. Web preview inspector returns full structured sections without browser-side truncation - done
 23. Web payload capture API arms, captures, redacts, exposes, and clears provider payloads - done
-24. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
+24. Web editor bundled page exposes context/raw JSON/polish controls and parses its inline script - done
+25. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
 
 ## Priority 10: Payload/debug tools
 
@@ -310,8 +320,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add a structured editor for stack `context` options.
-2. Add a small raw JSON stack view or recovery path for advanced stack-level fields.
-3. Add small web-editor polish: unsaved-change indicator, copy export fallback, and inline item validation badges.
-4. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
-5. Improve pasted JSON import flow for native and SillyTavern stacks.
+1. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
+2. Improve pasted JSON import flow for native and SillyTavern stacks.
+3. Add browser-level smoke screenshots if we decide to add a browser test dependency.
+4. Add broader provider-specific payload-shape tests.
+5. Design preset-level tool allow/deny controls before implementing them.

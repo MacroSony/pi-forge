@@ -453,6 +453,15 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /stateSchemaBtn/);
 		assert.match(pageHtml, /sessionStateBtn/);
 		assert.match(pageHtml, /payloadBtn/);
+		assert.match(pageHtml, /themeBtn/);
+		assert.match(pageHtml, /contextBtn/);
+		assert.match(pageHtml, /stackJsonBtn/);
+		assert.match(pageHtml, /dirtyBadge/);
+		assert.match(pageHtml, /data-icon/);
+		assert.match(pageHtml, /validateRawStackJson/);
+		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
+		assert.ok(scriptMatch?.[1]);
+		assert.doesNotThrow(() => new Function(scriptMatch[1]!));
 
 		const rejected = await fetch(apiUrl);
 		assert.equal(rejected.status, 403);
