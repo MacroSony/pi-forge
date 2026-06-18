@@ -76,9 +76,9 @@ Drag, drop, edit, validate, inspect full previews and captured payloads, manage 
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
-The editor runs on `127.0.0.1:41738` by default with a session token. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
 
-To use a different fixed port, create `.pi/forge/config.json`:
+To prefer a specific port, create `.pi/forge/config.json`. If that port is busy, pi-forge falls back to another available port and shows the actual URL:
 
 ```json
 {

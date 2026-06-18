@@ -76,9 +76,9 @@ pi install npm:@zihanw/pi-forge
 
 导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
 
-编辑器默认运行在 `127.0.0.1:41738`，并带有会话 token。写入需要项目被信任，且只会写入 `.pi/prompt-stacks`；保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
+编辑器默认运行在一个可用的 `127.0.0.1` 端口，并带有会话 token，所以多个 Pi 实例可以同时打开各自的编辑器。写入需要项目被信任，且只会写入 `.pi/prompt-stacks`；保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
 
-如果要使用别的固定端口，可以创建 `.pi/forge/config.json`：
+如果想优先使用某个端口，可以创建 `.pi/forge/config.json`。如果该端口被占用，pi-forge 会回退到其他可用端口，并显示实际 URL：
 
 ```json
 {

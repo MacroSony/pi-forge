@@ -15,7 +15,7 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { DEFAULT_WEB_EDITOR_PORT, startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
+import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -47,6 +47,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let latestCompileDiagnostics: PromptStackDiagnostic[] = [];
 	let webEditor: WebEditorServer | undefined;
 	let webEditorCwd: string | undefined;
+	let webEditorPreferredPort: number | undefined;
 
 	function activeId(): string | undefined {
 		return active?.stack.id;
@@ -290,23 +291,38 @@ export default function piForge(pi: ExtensionAPI) {
 		const settings = loadWebEditorSettings(ctx);
 		for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
 
-		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd || webEditor.port !== settings.port)) {
+		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd || webEditorPreferredPort !== settings.preferredPort)) {
 			await webEditor.close();
 			webEditor = undefined;
 			webEditorCwd = undefined;
+			webEditorPreferredPort = undefined;
 			ctx.ui.setStatus("pi-forge-editor", undefined);
 		}
 
 		if (!webEditor) {
 			try {
-				webEditor = await startWebEditorServer(createWebEditorHost(ctx), { port: settings.port });
+				webEditor = await startWebEditorServer(createWebEditorHost(ctx), { port: settings.preferredPort });
 			} catch (error) {
-				const detail = error instanceof Error ? error.message : String(error);
-				ctx.ui.setStatus("pi-forge-editor", undefined);
-				ctx.ui.notify(`pi-forge: failed to start stack editor on 127.0.0.1:${settings.port}: ${detail}. Change ${settings.configPath} or stop the process using that port.`, "error");
-				return;
+				if (settings.preferredPort !== undefined) {
+					const detail = error instanceof Error ? error.message : String(error);
+					ctx.ui.notify(`pi-forge: preferred editor port 127.0.0.1:${settings.preferredPort} was unavailable (${detail}); using an available port instead.`, "warning");
+					try {
+						webEditor = await startWebEditorServer(createWebEditorHost(ctx));
+					} catch (fallbackError) {
+						const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+						ctx.ui.setStatus("pi-forge-editor", undefined);
+						ctx.ui.notify(`pi-forge: failed to start stack editor on an available localhost port: ${fallbackDetail}.`, "error");
+						return;
+					}
+				} else {
+					const detail = error instanceof Error ? error.message : String(error);
+					ctx.ui.setStatus("pi-forge-editor", undefined);
+					ctx.ui.notify(`pi-forge: failed to start stack editor on an available localhost port: ${detail}.`, "error");
+					return;
+				}
 			}
 			webEditorCwd = ctx.cwd;
+			webEditorPreferredPort = settings.preferredPort;
 			ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
 			ctx.ui.notify(`pi-forge: stack editor running at ${webEditor.url}`, "info");
 		} else {
@@ -316,10 +332,10 @@ export default function piForge(pi: ExtensionAPI) {
 		await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1:${webEditor.port}\nOptional config: ${settings.configPath}\nProject: ${webEditorCwd}`);
 	}
 
-	function loadWebEditorSettings(ctx: ExtensionCommandContext): { port: number; configPath: string; warnings: string[] } {
+	function loadWebEditorSettings(ctx: ExtensionCommandContext): { preferredPort?: number; configPath: string; warnings: string[] } {
 		const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
 		if (!ctx.isProjectTrusted() || !existsSync(configPath)) {
-			return { port: DEFAULT_WEB_EDITOR_PORT, configPath, warnings: [] };
+			return { configPath, warnings: [] };
 		}
 
 		let raw: unknown;
@@ -327,32 +343,29 @@ export default function piForge(pi: ExtensionAPI) {
 			raw = JSON.parse(readFileSync(configPath, "utf8"));
 		} catch (error) {
 			return {
-				port: DEFAULT_WEB_EDITOR_PORT,
 				configPath,
-				warnings: [`pi-forge: failed to read ${configPath}; using editor port ${DEFAULT_WEB_EDITOR_PORT}. ${error instanceof Error ? error.message : String(error)}`],
+				warnings: [`pi-forge: failed to read ${configPath}; using an available editor port. ${error instanceof Error ? error.message : String(error)}`],
 			};
 		}
 
 		if (!isPlainObject(raw)) {
 			return {
-				port: DEFAULT_WEB_EDITOR_PORT,
 				configPath,
-				warnings: [`pi-forge: ${configPath} must be a JSON object; using editor port ${DEFAULT_WEB_EDITOR_PORT}.`],
+				warnings: [`pi-forge: ${configPath} must be a JSON object; using an available editor port.`],
 			};
 		}
 
 		const webEditorConfig = isPlainObject(raw.webEditor) ? raw.webEditor : undefined;
 		const rawPort = webEditorConfig?.port ?? raw.webEditorPort;
-		if (rawPort === undefined) return { port: DEFAULT_WEB_EDITOR_PORT, configPath, warnings: [] };
+		if (rawPort === undefined) return { configPath, warnings: [] };
 
 		if (typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535) {
-			return { port: rawPort, configPath, warnings: [] };
+			return { preferredPort: rawPort, configPath, warnings: [] };
 		}
 
 		return {
-			port: DEFAULT_WEB_EDITOR_PORT,
 			configPath,
-			warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using editor port ${DEFAULT_WEB_EDITOR_PORT}.`],
+			warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using an available editor port.`],
 		};
 	}
 
@@ -368,6 +381,7 @@ export default function piForge(pi: ExtensionAPI) {
 		await webEditor.close();
 		webEditor = undefined;
 		webEditorCwd = undefined;
+		webEditorPreferredPort = undefined;
 		ctx.ui.setStatus("pi-forge-editor", undefined);
 		ctx.ui.notify("pi-forge: stack editor stopped.", "info");
 	}

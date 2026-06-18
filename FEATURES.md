@@ -115,6 +115,8 @@ This file tracks the currently implemented feature surface for the published MVP
 - Detect `{{lastUserMessage}}` and configure chat history accordingly.
 - Strip SillyTavern comments and `{{trim}}` markers.
 - Report macros that need manual migration, including normalized camelCase SillyTavern macro names.
+- Report supported SillyTavern-style variable macros such as `setvar` and `getvar` as handled by pi-forge.
+- Report SillyTavern `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes without enabling runtime regex behavior.
 
 ## Debugging and Tests
 
@@ -131,8 +133,8 @@ This file tracks the currently implemented feature surface for the published MVP
 ## Web Stack Editor
 
 - `/preset ui`, `/preset ui restart`, and `/preset ui stop`.
-- Local editor server bound to `127.0.0.1:41738` by default with a random URL token.
-- Fixed editor port can be configured through `.pi/forge/config.json` using `webEditor.port`.
+- Local editor server bound to an available `127.0.0.1` port by default with a random URL token.
+- Preferred editor port can be configured through `.pi/forge/config.json` using `webEditor.port`; if it is unavailable, pi-forge falls back to an available port.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
@@ -157,6 +159,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - Session state editor shows active stack definitions next to current runtime values.
 - Save existing stack JSON and immediately reload pi-forge stack state.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
+- Show the SillyTavern import report in the web editor after import, with copy support.
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.

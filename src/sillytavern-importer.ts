@@ -7,6 +7,10 @@ import type { PromptStack, PromptStackItem } from "./types.ts";
 interface StPreset {
 	prompts?: StPromptDef[];
 	prompt_order?: StPromptOrderEntry[];
+	extensions?: {
+		regex_scripts?: unknown[];
+		[key: string]: unknown;
+	};
 	names_behavior?: number;
 	preset_name?: string;
 	name?: string;
@@ -39,6 +43,39 @@ interface StConversionItem {
 	orderIndex: number;
 }
 
+interface StRegexScript {
+	script_name?: string;
+	scriptName?: string;
+	name?: string;
+	disabled?: boolean;
+	promptOnly?: boolean;
+	markdownOnly?: boolean;
+	findRegex?: string;
+	replaceString?: string;
+	[key: string]: unknown;
+}
+
+type RegexScriptMode = "prompt-only" | "markdown-only" | "prompt+markdown" | "unspecified" | "disabled";
+
+interface RegexScriptReportEntry {
+	name: string;
+	mode: RegexScriptMode;
+	enabled: boolean;
+	findRegex?: string;
+	replaceString?: string;
+}
+
+interface RegexScriptReport {
+	total: number;
+	enabled: number;
+	disabled: number;
+	promptOnly: number;
+	markdownOnly: number;
+	mixed: number;
+	unspecified: number;
+	scripts: RegexScriptReportEntry[];
+}
+
 // ── Marker identifiers ─────────────────────────────────────────────────────
 
 const MARKER_CHAT_HISTORY = "chatHistory";
@@ -61,6 +98,16 @@ const NATIVE_MACROS = new Set([
 	"cwd",
 	"date",
 	"time",
+	"setvar",
+	"setturnvar",
+	"setsessionvar",
+	"getvar",
+	"var",
+	"getturnvar",
+	"getsessionvar",
+	"clearvar",
+	"clearturnvar",
+	"clearsessionvar",
 ]);
 
 const MACRO_DISPLAY_NAMES: Record<string, string> = {
@@ -85,8 +132,6 @@ const MACRO_DISPLAY_NAMES: Record<string, string> = {
 // ── ST macros that need manual migration ───────────────────────────────────
 
 const MACRO_NEEDS_MIGRATION: Record<string, string> = {
-	"setvar": "pi-forge {{setvar::name::value}} / {{setsessionvar::name::value}} — scoping differs",
-	"getvar": "pi-forge {{getvar::name}} — lookup order: turn → session → static",
 	"addvar": "use pi-forge {{getvar::name}} + math, or setvar with computed value",
 	"getglobalvar": "use pi-forge session variables via {{getsessionvar::name}}",
 	"setglobalvar": "use pi-forge {{setsessionvar::name::value}}",
@@ -117,6 +162,19 @@ const MACRO_NEEDS_MIGRATION: Record<string, string> = {
 	"loreafter": "ST world info — no pi-forge equivalent; merge relevant lore into static blocks",
 	"anchorbefore": "ST extension injection point — no pi-forge equivalent",
 	"anchorafter": "ST extension injection point — no pi-forge equivalent",
+};
+
+const NATIVE_MACRO_NOTES: Record<string, string> = {
+	setvar: "handled as a turn variable by default, with {{setvar::session::name::value}} for session scope",
+	setturnvar: "handled as a turn variable",
+	setsessionvar: "handled as a session variable",
+	getvar: "handled with turn -> session -> static lookup",
+	var: "handled as an alias of getvar",
+	getturnvar: "handled as a turn-only lookup",
+	getsessionvar: "handled as a session-only lookup",
+	clearvar: "handled as a turn variable clear by default, with {{clearvar::session::name}} for session scope",
+	clearturnvar: "handled as a turn variable clear",
+	clearsessionvar: "handled as a session variable clear",
 };
 
 // ── Macros we can strip entirely (produce no output) ───────────────────────
@@ -181,6 +239,7 @@ export function convertSillyTavernPreset(
 	const sourcePath = options.sourcePath ?? sourceName;
 	const allPrompts = preset.prompts ?? [];
 	const promptOrder = preset.prompt_order ?? [];
+	const regexScripts = summarizeRegexScripts(preset);
 
 	if (allPrompts.length === 0) {
 		return { error: "Preset has no prompts array." };
@@ -387,6 +446,31 @@ export function convertSillyTavernPreset(
 		reportLines.push("");
 	}
 
+	// Regex scripts
+	if (regexScripts && regexScripts.total > 0) {
+		reportLines.push("## SillyTavern regex scripts");
+		reportLines.push("");
+		reportLines.push(`- **Total scripts**: ${regexScripts.total}`);
+		reportLines.push(`- **Enabled scripts**: ${regexScripts.enabled}`);
+		reportLines.push(`- **Disabled scripts**: ${regexScripts.disabled}`);
+		reportLines.push(`- **Prompt-only**: ${regexScripts.promptOnly}`);
+		reportLines.push(`- **Markdown-only / display-only**: ${regexScripts.markdownOnly}`);
+		reportLines.push(`- **Prompt + markdown mixed**: ${regexScripts.mixed}`);
+		if (regexScripts.unspecified > 0) {
+			reportLines.push(`- **Enabled with unspecified mode**: ${regexScripts.unspecified}`);
+		}
+		reportLines.push("");
+		reportLines.push("| Script | Enabled | Mode | Find regex | Replacement preview |");
+		reportLines.push("|--------|---------|------|------------|---------------------|");
+		for (const script of regexScripts.scripts) {
+			reportLines.push(`| ${markdownTableCell(script.name)} | ${script.enabled ? "yes" : "no"} | ${script.mode} | ${markdownTableCell(script.findRegex)} | ${markdownTableCell(script.replaceString)} |`);
+		}
+		reportLines.push("");
+		reportLines.push("Regex scripts are report-only in this import. pi-forge does not run SillyTavern markdown rewriting, DOM/browser automation, CSS/HTML decoration, toasts, embedded JavaScript, or UI panel behavior.");
+		reportLines.push("Prompt-only regex transforms are not converted to runtime behavior yet; migrate deterministic prompt changes manually if they are semantically important.");
+		reportLines.push("");
+	}
+
 	// Auto-populated variables
 	if (Object.keys(variables).length > 0) {
 		reportLines.push("## Auto-populated variables");
@@ -414,19 +498,6 @@ export function convertSillyTavernPreset(
 		}
 		reportLines.push("");
 
-		// Specific guidance for heavy variable usage
-		if (macroUsage.migrationNeeded.setvar || macroUsage.migrationNeeded.getvar) {
-			reportLines.push("### Variable system migration");
-			reportLines.push("");
-			reportLines.push("ST uses `setvar`/`getvar` for ephemeral state. pi-forge has a different variable model:");
-			reportLines.push("");
-			reportLines.push("- **Static variables** — set in the stack JSON's `variables` object (character names, fixed config)");
-			reportLines.push("- **Session state** — persists across turns, set by the user via `/state set` or by the agent via `forge_state_set` for `agent.*` names");
-			reportLines.push("- **Turn variables** — ephemeral, set via `{{setvar::name::value}}` macros in blocks");
-			reportLines.push("");
-			reportLines.push("Review ST `setvar`/`getvar` calls and migrate to the appropriate pi-forge scope.");
-			reportLines.push("");
-		}
 	}
 
 	// Native macros handled
@@ -440,6 +511,8 @@ export function convertSillyTavernPreset(
 				reportLines.push(`- \`{{${displayName}}}\` → auto-populated as static variable`);
 			} else if (name === "lastusermessage") {
 				reportLines.push(`- \`{{${displayName}}}\` → handled by pi-forge runtime (chat-history slot)`);
+			} else if (NATIVE_MACRO_NOTES[name]) {
+				reportLines.push(`- \`{{${displayName}}}\` → ${NATIVE_MACRO_NOTES[name]}`);
 			} else {
 				reportLines.push(`- \`{{${displayName}}}\` → handled natively by pi-forge`);
 			}
@@ -488,6 +561,81 @@ export function convertSillyTavernPreset(
 		stack,
 		report: reportLines.join("\n"),
 	};
+}
+
+// ── Regex script reporting ─────────────────────────────────────────────────
+
+function summarizeRegexScripts(preset: StPreset): RegexScriptReport | undefined {
+	const rawScripts = preset.extensions?.regex_scripts;
+	if (!Array.isArray(rawScripts)) return undefined;
+
+	const scripts = rawScripts
+		.map((raw, index) => classifyRegexScript(raw, index))
+		.filter((script): script is RegexScriptReportEntry => script !== undefined);
+
+	const report: RegexScriptReport = {
+		total: scripts.length,
+		enabled: 0,
+		disabled: 0,
+		promptOnly: 0,
+		markdownOnly: 0,
+		mixed: 0,
+		unspecified: 0,
+		scripts,
+	};
+
+	for (const script of scripts) {
+		if (!script.enabled) {
+			report.disabled++;
+			continue;
+		}
+		report.enabled++;
+		if (script.mode === "prompt-only") report.promptOnly++;
+		else if (script.mode === "markdown-only") report.markdownOnly++;
+		else if (script.mode === "prompt+markdown") report.mixed++;
+		else if (script.mode === "unspecified") report.unspecified++;
+	}
+
+	return report;
+}
+
+function classifyRegexScript(raw: unknown, index: number): RegexScriptReportEntry | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const script = raw as StRegexScript;
+	const enabled = script.disabled !== true;
+	const promptOnly = script.promptOnly === true;
+	const markdownOnly = script.markdownOnly === true;
+	const mode: RegexScriptMode = enabled
+		? promptOnly && markdownOnly
+			? "prompt+markdown"
+			: promptOnly
+				? "prompt-only"
+				: markdownOnly
+					? "markdown-only"
+					: "unspecified"
+		: "disabled";
+
+	return {
+		name: firstString(script.script_name, script.scriptName, script.name) ?? `regex-${index + 1}`,
+		mode,
+		enabled,
+		findRegex: firstString(script.findRegex),
+		replaceString: firstString(script.replaceString),
+	};
+}
+
+function firstString(...values: unknown[]): string | undefined {
+	for (const value of values) {
+		if (typeof value === "string" && value.trim()) return value;
+	}
+	return undefined;
+}
+
+function markdownTableCell(value: unknown): string {
+	if (typeof value !== "string" || !value.trim()) return "-";
+	const collapsed = value.replace(/\s+/g, " ").trim();
+	const truncated = collapsed.length > 96 ? `${collapsed.slice(0, 93)}...` : collapsed;
+	return truncated.replace(/\|/g, "\\|");
 }
 
 // ── Macro detection ────────────────────────────────────────────────────────

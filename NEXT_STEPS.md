@@ -23,7 +23,7 @@ Implemented and working:
 - Branch-aware prompt state restoration during session tree navigation.
 - `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
 - `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
-- `/preset ui` lightweight fixed-port localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows.
+- `/preset ui` lightweight localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows, using an available port by default with optional preferred-port fallback.
 - Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Web payload capture inspector that can arm the next provider request, display captures from UI or `/payload next`, preserve redaction, and show collapsible top-level JSON sections.
 - Structured web editors for stack static `variables`, `state.definitions`, and `context` options.
@@ -31,6 +31,9 @@ Implemented and working:
 - Web editor polish for dark mode, button icons/tooltips, unsaved-change badge, export clipboard fallback, and inline item validation badges.
 - Web runtime session-state editor that can view, set, and clear state using the same validation and persistence path as `/state`.
 - Metadata-enabled variables slots render matching state definitions as `unset` entries before runtime values exist.
+- SillyTavern `extensions.regex_scripts` import-report classification with prompt/display/disabled counts and report-only migration guidance.
+- Web SillyTavern imports display the generated import report in a copyable editor modal.
+- Supported SillyTavern-style variable macros such as `setvar`/`getvar` are reported as handled instead of migration-needed.
 
 ## Priority 1: Web inspector and state editing
 
@@ -87,6 +90,9 @@ Completed hardening:
 - Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
 - Add tests around command-level import behavior, not only the pure importer. - initial coverage done
 - Preview generated output without writing files via `--dry-run`. - done
+- Detect `extensions.regex_scripts` during import and classify enabled scripts by `promptOnly`, `markdownOnly`, both, disabled, and script name. - done, report-only
+- Show import reports in the web editor after SillyTavern imports. - done
+- Treat supported `setvar`/`getvar`-style macros as handled in reports. - done
 
 Importer improvements:
 
@@ -97,8 +103,7 @@ Importer improvements:
 
 SillyTavern regex script boundary:
 
-- Detect `extensions.regex_scripts` during import and classify each enabled script by `promptOnly`, `markdownOnly`, both, disabled, and script name.
-- Preserve enough regex metadata in the import report for manual migration; do not silently drop it.
+- Preserve more regex metadata in import reports as real-world needs appear.
 - Use `.pi/TGbreak😺V3.1.1.json` as the stress fixture: 13 enabled regex scripts, with 5 prompt-only, 6 display-only, and 2 mixed prompt/display scripts.
 - Treat `markdownOnly` HTML/CSS decoration scripts as non-portable to Pi TUI; examples like action-option beautification should become report notes, not runtime behavior.
 - Treat DOM/browser automation, toasts, preset-panel toggles, and embedded JavaScript as out of scope for pi-forge runtime.
@@ -125,6 +130,11 @@ Completed polish:
 
 High-value follow-ups:
 
+- Split the long `src/web-editor.ts` file into a small `src/web-editor/` module folder before adding more UI behavior:
+  - `src/web-editor/index.ts` for the public exports and `startWebEditorServer`.
+  - `src/web-editor/types.ts` for shared web editor contracts.
+  - `src/web-editor/server.ts` for HTTP routing, token checks, request parsing, and response helpers.
+  - `src/web-editor/page.ts` for the embedded HTML/CSS/client script string.
 - Better import flow for pasted JSON, not only file selection.
 - Browser-level smoke screenshots if a browser test dependency is added later.
 - Keyboard shortcuts for save, validate, preview, and close dialog once the UI settles.
@@ -281,7 +291,7 @@ Current and next test cases:
 22. Web preview inspector returns full structured sections without browser-side truncation - done
 23. Web payload capture API arms, captures, redacts, exposes, and clears provider payloads - done
 24. Web editor bundled page exposes context/raw JSON/polish controls and parses its inline script - done
-25. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture
+25. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture - done
 
 ## Priority 10: Payload/debug tools
 
@@ -320,7 +330,7 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Add SillyTavern regex-script import-report classification using TGbreak as the fixture.
+1. Split `src/web-editor.ts` into a `src/web-editor/` module folder without changing behavior.
 2. Improve pasted JSON import flow for native and SillyTavern stacks.
 3. Add browser-level smoke screenshots if we decide to add a browser test dependency.
 4. Add broader provider-specific payload-shape tests.

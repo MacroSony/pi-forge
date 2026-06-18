@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -328,4 +328,106 @@ test("detects camelCase SillyTavern macros after normalization", () => {
 	assert.match(result.report, /\{\{lastUserMessage\}\}/);
 	assert.match(result.report, /\{\{charPrompt\}\}/);
 	assert.match(result.report, /\{\{mesExamplesRaw\}\}/);
+});
+
+test("reports supported variable macros as handled instead of migration-needed", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-st-import-"));
+	const path = writePreset(cwd, "vars.json", {
+		prompts: [
+			{ identifier: "main", role: "system", content: "{{setvar::mood::bright}}{{getvar::mood}}{{setsessionvar::scene::office}}{{getsessionvar::scene}}" },
+			{ identifier: "chatHistory", marker: true },
+		],
+		prompt_order: [
+			{
+				character_id: 1,
+				order: [
+					{ identifier: "main", enabled: true },
+					{ identifier: "chatHistory", enabled: true },
+				],
+			},
+		],
+	});
+
+	const result = importSillyTavernPreset(path);
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.doesNotMatch(result.report, /Macros needing manual migration/);
+	assert.match(result.report, /Handled macros/);
+	assert.match(result.report, /\{\{setvar\}\}.*turn variable/);
+	assert.match(result.report, /\{\{getvar\}\}.*turn -> session -> static lookup/);
+	assert.match(result.report, /\{\{setsessionvar\}\}.*session variable/);
+	assert.match(result.report, /\{\{getsessionvar\}\}.*session-only lookup/);
+});
+
+test("reports SillyTavern regex script classification", () => {
+	const result = convertSillyTavernPreset(
+		{
+			preset_name: "Regex Preset",
+			prompts: [
+				{ identifier: "main", role: "system", content: "Main" },
+				{ identifier: "chatHistory", marker: true },
+			],
+			prompt_order: [
+				{
+					character_id: 1,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "chatHistory", enabled: true },
+					],
+				},
+			],
+			extensions: {
+				regex_scripts: [
+					{ script_name: "Prompt Cleaner", promptOnly: true, markdownOnly: false, disabled: false, findRegex: "foo", replaceString: "bar" },
+					{ scriptName: "Display Decorator", promptOnly: false, markdownOnly: true, disabled: false, findRegex: "<tag>(.*)</tag>", replaceString: "<div>$1</div>" },
+					{ name: "Mixed Rewrite", promptOnly: true, markdownOnly: true, disabled: false, findRegex: "a|b", replaceString: "c" },
+					{ script_name: "Disabled Script", promptOnly: true, markdownOnly: false, disabled: true, findRegex: "x", replaceString: "y" },
+					{ script_name: "Unspecified Script", disabled: false, findRegex: "m", replaceString: "n" },
+				],
+			},
+		},
+		{ sourceName: "Regex Preset.json" },
+	);
+
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.match(result.report, /SillyTavern regex scripts/);
+	assert.match(result.report, /Total scripts\*\*: 5/);
+	assert.match(result.report, /Enabled scripts\*\*: 4/);
+	assert.match(result.report, /Disabled scripts\*\*: 1/);
+	assert.match(result.report, /Prompt-only\*\*: 1/);
+	assert.match(result.report, /Markdown-only \/ display-only\*\*: 1/);
+	assert.match(result.report, /Prompt \+ markdown mixed\*\*: 1/);
+	assert.match(result.report, /Enabled with unspecified mode\*\*: 1/);
+	assert.match(result.report, /Prompt Cleaner/);
+	assert.match(result.report, /Display Decorator/);
+	assert.match(result.report, /Mixed Rewrite/);
+	assert.match(result.report, /Disabled Script/);
+	assert.match(result.report, /Unspecified Script/);
+	assert.match(result.report, /DOM\/browser automation/);
+	assert.match(result.report, /not converted to runtime behavior/);
+});
+
+const tgbreakFixturePath = join(process.cwd(), ".pi", "TGbreak😺V3.1.1.json");
+
+test("classifies TGbreak regex fixture", { skip: !existsSync(tgbreakFixturePath) }, () => {
+	const raw = JSON.parse(readFileSync(tgbreakFixturePath, "utf8")) as {
+		prompt_order?: Array<{ character_id?: unknown }>;
+	};
+	const characterId = raw.prompt_order?.find((entry) => typeof entry.character_id === "number")?.character_id;
+	if (typeof characterId !== "number") throw new Error("TGbreak fixture has no numeric character_id.");
+	const result = convertSillyTavernPreset(raw, { sourceName: "TGbreak😺V3.1.1.json", characterId });
+
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.match(result.report, /SillyTavern regex scripts/);
+	assert.match(result.report, /Total scripts\*\*: 13/);
+	assert.match(result.report, /Enabled scripts\*\*: 13/);
+	assert.match(result.report, /Disabled scripts\*\*: 0/);
+	assert.match(result.report, /Prompt-only\*\*: 5/);
+	assert.match(result.report, /Markdown-only \/ display-only\*\*: 6/);
+	assert.match(result.report, /Prompt \+ markdown mixed\*\*: 2/);
 });

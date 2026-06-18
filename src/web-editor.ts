@@ -92,7 +92,8 @@ export interface WebEditorServer {
 	close(): Promise<void>;
 }
 
-export const DEFAULT_WEB_EDITOR_PORT = 41738;
+// Port 0 asks Node to bind any available localhost port.
+export const DEFAULT_WEB_EDITOR_PORT = 0;
 
 export interface WebEditorServerOptions {
 	port?: number;
@@ -724,6 +725,10 @@ html, body {
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
+.item-tools-spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
 .item-list {
   padding: 8px;
   overflow: auto;
@@ -1199,7 +1204,6 @@ html, body {
       <button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
       <span class="action-spacer"></span>
       <button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
-      <button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
       <input id="importFileInput" type="file" accept="application/json,.json" hidden>
     </div>
     <section id="settings" class="settings"></section>
@@ -1212,6 +1216,8 @@ html, body {
         <div class="item-tools">
           <button id="addBlockBtn" data-icon="+" title="Add a static block item">Add block</button>
           <button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
+          <span class="item-tools-spacer"></span>
+          <button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
         </div>
         <div id="itemList" class="item-list"></div>
       </div>
@@ -2100,6 +2106,20 @@ async function openImportedStack(stack, activate, actionLabel, extraOptions = {}
   await selectStack(selectedId, { keepDirty: true });
   const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
   setStatus(actionLabel + converted + " " + selectedId, "success");
+  if (data.importReport) showImportReport(data.importReport, selectedId);
+}
+
+function showImportReport(report, stackId) {
+  showStackModal(
+    "SillyTavern import report",
+    stackId || "",
+    '<div class="modal-toolbar"><button id="copyImportReportBtn" data-icon="□" title="Copy this import report">Copy report</button><span class="modal-spacer"></span><span class="modal-meta">Report-only notes; stack changes are already saved.</span></div>' +
+    '<pre class="preview-text">' + escapeHtml(report) + '</pre>',
+  );
+  el("copyImportReportBtn").onclick = () => run(async () => {
+    await copyTextToClipboard(report);
+    setStatus("Copied import report", "success");
+  });
 }
 
 async function importStackJson() {

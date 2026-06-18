@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer as createNetServer } from "node:net";
+import { createServer as createNetServer, type Server as NetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -21,6 +21,12 @@ function writePreset(cwd: string, name: string, value: unknown): string {
 }
 
 async function getFreePort(): Promise<number> {
+	const blocker = await bindAvailablePort();
+	await blocker.close();
+	return blocker.port;
+}
+
+async function bindAvailablePort(): Promise<{ port: number; close(): Promise<void> }> {
 	const server = createNetServer();
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
@@ -30,15 +36,28 @@ async function getFreePort(): Promise<number> {
 		});
 	});
 	const address = server.address();
-	await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 	assert.ok(address && typeof address !== "string");
-	return address.port;
+	return {
+		port: address.port,
+		close: () => closeNetServer(server),
+	};
+}
+
+function closeNetServer(server: NetServer): Promise<void> {
+	return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
 function writeForgeConfig(cwd: string, value: unknown): void {
 	const dir = join(cwd, ".pi", "forge");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "config.json"), JSON.stringify(value, null, 2));
+}
+
+function latestEditorUrl(editors: { title: string; text: string }[]): URL {
+	const editorText = editors.at(-1)?.text ?? "";
+	const urlMatch = editorText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
+	assert.ok(urlMatch);
+	return new URL(urlMatch[0]);
 }
 
 function createHarness() {
@@ -408,8 +427,6 @@ test("/payload next saves a redacted provider payload", async () => {
 
 test("/preset ui serves and saves through the local stack editor API", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	const editorPort = await getFreePort();
-	writeForgeConfig(cwd, { webEditor: { port: editorPort } });
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
 		type: "pi-forge.prompt-stack",
@@ -436,9 +453,15 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const urlMatch = editorText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
 		assert.ok(urlMatch);
 		const editorUrl = new URL(urlMatch[0]);
-		assert.equal(editorUrl.port, String(editorPort));
+		assert.ok(Number(editorUrl.port) > 0);
 		const token = editorUrl.searchParams.get("token")!;
 		const apiUrl = new URL("/api/stacks", editorUrl);
+
+		await harness.commands.preset.handler("ui", ctx);
+		const reusedText = editors.at(-1)?.text ?? "";
+		const reusedMatch = reusedText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
+		assert.ok(reusedMatch);
+		assert.equal(reusedMatch[0], editorUrl.href);
 
 		const pageResponse = await fetch(editorUrl);
 		assert.equal(pageResponse.status, 200);
@@ -449,6 +472,9 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /importBtn/);
 		assert.match(pageHtml, /exportBtn/);
 		assert.match(pageHtml, /deleteStackBtn/);
+		const deleteItemIndex = pageHtml.indexOf('id="deleteItemBtn"');
+		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
+		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
 		assert.match(pageHtml, /variablesBtn/);
 		assert.match(pageHtml, /stateSchemaBtn/);
 		assert.match(pageHtml, /sessionStateBtn/);
@@ -457,6 +483,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /contextBtn/);
 		assert.match(pageHtml, /stackJsonBtn/);
 		assert.match(pageHtml, /dirtyBadge/);
+		assert.match(pageHtml, /copyImportReportBtn/);
 		assert.match(pageHtml, /data-icon/);
 		assert.match(pageHtml, /validateRawStackJson/);
 		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
@@ -681,13 +708,46 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const reopenedMatch = reopenedText.match(/http:\/\/127\.0\.0\.1:\d+\/\?token=\S+/);
 		assert.ok(reopenedMatch);
 		const reopenedUrl = new URL(reopenedMatch[0]);
-		assert.equal(reopenedUrl.port, String(editorPort));
+		assert.ok(Number(reopenedUrl.port) > 0);
 		const reopenedPage = await fetch(reopenedUrl);
 		assert.equal(reopenedPage.status, 200);
 	} finally {
 		await harness.commands.preset.handler("ui stop", ctx);
 	}
 	assert.equal(statuses["pi-forge-editor"], undefined);
+});
+
+test("/preset ui honors preferred port and falls back when it is occupied", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const { ctx, editors, notifications } = createContext(cwd);
+	await startSession(harness, ctx);
+	let blocker: { port: number; close(): Promise<void> } | undefined;
+
+	try {
+		const preferredPort = await getFreePort();
+		writeForgeConfig(cwd, { webEditor: { port: preferredPort } });
+		await harness.commands.preset.handler("ui", ctx);
+		assert.equal(latestEditorUrl(editors).port, String(preferredPort));
+		await harness.commands.preset.handler("ui stop", ctx);
+
+		blocker = await bindAvailablePort();
+		writeForgeConfig(cwd, { webEditor: { port: blocker.port } });
+		await harness.commands.preset.handler("ui", ctx);
+		const fallbackUrl = latestEditorUrl(editors);
+		assert.ok(Number(fallbackUrl.port) > 0);
+		assert.notEqual(fallbackUrl.port, String(blocker.port));
+		assert.ok(notifications.some((notification) => /preferred editor port/.test(notification.message)));
+	} finally {
+		await harness.commands.preset.handler("ui stop", ctx);
+		if (blocker) await blocker.close();
+	}
 });
 
 test("turn_start persists default active stack only once", async () => {
