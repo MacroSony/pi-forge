@@ -63,6 +63,20 @@ function textOf(message: AgentMessage): string {
 		.join("\n");
 }
 
+type RuntimeSkill = NonNullable<PromptRuntime["options"]["skills"]>[number];
+
+function testSkill(name: string, description: string, filePath: string, overrides: Partial<RuntimeSkill> = {}): RuntimeSkill {
+	return {
+		name,
+		description,
+		filePath,
+		baseDir: filePath.replace(/\/SKILL\.md$/, ""),
+		sourceInfo: { type: "test" },
+		disableModelInvocation: false,
+		...overrides,
+	} as RuntimeSkill;
+}
+
 test("compileSystemPrompt preserves enabled system item order", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
@@ -190,6 +204,70 @@ test("duplicate chat-history slots warn and only expand once by default", () => 
 	assert.match(result.diagnostics[0]?.message ?? "", /duplicate chat-history/);
 });
 
+test("structured slots default to XML and ignore unsupported json format", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "structured-defaults",
+		items: [
+			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools" },
+			{ kind: "slot", id: "guidelines", enabled: true, role: "system", slot: "tool-guidelines", options: { format: "json" } },
+			{ kind: "slot", id: "skills", enabled: true, role: "system", slot: "skills" },
+			{ kind: "slot", id: "context", enabled: true, role: "system", slot: "project-context" },
+		],
+	};
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			...runtime().options,
+			selectedTools: ["read", "bash"],
+			toolSnippets: { read: "Read files from disk.", bash: "Run shell commands." },
+			skills: [testSkill("review", "Review code.", "/skills/review/SKILL.md")],
+			contextFiles: [{ path: ".pi/instructions.md", content: "Project rules." }],
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /<available_tools>/);
+	assert.match(result.systemPrompt, /<tool_guidelines>/);
+	assert.match(result.systemPrompt, /<available_skills>/);
+	assert.match(result.systemPrompt, /<project_context>/);
+	assert.match(result.systemPrompt, /<project_instructions path="\.pi\/instructions\.md">/);
+	assert.doesNotMatch(result.systemPrompt, /Available tools:/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("structured slots render compact plain format", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "structured-plain",
+		items: [
+			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools", options: { format: "plain" } },
+			{ kind: "slot", id: "guidelines", enabled: true, role: "system", slot: "tool-guidelines", options: { format: "plain" } },
+			{ kind: "slot", id: "skills", enabled: true, role: "system", slot: "skills", options: { format: "plain" } },
+			{ kind: "slot", id: "context", enabled: true, role: "system", slot: "project-context", options: { format: "plain" } },
+		],
+	};
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			...runtime().options,
+			selectedTools: ["read", "bash"],
+			toolSnippets: { read: "Read files\nfrom disk.", bash: "Run shell commands." },
+			promptGuidelines: ["Use read\nbefore edits."],
+			skills: [
+				testSkill("review", "Review code\nfor regressions.", "/skills/review/SKILL.md"),
+				testSkill("hidden", "Hidden skill.", "/skills/hidden/SKILL.md", { disableModelInvocation: true }),
+			],
+			contextFiles: [{ path: ".pi/instructions.md", content: "Project <rules>\nSecond line." }],
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /Available tools:\n- read: Read files\n  from disk\.\n- bash: Run shell commands\./);
+	assert.match(result.systemPrompt, /Tool guidelines:\n- Use bash for file operations like ls, rg, find\.\n- Use read\n  before edits\./);
+	assert.match(result.systemPrompt, /Available skills:\n- review: Review code\n  for regressions\.\n  Location: \/skills\/review\/SKILL\.md/);
+	assert.doesNotMatch(result.systemPrompt, /hidden/);
+	assert.match(result.systemPrompt, /Project context:\n\nProject-specific instructions and guidelines:\n\nPath: \.pi\/instructions\.md\n  Project <rules>\n  Second line\./);
+	assert.doesNotMatch(result.systemPrompt, /<available_tools>|<available_skills>|<project_context>/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("variables slot renders all scopes as XML", () => {
 	const store = createPromptVariableStore({ mood: "happy", progress: "step 2" });
 	store.turn = { recent: "just happened" };
@@ -285,6 +363,97 @@ test("variables slot escapes XML in values", () => {
 	const text = textOf(result.messages[0]);
 	assert.match(text, /&lt;script&gt;alert/);
 	assert.doesNotMatch(text, /<script>alert/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot preserves JSON format", () => {
+	const store = createPromptVariableStore({ mood: "happy" });
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-json",
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: { includeScopes: ["session"], format: "json" },
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	const text = textOf(result.messages[0]);
+	assert.match(text, /<prompt_state format="json">/);
+	assert.match(text, /&quot;session&quot;/);
+	assert.match(text, /&quot;mood&quot;: &quot;happy&quot;/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("variables slot renders compact plain format with metadata and multiline values", () => {
+	const store = createPromptVariableStore({
+		"agent.note": "a<\n&",
+		"agent.long": "abcdef",
+		"user.preference": "concise",
+	});
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "vars-plain",
+		state: {
+			schemaVersion: 1,
+			definitions: {
+				"agent.note": {
+					type: "string",
+					scope: "session",
+					description: "Current <note>",
+					agentWritable: true,
+				},
+				"agent.long": {
+					type: "string",
+					scope: "session",
+					agentWritable: true,
+				},
+				"agent.missing": {
+					type: "string",
+					scope: "session",
+					description: "Missing value",
+					agentWritable: true,
+				},
+			},
+		},
+		items: [
+			{
+				kind: "slot",
+				id: "vars",
+				enabled: true,
+				role: "user",
+				slot: "variables",
+				options: {
+					includeScopes: ["session"],
+					includeNamespaces: ["agent.*"],
+					includeMetadata: true,
+					format: "plain",
+					maxValueChars: 5,
+				},
+			},
+		],
+	};
+
+	const result = compileMessages(stack, runtime({ variables: store }), []);
+
+	assert.equal(result.messages.length, 1);
+	assert.equal(textOf(result.messages[0]), [
+		"Prompt state:",
+		"session:",
+		"- agent.long (string; agentWritable: true): abcde",
+		"  [truncated]",
+		"- agent.note (string; description: Current <note>; agentWritable: true): a<",
+		"  &",
+		"- agent.missing (string; unset; description: Missing value; agentWritable: true): (unset)",
+	].join("\n"));
 	assert.deepEqual(result.diagnostics, []);
 });
 

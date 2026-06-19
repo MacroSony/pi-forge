@@ -19,6 +19,8 @@ export type PromptStackSlot =
 	| "pi-docs"
 	| "variables";
 
+export type PromptStackSlotFormat = "xml" | "json" | "plain";
+
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;
 	unresolvedMacroPolicy?: "warn" | "keep" | "error";
@@ -59,7 +61,7 @@ export interface VariablesSlotOptions {
 	/** Include type and description metadata from stack.state.definitions. Default: false. */
 	includeMetadata?: boolean;
 	/** Render format. Default: xml. */
-	format?: "xml" | "json";
+	format?: PromptStackSlotFormat;
 	/** Truncate each rendered value after this many characters. */
 	maxValueChars?: number;
 }
@@ -75,7 +77,7 @@ export interface PromptStackSlotOptions {
 	includeNamespaces?: string[];
 	excludeNamespaces?: string[];
 	includeMetadata?: boolean;
-	format?: "xml" | "json";
+	format?: PromptStackSlotFormat;
 	maxValueChars?: number;
 	[key: string]: unknown;
 }

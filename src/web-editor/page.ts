@@ -1135,12 +1135,15 @@ function renderSlotOptionsForm(item, options) {
       optionCheckbox("includeSession", "Include session state", options.includeSession !== false),
       optionCheckbox("includeTurn", "Include turn state", options.includeTurn !== false),
       optionCheckbox("includeMetadata", "Include metadata", options.includeMetadata === true),
-      optionSelect("format", "Format", options.format || "xml", ["xml", "json"]),
+      optionSelect("format", "Format", options.format || "xml", ["xml", "json", "plain"]),
       optionText("includeScopes", "Include scopes", arrayToCsv(options.includeScopes)),
       optionText("includeNamespaces", "Include namespaces", arrayToCsv(options.includeNamespaces)),
       optionText("excludeNamespaces", "Exclude namespaces", arrayToCsv(options.excludeNamespaces)),
       optionNumber("maxValueChars", "Max value chars", options.maxValueChars ?? ""),
     );
+  }
+  if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot)) {
+    fields.push(optionSelect("format", "Format", options.format || "xml", ["xml", "plain"]));
   }
   if (fields.length === 0) {
     fields.push('<div class="wide option-note">This slot has no structured options yet. Use JSON mode for advanced settings.</div>');
@@ -1189,7 +1192,7 @@ function bindSlotOptionsEditor(item) {
         const values = target.value.split(",").map((part) => part.trim()).filter(Boolean);
         setSlotOption(item, key, values.length ? values : undefined);
       } else {
-        setSlotOption(item, key, target.value || undefined);
+        setSlotOption(item, key, target.value || undefined, defaultSlotOptionValue(key));
       }
       markDirty();
     };
@@ -1205,6 +1208,7 @@ function setSlotOption(item, key, value, defaultValue) {
 
 function defaultSlotOptionValue(key) {
   if (["includeLastUserMessage", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
+  if (key === "format") return "xml";
   return undefined;
 }
 
@@ -1233,7 +1237,7 @@ function optionHelp(key) {
     includeSession: "Include persisted session state in this variables slot.",
     includeTurn: "Include temporary turn state created during prompt compilation.",
     includeMetadata: "Include state definition metadata such as type, description, and write permissions.",
-    format: "Choose XML or JSON rendering for prompt state.",
+    format: "Choose XML, JSON where supported, or compact plain text rendering.",
     includeScopes: "Limit output to specific scopes such as static, session, or turn.",
     includeNamespaces: "Only include state names matching these names or wildcard prefixes.",
     excludeNamespaces: "Hide state names matching these names or wildcard prefixes.",
@@ -2238,4 +2242,3 @@ run(async () => {
 </body>
 </html>`;
 }
-

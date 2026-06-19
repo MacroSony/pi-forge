@@ -34,6 +34,20 @@ Implemented and working:
 - SillyTavern `extensions.regex_scripts` import-report classification with prompt/display/disabled counts and report-only migration guidance.
 - Web SillyTavern imports display the generated import report in a copyable editor modal.
 - Supported SillyTavern-style variable macros such as `setvar`/`getvar` are reported as handled instead of migration-needed.
+- Web editor source split into `src/web-editor/index.ts`, `types.ts`, `server.ts`, and `page.ts` without behavior changes.
+- Opt-in `format: "plain"` compact rendering for structured prompt slots: `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables`.
+
+## Architecture simplification review
+
+Review findings to keep in mind before adding regex runtime behavior, tool allow/deny controls, or a larger web UI:
+
+- `src/web-editor/page.ts` is now the highest-friction file. It is still one embedded HTML/CSS/client-script string, which is workable for small edits but risky for richer regex/tool configuration screens. Split it along practical static boundaries later (`template`, `styles`, `client-script`) or introduce a tiny build step before the browser UI grows much further.
+- `src/index.ts` is the main broad module. It currently owns extension lifecycle, runtime state, stack file CRUD, web-editor host methods, slash commands, payload capture, preview rendering, and validation wiring. Extract `runtime-state`, `web-host`, `commands`, and `payload-capture` modules before implementing tool policy.
+- `src/sillytavern-importer.ts` has a large conversion/reporting pipeline. Split conversion, prompt-order selection, report building, regex reporting, and macro reporting into smaller pure helpers before expanding SillyTavern regex support.
+- `src/compiler.ts` should separate prompt-state collection from format rendering. `variables` already supports multiple formats, and adding display-only versus outgoing-payload transforms will otherwise make renderer branches harder to reason about.
+- Prompt-stack storage should move toward `.pi/forge/prompt-stacks` before more persistent feature state lands. Keep legacy `.pi/prompt-stacks` readable for compatibility, but write new stacks through a small storage-path adapter.
+- Keep `src/web-editor/server.ts` lightweight. A tiny route table would be enough if more APIs are added; a full web framework is not warranted yet.
+- Test coverage is healthy, but `tests/index-command.test.ts` is becoming a large integration blob. Move the reusable mocked extension harness into `tests/helpers` when the next command/API feature lands.
 
 ## Priority 1: Web inspector and state editing
 
@@ -127,21 +141,52 @@ Completed polish:
 - Structured editor for stack `context` options.
 - Raw stack JSON view/apply recovery path for advanced stack-level fields.
 - Light/dark theme toggle, toolbar/modal/inspector button icons, and hover tooltips.
-
-High-value follow-ups:
-
-- Split the long `src/web-editor.ts` file into a small `src/web-editor/` module folder before adding more UI behavior:
-  - `src/web-editor/index.ts` for the public exports and `startWebEditorServer`.
+- Split the long `src/web-editor.ts` file into a `src/web-editor/` module folder:
+  - `src/web-editor/index.ts` for public exports.
   - `src/web-editor/types.ts` for shared web editor contracts.
   - `src/web-editor/server.ts` for HTTP routing, token checks, request parsing, and response helpers.
   - `src/web-editor/page.ts` for the embedded HTML/CSS/client script string.
+
+High-value follow-ups:
+
 - Better import flow for pasted JSON, not only file selection.
 - Browser-level smoke screenshots if a browser test dependency is added later.
 - Keyboard shortcuts for save, validate, preview, and close dialog once the UI settles.
+- Consider splitting `src/web-editor/page.ts` later along static page boundaries (`markup`, `styles`, `client-script`) only if UI work keeps growing. Do not split browser logic into many string fragments without a bundler.
 
 Keep slash-command fallbacks for terminal-first workflows.
 
-## Priority 5: Prompt state lifecycle metadata
+## Priority 5: Prompt slot formats and token budget
+
+Structured prompt slots can render as XML-style output by default or compact plain text when `options.format` is `"plain"`. `variables` also supports `"json"` for JSON-shaped state. XML remains the default because it gives clear boundaries, names, attributes, and nesting for mixed prompt content.
+
+Completed compact-format work:
+
+- Added `format: "plain"` as an opt-in compact format, not a default replacement.
+- Supported plain output for `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables`.
+- Kept `xml` default for backwards compatibility and for robustness around multiline values, metadata-heavy state, and prompt-injection-like content.
+- Kept `json` support for `variables`; JSON is still not supported for other structured slots.
+- Render plain text with concise headings and newline-separated bullets, for example:
+
+```txt
+Available tools:
+- read: Read files from disk.
+- bash: Run shell commands.
+
+Available skills:
+- review: Review code for correctness. Location: /skills/review/SKILL.md
+
+Prompt state:
+session:
+- agent.progress (string): step 2
+```
+
+Follow-ups:
+
+- Compare real prompt previews across XML vs plain in daily use; keep XML as the recommended default unless plain output proves robust enough for specific stacks.
+- Consider stack-level format defaults only if per-slot configuration becomes repetitive.
+
+## Priority 6: Prompt state lifecycle metadata
 
 ### Add update metadata later
 
@@ -159,7 +204,7 @@ Current state definitions can declare type, scope, description, and write permis
 
 Keep persisted values as plain JSON for now; add metadata only if it becomes necessary for state review, expiration, or subagent curation.
 
-## Priority 6: Improve macro engine
+## Priority 7: Improve macro engine
 
 ### 1. Replace regex-only parsing with a small macro parser
 
@@ -203,7 +248,7 @@ Useful low-risk transforms:
 
 `xml` escaping is especially useful for generated XML context blocks.
 
-## Priority 7: Better chat-history controls
+## Priority 8: Better chat-history controls
 
 Current option:
 
@@ -234,7 +279,7 @@ Potential filters:
 - include/exclude tool result messages
 - summarize old history later
 
-## Priority 8: Prompt-stack lifecycle controls
+## Priority 9: Prompt-stack lifecycle controls
 
 The current behavior rewrites context only once per user turn. That fixed tool-call loops.
 
@@ -255,7 +300,7 @@ Possible future values:
 
 Also add diagnostics warning if a stack has post-history COT blocks and uses `every-provider-request`.
 
-## Priority 9: Tests
+## Priority 10: Tests
 
 Pure compiler/loader/importer tests exist. Keep extending them before the command surface grows much more.
 
@@ -293,7 +338,7 @@ Current and next test cases:
 24. Web editor bundled page exposes context/raw JSON/polish controls and parses its inline script - done
 25. SillyTavern `regex_scripts` import-report classification using TGbreak as a fixture - done
 
-## Priority 10: Payload/debug tools
+## Priority 11: Payload/debug tools
 
 Improve `/intercept`:
 
@@ -309,7 +354,7 @@ Improve `/intercept`:
 - mirror captured payloads into the web editor inspector with collapsible JSON - done
 - add broader payload-shape tests for provider-specific payloads
 
-## Priority 11: Agent profiles later
+## Priority 12: Agent profiles later
 
 Keep out of prompt-stack MVP for now, but design around:
 
@@ -330,8 +375,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Split `src/web-editor.ts` into a `src/web-editor/` module folder without changing behavior.
-2. Improve pasted JSON import flow for native and SillyTavern stacks.
-3. Add browser-level smoke screenshots if we decide to add a browser test dependency.
-4. Add broader provider-specific payload-shape tests.
-5. Design preset-level tool allow/deny controls before implementing them.
+1. Introduce a storage-path adapter, write new stacks under `.pi/forge/prompt-stacks`, and keep legacy `.pi/prompt-stacks` readable.
+2. Split `src/index.ts` into runtime state, web-host, command, and payload-capture modules without changing behavior.
+3. Split the embedded web editor page along practical static boundaries before adding larger regex/tool screens.
+4. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
+5. Design preset-level tool allow/deny controls after the storage and module boundaries are cleaner.

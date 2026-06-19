@@ -321,6 +321,23 @@ Valid roles: `system`, `user`, `assistant`, `custom`.
 
 Set to `false` when you use `{{lastUserMessage}}` after the history — prevents the user's message from appearing twice.
 
+### Structured slot format options
+
+Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` to `tools`, `tool-guidelines`, `skills`, `project-context`, or `variables` slots for compact newline-separated output. The `variables` slot also supports `"format": "json"` for JSON-shaped state.
+
+```json
+{
+  "kind": "slot",
+  "id": "tools",
+  "enabled": true,
+  "role": "system",
+  "slot": "tools",
+  "options": {
+    "format": "plain"
+  }
+}
+```
+
 ### Variables slot options
 
 ```json

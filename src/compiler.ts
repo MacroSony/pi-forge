@@ -8,6 +8,7 @@ import type {
 	PromptStackItem,
 	PromptStackRole,
 	PromptStackSlotItem,
+	PromptStackSlotFormat,
 	PromptStateScope,
 	PromptStateValue,
 	PromptVariableStore,
@@ -193,13 +194,13 @@ function renderSlotText(
 
 	switch (slot) {
 		case "tools":
-			return renderTools(runtime);
+			return renderTools(item, runtime);
 		case "tool-guidelines":
-			return renderToolGuidelines(runtime);
+			return renderToolGuidelines(item, runtime);
 		case "skills":
-			return renderSkills(runtime);
+			return renderSkills(item, runtime);
 		case "project-context":
-			return renderProjectContext(runtime);
+			return renderProjectContext(item, runtime);
 		case "append-system-prompt":
 			return runtime.options.appendSystemPrompt ?? "";
 		case "date":
@@ -223,9 +224,22 @@ function renderSlotText(
 	}
 }
 
-function renderTools(runtime: PromptRuntime): string {
+function renderTools(item: PromptStackSlotItem, runtime: PromptRuntime): string {
 	const tools = runtime.options.selectedTools ?? [];
 	const snippets = runtime.options.toolSnippets ?? {};
+
+	if (slotTextFormat(item) === "plain") {
+		const lines = ["Available tools:"];
+		if (tools.length === 0) {
+			lines.push("- (none)");
+		} else {
+			for (const name of tools) {
+				lines.push(plainBullet(name, snippets[name] ?? "No prompt snippet provided."));
+			}
+		}
+		return lines.join("\n");
+	}
+
 	const lines = ["<available_tools>"];
 
 	if (tools.length === 0) {
@@ -241,7 +255,7 @@ function renderTools(runtime: PromptRuntime): string {
 	return lines.join("\n");
 }
 
-function renderToolGuidelines(runtime: PromptRuntime): string {
+function renderToolGuidelines(item: PromptStackSlotItem, runtime: PromptRuntime): string {
 	const tools = runtime.options.selectedTools ?? [];
 	const guidelines: string[] = [];
 	const seen = new Set<string>();
@@ -259,10 +273,11 @@ function renderToolGuidelines(runtime: PromptRuntime): string {
 	for (const guideline of runtime.options.promptGuidelines ?? []) add(guideline);
 
 	if (guidelines.length === 0) return "";
+	if (slotTextFormat(item) === "plain") return ["Tool guidelines:", ...guidelines.map((line) => `- ${plainContinuation(line, "  ")}`)].join("\n");
 	return ["<tool_guidelines>", ...guidelines.map((line) => `- ${line}`), "</tool_guidelines>"].join("\n");
 }
 
-function renderSkills(runtime: PromptRuntime): string {
+function renderSkills(item: PromptStackSlotItem, runtime: PromptRuntime): string {
 	const skills = (runtime.options.skills ?? []).filter((skill) => !skill.disableModelInvocation);
 	if (skills.length === 0) return "";
 
@@ -271,9 +286,18 @@ function renderSkills(runtime: PromptRuntime): string {
 		"Use the read tool to load a skill's file when the task matches its description.",
 		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
 		"",
-		"<available_skills>",
 	];
 
+	if (slotTextFormat(item) === "plain") {
+		lines.push("Available skills:");
+		for (const skill of skills) {
+			lines.push(plainBullet(skill.name, skill.description));
+			lines.push(`  Location: ${plainContinuation(skill.filePath, "  ")}`);
+		}
+		return lines.join("\n");
+	}
+
+	lines.push("<available_skills>");
 	for (const skill of skills) {
 		lines.push("  <skill>");
 		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
@@ -286,9 +310,18 @@ function renderSkills(runtime: PromptRuntime): string {
 	return lines.join("\n");
 }
 
-function renderProjectContext(runtime: PromptRuntime): string {
+function renderProjectContext(item: PromptStackSlotItem, runtime: PromptRuntime): string {
 	const contextFiles = runtime.options.contextFiles ?? [];
 	if (contextFiles.length === 0) return "";
+
+	if (slotTextFormat(item) === "plain") {
+		const lines = ["Project context:", "", "Project-specific instructions and guidelines:", ""];
+		for (const file of contextFiles) {
+			lines.push(`Path: ${file.path}`);
+			lines.push(indentPlainBlock(file.content, "  "), "");
+		}
+		return lines.join("\n").trimEnd();
+	}
 
 	const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
 	for (const file of contextFiles) {
@@ -298,6 +331,13 @@ function renderProjectContext(runtime: PromptRuntime): string {
 	}
 	lines.push("</project_context>");
 	return lines.join("\n");
+}
+
+function slotTextFormat(item: PromptStackSlotItem, options: { allowJson?: boolean } = {}): PromptStackSlotFormat {
+	const format = item.options?.format;
+	if (format === "plain") return "plain";
+	if (format === "json" && options.allowJson) return "json";
+	return "xml";
 }
 
 function renderPiDocsGuidance(): string {
@@ -316,7 +356,7 @@ function renderVariables(
 	const options = item.options ?? {};
 	const scopes = selectedVariableScopes(options);
 	const includeMetadata = options.includeMetadata === true;
-	const format = options.format === "json" ? "json" : "xml";
+	const format = slotTextFormat(item, { allowJson: true });
 	const includeNamespaces = normalizeStringArray(options.includeNamespaces);
 	const excludeNamespaces = normalizeStringArray(options.excludeNamespaces);
 	const maxValueChars = typeof options.maxValueChars === "number" && Number.isFinite(options.maxValueChars) && options.maxValueChars > 0
@@ -392,6 +432,10 @@ function renderVariables(
 		return `<prompt_state format=\"json\">\n${escapeXml(JSON.stringify(payload, null, 2))}\n</prompt_state>`;
 	}
 
+	if (format === "plain") {
+		return renderPlainVariables(stack, grouped, unsetDefinitions, includeMetadata, maxValueChars);
+	}
+
 	const parts: string[] = ["<prompt_state>"];
 
 	for (const scope of ["static", "session", "turn"] as const) {
@@ -427,6 +471,66 @@ function renderVariables(
 
 	parts.push("</prompt_state>");
 	return parts.join("\n");
+}
+
+function renderPlainVariables(
+	stack: PromptStack,
+	grouped: Record<PromptStateScope, Record<string, PromptStateValue>>,
+	unsetDefinitions: Record<PromptStateScope, string[]>,
+	includeMetadata: boolean,
+	maxValueChars: number | undefined,
+): string {
+	const parts: string[] = ["Prompt state:"];
+
+	for (const scope of ["static", "session", "turn"] as const) {
+		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
+		const unsetNames = unsetDefinitions[scope].sort((a, b) => a.localeCompare(b));
+		if (entries.length === 0 && unsetNames.length === 0) continue;
+		parts.push(`${scope}:`);
+		for (const [name, value] of entries) {
+			const metadata = includeMetadata ? metadataForVariable(stack, name) : {};
+			const label = plainVariableLabel(name, metadata.type ?? inferStateValueType(value), metadata);
+			parts.push(plainBullet(label, truncateValue(stateValueToPromptText(value), maxValueChars)));
+		}
+		for (const name of unsetNames) {
+			const metadata = metadataForVariable(stack, name);
+			const label = plainVariableLabel(name, metadata.type ?? "unknown", metadata, true);
+			parts.push(plainBullet(label, "(unset)"));
+		}
+	}
+
+	return parts.join("\n");
+}
+
+function plainVariableLabel(
+	name: string,
+	type: string,
+	metadata: {
+		type?: string;
+		description?: string;
+		agentWritable?: boolean;
+		userWritable?: boolean;
+	},
+	unset = false,
+): string {
+	const details = [type];
+	if (unset) details.push("unset");
+	if (metadata.description) details.push(`description: ${metadata.description}`);
+	if (metadata.agentWritable !== undefined) details.push(`agentWritable: ${metadata.agentWritable ? "true" : "false"}`);
+	if (metadata.userWritable !== undefined) details.push(`userWritable: ${metadata.userWritable ? "true" : "false"}`);
+	return `${name} (${details.join("; ")})`;
+}
+
+function plainBullet(label: string, value: string): string {
+	return `- ${label}: ${plainContinuation(value, "  ")}`;
+}
+
+function plainContinuation(value: string, indent: string): string {
+	return value.split("\n").map((line, index) => index === 0 ? line : `${indent}${line}`).join("\n");
+}
+
+function indentPlainBlock(value: string, indent: string): string {
+	return value.split("\n").map((line) => `${indent}${line}`).join("\n");
 }
 
 function selectedVariableScopes(options: Record<string, unknown>): Set<PromptStateScope> {

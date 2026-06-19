@@ -486,6 +486,8 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /copyImportReportBtn/);
 		assert.match(pageHtml, /data-icon/);
 		assert.match(pageHtml, /validateRawStackJson/);
+		assert.match(pageHtml, /\["xml", "json", "plain"\]/);
+		assert.match(pageHtml, /\["xml", "plain"\]/);
 		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
 		assert.ok(scriptMatch?.[1]);
 		assert.doesNotThrow(() => new Function(scriptMatch[1]!));
