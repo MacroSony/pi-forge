@@ -159,6 +159,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `/preset ui`, `/preset ui restart`, and `/preset ui stop`.
 - Local editor server bound to an available `127.0.0.1` port by default with a random URL token.
 - Preferred editor port can be configured through `.pi/forge/config.json` using `webEditor.port`; if it is unavailable, pi-forge falls back to an available port.
+- Existing same-project editor servers are reclaimed after extension reinitialization from session navigation/new-session flows, so `/preset ui` reuses the current URL instead of opening a second port.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
 - Light/dark theme toggle, button icons, and tooltips for common actions.

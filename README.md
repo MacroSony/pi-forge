@@ -77,7 +77,7 @@ Drag, drop, edit, validate, inspect full previews and captured payloads, manage 
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
-The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. Writes require a trusted project and stay inside prompt-stack storage. New stacks are written to `.pi/forge/prompt-stacks`; existing legacy stacks under `.pi/prompt-stacks` remain readable and editable. Successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. If Pi reinitializes the extension after session navigation or a new session, `/preset ui` reuses the existing editor URL for the same project instead of orphaning the old server. Writes require a trusted project and stay inside prompt-stack storage. New stacks are written to `.pi/forge/prompt-stacks`; existing legacy stacks under `.pi/prompt-stacks` remain readable and editable. Successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
 
 To copy old stacks into the new location, run `/preset migrate-stacks`. Add `--dry-run` to preview, `--overwrite` to replace existing target files, and `--delete-legacy` to remove old files after successful copy.
 

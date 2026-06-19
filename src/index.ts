@@ -24,9 +24,30 @@ import { startWebEditorServer, type WebEditorPayloadCapture, type WebEditorPaylo
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
 const AGENT_VAR_PREFIX = "agent.";
+const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 
 type StateActor = "agent" | "user";
 type PayloadDisplayTarget = "editor" | "web";
+
+interface SharedWebEditorState {
+	server?: WebEditorServer;
+	cwd?: string;
+	preferredPort?: number;
+}
+
+interface SharedWebEditorRegistry {
+	byCwd: Record<string, SharedWebEditorState | undefined>;
+}
+
+type PiForgeGlobal = typeof globalThis & {
+	__piForgeWebEditor?: SharedWebEditorRegistry;
+};
+
+function getSharedWebEditorRegistry(): SharedWebEditorRegistry {
+	const globalScope = globalThis as PiForgeGlobal;
+	globalScope[WEB_EDITOR_GLOBAL_KEY] ??= { byCwd: {} };
+	return globalScope[WEB_EDITOR_GLOBAL_KEY];
+}
 
 interface StateUpdateInput {
 	name: string;
@@ -35,6 +56,7 @@ interface StateUpdateInput {
 }
 
 export default function piForge(pi: ExtensionAPI) {
+	const sharedWebEditors = getSharedWebEditorRegistry();
 	let stacks: LoadedPromptStack[] = [];
 	let active: LoadedPromptStack | undefined;
 	let currentSystemPromptOptions: BuildSystemPromptOptions | undefined;
@@ -161,15 +183,57 @@ export default function piForge(pi: ExtensionAPI) {
 		};
 	}
 
-	async function openWebEditor(ctx: ExtensionCommandContext, mode: "open" | "restart" = "open"): Promise<void> {
-		const settings = loadWebEditorSettings(ctx);
-		for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
+	function sharedWebEditorForCwd(cwd: string): SharedWebEditorState {
+		sharedWebEditors.byCwd[cwd] ??= {};
+		return sharedWebEditors.byCwd[cwd];
+	}
 
-		if (webEditor && (mode === "restart" || webEditorCwd !== ctx.cwd || webEditorPreferredPort !== settings.preferredPort)) {
-			await webEditor.close();
+	function syncWebEditorFromShared(cwd: string): void {
+		const shared = sharedWebEditorForCwd(cwd);
+		webEditor = shared.server;
+		webEditorCwd = shared.cwd;
+		webEditorPreferredPort = shared.preferredPort;
+	}
+
+	function rememberWebEditor(server: WebEditorServer, cwd: string, preferredPort: number | undefined): void {
+		const shared = sharedWebEditorForCwd(cwd);
+		webEditor = server;
+		webEditorCwd = cwd;
+		webEditorPreferredPort = preferredPort;
+		shared.server = server;
+		shared.cwd = cwd;
+		shared.preferredPort = preferredPort;
+	}
+
+	function clearWebEditor(server: WebEditorServer): void {
+		if (webEditor === server) {
 			webEditor = undefined;
 			webEditorCwd = undefined;
 			webEditorPreferredPort = undefined;
+		}
+		for (const [cwd, shared] of Object.entries(sharedWebEditors.byCwd)) {
+			if (shared?.server === server) delete sharedWebEditors.byCwd[cwd];
+		}
+	}
+
+	function refreshWebEditorHost(ctx: ExtensionContext): void {
+		syncWebEditorFromShared(ctx.cwd);
+		if (!webEditor) return;
+		const commandCtx = ctx as ExtensionCommandContext;
+		webEditor.updateHost(createWebEditorHost(commandCtx, webHostRuntime(commandCtx)));
+		rememberWebEditor(webEditor, ctx.cwd, webEditorPreferredPort);
+		ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
+	}
+
+	async function openWebEditor(ctx: ExtensionCommandContext, mode: "open" | "restart" = "open"): Promise<void> {
+		syncWebEditorFromShared(ctx.cwd);
+		const settings = loadWebEditorSettings(ctx);
+		for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
+
+		if (webEditor && (mode === "restart" || webEditorPreferredPort !== settings.preferredPort)) {
+			const server = webEditor;
+			await server.close();
+			clearWebEditor(server);
 			ctx.ui.setStatus("pi-forge-editor", undefined);
 		}
 
@@ -195,11 +259,13 @@ export default function piForge(pi: ExtensionAPI) {
 					return;
 				}
 			}
-			webEditorCwd = ctx.cwd;
-			webEditorPreferredPort = settings.preferredPort;
+			rememberWebEditor(webEditor, ctx.cwd, settings.preferredPort);
 			ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
 			ctx.ui.notify(`pi-forge: stack editor running at ${webEditor.url}`, "info");
 		} else {
+			webEditor.updateHost(createWebEditorHost(ctx, webHostRuntime(ctx)));
+			rememberWebEditor(webEditor, ctx.cwd, settings.preferredPort);
+			ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
 			ctx.ui.notify(`pi-forge: stack editor already running at ${webEditor.url}`, "info");
 		}
 
@@ -207,14 +273,14 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	async function stopWebEditor(ctx: ExtensionCommandContext): Promise<void> {
+		syncWebEditorFromShared(ctx.cwd);
 		if (!webEditor) {
 			ctx.ui.notify("pi-forge: stack editor is not running.", "info");
 			return;
 		}
-		await webEditor.close();
-		webEditor = undefined;
-		webEditorCwd = undefined;
-		webEditorPreferredPort = undefined;
+		const server = webEditor;
+		await server.close();
+		clearWebEditor(server);
 		ctx.ui.setStatus("pi-forge-editor", undefined);
 		ctx.ui.notify("pi-forge: stack editor stopped.", "info");
 	}
@@ -396,16 +462,19 @@ export default function piForge(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (event, ctx) => {
 		restoreBranchScopedState(ctx);
+		refreshWebEditorHost(ctx);
 		notifyActivePreset(ctx, "after session " + event.reason);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
 		restoreBranchScopedState(ctx);
+		refreshWebEditorHost(ctx);
 		notifyActivePreset(ctx, "after tree navigation");
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
 		restoreBranchScopedState(ctx);
+		refreshWebEditorHost(ctx);
 		notifyActivePreset(ctx, "after compaction");
 	});
 

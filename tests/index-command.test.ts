@@ -809,6 +809,43 @@ test("/preset ui honors preferred port and falls back when it is occupied", asyn
 	}
 });
 
+test("/preset ui reuses an existing server after extension reinitialization", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const firstHarness = createHarness();
+	const firstContext = createContext(cwd);
+	await startSession(firstHarness, firstContext.ctx);
+
+	const secondHarness = createHarness();
+	const secondContext = createContext(cwd, [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "user.preference": "after-tree" } } },
+	]);
+
+	try {
+		await firstHarness.commands.preset.handler("ui", firstContext.ctx);
+		const editorUrl = latestEditorUrl(firstContext.editors);
+		const token = editorUrl.searchParams.get("token")!;
+
+		await startSession(secondHarness, secondContext.ctx);
+		assert.equal(secondContext.statuses["pi-forge-editor"], `editor:${editorUrl.port}`);
+
+		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(stateResponse.status, 200);
+		const state = await stateResponse.json() as { session: Record<string, unknown> };
+		assert.equal(state.session["user.preference"], "after-tree");
+
+		await secondHarness.commands.preset.handler("ui", secondContext.ctx);
+		assert.equal(latestEditorUrl(secondContext.editors).href, editorUrl.href);
+	} finally {
+		await secondHarness.commands.preset.handler("ui stop", secondContext.ctx);
+	}
+});
+
 test("turn_start persists default active stack only once", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {

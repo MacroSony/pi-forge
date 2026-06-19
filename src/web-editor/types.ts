@@ -84,6 +84,7 @@ export type WebEditorOperationResult<T> = ({ ok: true } & T) | { ok: false; stat
 export interface WebEditorServer {
 	url: string;
 	port: number;
+	updateHost(host: WebEditorHost): void;
 	close(): Promise<void>;
 }
 

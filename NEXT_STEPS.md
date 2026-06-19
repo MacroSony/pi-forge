@@ -41,6 +41,7 @@ Implemented and working:
 - `src/index.ts` first split: web stack CRUD/settings moved to `src/web-host.ts`, and provider payload redaction/capture moved to `src/payload-capture.ts`.
 - Web editor host/runtime context flow is bound once when the server starts; host methods no longer pass their captured command context back into runtime callbacks.
 - Regex MVP: top-level `regex.rules` validates JavaScript regex replacements, applies `history` and `compiled` outgoing transforms to prompt text before provider serialization, and can destructively rewrite finalized assistant messages with `effect: "finalize"`.
+- Web editor servers are tracked per project cwd and rebound after extension reinitialization, preventing orphaned same-project servers after `/tree` or `/new`.
 
 ## Architecture simplification review
 

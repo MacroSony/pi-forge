@@ -11,10 +11,11 @@ import type { WebEditorHost, WebEditorOperationResult, WebEditorServer, WebEdito
 export const DEFAULT_WEB_EDITOR_PORT = 0;
 
 export async function startWebEditorServer(host: WebEditorHost, options: WebEditorServerOptions = {}): Promise<WebEditorServer> {
+	let currentHost = host;
 	const token = randomBytes(24).toString("base64url");
 	const sockets = new Set<Socket>();
 	const server = createServer((req, res) => {
-		void handleRequest(host, token, req, res).catch((error) => {
+		void handleRequest(currentHost, token, req, res).catch((error) => {
 			sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
 		});
 	});
@@ -41,6 +42,9 @@ export async function startWebEditorServer(host: WebEditorHost, options: WebEdit
 	return {
 		url,
 		port: address.port,
+		updateHost: (nextHost) => {
+			currentHost = nextHost;
+		},
 		close: () => closeServer(server, sockets),
 	};
 }
