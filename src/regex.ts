@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
+	PromptRegexEffect,
 	PromptRegexRule,
 	PromptRegexStage,
 	PromptRegexTarget,
@@ -9,12 +10,13 @@ import type {
 
 const ALLOWED_REGEX_FLAGS = new Set(["g", "i", "m", "s", "u"]);
 const VALID_STAGES = new Set(["history", "compiled"]);
-const VALID_EFFECTS = new Set(["outgoing", "display", "both"]);
+const VALID_EFFECTS = new Set(["outgoing", "display", "both", "finalize"]);
 const VALID_TARGETS = new Set(["system", "messages"]);
 
 interface CompiledRegexRule {
 	id: string;
 	stage: PromptRegexStage;
+	effect: PromptRegexEffect;
 	targets?: PromptRegexTarget[];
 	roles?: string[];
 	maxMessages?: number;
@@ -68,7 +70,7 @@ export function applyRegexRulesToString(
 	diagnostics: PromptStackDiagnostic[],
 ): string {
 	let result = text;
-	for (const rule of outgoingRulesFor(stack, stage, target, diagnostics)) {
+	for (const rule of regexRulesFor(stack, stage, target, "outgoing", diagnostics)) {
 		const transformed = transformString(result, rule);
 		result = transformed.text;
 		addRuleStats(diagnostics, rule, stage, target, {
@@ -86,11 +88,34 @@ export function applyRegexRulesToMessages(
 	diagnostics: PromptStackDiagnostic[],
 ): AgentMessage[] {
 	let result = messages;
-	for (const rule of outgoingRulesFor(stack, stage, "messages", diagnostics)) {
+	for (const rule of regexRulesFor(stack, stage, "messages", "outgoing", diagnostics)) {
 		const stats: RegexStats = { matches: 0, changedSegments: 0 };
 		result = transformMessages(result, rule, stats);
 		addRuleStats(diagnostics, rule, stage, "messages", stats);
 	}
+	return result;
+}
+
+export function applyFinalizeRegexRulesToMessage(
+	stack: PromptStack,
+	message: AgentMessage,
+	diagnostics: PromptStackDiagnostic[],
+): AgentMessage | undefined {
+	if (String((message as { role?: unknown }).role) !== "assistant") return undefined;
+
+	let result = message;
+	for (const rule of regexRulesFor(stack, "compiled", "messages", "finalize", diagnostics)) {
+		const stats: RegexStats = { matches: 0, changedSegments: 0 };
+		const [next = result] = transformMessages([result], rule, stats);
+		result = next;
+		addRuleStats(diagnostics, rule, "finalize", "messages", stats);
+	}
+
+	if (result === message) return undefined;
+	diagnostics.push({
+		level: "warning",
+		message: "Finalize regex replaced finalized assistant message content; original model output is not preserved in the stored transcript.",
+	});
 	return result;
 }
 
@@ -118,12 +143,20 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} stage must be "history" or "compiled".` });
 	}
 
+	const effect = typeof rawRule.effect === "string" ? rawRule.effect : undefined;
 	if (rawRule.effect !== undefined) {
 		if (!VALID_EFFECTS.has(rawRule.effect as string)) {
-			diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect must be "outgoing", "display", or "both".` });
-		} else if (rawRule.effect === "display" || rawRule.effect === "both") {
-			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "${rawRule.effect}" is not implemented in the outgoing-only regex MVP and will be ignored.` });
+			diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect must be "outgoing", "display", "both", or "finalize".` });
+		} else if (rawRule.effect === "display") {
+			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "display" is not a runtime effect in pi-forge yet and will be ignored. Use "finalize" only when destructive transcript cleanup is intended.` });
+		} else if (rawRule.effect === "both") {
+			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "both" is not implemented and will be ignored; use separate outgoing and finalize rules.` });
+		} else if (rawRule.effect === "finalize") {
+			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" rewrites finalized assistant messages and replaces the original model output in the stored transcript.` });
 		}
+	}
+	if (effect === "finalize" && rawRule.stage !== "compiled") {
+		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect "finalize" requires stage "compiled".` });
 	}
 
 	if (typeof rawRule.pattern !== "string" || rawRule.pattern.length === 0) {
@@ -153,9 +186,14 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 			for (const target of rawRule.targets) {
 				if (!VALID_TARGETS.has(target)) {
 					diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} target must be "system" or "messages": ${target}.` });
+				} else if (effect === "finalize" && target !== "messages") {
+					diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect "finalize" only supports target "messages": ${target}.` });
 				}
 			}
 		}
+	}
+	if (effect === "finalize" && isStringArray(rawRule.roles) && !rawRule.roles.includes("assistant")) {
+		diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" only runs for finalized assistant messages, but roles does not include "assistant".` });
 	}
 	if (rawRule.maxMessages !== undefined && !isPositiveInteger(rawRule.maxMessages)) {
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} maxMessages must be a positive integer when provided.` });
@@ -165,10 +203,11 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 	}
 }
 
-function outgoingRulesFor(
+function regexRulesFor(
 	stack: PromptStack,
 	stage: PromptRegexStage,
 	target: PromptRegexTarget,
+	effect: PromptRegexEffect,
 	diagnostics: PromptStackDiagnostic[],
 ): CompiledRegexRule[] {
 	const rules = Array.isArray(stack.regex?.rules) ? stack.regex.rules : [];
@@ -177,7 +216,7 @@ function outgoingRulesFor(
 	for (const rawRule of rules) {
 		if (!isPlainObject(rawRule)) continue;
 		if (rawRule.enabled === false) continue;
-		if ((rawRule.effect ?? "outgoing") !== "outgoing") continue;
+		if ((rawRule.effect ?? "outgoing") !== effect) continue;
 		if (rawRule.stage !== stage) continue;
 		if (stage === "compiled" && Array.isArray(rawRule.targets) && !rawRule.targets.includes(target)) continue;
 
@@ -191,6 +230,8 @@ function outgoingRulesFor(
 function compileRuntimeRule(rule: PromptRegexRule, diagnostics: PromptStackDiagnostic[]): CompiledRegexRule | undefined {
 	if (typeof rule.id !== "string" || !rule.id.trim()) return undefined;
 	if (rule.stage !== "history" && rule.stage !== "compiled") return undefined;
+	const effect = rule.effect ?? "outgoing";
+	if (!VALID_EFFECTS.has(effect)) return undefined;
 	if (typeof rule.pattern !== "string" || rule.pattern.length === 0) return undefined;
 	const flags = typeof rule.flags === "string" ? rule.flags : "";
 	const flagsError = validateRegexFlags(flags, rule.id, -1);
@@ -199,6 +240,7 @@ function compileRuntimeRule(rule: PromptRegexRule, diagnostics: PromptStackDiagn
 		return {
 			id: rule.id.trim(),
 			stage: rule.stage,
+			effect,
 			targets: normalizeTargets(rule.targets),
 			roles: isStringArray(rule.roles) ? rule.roles : undefined,
 			maxMessages: isPositiveInteger(rule.maxMessages) ? Math.floor(rule.maxMessages) : undefined,
@@ -292,7 +334,7 @@ function mergeStringStats(stats: RegexStats, result: StringTransformResult): voi
 function addRuleStats(
 	diagnostics: PromptStackDiagnostic[],
 	rule: CompiledRegexRule,
-	stage: PromptRegexStage,
+	stage: string,
 	target: PromptRegexTarget,
 	stats: RegexStats,
 ): void {

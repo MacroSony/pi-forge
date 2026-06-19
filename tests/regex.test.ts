@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { applyRegexRulesToMessages, validateRegexConfig } from "../src/regex.ts";
+import { applyFinalizeRegexRulesToMessage, applyRegexRulesToMessages, validateRegexConfig } from "../src/regex.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../src/types.ts";
 
 function user(content: string): AgentMessage {
@@ -104,6 +104,79 @@ test("display regex effects validate with a warning and are ignored by outgoing 
 	assert.ok(validation.some((diagnostic) => diagnostic.level === "warning" && /ignored/.test(diagnostic.message)));
 	assert.equal(textOf(messages[0]!), "secret");
 	assert.deepEqual(diagnostics, []);
+});
+
+test("finalize regex rewrites finalized assistant text and preserves non-text parts", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "finalize",
+		regex: {
+			rules: [{
+				id: "final-ooc",
+				stage: "compiled",
+				effect: "finalize",
+				targets: ["messages"],
+				roles: ["assistant"],
+				pattern: "\\s*\\(OOC:[^)]+\\)",
+				flags: "g",
+				replace: "",
+			}],
+		},
+		items: [],
+	};
+	const message = assistant("Visible (OOC: hide)");
+	const nonTextPart = { type: "toolCall", name: "keep" };
+	(message as unknown as { content: Array<Record<string, unknown>> }).content.push(nonTextPart);
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	const replacement = applyFinalizeRegexRulesToMessage(stack, message, diagnostics);
+	const content = (replacement as unknown as { content: Array<Record<string, unknown>> }).content;
+
+	assert.ok(replacement);
+	assert.notEqual(replacement, message);
+	assert.equal(content[0]?.text, "Visible");
+	assert.equal(content[1], nonTextPart);
+	assert.equal(replacement.role, "assistant");
+	assert.equal((replacement as { model?: string }).model, "test-model");
+	assert.equal((replacement as { usage?: unknown }).usage, (message as { usage?: unknown }).usage);
+	assert.ok(diagnostics.some((diagnostic) => /matched 1 time/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => /original model output is not preserved/.test(diagnostic.message)));
+});
+
+test("finalize regex ignores display and both effects", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "ignored-effects",
+		regex: {
+			rules: [
+				{ id: "display", stage: "compiled", effect: "display", pattern: "secret", replace: "redacted" },
+				{ id: "both", stage: "compiled", effect: "both", pattern: "secret", replace: "redacted" },
+			],
+		},
+		items: [],
+	};
+	const diagnostics: PromptStackDiagnostic[] = [];
+	const message = assistant("secret");
+
+	const replacement = applyFinalizeRegexRulesToMessage(stack, message, diagnostics);
+
+	assert.equal(replacement, undefined);
+	assert.equal(textOf(message), "secret");
+	assert.deepEqual(diagnostics, []);
+});
+
+test("finalize regex validation rejects unsupported stage and targets", () => {
+	const diagnostics = validateRegexConfig({
+		rules: [
+			{ id: "bad-stage", stage: "history", effect: "finalize", pattern: "x" },
+			{ id: "bad-target", stage: "compiled", effect: "finalize", targets: ["system"], pattern: "x" },
+			{ id: "no-assistant-role", stage: "compiled", effect: "finalize", roles: ["user"], pattern: "x" },
+		],
+	});
+
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /requires stage "compiled"/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /only supports target "messages"/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "warning" && /roles does not include "assistant"/.test(diagnostic.message)));
 });
 
 test("regex roles, maxMessages, and maxChars limit eligible text", () => {

@@ -402,6 +402,58 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 	assert.match(editors.at(-1)?.text ?? "", /Unresolved macro: \{\{missing\}\}/);
 });
 
+test("message_end applies destructive finalize regex to assistant messages", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		regex: {
+			rules: [{
+				id: "final-ooc",
+				stage: "compiled",
+				effect: "finalize",
+				targets: ["messages"],
+				roles: ["assistant"],
+				pattern: "\\s*\\(OOC:[^)]+\\)",
+				flags: "g",
+				replace: "",
+			}],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const { ctx, statuses } = createContext(cwd);
+	await startSession(harness, ctx);
+	const assistantMessage = {
+		role: "assistant",
+		content: [{ type: "text", text: "Plan (OOC: hidden)" }],
+		api: "test",
+		provider: "test",
+		model: "test-model",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop",
+		timestamp: 1,
+	};
+
+	const result = await harness.events.message_end({ type: "message_end", message: assistantMessage }, ctx);
+	const userResult = await harness.events.message_end({ type: "message_end", message: { role: "user", content: "Plan (OOC: keep)", timestamp: 2 } }, ctx);
+
+	assert.equal(result.message.content[0].text, "Plan");
+	assert.equal(result.message.role, "assistant");
+	assert.equal(result.message.model, "test-model");
+	assert.equal(result.message.usage, assistantMessage.usage);
+	assert.equal(statuses["pi-forge-diagnostics"], "forge:0e/1w");
+	assert.equal(userResult, undefined);
+});
+
 test("/payload next saves a redacted provider payload", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	const harness = createHarness();

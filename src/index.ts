@@ -14,6 +14,7 @@ import {
 } from "./compiler.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStackPath, promptStackReadDirs } from "./loader.ts";
 import { createProviderPayloadCapture, estimatePayloadTokens } from "./payload-capture.ts";
+import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
 import type { LoadedPromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
@@ -452,6 +453,15 @@ export default function piForge(pi: ExtensionAPI) {
 		recordCompileDiagnostics(ctx, [...latestCompileDiagnostics, ...result.diagnostics]);
 		persistVariablesIfDirty(currentVariableStore);
 		return { messages: result.messages };
+	});
+
+	pi.on("message_end", async (event, ctx) => {
+		if (!active) return;
+		const diagnostics: PromptStackDiagnostic[] = [];
+		const message = applyFinalizeRegexRulesToMessage(active.stack, event.message, diagnostics);
+		if (diagnostics.length > 0) recordCompileDiagnostics(ctx, [...latestCompileDiagnostics, ...diagnostics]);
+		if (!message) return;
+		return { message };
 	});
 
 	pi.on("agent_end", async () => {

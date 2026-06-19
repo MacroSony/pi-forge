@@ -1,6 +1,6 @@
 # pi-forge Implemented Features
 
-This file tracks the currently implemented feature surface for the prompt-stack runtime, typed prompt state, web editor, SillyTavern importer, storage migration, payload inspector, and outgoing regex MVP.
+This file tracks the currently implemented feature surface for the prompt-stack runtime, typed prompt state, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
 
 ## Package and Runtime
 
@@ -35,6 +35,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
 - Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
+- Finalize regex transforms can rewrite completed assistant messages at `message_end`.
 
 ## Regex Transforms
 
@@ -42,7 +43,11 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Deterministic JavaScript `RegExp` replacements only; no embedded JavaScript, DOM access, browser automation, or CSS/HTML decoration runtime.
 - `stage: "history"` transforms messages inserted by the `chat-history` slot.
 - `stage: "compiled"` transforms the final compiled system prompt and/or message text before provider serialization.
-- `effect: "outgoing"` is active; `effect: "display"` and `"both"` validate with warnings and are ignored by the outgoing-only MVP.
+- `effect: "outgoing"` is active for model-bound prompt text.
+- `effect: "finalize"` is active for completed assistant messages at `stage: "compiled"` / `targets: ["messages"]`.
+- `effect: "finalize"` is destructive: it replaces the finalized assistant message in Pi's stored transcript, so the original model output is not preserved.
+- `effect: "display"` and `"both"` validate with warnings and are ignored until true display transforms are implemented.
+- Streaming display is not transformed; raw text may be visible until the final message replacement happens.
 - Message transforms support role filters, `maxMessages`, and `maxChars`.
 - Compiled-stage transforms support `targets: ["system"]`, `["messages"]`, or both.
 - Supported regex flags are `g`, `i`, `m`, `s`, and `u`, with duplicate/unsupported flags rejected during validation.
@@ -145,7 +150,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
-- Tests cover regex validation, history-stage transforms, compiled-stage transforms, replacement syntax, role/message/char limits, and preservation of non-text message parts.
+- Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, role/message/char limits, and preservation of non-text message parts.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
 

@@ -23,7 +23,7 @@ export type PromptStackSlotFormat = "xml" | "json" | "plain";
 
 export type PromptRegexStage = "history" | "compiled";
 
-export type PromptRegexEffect = "outgoing" | "display" | "both";
+export type PromptRegexEffect = "outgoing" | "display" | "both" | "finalize";
 
 export type PromptRegexTarget = "system" | "messages";
 

@@ -12,7 +12,7 @@ Think of it as a character sheet for your AI agent.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
 - **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
-- **Transform outgoing prompt text** — run deterministic regex replacements on selected history or compiled prompt text.
+- **Transform outgoing and finalized text** — run deterministic regex replacements on selected history, compiled prompt text, or finalized assistant messages.
 - **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
 - **Debug your prompts** — intercept and inspect exactly what gets sent to the model.
 
@@ -194,6 +194,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 2. Inserts `user`/`assistant` blocks and slots around the conversation history.
 3. Expands `{{macros}}` like `{{lastUserMessage}}`, `{{date}}`, and custom variables.
 4. Applies enabled outgoing regex rules for the `history` and `compiled` stages.
+5. Optionally applies destructive `finalize` regex rules when an assistant message finishes.
 
 ### Slots at a glance
 
@@ -345,7 +346,7 @@ Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` 
 
 ### Regex transforms
 
-Prompt stacks can run deterministic regex replacements on outgoing prompt text. This first implementation supports `history` and `compiled` stages only; display-only and provider-payload rewrites are not active yet.
+Prompt stacks can run deterministic regex replacements on model-bound prompt text and, optionally, finalized assistant messages. Outgoing rules support `history` and `compiled` stages. Destructive final-message cleanup uses `effect: "finalize"` at `stage: "compiled"` with the `messages` target. True display-only streaming transforms and provider-payload rewrites are not active yet.
 
 ```json
 "regex": {
@@ -368,7 +369,25 @@ Prompt stacks can run deterministic regex replacements on outgoing prompt text. 
 
 Use `stage: "history"` to transform messages inserted by the `chat-history` slot. Use `stage: "compiled"` with optional `targets: ["system"]`, `["messages"]`, or both to transform the final compiled prompt. Message rules can filter by `roles`, `maxMessages`, and `maxChars`. Supported regex flags are `g`, `i`, `m`, `s`, and `u`.
 
-Only `effect: "outgoing"` changes model input in this MVP. `effect: "display"` and `"both"` validate with warnings but are ignored at runtime until display transforms are implemented.
+To clean a completed assistant message after streaming, use `effect: "finalize"`:
+
+```json
+{
+  "id": "finalize-ooc",
+  "enabled": true,
+  "stage": "compiled",
+  "effect": "finalize",
+  "targets": ["messages"],
+  "roles": ["assistant"],
+  "pattern": "\\s*\\(OOC:[^)]+\\)",
+  "flags": "gi",
+  "replace": ""
+}
+```
+
+Warning: `finalize` runs at `message_end`, after raw output may already have streamed in the TUI. It returns a cleaned replacement message to Pi, so the original model output is not preserved in the stored transcript.
+
+`effect: "outgoing"` changes model input. `effect: "finalize"` changes finalized assistant transcript content. `effect: "display"` and `"both"` validate with warnings but are ignored at runtime until true display transforms are implemented.
 
 ### Variables slot options
 

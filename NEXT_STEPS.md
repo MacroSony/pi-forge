@@ -40,7 +40,7 @@ Implemented and working:
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks`, with explicit deletion required to remove legacy files.
 - `src/index.ts` first split: web stack CRUD/settings moved to `src/web-host.ts`, and provider payload redaction/capture moved to `src/payload-capture.ts`.
 - Web editor host/runtime context flow is bound once when the server starts; host methods no longer pass their captured command context back into runtime callbacks.
-- Outgoing regex MVP: top-level `regex.rules` validates JavaScript regex replacements and applies `history` and `compiled` outgoing transforms to prompt text before provider serialization.
+- Regex MVP: top-level `regex.rules` validates JavaScript regex replacements, applies `history` and `compiled` outgoing transforms to prompt text before provider serialization, and can destructively rewrite finalized assistant messages with `effect: "finalize"`.
 
 ## Architecture simplification review
 
@@ -49,7 +49,7 @@ Review findings to keep in mind before expanding regex runtime behavior, adding 
 - `src/web-editor/page.ts` is now the highest-friction file. It is still one embedded HTML/CSS/client-script string, which is workable for small edits but risky for richer regex/tool configuration screens. Split it along practical static boundaries later (`template`, `styles`, `client-script`) or introduce a tiny build step before the browser UI grows much further.
 - `src/index.ts` is still broad, but stack file CRUD/web-editor host methods now live in `src/web-host.ts`, and payload capture/redaction lives in `src/payload-capture.ts`. Continue extracting `runtime-state` and `commands` before implementing tool policy.
 - `src/sillytavern-importer.ts` has a large conversion/reporting pipeline. Split conversion, prompt-order selection, report building, regex reporting, and macro reporting into smaller pure helpers before expanding SillyTavern regex support.
-- `src/compiler.ts` should separate prompt-state collection from format rendering. `variables` already supports multiple formats, and adding display-only versus outgoing-payload transforms will otherwise make renderer branches harder to reason about.
+- `src/compiler.ts` should separate prompt-state collection from format rendering. `variables` already supports multiple formats, and adding true display-only versus outgoing-payload transforms will otherwise make renderer branches harder to reason about.
 - Prompt-stack storage now writes new stacks to `.pi/forge/prompt-stacks` and reads legacy `.pi/prompt-stacks` for compatibility. Keep future persistent feature state under `.pi/forge`.
 - Keep `src/web-editor/server.ts` lightweight. A tiny route table would be enough if more APIs are added; a full web framework is not warranted yet.
 - Test coverage is healthy, but `tests/index-command.test.ts` is becoming a large integration blob. Move the reusable mocked extension harness into `tests/helpers` when the next command/API feature lands.
@@ -127,7 +127,7 @@ SillyTavern regex script boundary:
 - Use `.pi/TGbreak😺V3.1.1.json` as the stress fixture: 13 enabled regex scripts, with 5 prompt-only, 6 display-only, and 2 mixed prompt/display scripts.
 - Treat `markdownOnly` HTML/CSS decoration scripts as non-portable to Pi TUI; examples like action-option beautification should become report notes, not runtime behavior.
 - Treat DOM/browser automation, toasts, preset-panel toggles, and embedded JavaScript as out of scope for pi-forge runtime.
-- Keep the implemented opt-in prompt-transform subset narrow: deterministic regex replace before provider request, no DOM, no JavaScript eval, no UI rewriting, disabled by default, and visible in validation/report output.
+- Keep the implemented opt-in transform subset narrow: deterministic regex replace before provider request or at assistant-message finalization, no DOM, no JavaScript eval, no UI rewriting, disabled by default, and visible in validation/report output.
 
 TGbreak migration notes:
 
@@ -144,7 +144,7 @@ Regex runtime status and design:
   - `compiled` stage: implemented for final system prompt and final message text before provider serialization. Supports `targets`, role filters for messages, `maxMessages`, and `maxChars`.
   - `payload` stage: not implemented; advanced provider-payload rewrite in `before_provider_request` should stay off by default and require explicit target paths because provider payload shapes differ.
   - `display` stage: not implemented; should transform web preview/display only and never change outgoing model input.
-- Keep outgoing versus display behavior explicit with `effect: "outgoing" | "display" | "both"`. Current runtime applies only omitted/`"outgoing"` effects. SillyTavern `promptOnly` maps to outgoing, `markdownOnly` maps to display, and mixed rules require review.
+- Keep outgoing versus final-transcript versus display behavior explicit with `effect: "outgoing" | "finalize" | "display" | "both"`. Current runtime applies omitted/`"outgoing"` effects to model input and `"finalize"` effects to completed assistant messages. `"display"` and `"both"` still warn and are ignored. SillyTavern `promptOnly` maps to outgoing, `markdownOnly` maps to display, and mixed rules require review.
 - Suggested rule shape:
 
 ```json
@@ -162,9 +162,10 @@ Regex runtime status and design:
 }
 ```
 
-- Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, and shows match/change counts in preview diagnostics.
-- Current Pi hooks can replace finalized assistant messages at `message_end`, so `displayFinal` cleanup is feasible: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
-- Next implementation order: expose raw/structured web editor controls, add SillyTavern prompt-only regex import conversion, then revisit display-final and provider-payload stages.
+- Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, warns that finalize rules are destructive, and shows match/change counts in preview/runtime diagnostics.
+- Implemented final-message cleanup uses `effect: "finalize"` at Pi `message_end`: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. This is not true display-only behavior because Pi stores the replacement and the original model output is lost from the transcript.
+- Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
+- Next implementation order: expose raw/structured web editor controls, add SillyTavern prompt-only regex import conversion, then revisit true display-only and provider-payload stages.
 
 ## Priority 4: Web editor polish
 
