@@ -25,7 +25,7 @@ pi install npm:@zihanw/pi-forge
 
 ### Your first prompt stack
 
-Create `.pi/prompt-stacks/default.json`:
+Create `.pi/forge/prompt-stacks/default.json`:
 
 ```json
 {
@@ -76,7 +76,9 @@ Drag, drop, edit, validate, inspect full previews and captured payloads, manage 
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
-The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. Writes require a trusted project and stay inside `.pi/prompt-stacks`; successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. Writes require a trusted project and stay inside prompt-stack storage. New stacks are written to `.pi/forge/prompt-stacks`; existing legacy stacks under `.pi/prompt-stacks` remain readable and editable. Successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+
+To copy old stacks into the new location, run `/preset migrate-stacks`. Add `--dry-run` to preview, `--overwrite` to replace existing target files, and `--delete-legacy` to remove old files after successful copy.
 
 To prefer a specific port, create `.pi/forge/config.json`. If that port is busy, pi-forge falls back to another available port and shows the actual URL:
 
@@ -119,7 +121,7 @@ Create a small `translator.json` stack with one system block for tone and target
 Create separate stacks for different tasks:
 
 ```
-.pi/prompt-stacks/
+.pi/forge/prompt-stacks/
   coder.json       # strict coding assistant
   writer.json      # creative writing partner
   translator.json  # bilingual translator
@@ -226,6 +228,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/preset status` | Show the active stack and diagnostics summary |
 | `/preset diagnostics` | Show runtime diagnostics |
 | `/preset reload` | Reload stacks from disk |
+| `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | Copy legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks` |
 | `/preset ui [stop\|restart]` | Open, stop, or restart the web editor |
 
 ### State management

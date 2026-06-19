@@ -5,7 +5,7 @@
 Implemented and working:
 
 - Pi package setup with `src/index.ts` as the extension entrypoint.
-- File-backed prompt stacks under `.pi/prompt-stacks/*.json`.
+- File-backed prompt stacks under `.pi/forge/prompt-stacks/*.json`, with legacy `.pi/prompt-stacks/*.json` still readable/editable for compatibility.
 - `default.json` auto-activation unless `autoActivate` is `false`, with persisted `/preset use none` opt-out.
 - Prompt stack system prompt replacement.
 - Movable `chat-history` slot.
@@ -15,7 +15,7 @@ Implemented and working:
 - `/preset` commands for list/use/preview/validate/diagnostics/reload/vars, plus `/state` commands for typed session state.
 - `/preset import-silly <file> [character_id] [--dry-run] [--overwrite]` command that writes prompt stacks and import reports.
 - `/intercept` and `/payload next [save=<path>]` commands to display/save the next provider payload with basic redaction/truncation.
-- Local converted SillyTavern writer preset in `.pi/prompt-stacks/default.json`.
+- Local converted SillyTavern writer preset can live in `.pi/forge/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
 - Active prompt stack status in the footer.
 - Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, prompt state slot rendering, SillyTavern import behavior, command/event behavior, and web-editor API smoke flows.
@@ -36,16 +36,20 @@ Implemented and working:
 - Supported SillyTavern-style variable macros such as `setvar`/`getvar` are reported as handled instead of migration-needed.
 - Web editor source split into `src/web-editor/index.ts`, `types.ts`, `server.ts`, and `page.ts` without behavior changes.
 - Opt-in `format: "plain"` compact rendering for structured prompt slots: `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables`.
+- Prompt-stack storage adapter in `src/storage.ts`; new stacks/imports write under `.pi/forge/prompt-stacks`, while legacy `.pi/prompt-stacks` remains readable and same-named forge files shadow legacy files.
+- `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks`, with explicit deletion required to remove legacy files.
+- `src/index.ts` first split: web stack CRUD/settings moved to `src/web-host.ts`, and provider payload redaction/capture moved to `src/payload-capture.ts`.
+- Web editor host/runtime context flow is bound once when the server starts; host methods no longer pass their captured command context back into runtime callbacks.
 
 ## Architecture simplification review
 
 Review findings to keep in mind before adding regex runtime behavior, tool allow/deny controls, or a larger web UI:
 
 - `src/web-editor/page.ts` is now the highest-friction file. It is still one embedded HTML/CSS/client-script string, which is workable for small edits but risky for richer regex/tool configuration screens. Split it along practical static boundaries later (`template`, `styles`, `client-script`) or introduce a tiny build step before the browser UI grows much further.
-- `src/index.ts` is the main broad module. It currently owns extension lifecycle, runtime state, stack file CRUD, web-editor host methods, slash commands, payload capture, preview rendering, and validation wiring. Extract `runtime-state`, `web-host`, `commands`, and `payload-capture` modules before implementing tool policy.
+- `src/index.ts` is still broad, but stack file CRUD/web-editor host methods now live in `src/web-host.ts`, and payload capture/redaction lives in `src/payload-capture.ts`. Continue extracting `runtime-state` and `commands` before implementing tool policy.
 - `src/sillytavern-importer.ts` has a large conversion/reporting pipeline. Split conversion, prompt-order selection, report building, regex reporting, and macro reporting into smaller pure helpers before expanding SillyTavern regex support.
 - `src/compiler.ts` should separate prompt-state collection from format rendering. `variables` already supports multiple formats, and adding display-only versus outgoing-payload transforms will otherwise make renderer branches harder to reason about.
-- Prompt-stack storage should move toward `.pi/forge/prompt-stacks` before more persistent feature state lands. Keep legacy `.pi/prompt-stacks` readable for compatibility, but write new stacks through a small storage-path adapter.
+- Prompt-stack storage now writes new stacks to `.pi/forge/prompt-stacks` and reads legacy `.pi/prompt-stacks` for compatibility. Keep future persistent feature state under `.pi/forge`.
 - Keep `src/web-editor/server.ts` lightweight. A tiny route table would be enough if more APIs are added; a full web framework is not warranted yet.
 - Test coverage is healthy, but `tests/index-command.test.ts` is becoming a large integration blob. Move the reusable mocked extension harness into `tests/helpers` when the next command/API feature lands.
 
@@ -94,6 +98,7 @@ Current command/event coverage:
 10. `/preset ui` starts/stops the local editor and protects the API with a URL token. - smoke coverage done
 11. Web editor save/create/delete operations reload current Pi stack state. - smoke coverage done
 12. Web editor runtime state API uses `/state` validation and persistence semantics. - smoke coverage done
+13. `/preset migrate-stacks` copies legacy stacks, handles collisions, supports dry-run/overwrite/delete-legacy, and refuses untrusted writes. - done
 
 ## Priority 3: Harden SillyTavern importer
 
@@ -101,7 +106,7 @@ The first importer command is implemented. Next work should make it safer and mo
 
 Completed hardening:
 
-- Add collision handling when `.pi/prompt-stacks/<id>.json` or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
+- Add collision handling when `.pi/forge/prompt-stacks/<id>.json`, legacy `.pi/prompt-stacks/<id>.json`, or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
 - Add tests around command-level import behavior, not only the pure importer. - initial coverage done
 - Preview generated output without writing files via `--dry-run`. - done
 - Detect `extensions.regex_scripts` during import and classify enabled scripts by `promptOnly`, `markdownOnly`, both, disabled, and script name. - done, report-only
@@ -128,6 +133,37 @@ TGbreak migration notes:
 - Heavy ST state macros (`setvar`/`getvar`) should drive pi-forge state/macro work before regex runtime work.
 - The preset has enough display-only regex that full ST regex compatibility would add complexity without useful TUI behavior.
 - The importer should help users distinguish prompt semantics from ST presentation polish.
+
+Regex runtime design draft:
+
+- Start with an opt-in, deterministic regex subset: JavaScript `RegExp` find/replace only, no embedded JavaScript, no DOM access, no CSS/HTML decoration runtime, and no SillyTavern UI panel behavior.
+- Treat regex rules as ordered prompt-stack data, likely under a top-level `regex` object with `schemaVersion` and `rules`.
+- Model rule execution by explicit stage instead of one global text pass:
+  - `history` stage: transform only messages selected for the `chat-history` slot. Supports role filters and limits such as `maxTurns`, `maxMessages`, and `maxChars`.
+  - `compiled` stage: transform final compiled prompt text before provider serialization. Supports targets such as `system`, `messages`, and message-role filters.
+  - `payload` stage: advanced provider-payload rewrite in `before_provider_request`. Keep off by default and require explicit target paths because provider payload shapes differ.
+  - `display` stage: transform web preview/display only. Never changes outgoing model input.
+- Keep outgoing versus display behavior explicit with a field like `effect: "outgoing" | "display" | "both"`. SillyTavern `promptOnly` maps to outgoing, `markdownOnly` maps to display, and mixed rules require review.
+- Suggested rule shape:
+
+```json
+{
+  "id": "trim-ooc",
+  "name": "Trim OOC markers from recent history",
+  "enabled": true,
+  "stage": "history",
+  "effect": "outgoing",
+  "pattern": "\\(OOC:[^)]+\\)",
+  "flags": "gi",
+  "replace": "",
+  "roles": ["user", "assistant"],
+  "maxTurns": 20
+}
+```
+
+- Validation should compile every regex, reject unsupported flags, require valid IDs, warn on display-only rules in TUI contexts, and show match/change counts in preview diagnostics.
+- Current Pi hooks can replace finalized assistant messages at `message_end`, so `displayFinal` cleanup is feasible: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
+- Implementation order: first add pure regex rule types/validation/application tests, then apply `history` and `compiled` stages in the existing prompt compilation path, then expose a raw/structured web editor, then revisit provider-payload stage.
 
 ## Priority 4: Web editor polish
 
@@ -375,8 +411,8 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Introduce a storage-path adapter, write new stacks under `.pi/forge/prompt-stacks`, and keep legacy `.pi/prompt-stacks` readable.
-2. Split `src/index.ts` into runtime state, web-host, command, and payload-capture modules without changing behavior.
-3. Split the embedded web editor page along practical static boundaries before adding larger regex/tool screens.
-4. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
-5. Design preset-level tool allow/deny controls after the storage and module boundaries are cleaner.
+1. Continue splitting `src/index.ts` by moving runtime state and command handlers into focused modules.
+2. Split the embedded web editor page along practical static boundaries before adding larger regex/tool screens.
+3. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
+4. Design preset-level tool allow/deny controls on top of the cleaner storage/module boundaries.
+5. Design the regex runtime system around explicit prompt-payload versus display-only transform stages.

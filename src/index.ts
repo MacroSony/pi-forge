@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -12,10 +12,13 @@ import {
 	renderPreviewMessages,
 	resetTurnVariables,
 } from "./compiler.ts";
-import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
+import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStackPath, promptStackReadDirs } from "./loader.ts";
+import { createProviderPayloadCapture, estimatePayloadTokens } from "./payload-capture.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
-import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor/index.ts";
+import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
+import type { LoadedPromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
+import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
+import { startWebEditorServer, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStateSnapshot } from "./web-editor/index.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
@@ -123,63 +126,15 @@ export default function piForge(pi: ExtensionAPI) {
 		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 	}
 
-	function stackSummary(loaded: LoadedPromptStack): WebEditorStackSummary {
-		const errors = loaded.diagnostics.filter((d) => d.level === "error").length;
-		const warnings = loaded.diagnostics.filter((d) => d.level === "warning").length;
+	function webHostRuntime(ctx: ExtensionCommandContext): WebHostRuntime {
 		return {
-			id: loaded.stack.id,
-			name: loaded.stack.name,
-			filePath: loaded.filePath,
-			active: loaded === active,
-			autoActivate: loaded.stack.autoActivate,
-			mode: loaded.stack.mode ?? "replace",
-			itemCount: loaded.stack.items.length,
-			errors,
-			warnings,
-			diagnostics: loaded.diagnostics,
-		};
-	}
-
-	function stackSummaries(): WebEditorStackSummary[] {
-		return stacks.map(stackSummary);
-	}
-
-	function createWebEditorHost(ctx: ExtensionCommandContext): WebEditorHost {
-		return {
-			cwd: ctx.cwd,
-			listStacks: () => stackSummaries(),
-			getStack: (id) => {
-				const loaded = stacks.find((candidate) => candidate.stack.id === id);
-				return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;
-			},
-			createStack: (stack, options) => createStackFile(ctx, stack, options),
-			saveStack: (id, stack) => {
-				if (!ctx.isProjectTrusted()) {
-					return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
-				}
-
-				const target = stacks.find((candidate) => candidate.stack.id === id);
-				if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-				if (!isInsidePromptStacksDir(ctx.cwd, target.filePath)) {
-					return { ok: false, status: 403, error: "Refusing to save outside .pi/prompt-stacks." };
-				}
-
-				writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-				const preferredId = active?.stack.id === id ? stack.id : selectedActiveId();
-				reloadStacks(ctx, preferredId);
-				const saved = stacks.find((candidate) => candidate.stack.id === stack.id) ?? stacks.find((candidate) => candidate.filePath === target.filePath);
-				if (!saved) return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
-				return { ok: true, stack: stackSummary(saved), stacks: stackSummaries() };
-			},
-			deleteStack: (id) => deleteStackFile(ctx, id),
-			validateStack: (stack) => validatePromptStack(stack),
-			previewStack: (id, stack) => {
-				const target = stacks.find((candidate) => candidate.stack.id === id);
-				if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-				const diagnostics = validatePromptStack(stack);
-				const preview = buildPreview(ctx, { stack, filePath: target.filePath, diagnostics });
-				return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
-			},
+			getStacks: () => stacks,
+			getActive: () => active,
+			getActiveId: activeId,
+			getSelectedActiveId: selectedActiveId,
+			setActive: (id) => setActive(id, ctx),
+			reloadStacks: (preferredId) => reloadStacks(ctx, preferredId),
+			buildPreview: (target) => buildPreview(ctx, target),
 			getState: () => ({ ok: true, ...webStateSnapshot() }),
 			setState: (name, value) => {
 				if (!isPromptStateValue(value)) return { ok: false, status: 400, error: "State value must be JSON-compatible." };
@@ -202,89 +157,7 @@ export default function piForge(pi: ExtensionAPI) {
 				clearPayloadCapture(ctx);
 				return { ok: true, ...webPayloadSnapshot() };
 			},
-			activateStack: (id) => {
-				if (!setActive(id, ctx)) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
-			},
-			disableStacks: () => {
-				setActive("none", ctx);
-				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
-			},
-			reloadStacks: () => {
-				reloadStacks(ctx, selectedActiveId());
-				return { ok: true, activeId: activeId(), stacks: stackSummaries() };
-			},
 		};
-	}
-
-	function createStackFile(
-		ctx: ExtensionCommandContext,
-		stack: PromptStack,
-		options: WebEditorCreateStackOptions,
-	): { ok: true; stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] } | { ok: false; status?: number; error: string } {
-		if (!ctx.isProjectTrusted()) {
-			return { ok: false, status: 403, error: "Project is not trusted; refusing to create prompt stacks." };
-		}
-
-		const idError = validateWebStackId(stack.id);
-		if (idError) return { ok: false, status: 400, error: idError };
-
-		const stacksDir = promptStacksDir(ctx.cwd);
-		const targetPath = join(stacksDir, `${stack.id}.json`);
-		if (!isInsidePromptStacksDir(ctx.cwd, targetPath)) {
-			return { ok: false, status: 403, error: "Refusing to create outside .pi/prompt-stacks." };
-		}
-
-		const existingById = stacks.find((candidate) => candidate.stack.id === stack.id);
-		if (existingById && resolve(existingById.filePath) !== resolve(targetPath)) {
-			return { ok: false, status: 409, error: `Stack id already exists in ${existingById.filePath}.` };
-		}
-		if ((existsSync(targetPath) || existingById) && !options.overwrite) {
-			return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
-		}
-
-		const previousSelection = selectedActiveId();
-		mkdirSync(stacksDir, { recursive: true });
-		writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-		reloadStacks(ctx, options.activate ? stack.id : (previousSelection ?? "none"));
-		if (options.activate) setActive(stack.id, ctx);
-
-		const created = stacks.find((candidate) => candidate.stack.id === stack.id);
-		if (!created) return { ok: false, status: 500, error: "Created stack could not be reloaded." };
-		return { ok: true, stack: stackSummary(created), stacks: stackSummaries() };
-	}
-
-	function deleteStackFile(
-		ctx: ExtensionCommandContext,
-		id: string,
-	): { ok: true; activeId?: string; stacks: WebEditorStackSummary[] } | { ok: false; status?: number; error: string } {
-		if (!ctx.isProjectTrusted()) {
-			return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
-		}
-
-		const target = stacks.find((candidate) => candidate.stack.id === id);
-		if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-		if (!isInsidePromptStacksDir(ctx.cwd, target.filePath)) {
-			return { ok: false, status: 403, error: "Refusing to delete outside .pi/prompt-stacks." };
-		}
-
-		const wasActive = active?.stack.id === id;
-		unlinkSync(target.filePath);
-		if (wasActive) {
-			setActive("none", ctx);
-			reloadStacks(ctx, "none");
-		} else {
-			reloadStacks(ctx, selectedActiveId());
-		}
-		return { ok: true, activeId: activeId(), stacks: stackSummaries() };
-	}
-
-	function validateWebStackId(id: string): string | undefined {
-		if (!id.trim()) return "Stack id must not be empty.";
-		if (!/^[A-Za-z0-9_-]+$/.test(id)) {
-			return "Stack id may only contain letters, numbers, underscore, and dash.";
-		}
-		return undefined;
 	}
 
 	async function openWebEditor(ctx: ExtensionCommandContext, mode: "open" | "restart" = "open"): Promise<void> {
@@ -301,13 +174,13 @@ export default function piForge(pi: ExtensionAPI) {
 
 		if (!webEditor) {
 			try {
-				webEditor = await startWebEditorServer(createWebEditorHost(ctx), { port: settings.preferredPort });
+				webEditor = await startWebEditorServer(createWebEditorHost(ctx, webHostRuntime(ctx)), { port: settings.preferredPort });
 			} catch (error) {
 				if (settings.preferredPort !== undefined) {
 					const detail = error instanceof Error ? error.message : String(error);
 					ctx.ui.notify(`pi-forge: preferred editor port 127.0.0.1:${settings.preferredPort} was unavailable (${detail}); using an available port instead.`, "warning");
 					try {
-						webEditor = await startWebEditorServer(createWebEditorHost(ctx));
+						webEditor = await startWebEditorServer(createWebEditorHost(ctx, webHostRuntime(ctx)));
 					} catch (fallbackError) {
 						const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
 						ctx.ui.setStatus("pi-forge-editor", undefined);
@@ -332,47 +205,6 @@ export default function piForge(pi: ExtensionAPI) {
 		await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1:${webEditor.port}\nOptional config: ${settings.configPath}\nProject: ${webEditorCwd}`);
 	}
 
-	function loadWebEditorSettings(ctx: ExtensionCommandContext): { preferredPort?: number; configPath: string; warnings: string[] } {
-		const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
-		if (!ctx.isProjectTrusted() || !existsSync(configPath)) {
-			return { configPath, warnings: [] };
-		}
-
-		let raw: unknown;
-		try {
-			raw = JSON.parse(readFileSync(configPath, "utf8"));
-		} catch (error) {
-			return {
-				configPath,
-				warnings: [`pi-forge: failed to read ${configPath}; using an available editor port. ${error instanceof Error ? error.message : String(error)}`],
-			};
-		}
-
-		if (!isPlainObject(raw)) {
-			return {
-				configPath,
-				warnings: [`pi-forge: ${configPath} must be a JSON object; using an available editor port.`],
-			};
-		}
-
-		const webEditorConfig = isPlainObject(raw.webEditor) ? raw.webEditor : undefined;
-		const rawPort = webEditorConfig?.port ?? raw.webEditorPort;
-		if (rawPort === undefined) return { configPath, warnings: [] };
-
-		if (typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535) {
-			return { preferredPort: rawPort, configPath, warnings: [] };
-		}
-
-		return {
-			configPath,
-			warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using an available editor port.`],
-		};
-	}
-
-	function isPlainObject(value: unknown): value is Record<string, unknown> {
-		return !!value && typeof value === "object" && !Array.isArray(value);
-	}
-
 	async function stopWebEditor(ctx: ExtensionCommandContext): Promise<void> {
 		if (!webEditor) {
 			ctx.ui.notify("pi-forge: stack editor is not running.", "info");
@@ -384,13 +216,6 @@ export default function piForge(pi: ExtensionAPI) {
 		webEditorPreferredPort = undefined;
 		ctx.ui.setStatus("pi-forge-editor", undefined);
 		ctx.ui.notify("pi-forge: stack editor stopped.", "info");
-	}
-
-	function isInsidePromptStacksDir(cwd: string, filePath: string): boolean {
-		const root = resolve(promptStacksDir(cwd));
-		const target = resolve(filePath);
-		const rel = relative(root, target);
-		return !!rel && !rel.startsWith("..") && !isAbsolute(rel);
 	}
 
 	function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {
@@ -833,7 +658,7 @@ export default function piForge(pi: ExtensionAPI) {
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "vars", "import-silly", "ui"];
+				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "vars", "import-silly", "migrate-stacks", "ui"];
 				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
 			}
 			const first = parts[0];
@@ -858,6 +683,11 @@ export default function piForge(pi: ExtensionAPI) {
 				const fragment = parts[1] ?? "";
 				const subs = ["stop", "restart"];
 				return subs.filter((s) => s.startsWith(fragment)).map((s) => ({ value: `ui ${s}`, label: s }));
+			}
+			if (first === "migrate-stacks") {
+				const fragment = parts[parts.length - 1] ?? "";
+				const flags = ["--dry-run", "--overwrite", "--delete-legacy"];
+				return flags.filter((flag) => flag.startsWith(fragment)).map((flag) => ({ value: `${parts.slice(0, -1).join(" ")} ${flag}`.trim(), label: flag }));
 			}
 			return null;
 		},
@@ -1003,6 +833,28 @@ export default function piForge(pi: ExtensionAPI) {
 				return;
 			}
 
+			case "migrate-stacks": {
+				const flags = new Set(rest);
+				const dryRun = flags.has("--dry-run");
+				if (!ctx.isProjectTrusted() && !dryRun) {
+					ctx.ui.notify("pi-forge: project is not trusted; refusing to migrate prompt stacks.", "warning");
+					return;
+				}
+				const report = migrateLegacyPromptStacks(ctx.cwd, {
+					dryRun,
+					overwrite: flags.has("--overwrite"),
+					deleteLegacy: flags.has("--delete-legacy"),
+				});
+				if (!dryRun) reloadStacks(ctx, selectedActiveId());
+				const changed = report.copied + report.overwritten;
+				const summary = dryRun
+					? `pi-forge: migration dry run found ${report.files.length} legacy stack file(s).`
+					: `pi-forge: migrated ${changed} legacy stack file(s), skipped ${report.skipped}, errors ${report.errors}.`;
+				ctx.ui.notify(summary, report.errors ? "warning" : "info");
+				await showText(ctx, "pi-forge prompt-stack migration", renderMigrationReport(report));
+				return;
+			}
+
 			case "import-silly": {
 				if (!ctx.isProjectTrusted()) {
 					ctx.ui.notify("pi-forge: project is not trusted; refusing to write imported prompt stacks.", "warning");
@@ -1038,8 +890,9 @@ export default function piForge(pi: ExtensionAPI) {
 					return;
 				}
 
-				const stacksDir = promptStacksDir(ctx.cwd);
-				const stackPath = join(stacksDir, `${result.stack.id}.json`);
+				const existingStack = stacks.find((candidate) => candidate.stack.id === result.stack.id);
+				const stackPath = existingStack?.filePath ?? promptStackPath(ctx.cwd, result.stack.id);
+				const stacksDir = dirname(stackPath);
 				const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
 				const reportPath = join(reportDir, `${result.stack.id}.md`);
 
@@ -1139,13 +992,14 @@ export default function piForge(pi: ExtensionAPI) {
 
 	function renderStackList(ctx: ExtensionCommandContext): string {
 		const lines = [
-			`Prompt stack directory: ${promptStacksDir(ctx.cwd)}`,
+			"Prompt stack directories:",
+			...promptStackReadDirs(ctx.cwd).map((dir, index) => `  ${index === 0 ? "primary" : "legacy"}: ${dir}`),
 			`Active stack: ${active?.stack.id ?? "(none)"}`,
 			"",
 		];
 
 		if (stacks.length === 0) {
-			lines.push("No prompt stacks found.", "Create .pi/prompt-stacks/default.json to auto-activate a stack.");
+			lines.push("No prompt stacks found.", "Create .pi/forge/prompt-stacks/default.json to auto-activate a stack.");
 			return lines.join("\n");
 		}
 
@@ -1158,7 +1012,7 @@ export default function piForge(pi: ExtensionAPI) {
 			lines.push(`  ${loaded.filePath}`);
 		}
 
-		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset diagnostics", "  /preset reload", "  /preset ui [stop|restart]", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
+		lines.push("", "Commands:", "  /preset use <id|none>", "  /preset preview [id]", "  /preset validate [id]", "  /preset diagnostics", "  /preset reload", "  /preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]", "  /preset ui [stop|restart]", "  /state [list|set <name> <value>|get <name>|clear [name]]", "  /preset vars [set <name> <value>|get <name>|clear [name]]");
 		return lines.join("\n");
 	}
 
@@ -1297,88 +1151,8 @@ export default function piForge(pi: ExtensionAPI) {
 	}
 
 	function captureProviderPayload(value: unknown, savePath?: string): WebEditorPayloadCapture {
-		const formatted = formatProviderPayload(value);
-		const capture: WebEditorPayloadCapture = {
-			capturedAt: new Date().toISOString(),
-			stackId: active?.stack.id,
-			savePath,
-			payload: formatted.payload,
-			text: formatted.text,
-			chars: formatted.chars,
-			approxTokens: formatted.approxTokens,
-			truncated: formatted.truncated,
-			error: formatted.error,
-		};
+		const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
 		latestProviderPayloadCapture = capture;
 		return capture;
-	}
-
-	function formatProviderPayload(value: unknown): { payload?: unknown; text: string; chars: number; approxTokens: number; truncated: boolean; error?: string } {
-		try {
-			const payload = redactPayload(value);
-			const renderedJson = JSON.stringify(payload, null, 2);
-			const text = renderedJson === undefined ? String(payload) : renderedJson;
-			const maxChars = 200_000;
-			const truncated = text.length > maxChars;
-			const rendered = truncated ? `${text.slice(0, maxChars)}\n\n[pi-forge: payload truncated after ${maxChars} chars]` : text;
-			return {
-				payload: truncated ? undefined : payload,
-				text: rendered,
-				chars: rendered.length,
-				approxTokens: estimatePayloadTokens(rendered),
-				truncated,
-			};
-		} catch (error) {
-			const text = `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
-			return {
-				text,
-				chars: text.length,
-				approxTokens: estimatePayloadTokens(text),
-				truncated: false,
-				error: text,
-			};
-		}
-	}
-
-	function estimatePayloadTokens(payload: string): number {
-		return Math.max(1, Math.ceil(payload.length / 4));
-	}
-
-	function redactPayload(value: unknown, depth = 0): unknown {
-		if (depth > 8) return "[pi-forge: max depth reached]";
-		if (typeof value === "string") return redactLongString(value);
-		if (value === null || typeof value !== "object") return value;
-		if (Array.isArray(value)) {
-			const maxItems = 80;
-			const items = value.slice(0, maxItems).map((item) => redactPayload(item, depth + 1));
-			if (value.length > maxItems) items.push(`[pi-forge: ${value.length - maxItems} more items omitted]`);
-			return items;
-		}
-
-		const result: Record<string, unknown> = {};
-		let count = 0;
-		for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-			if (++count > 120) {
-				result["[pi-forge: omitted]"] = "object has more than 120 keys";
-				break;
-			}
-			if (isSecretKey(key)) {
-				result[key] = "[redacted]";
-				continue;
-			}
-			result[key] = redactPayload(raw, depth + 1);
-		}
-		return result;
-	}
-
-	function isSecretKey(key: string): boolean {
-		return /(api[-_]?key|authorization|bearer|token|secret|password|cookie|credential)/i.test(key);
-	}
-
-	function redactLongString(value: string): string {
-		if (/^data:image\//.test(value)) return "[image data omitted]";
-		if (value.length > 8_000 && /^[A-Za-z0-9+/=\r\n]+$/.test(value)) return `[base64-like data omitted: ${value.length} chars]`;
-		if (value.length > 12_000) return `${value.slice(0, 12_000)}\n[pi-forge: string truncated from ${value.length} chars]`;
-		return value;
 	}
 }

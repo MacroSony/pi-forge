@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { promptStackReadDirs } from "./storage.ts";
 import type {
 	LoadedPromptStack,
 	PromptStack,
@@ -15,24 +16,37 @@ import { SUPPORTED_SLOTS } from "./types.ts";
 
 const VALID_ROLES = new Set<PromptStackRole>(["system", "user", "assistant", "custom"]);
 
-export function promptStacksDir(cwd: string): string {
-	return join(cwd, ".pi", "prompt-stacks");
-}
+export { isInsidePromptStackStorage, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir } from "./storage.ts";
 
 export function loadPromptStacks(cwd: string): LoadedPromptStack[] {
-	const dir = promptStacksDir(cwd);
-	if (!existsSync(dir)) return [];
-
-	let entries: string[];
-	try {
-		entries = readdirSync(dir).filter((name) => name.endsWith(".json"));
-	} catch {
-		return [];
-	}
-
-	const loaded = entries.sort().map((name) => loadPromptStackFile(join(dir, name)));
+	const files = promptStackFiles(cwd);
+	const loaded = files.map(loadPromptStackFile);
 	annotateDuplicateStackIds(loaded);
 	return loaded;
+}
+
+function promptStackFiles(cwd: string): string[] {
+	const files: string[] = [];
+	const shadowedNames = new Set<string>();
+
+	for (const dir of promptStackReadDirs(cwd)) {
+		if (!existsSync(dir)) continue;
+
+		let entries: string[];
+		try {
+			entries = readdirSync(dir).filter((name) => name.endsWith(".json"));
+		} catch {
+			continue;
+		}
+
+		for (const name of entries.sort()) {
+			if (shadowedNames.has(name)) continue;
+			shadowedNames.add(name);
+			files.push(join(dir, name));
+		}
+	}
+
+	return files;
 }
 
 function annotateDuplicateStackIds(stacks: LoadedPromptStack[]): void {

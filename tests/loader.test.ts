@@ -3,11 +3,16 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { chooseDefaultStack, isUsablePromptStack, loadPromptStacks, promptStacksDir } from "../src/loader.ts";
+import { chooseDefaultStack, isUsablePromptStack, legacyPromptStacksDir, loadPromptStacks, promptStacksDir } from "../src/loader.ts";
 
 function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
 	writeFileSync(join(promptStacksDir(cwd), name), typeof value === "string" ? value : JSON.stringify(value, null, 2));
+}
+
+function writeLegacyStack(cwd: string, name: string, value: unknown): void {
+	mkdirSync(legacyPromptStacksDir(cwd), { recursive: true });
+	writeFileSync(join(legacyPromptStacksDir(cwd), name), typeof value === "string" ? value : JSON.stringify(value, null, 2));
 }
 
 test("chooseDefaultStack skips an invalid default stack", () => {
@@ -127,4 +132,42 @@ test("loadPromptStacks flags duplicate stack ids as errors", () => {
 		assert.match(loaded.diagnostics.find((d) => d.level === "error")?.message ?? "", /Duplicate stack id: same/);
 	}
 	assert.equal(chooseDefaultStack(stacks), undefined);
+});
+
+test("loadPromptStacks reads legacy prompt-stack directory", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeLegacyStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const stacks = loadPromptStacks(cwd);
+
+	assert.equal(stacks.length, 1);
+	assert.equal(stacks[0]?.stack.id, "default");
+	assert.equal(stacks[0]?.filePath, join(legacyPromptStacksDir(cwd), "default.json"));
+	assert.equal(chooseDefaultStack(stacks)?.stack.id, "default");
+});
+
+test("loadPromptStacks prefers forge storage over same-named legacy files", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeLegacyStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "legacy",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "primary",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const stacks = loadPromptStacks(cwd);
+
+	assert.deepEqual(stacks.map((loaded) => loaded.stack.id), ["primary"]);
+	assert.equal(stacks[0]?.filePath, join(promptStacksDir(cwd), "default.json"));
 });

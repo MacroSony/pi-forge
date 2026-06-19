@@ -5,11 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import piForge from "../src/index.ts";
-import { promptStacksDir } from "../src/loader.ts";
+import { legacyPromptStacksDir, promptStacksDir } from "../src/loader.ts";
 
 function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
 	writeFileSync(join(promptStacksDir(cwd), name), JSON.stringify(value, null, 2));
+}
+
+function writeLegacyStack(cwd: string, name: string, value: unknown): void {
+	mkdirSync(legacyPromptStacksDir(cwd), { recursive: true });
+	writeFileSync(join(legacyPromptStacksDir(cwd), name), JSON.stringify(value, null, 2));
 }
 
 function writePreset(cwd: string, name: string, value: unknown): string {
@@ -826,6 +831,53 @@ test("/preset import-silly supports dry-run, overwrite flag, and untrusted write
 
 	const untrusted = createContext(cwd, [], { trusted: false });
 	await harness.commands.preset.handler(`import-silly ${presetPath} --overwrite`, untrusted.ctx);
+	assert.match(untrusted.notifications.at(-1)?.message ?? "", /not trusted/);
+});
+
+test("/preset migrate-stacks copies legacy stacks with overwrite and delete options", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeLegacyStack(cwd, "legacy.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "legacy",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeLegacyStack(cwd, "collision.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "legacy-collision",
+		name: "Legacy Collision",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeStack(cwd, "collision.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "primary-collision",
+		name: "Primary Collision",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	await harness.commands.preset.handler("migrate-stacks --dry-run", context.ctx);
+	assert.equal(existsSync(join(promptStacksDir(cwd), "legacy.json")), false);
+	assert.match(context.editors.at(-1)?.text ?? "", /dry run/);
+
+	await harness.commands.preset.handler("migrate-stacks", context.ctx);
+	assert.match(readFileSync(join(promptStacksDir(cwd), "legacy.json"), "utf8"), /"id": "legacy"/);
+	assert.match(readFileSync(join(promptStacksDir(cwd), "collision.json"), "utf8"), /Primary Collision/);
+	assert.ok(existsSync(join(legacyPromptStacksDir(cwd), "legacy.json")));
+	assert.match(context.editors.at(-1)?.text ?? "", /skip: collision\.json/);
+
+	await harness.commands.preset.handler("migrate-stacks --overwrite --delete-legacy", context.ctx);
+	assert.match(readFileSync(join(promptStacksDir(cwd), "collision.json"), "utf8"), /Legacy Collision/);
+	assert.equal(existsSync(join(legacyPromptStacksDir(cwd), "legacy.json")), false);
+	assert.equal(existsSync(join(legacyPromptStacksDir(cwd), "collision.json")), false);
+	assert.match(context.editors.at(-1)?.text ?? "", /Deleted legacy files: 2/);
+
+	const untrusted = createContext(cwd, [], { trusted: false });
+	await harness.commands.preset.handler("migrate-stacks", untrusted.ctx);
 	assert.match(untrusted.notifications.at(-1)?.message ?? "", /not trusted/);
 });
 

@@ -2065,7 +2065,7 @@ async function disableStacks() {
 async function deleteCurrentStack() {
   if (!currentStack) return;
   const id = selectedId;
-  const message = "Delete prompt stack '" + id + "'?\n\nThis removes its JSON file from .pi/prompt-stacks.";
+  const message = "Delete prompt stack '" + id + "'?\n\nThis removes its JSON file from prompt-stack storage.";
   if (!confirm(message)) return;
   const data = await api("/api/stacks/" + encodeURIComponent(id), { method: "DELETE" });
   stacks = data.stacks || [];
