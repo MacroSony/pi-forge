@@ -15,7 +15,7 @@ import {
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStacksDir, validatePromptStack } from "./loader.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue, PromptVariableStore } from "./types.ts";
-import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor.ts";
+import { startWebEditorServer, type WebEditorCreateStackOptions, type WebEditorHost, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer, type WebEditorStackSummary, type WebEditorStateSnapshot } from "./web-editor/index.ts";
 
 const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 const VARIABLE_ENTRY_TYPE = "pi-forge-variable-state";
