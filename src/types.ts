@@ -21,6 +21,32 @@ export type PromptStackSlot =
 
 export type PromptStackSlotFormat = "xml" | "json" | "plain";
 
+export type PromptRegexStage = "history" | "compiled";
+
+export type PromptRegexEffect = "outgoing" | "display" | "both";
+
+export type PromptRegexTarget = "system" | "messages";
+
+export interface PromptRegexRule {
+	id: string;
+	name?: string;
+	enabled?: boolean;
+	stage: PromptRegexStage;
+	effect?: PromptRegexEffect;
+	pattern: string;
+	flags?: string;
+	replace?: string;
+	roles?: string[];
+	targets?: PromptRegexTarget[];
+	maxMessages?: number;
+	maxChars?: number;
+}
+
+export interface PromptRegexConfig {
+	schemaVersion?: 1;
+	rules?: PromptRegexRule[];
+}
+
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;
 	unresolvedMacroPolicy?: "warn" | "keep" | "error";
@@ -122,6 +148,7 @@ export interface PromptStack {
 	context?: PromptStackContextOptions;
 	variables?: Record<string, string>;
 	state?: PromptStateConfig;
+	regex?: PromptRegexConfig;
 	items: PromptStackItem[];
 	import?: Record<string, unknown>;
 }

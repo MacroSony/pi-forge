@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { validateRegexConfig } from "./regex.ts";
 import { promptStackReadDirs } from "./storage.ts";
 import type {
 	LoadedPromptStack,
@@ -165,6 +166,7 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		context: isPlainObject(obj.context) ? (obj.context as PromptStack["context"]) : undefined,
 		variables: normalizeStringRecord(obj.variables),
 		state: normalizeStateConfig(obj.state, diagnostics),
+		regex: normalizeRegexConfig(obj.regex, diagnostics),
 		items,
 		import: isPlainObject(obj.import) ? (obj.import as Record<string, unknown>) : undefined,
 	};
@@ -246,6 +248,8 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 		});
 	}
 
+	diagnostics.push(...validateRegexConfig(stack.regex));
+
 	return diagnostics;
 }
 
@@ -307,6 +311,15 @@ function normalizeStateConfig(value: unknown, diagnostics: PromptStackDiagnostic
 		schemaVersion: value.schemaVersion === 1 ? 1 : undefined,
 		definitions: Object.keys(definitions).length > 0 ? definitions : undefined,
 	};
+}
+
+function normalizeRegexConfig(value: unknown, diagnostics: PromptStackDiagnostic[]): PromptStack["regex"] | undefined {
+	if (value === undefined) return undefined;
+	if (!isPlainObject(value)) {
+		diagnostics.push({ level: "warning", message: "regex must be an object when provided." });
+		return undefined;
+	}
+	return value as PromptStack["regex"];
 }
 
 function isStateScope(value: unknown): value is PromptStateScope {

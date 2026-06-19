@@ -13,6 +13,7 @@ import type {
 	PromptStateValue,
 	PromptVariableStore,
 } from "./types.ts";
+import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
 
 const ZERO_USAGE = {
@@ -66,20 +67,20 @@ export function compileSystemPrompt(
 	const compiled = parts.join("\n\n");
 	const mode = stack.mode ?? "replace";
 
+	let systemPrompt: string;
 	if (!compiled) {
 		diagnostics.push({ level: "warning", message: "Compiled system prompt is empty; preserving base system prompt." });
-		return { systemPrompt: baseSystemPrompt, diagnostics };
+		systemPrompt = baseSystemPrompt;
+	} else if (mode === "append") {
+		systemPrompt = compiled ? `${baseSystemPrompt}\n\n${compiled}` : baseSystemPrompt;
+	} else if (mode === "prepend") {
+		systemPrompt = compiled ? `${compiled}\n\n${baseSystemPrompt}` : baseSystemPrompt;
+	} else {
+		systemPrompt = compiled;
 	}
 
-	if (mode === "append") {
-		return { systemPrompt: compiled ? `${baseSystemPrompt}\n\n${compiled}` : baseSystemPrompt, diagnostics };
-	}
-
-	if (mode === "prepend") {
-		return { systemPrompt: compiled ? `${compiled}\n\n${baseSystemPrompt}` : baseSystemPrompt, diagnostics };
-	}
-
-	return { systemPrompt: compiled, diagnostics };
+	systemPrompt = applyRegexRulesToString(stack, systemPrompt, "compiled", "system", diagnostics);
+	return { systemPrompt, diagnostics };
 }
 
 export function compileMessages(
@@ -88,7 +89,7 @@ export function compileMessages(
 	originalMessages: AgentMessage[],
 ): CompileMessagesResult {
 	const diagnostics: PromptStackDiagnostic[] = [];
-	const messages: AgentMessage[] = [];
+	let messages: AgentMessage[] = [];
 	let insertedHistory = false;
 
 	for (const item of enabledItems(stack)) {
@@ -101,7 +102,7 @@ export function compileMessages(
 				});
 				continue;
 			}
-			messages.push(...getChatHistoryMessages(originalMessages, item));
+			messages.push(...applyRegexRulesToMessages(stack, getChatHistoryMessages(originalMessages, item), "history", diagnostics));
 			insertedHistory = true;
 			continue;
 		}
@@ -120,6 +121,7 @@ export function compileMessages(
 		messages.push(...originalMessages);
 	}
 
+	messages = applyRegexRulesToMessages(stack, messages, "compiled", diagnostics);
 	return { messages, diagnostics };
 }
 

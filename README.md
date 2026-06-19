@@ -12,6 +12,7 @@ Think of it as a character sheet for your AI agent.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
 - **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
+- **Transform outgoing prompt text** — run deterministic regex replacements on selected history or compiled prompt text.
 - **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
 - **Debug your prompts** — intercept and inspect exactly what gets sent to the model.
 
@@ -192,6 +193,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 1. Builds a system prompt from your `system`-role blocks and slots, then applies it with the stack's `mode`.
 2. Inserts `user`/`assistant` blocks and slots around the conversation history.
 3. Expands `{{macros}}` like `{{lastUserMessage}}`, `{{date}}`, and custom variables.
+4. Applies enabled outgoing regex rules for the `history` and `compiled` stages.
 
 ### Slots at a glance
 
@@ -340,6 +342,33 @@ Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` 
   }
 }
 ```
+
+### Regex transforms
+
+Prompt stacks can run deterministic regex replacements on outgoing prompt text. This first implementation supports `history` and `compiled` stages only; display-only and provider-payload rewrites are not active yet.
+
+```json
+"regex": {
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "trim-ooc",
+      "enabled": true,
+      "stage": "history",
+      "effect": "outgoing",
+      "pattern": "\\(OOC:[^)]+\\)",
+      "flags": "gi",
+      "replace": "",
+      "roles": ["assistant"],
+      "maxMessages": 20
+    }
+  ]
+}
+```
+
+Use `stage: "history"` to transform messages inserted by the `chat-history` slot. Use `stage: "compiled"` with optional `targets: ["system"]`, `["messages"]`, or both to transform the final compiled prompt. Message rules can filter by `roles`, `maxMessages`, and `maxChars`. Supported regex flags are `g`, `i`, `m`, `s`, and `u`.
+
+Only `effect: "outgoing"` changes model input in this MVP. `effect: "display"` and `"both"` validate with warnings but are ignored at runtime until display transforms are implemented.
 
 ### Variables slot options
 

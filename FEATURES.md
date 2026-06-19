@@ -1,6 +1,6 @@
 # pi-forge Implemented Features
 
-This file tracks the currently implemented feature surface for the published MVP, typed prompt-state follow-up, and web editor inspector/state work.
+This file tracks the currently implemented feature surface for the prompt-stack runtime, typed prompt state, web editor, SillyTavern importer, storage migration, payload inspector, and outgoing regex MVP.
 
 ## Package and Runtime
 
@@ -10,9 +10,13 @@ This file tracks the currently implemented feature surface for the published MVP
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 
-## Prompt Stack Loading
+## Prompt Stack Loading and Storage
 
-- File-backed prompt stacks from `.pi/prompt-stacks/*.json`.
+- File-backed prompt stacks from `.pi/forge/prompt-stacks/*.json`.
+- Legacy `.pi/prompt-stacks/*.json` stacks remain readable and editable for compatibility.
+- Same-named files in `.pi/forge/prompt-stacks` shadow legacy stack files.
+- New stacks, imports, and forks write to `.pi/forge/prompt-stacks`.
+- `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
 - Branch-aware prompt state restore when navigating the session tree.
@@ -30,6 +34,19 @@ This file tracks the currently implemented feature surface for the published MVP
 - Duplicate chat-history warning unless explicitly allowed.
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
+- Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
+
+## Regex Transforms
+
+- Top-level `regex.schemaVersion` and ordered `regex.rules` stack config.
+- Deterministic JavaScript `RegExp` replacements only; no embedded JavaScript, DOM access, browser automation, or CSS/HTML decoration runtime.
+- `stage: "history"` transforms messages inserted by the `chat-history` slot.
+- `stage: "compiled"` transforms the final compiled system prompt and/or message text before provider serialization.
+- `effect: "outgoing"` is active; `effect: "display"` and `"both"` validate with warnings and are ignored by the outgoing-only MVP.
+- Message transforms support role filters, `maxMessages`, and `maxChars`.
+- Compiled-stage transforms support `targets: ["system"]`, `["messages"]`, or both.
+- Supported regex flags are `g`, `i`, `m`, `s`, and `u`, with duplicate/unsupported flags rejected during validation.
+- Runtime diagnostics report regex match counts and changed text segment counts.
 
 ## Runtime Slots
 
@@ -91,6 +108,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/preset diagnostics`
 - `/preset reload`
 - `/preset ui [stop|restart]`
+- `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
 - `/preset vars [set <name> <value>|get <name>|clear [name]]`
 - `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
 - `/state list`
@@ -103,7 +121,7 @@ This file tracks the currently implemented feature surface for the published MVP
 
 ## SillyTavern Import
 
-- Import SillyTavern preset JSON into `.pi/prompt-stacks/<id>.json`.
+- Import SillyTavern preset JSON into `.pi/forge/prompt-stacks/<id>.json`.
 - Generate import reports under `.pi/forge/import-reports/<id>.md`.
 - Select a specific `character_id` when multiple prompt orders exist.
 - Protect existing generated stack/report files from accidental overwrite, with confirmation or `--overwrite`.
@@ -116,7 +134,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - Strip SillyTavern comments and `{{trim}}` markers.
 - Report macros that need manual migration, including normalized camelCase SillyTavern macro names.
 - Report supported SillyTavern-style variable macros such as `setvar` and `getvar` as handled by pi-forge.
-- Report SillyTavern `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes without enabling runtime regex behavior.
+- Report SillyTavern `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes. Runtime regex exists for manually authored deterministic prompt transforms, but SillyTavern regex scripts are not auto-converted yet.
 
 ## Debugging and Tests
 
@@ -127,6 +145,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
+- Tests cover regex validation, history-stage transforms, compiled-stage transforms, replacement syntax, role/message/char limits, and preservation of non-text message parts.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
 
@@ -158,7 +177,7 @@ This file tracks the currently implemented feature surface for the published MVP
 - View, set, and clear runtime session state from the web editor using the same validation and persistence path as `/state`.
 - Session state editor shows active stack definitions next to current runtime values.
 - Save existing stack JSON and immediately reload pi-forge stack state.
-- Import native stack JSON or SillyTavern preset JSON into `.pi/prompt-stacks`; SillyTavern uploads are converted automatically.
+- Import native stack JSON or SillyTavern preset JSON into `.pi/forge/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Show the SillyTavern import report in the web editor after import, with copy support.
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.

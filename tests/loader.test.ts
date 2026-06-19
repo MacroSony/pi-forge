@@ -171,3 +171,27 @@ test("loadPromptStacks prefers forge storage over same-named legacy files", () =
 	assert.deepEqual(stacks.map((loaded) => loaded.stack.id), ["primary"]);
 	assert.equal(stacks[0]?.filePath, join(promptStacksDir(cwd), "default.json"));
 });
+
+test("loadPromptStacks validates regex config", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		regex: {
+			rules: [
+				{ id: "bad", stage: "compiled", pattern: "(", flags: "z" },
+				{ id: "bad", stage: "compiled", effect: "display", pattern: "x" },
+			],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const loaded = loadPromptStacks(cwd)[0]!;
+	const messages = loaded.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+
+	assert.match(messages, /Duplicate regex rule id: bad/);
+	assert.match(messages, /unsupported regex flag: z/);
+	assert.match(messages, /effect "display".*ignored/);
+	assert.equal(isUsablePromptStack(loaded), false);
+});

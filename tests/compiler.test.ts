@@ -132,6 +132,106 @@ test("compileMessages expands chat history at the configured slot", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("history regex transforms only chat-history messages", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "history-regex",
+		regex: {
+			rules: [{
+				id: "strip-assistant-ooc",
+				stage: "history",
+				pattern: "\\s*\\(OOC:[^)]+\\)",
+				flags: "g",
+				replace: "",
+				roles: ["assistant"],
+			}],
+		},
+		items: [
+			{ kind: "block", id: "pre", enabled: true, role: "user", content: "before (OOC: stays)" },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { includeLastUserMessage: false } },
+			{ kind: "block", id: "post", enabled: true, role: "user", content: "after" },
+		],
+	};
+	const messages = [user("(OOC: user stays) hello"), assistant("reply (OOC: hidden)"), user("latest request")];
+
+	const result = compileMessages(stack, runtime({ latestUserMessage: "latest request" }), messages);
+
+	assert.equal(textOf(result.messages[0]!), "before (OOC: stays)");
+	assert.equal(textOf(result.messages[1]!), "(OOC: user stays) hello");
+	assert.equal(textOf(result.messages[2]!), "reply");
+	assert.equal(textOf(result.messages[3]!), "after");
+	assert.ok(result.diagnostics.some((diagnostic) => /strip-assistant-ooc/.test(diagnostic.message)));
+});
+
+test("compiled regex transforms final system prompt", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "system-regex",
+		regex: {
+			rules: [{
+				id: "system-secret",
+				stage: "compiled",
+				targets: ["system"],
+				pattern: "SECRET",
+				replace: "public",
+			}],
+		},
+		items: [{ kind: "block", id: "system", enabled: true, role: "system", content: "Keep SECRET" }],
+	};
+
+	const result = compileSystemPrompt(stack, runtime(), "base");
+
+	assert.equal(result.systemPrompt, "Keep public");
+	assert.ok(result.diagnostics.some((diagnostic) => /system-secret/.test(diagnostic.message)));
+});
+
+test("compiled regex transforms final message text after macros", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "message-regex",
+		variables: { name: "Ada" },
+		regex: {
+			rules: [{
+				id: "macro-output",
+				stage: "compiled",
+				targets: ["messages"],
+				pattern: "Hello Ada",
+				replace: "Hi Ada",
+			}],
+		},
+		items: [{ kind: "block", id: "user", enabled: true, role: "user", content: "Hello {{name}}" }],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.equal(textOf(result.messages[0]!), "Hi Ada");
+});
+
+test("compiled regex preserves non-text message parts", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "non-text",
+		regex: {
+			rules: [{
+				id: "text-only",
+				stage: "compiled",
+				pattern: "secret",
+				replace: "redacted",
+			}],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	};
+	const message = assistant("secret");
+	const originalContent = (message as unknown as { content: Array<Record<string, unknown>> }).content;
+	originalContent.push({ type: "toolCall", name: "secret" });
+
+	const result = compileMessages(stack, runtime(), [message]);
+	const content = (result.messages[0] as unknown as { content: Array<Record<string, unknown>> }).content;
+
+	assert.equal(content[0]?.text, "redacted");
+	assert.deepEqual(content[1], { type: "toolCall", name: "secret" });
+});
+
 test("variables resolve in turn, session, then static order", () => {
 	const store = createPromptVariableStore({ name: "session", topic: "session topic" });
 	const stack: PromptStack = {
