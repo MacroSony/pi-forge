@@ -26,7 +26,7 @@ Implemented and working:
 - `/preset ui` lightweight localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows, using an available port by default with optional preferred-port fallback.
 - Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Web payload capture inspector that can arm the next provider request, display captures from UI or `/payload next`, preserve redaction, and show collapsible top-level JSON sections.
-- Structured web editors for stack static `variables`, `state.definitions`, and `context` options.
+- Tabbed structured web editors for items, stack static `variables`, `state.definitions`, session state, `context` options, raw stack JSON, and regex rules.
 - Raw stack JSON view/apply recovery path for advanced fields that do not have dedicated controls yet.
 - Web editor polish for dark mode, button icons/tooltips, unsaved-change badge, export clipboard fallback, and inline item validation badges.
 - Web runtime session-state editor that can view, set, and clear state using the same validation and persistence path as `/state`.
@@ -166,7 +166,7 @@ Regex runtime status and design:
 - Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, warns that finalize rules are destructive, and shows match/change counts in preview/runtime diagnostics.
 - Implemented final-message cleanup uses `effect: "finalize"` at Pi `message_end`: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. This is not true display-only behavior because Pi stores the replacement and the original model output is lost from the transcript.
 - Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
-- Next implementation order: expose raw/structured web editor controls, add SillyTavern prompt-only regex import conversion, then revisit true display-only and provider-payload stages.
+- Next implementation order: add SillyTavern prompt-only regex import conversion, then revisit true display-only and provider-payload stages.
 
 ## Priority 4: Web editor polish
 

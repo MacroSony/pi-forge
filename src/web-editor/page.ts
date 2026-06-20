@@ -122,6 +122,7 @@ html, body {
 .topbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   min-height: 48px;
   padding: 8px 12px;
@@ -250,17 +251,49 @@ html, body {
   border-bottom: 1px solid var(--line);
   background: var(--pane);
 }
+.view-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--pane);
+  flex-wrap: wrap;
+}
+.view-tabs button.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
 .action-spacer {
   flex: 1 1 auto;
   min-width: 12px;
+}
+.metadata-panel {
+  border-bottom: 1px solid var(--line);
+  background: var(--pane-soft);
+}
+.metadata-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.metadata-title {
+  font-weight: 650;
+}
+.metadata-summary {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .settings {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 10px;
   padding: 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--pane-soft);
   flex: 0 0 auto;
 }
 .settings textarea {
@@ -288,6 +321,33 @@ html, body {
   grid-template-columns: minmax(230px, 340px) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+}
+.tab-panel {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--pane-soft);
+}
+.tab-panel.open {
+  display: block;
+}
+.tab-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--pane);
+  padding: 10px;
+  margin-bottom: 12px;
+}
+.tab-section-title {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+.tab-section-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 10px;
 }
 .items-pane {
   border-right: 1px solid var(--line);
@@ -713,6 +773,51 @@ html, body {
 .session-row {
   grid-template-columns: minmax(160px, 240px) minmax(220px, 1fr) minmax(180px, 260px) 168px;
 }
+.regex-row {
+  grid-template-columns: 72px minmax(0, 1fr) 86px;
+}
+.regex-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.regex-fields {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 8px;
+}
+.regex-fields .span-2 {
+  grid-column: span 2;
+}
+.regex-fields .span-3 {
+  grid-column: span 3;
+}
+.regex-fields .wide {
+  grid-column: 1 / -1;
+}
+.regex-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-height: 32px;
+  align-items: center;
+}
+.regex-checks label {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+}
+.regex-checks input {
+  width: auto;
+}
+.regex-warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
 .data-row textarea {
   min-height: 56px;
   resize: vertical;
@@ -733,6 +838,10 @@ html, body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
+.tab-section .raw-json-editor {
+  height: min(48vh, 520px);
+  min-height: 280px;
+}
 @media (max-width: 900px) {
   .shell, .workspace, .settings, .item-fields {
     grid-template-columns: 1fr;
@@ -748,11 +857,24 @@ html, body {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+  .metadata-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .metadata-summary {
+    white-space: normal;
+  }
   .item-list {
     max-height: 260px;
   }
-  .variable-row, .definition-row, .session-row {
+  .variable-row, .definition-row, .session-row, .regex-row {
     grid-template-columns: 1fr;
+  }
+  .regex-fields {
+    grid-template-columns: 1fr;
+  }
+  .regex-fields .span-2, .regex-fields .span-3 {
+    grid-column: 1 / -1;
   }
 }
 </style>
@@ -782,11 +904,6 @@ html, body {
       <button id="validateBtn" data-icon="!" title="Validate the edited stack without saving">Validate</button>
       <button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it">Preview</button>
       <button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
-      <button id="contextBtn" data-icon="☷" title="Edit stack-level context behavior">Context</button>
-      <button id="variablesBtn" data-icon="$" title="Edit stack static variables">Variables</button>
-      <button id="stateSchemaBtn" data-icon="#" title="Edit prompt state definitions and permissions">State schema</button>
-      <button id="sessionStateBtn" data-icon="◇" title="View and edit runtime session state">Session state</button>
-      <button id="stackJsonBtn" data-icon="{}" title="View, copy, or apply raw stack JSON">Stack JSON</button>
       <button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
       <button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
       <button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
@@ -794,16 +911,28 @@ html, body {
       <button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
       <input id="importFileInput" type="file" accept="application/json,.json" hidden>
     </div>
-    <section id="settings" class="settings"></section>
-    <section class="workspace">
+    <section id="metadataPanel" class="metadata-panel">
+      <div class="metadata-head">
+        <button id="metadataToggleBtn" data-icon="▾" title="Show or hide stack metadata">Hide metadata</button>
+        <div class="metadata-title">Stack metadata</div>
+        <div id="metadataSummary" class="metadata-summary"></div>
+      </div>
+      <div id="settings" class="settings"></div>
+    </section>
+    <nav class="view-tabs" aria-label="Stack editor sections">
+      <button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>
+      <button id="stateTabBtn" data-tab="state" data-icon="$" title="Edit variables, state schema, and runtime session state">State</button>
+      <button id="regexTabBtn" data-tab="regex" data-icon=".*" title="Edit regex transform rules">Regex</button>
+      <button id="stackTabBtn" data-tab="stack" data-icon="{}" title="Edit context options and raw stack JSON">Stack</button>
+    </nav>
+    <section id="workspace" class="workspace">
       <div class="items-pane">
         <div class="pane-head">
           <span>Items</span>
           <span id="itemCount" class="stack-meta"></span>
         </div>
         <div class="item-tools">
-          <button id="addBlockBtn" data-icon="+" title="Add a static block item">Add block</button>
-          <button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
+          <button id="addItemBtn" data-icon="+" title="Add an item, then choose block or slot in the editor">Add item</button>
           <span class="item-tools-spacer"></span>
           <button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
         </div>
@@ -815,6 +944,7 @@ html, body {
         <div id="preview" class="preview"></div>
       </div>
     </section>
+    <section id="tabPanel" class="tab-panel"></section>
   </main>
 </div>
 <div id="stackModal" class="modal"></div>
@@ -837,6 +967,9 @@ let payloadSnapshot = { status: "idle" };
 let latestDiagnostics = [];
 let stackVariablesError = "";
 let stackDefinitionsError = "";
+let regexRulesError = "";
+let activeTab = "items";
+let metadataCollapsed = true;
 let currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 
 const slotNames = [
@@ -846,6 +979,10 @@ const slotNames = [
 ];
 const roles = ["", "system", "user", "assistant", "custom"];
 const stateScopes = ["", "static", "session", "turn"];
+const regexStages = ["history", "compiled"];
+const regexEffects = ["outgoing", "finalize", "display", "both"];
+const regexTargets = ["system", "messages"];
+const regexRoles = ["system", "user", "assistant", "custom"];
 
 const el = (id) => document.getElementById(id);
 
@@ -941,6 +1078,7 @@ async function selectStack(id, options = {}) {
   optionsError = "";
   stackVariablesError = "";
   stackDefinitionsError = "";
+  regexRulesError = "";
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + currentStack.id);
@@ -950,10 +1088,30 @@ function renderAll(diagnostics = []) {
   latestDiagnostics = diagnostics;
   renderStackList();
   renderSettings();
-  renderItemList();
-  renderItemEditor();
+  renderActiveTab();
   renderDiagnostics(diagnostics);
   hidePreview();
+}
+
+function renderActiveTab() {
+  document.querySelectorAll("[data-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === activeTab);
+  });
+  const workspace = el("workspace");
+  const panel = el("tabPanel");
+  if (activeTab === "items") {
+    workspace.style.display = "";
+    panel.classList.remove("open");
+    panel.innerHTML = "";
+    renderItemList();
+    renderItemEditor();
+    return;
+  }
+  workspace.style.display = "none";
+  panel.classList.add("open");
+  if (activeTab === "state") renderStateTab();
+  else if (activeTab === "regex") renderRegexTab();
+  else if (activeTab === "stack") renderStackTab();
 }
 
 function renderStackList() {
@@ -975,8 +1133,19 @@ function renderSettings() {
   const settings = el("settings");
   if (!currentStack) {
     settings.innerHTML = "";
+    el("metadataSummary").textContent = "";
     return;
   }
+  el("metadataPanel").style.display = "";
+  el("metadataSummary").textContent = [
+    currentStack.id || "(no id)",
+    currentStack.name || "(unnamed)",
+    currentStack.mode || "replace",
+    currentFilePath || "",
+  ].filter(Boolean).join(" | ");
+  settings.style.display = metadataCollapsed ? "none" : "grid";
+  el("metadataToggleBtn").textContent = metadataCollapsed ? "Show metadata" : "Hide metadata";
+  el("metadataToggleBtn").dataset.icon = metadataCollapsed ? "▸" : "▾";
   settings.innerHTML = [
     field("Stack ID", '<input id="stackId" value="' + attr(currentStack.id) + '">'),
     field("Name", '<input id="stackName" value="' + attr(currentStack.name || "") + '">'),
@@ -992,6 +1161,12 @@ function renderSettings() {
   el("stackMode").onchange = (event) => { currentStack.mode = event.target.value; markDirty(); };
   el("stackAuto").onchange = (event) => { currentStack.autoActivate = event.target.checked; markDirty(); };
   el("stackDescription").oninput = (event) => { setOptionalString(currentStack, "description", event.target.value); markDirty(); };
+}
+
+function toggleMetadata() {
+  metadataCollapsed = !metadataCollapsed;
+  renderSettings();
+  setStatus(metadataCollapsed ? "Stack metadata hidden" : "Stack metadata shown");
 }
 
 function renderItemList() {
@@ -1289,6 +1464,100 @@ function setContextOption(key, value, defaultValue) {
   else delete currentStack.context;
 }
 
+function renderStateTab() {
+  if (!currentStack) return;
+  const variableRows = Object.entries(currentStack.variables || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => variableRowHtml(name, value))
+    .join("");
+  const definitions = currentStack.state?.definitions || {};
+  const definitionRows = Object.entries(definitions)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, definition]) => definitionRowHtml(name, definition))
+    .join("");
+  el("tabPanel").innerHTML =
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">Stack variables</div>' +
+    '<div class="tab-section-meta">Static string variables available to macros and variables slots.</div>' +
+    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.variables.</span></div>' +
+    '<div class="data-table" id="variablesRows">' +
+    '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
+    variableRows +
+    '</div></div>' +
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">State schema</div>' +
+    '<div class="tab-section-meta">Definitions describe session state names, metadata, defaults, and write permissions.</div>' +
+    '<div class="modal-toolbar"><button id="addDefinitionBtn" data-icon="+" title="Add a prompt state definition">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.state.definitions.</span></div>' +
+    '<div class="data-table" id="definitionRows">' +
+    '<div class="data-row header definition-row"><div>Name</div><div>Type</div><div>Scope</div><div>Description</div><div>Default JSON</div><div>Agent write</div><div>User write</div><div></div></div>' +
+    definitionRows +
+    '</div></div>' +
+    '<div class="tab-section" id="sessionStateSection">' +
+    '<div class="tab-section-title">Session state</div>' +
+    '<div class="tab-section-meta">Runtime state persisted in the current Pi session branch.</div>' +
+    '<div class="empty">Loading session state.</div>' +
+    '</div>';
+  bindVariablesEditor();
+  bindStateSchemaEditor();
+  run(loadSessionStateIntoTab);
+}
+
+async function loadSessionStateIntoTab() {
+  const section = el("sessionStateSection");
+  if (!section) return;
+  const snapshot = await api("/api/state");
+  section.innerHTML =
+    '<div class="tab-section-title">Session state</div>' +
+    '<div class="tab-section-meta">Runtime state persisted in the current Pi session branch.</div>' +
+    sessionStateEditorBody(snapshot);
+  bindSessionStateEditor();
+}
+
+function sessionStateEditorBody(snapshot) {
+  const names = [...new Set([...Object.keys(snapshot.session || {}), ...Object.keys(snapshot.definitions || {})])].sort((a, b) => a.localeCompare(b));
+  const rows = names.map((name) => sessionRowHtml(name, snapshot.session?.[name], snapshot.definitions?.[name], Object.prototype.hasOwnProperty.call(snapshot.session || {}, name))).join("");
+  return '<div class="modal-toolbar"><button id="addSessionStateBtn" data-icon="+" title="Add a runtime session state row">Add state</button><button id="refreshSessionStateBtn" data-icon="↻" title="Reload session state from Pi">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger" data-icon="×" title="Clear all writable runtime session state">Clear all</button></div>' +
+    '<div class="data-table" id="sessionStateRows">' +
+    '<div class="data-row header session-row"><div>Name</div><div>Value</div><div>Definition</div><div></div></div>' +
+    rows +
+    '</div>';
+}
+
+function renderRegexTab() {
+  if (!currentStack) return;
+  el("tabPanel").innerHTML = '<div class="tab-section">' + regexEditorBody() + '</div>';
+  bindRegexEditor();
+}
+
+function renderStackTab() {
+  if (!currentStack) return;
+  const json = JSON.stringify(stackForDisplay(), null, 2);
+  el("tabPanel").innerHTML =
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">Context options</div>' +
+    '<div class="tab-section-meta">Stack-level behavior for how pi-forge rewrites Pi conversation context.</div>' +
+    '<label class="checkline" title="Allow multiple enabled chat-history slots. When off, only the first enabled chat-history slot is expanded.">' +
+    '<input id="allowDuplicateChatHistoryInput" type="checkbox" ' + (currentStack.context?.allowDuplicateChatHistory === true ? "checked" : "") + '> Allow duplicate chat-history slots</label>' +
+    '<div class="option-note">Keep this off unless you intentionally want the same conversation history injected more than once.</div>' +
+    '</div>' +
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">Stack JSON</div>' +
+    '<div class="tab-section-meta">Raw recovery view for advanced fields. Apply updates the editor; Save writes to disk.</div>' +
+    '<div class="modal-toolbar">' +
+    '<button id="copyStackJsonBtn" data-icon="□" title="Copy this JSON to the clipboard">Copy</button>' +
+    '<button id="applyStackJsonBtn" class="primary" data-icon="✓" title="Apply this JSON to the editor without saving">Apply to editor</button>' +
+    '<span class="modal-spacer"></span><span id="stackJsonStatus" class="modal-meta">Unsaved stack JSON draft.</span>' +
+    '</div>' +
+    '<textarea id="stackJsonText" class="raw-json-editor" spellcheck="false">' + escapeHtml(json) + '</textarea>' +
+    '</div>';
+  el("allowDuplicateChatHistoryInput").onchange = (event) => {
+    setContextOption("allowDuplicateChatHistory", event.target.checked, false);
+    markDirty();
+  };
+  el("copyStackJsonBtn").onclick = () => run(copyRawStackJson);
+  el("applyStackJsonBtn").onclick = () => run(applyRawStackJson);
+}
+
 function openRawStackJsonEditor() {
   if (!currentStack) return;
   const json = JSON.stringify(stackForDisplay(), null, 2);
@@ -1332,6 +1601,7 @@ async function applyRawStackJson() {
   optionsError = "";
   stackVariablesError = "";
   stackDefinitionsError = "";
+  regexRulesError = "";
   closeStackModal();
   markDirty();
   renderAll(latestDiagnostics);
@@ -1535,22 +1805,246 @@ function syncStateDefinitionsFromModal() {
   if (stackDefinitionsError) setStatus(stackDefinitionsError, "error");
 }
 
+function openRegexEditor() {
+  if (!currentStack) return;
+  showStackModal(
+    "Regex rules",
+    "Ordered JavaScript RegExp replacements for outgoing prompt text and finalized assistant messages.",
+    regexEditorBody(),
+  );
+  bindRegexEditor();
+}
+
+function regexEditorBody() {
+  const rules = Array.isArray(currentStack?.regex?.rules) ? currentStack.regex.rules : [];
+  const rows = rules.map((rule) => regexRuleRowHtml(rule)).join("");
+  return '<div class="tab-section-title">Regex rules</div>' +
+    '<div class="tab-section-meta">Ordered JavaScript RegExp replacements for outgoing prompt text and finalized assistant messages.</div>' +
+    '<div class="modal-toolbar"><button id="addRegexRuleBtn" data-icon="+" title="Add a regex rule">Add rule</button><button id="validateRegexRulesBtn" data-icon="!" title="Validate the edited stack">Validate</button><span class="modal-spacer"></span><span class="modal-meta">Save writes these rules to stack.regex.rules.</span></div>' +
+    '<div class="data-table" id="regexRows">' + rows + '</div>';
+}
+
+function regexRuleRowHtml(rule = {}) {
+  const original = JSON.stringify(rule || {});
+  const enabled = rule.enabled !== false;
+  const targets = Array.isArray(rule.targets) ? rule.targets : [];
+  const roles = Array.isArray(rule.roles) ? rule.roles : [];
+  return '<div class="data-row regex-row" data-regex-row>' +
+    '<div class="regex-controls">' +
+    '<button type="button" data-regex-up="true" data-icon="↑" title="Move this rule up">Up</button>' +
+    '<button type="button" data-regex-down="true" data-icon="↓" title="Move this rule down">Down</button>' +
+    '</div>' +
+    '<div class="regex-fields">' +
+    '<textarea data-regex-original hidden>' + escapeHtml(original) + '</textarea>' +
+    '<label class="checkline"><input type="checkbox" data-regex-enabled ' + (enabled ? "checked" : "") + '> Enabled</label>' +
+    regexTextField("data-regex-id", "ID", rule.id || "", "trim-ooc") +
+    regexTextField("data-regex-name", "Name", rule.name || "", "Readable label") +
+    regexSelect("data-regex-stage", "Stage", rule.stage || "compiled", regexStages) +
+    regexSelect("data-regex-effect", "Effect", rule.effect || "outgoing", regexEffects) +
+    regexTextField("data-regex-flags", "Flags", rule.flags || "", "gimsu") +
+    regexCheckGroup("Targets", "data-regex-target", regexTargets, targets, "compiled only; empty means default") +
+    regexCheckGroup("Roles", "data-regex-role", regexRoles, roles, "message rules only; empty means all roles") +
+    regexNumberField("data-regex-max-messages", "Max messages", rule.maxMessages ?? "") +
+    regexNumberField("data-regex-max-chars", "Max chars", rule.maxChars ?? "") +
+    regexTextArea("data-regex-pattern", "Pattern", rule.pattern || "", "span-3", "\\\\(OOC:[^)]+\\\\)") +
+    regexTextArea("data-regex-replace", "Replace", rule.replace || "", "span-3", "") +
+    '<div class="regex-warning wide" data-regex-warning>' + escapeHtml(regexRuleWarning(rule)) + '</div>' +
+    '</div>' +
+    '<button type="button" class="danger" data-delete-row="true" data-icon="×" title="Delete this regex rule">Delete</button>' +
+    '</div>';
+}
+
+function regexTextField(attribute, label, value, placeholder = "") {
+  return '<div class="field"><label>' + escapeHtml(label) + '</label><input ' + attribute + ' value="' + attr(value) + '" placeholder="' + attr(placeholder) + '"></div>';
+}
+
+function regexNumberField(attribute, label, value) {
+  return '<div class="field"><label>' + escapeHtml(label) + '</label><input type="number" min="1" ' + attribute + ' value="' + attr(value) + '"></div>';
+}
+
+function regexTextArea(attribute, label, value, className, placeholder = "") {
+  return '<div class="field ' + className + '"><label>' + escapeHtml(label) + '</label><textarea ' + attribute + ' spellcheck="false" placeholder="' + attr(placeholder) + '">' + escapeHtml(value) + '</textarea></div>';
+}
+
+function regexSelect(attribute, label, value, choices) {
+  return '<div class="field"><label>' + escapeHtml(label) + '</label><select ' + attribute + '>' +
+    choices.map((choice) => '<option value="' + attr(choice) + '"' + (choice === value ? " selected" : "") + '>' + escapeHtml(choice) + '</option>').join("") +
+    '</select></div>';
+}
+
+function regexCheckGroup(label, attribute, choices, selected, help) {
+  const selectedSet = new Set(selected || []);
+  return '<div class="field span-2"><label>' + escapeHtml(label) + '</label><div class="regex-checks" title="' + attr(help) + '">' +
+    choices.map((choice) => '<label><input type="checkbox" ' + attribute + ' value="' + attr(choice) + '"' + (selectedSet.has(choice) ? " checked" : "") + '> ' + escapeHtml(choice) + '</label>').join("") +
+    '</div></div>';
+}
+
+function bindRegexEditor() {
+  el("addRegexRuleBtn").onclick = () => {
+    el("regexRows").insertAdjacentHTML("beforeend", regexRuleRowHtml(defaultRegexRule()));
+    bindRegexEditor();
+    syncRegexRulesFromModal();
+  };
+  el("validateRegexRulesBtn").onclick = () => run(validateStack);
+  document.querySelectorAll("[data-regex-row] input, [data-regex-row] textarea:not([data-regex-original]), [data-regex-row] select").forEach((control) => {
+    control.oninput = () => syncRegexRulesFromModal();
+    control.onchange = () => syncRegexRulesFromModal();
+  });
+  document.querySelectorAll("[data-regex-row] [data-delete-row]").forEach((button) => {
+    button.onclick = (event) => {
+      event.target.closest("[data-regex-row]").remove();
+      syncRegexRulesFromModal();
+    };
+  });
+  document.querySelectorAll("[data-regex-up]").forEach((button) => {
+    button.onclick = (event) => {
+      const row = event.target.closest("[data-regex-row]");
+      const previous = row.previousElementSibling;
+      if (!previous) return;
+      row.parentNode.insertBefore(row, previous);
+      syncRegexRulesFromModal();
+    };
+  });
+  document.querySelectorAll("[data-regex-down]").forEach((button) => {
+    button.onclick = (event) => {
+      const row = event.target.closest("[data-regex-row]");
+      const next = row.nextElementSibling;
+      if (!next) return;
+      row.parentNode.insertBefore(next, row);
+      syncRegexRulesFromModal();
+    };
+  });
+  refreshRegexWarnings();
+}
+
+function defaultRegexRule() {
+  return {
+    id: uniqueRegexRuleId(),
+    enabled: true,
+    stage: "compiled",
+    effect: "outgoing",
+    targets: ["messages"],
+    pattern: "",
+    replace: "",
+  };
+}
+
+function uniqueRegexRuleId() {
+  const existing = new Set((currentStack?.regex?.rules || []).map((rule) => rule?.id).filter(Boolean));
+  let index = existing.size + 1;
+  let id = "regex-" + index;
+  while (existing.has(id)) id = "regex-" + (++index);
+  return id;
+}
+
+function syncRegexRulesFromModal() {
+  if (!currentStack) return;
+  const rules = [];
+  const seen = new Set();
+  const errors = [];
+  document.querySelectorAll("[data-regex-row]").forEach((row, index) => {
+    const rule = regexRuleFromRow(row);
+    const label = rule.id || "rule " + (index + 1);
+    if (!rule.id) errors.push("Regex rule " + (index + 1) + " needs an id.");
+    else if (seen.has(rule.id)) errors.push("Duplicate regex rule id: " + rule.id);
+    seen.add(rule.id);
+    if (!rule.pattern) errors.push("Regex rule " + label + " needs a pattern.");
+    if (row.querySelector("[data-regex-max-messages]").value && !rule.maxMessages) errors.push("Regex rule " + label + " maxMessages must be a positive integer.");
+    if (row.querySelector("[data-regex-max-chars]").value && !rule.maxChars) errors.push("Regex rule " + label + " maxChars must be a positive integer.");
+    rules.push(rule);
+  });
+
+  if (rules.length) {
+    currentStack.regex = { ...(currentStack.regex || {}), schemaVersion: currentStack.regex?.schemaVersion || 1, rules };
+  } else {
+    delete currentStack.regex;
+  }
+  regexRulesError = errors[0] || "";
+  markDirty();
+  refreshRegexWarnings();
+  if (regexRulesError) setStatus(regexRulesError, "error");
+}
+
+function regexRuleFromRow(row) {
+  const rule = originalRegexRuleFromRow(row);
+  for (const key of ["id", "name", "enabled", "stage", "effect", "pattern", "flags", "replace", "roles", "targets", "maxMessages", "maxChars"]) {
+    delete rule[key];
+  }
+  rule.id = row.querySelector("[data-regex-id]").value.trim();
+  setOptionalObjectString(rule, "name", row.querySelector("[data-regex-name]").value);
+  rule.enabled = row.querySelector("[data-regex-enabled]").checked;
+  rule.stage = row.querySelector("[data-regex-stage]").value || "compiled";
+  rule.effect = row.querySelector("[data-regex-effect]").value || "outgoing";
+  rule.pattern = row.querySelector("[data-regex-pattern]").value;
+  const flags = row.querySelector("[data-regex-flags]").value.trim();
+  if (flags) rule.flags = flags;
+  const replace = row.querySelector("[data-regex-replace]").value;
+  if (replace) rule.replace = replace;
+  const roles = checkedRegexValues(row, "data-regex-role");
+  if (roles.length) rule.roles = roles;
+  const targets = checkedRegexValues(row, "data-regex-target");
+  if (targets.length) rule.targets = targets;
+  const maxMessages = positiveIntegerFromInput(row.querySelector("[data-regex-max-messages]").value);
+  const maxChars = positiveIntegerFromInput(row.querySelector("[data-regex-max-chars]").value);
+  if (maxMessages) rule.maxMessages = maxMessages;
+  if (maxChars) rule.maxChars = maxChars;
+  return rule;
+}
+
+function originalRegexRuleFromRow(row) {
+  try {
+    const parsed = JSON.parse(row.querySelector("[data-regex-original]")?.value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? { ...parsed } : {};
+  } catch {
+    return {};
+  }
+}
+
+function checkedRegexValues(row, attribute) {
+  return Array.from(row.querySelectorAll("[" + attribute + "]"))
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+}
+
+function positiveIntegerFromInput(value) {
+  if (!String(value || "").trim()) return undefined;
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
+function refreshRegexWarnings() {
+  document.querySelectorAll("[data-regex-row]").forEach((row) => {
+    const warning = row.querySelector("[data-regex-warning]");
+    if (!warning) return;
+    const text = regexRuleWarning(regexRuleFromRow(row));
+    warning.textContent = text;
+    warning.style.display = text ? "" : "none";
+  });
+}
+
+function regexRuleWarning(rule) {
+  if (rule.effect === "finalize") {
+    return 'Warning: finalize runs after streaming and replaces the stored assistant transcript. Use stage "compiled" with target "messages".';
+  }
+  if (rule.effect === "display") {
+    return 'Warning: display rules validate but are ignored at runtime until true display transforms exist.';
+  }
+  if (rule.effect === "both") {
+    return 'Warning: both is ignored at runtime; create separate outgoing and finalize rules instead.';
+  }
+  return "";
+}
+
 async function openSessionStateEditor() {
   const snapshot = await api("/api/state");
   renderSessionStateEditor(snapshot);
 }
 
 function renderSessionStateEditor(snapshot) {
-  const names = [...new Set([...Object.keys(snapshot.session || {}), ...Object.keys(snapshot.definitions || {})])].sort((a, b) => a.localeCompare(b));
-  const rows = names.map((name) => sessionRowHtml(name, snapshot.session?.[name], snapshot.definitions?.[name], Object.prototype.hasOwnProperty.call(snapshot.session || {}, name))).join("");
   showStackModal(
     "Session state",
     "Runtime state persisted in the current Pi session branch.",
-    '<div class="modal-toolbar"><button id="addSessionStateBtn" data-icon="+" title="Add a runtime session state row">Add state</button><button id="refreshSessionStateBtn" data-icon="↻" title="Reload session state from Pi">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger" data-icon="×" title="Clear all writable runtime session state">Clear all</button></div>' +
-      '<div class="data-table" id="sessionStateRows">' +
-      '<div class="data-row header session-row"><div>Name</div><div>Value</div><div>Definition</div><div></div></div>' +
-      rows +
-      '</div>',
+    sessionStateEditorBody(snapshot),
   );
   bindSessionStateEditor();
 }
@@ -2096,6 +2590,7 @@ function stackForSubmit() {
   if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
   if (stackVariablesError) throw new Error(stackVariablesError);
   if (stackDefinitionsError) throw new Error(stackDefinitionsError);
+  if (regexRulesError) throw new Error(regexRulesError);
   const clone = structuredClone(currentStack);
   if (!clone.type) clone.type = "pi-forge.prompt-stack";
   if (!clone.schemaVersion) clone.schemaVersion = 1;
@@ -2121,9 +2616,12 @@ function renderEmpty() {
   selectedId = "";
   dirty = false;
   renderDirtyState();
+  el("metadataPanel").style.display = "none";
   el("settings").innerHTML = "";
   el("itemList").innerHTML = "";
   el("itemEditor").innerHTML = '<div class="empty">No prompt stacks found.</div>';
+  el("tabPanel").classList.remove("open");
+  el("tabPanel").innerHTML = "";
   renderDiagnostics([]);
   setStatus("No prompt stacks found");
 }
@@ -2185,11 +2683,14 @@ el("saveBtn").onclick = () => run(saveStack);
 el("validateBtn").onclick = () => run(validateStack);
 el("previewBtn").onclick = () => run(previewStack);
 el("payloadBtn").onclick = () => run(openPayloadCapture);
-el("contextBtn").onclick = openContextEditor;
-el("variablesBtn").onclick = openVariablesEditor;
-el("stateSchemaBtn").onclick = openStateSchemaEditor;
-el("sessionStateBtn").onclick = () => run(openSessionStateEditor);
-el("stackJsonBtn").onclick = openRawStackJsonEditor;
+el("metadataToggleBtn").onclick = toggleMetadata;
+document.querySelectorAll("[data-tab]").forEach((button) => {
+  button.onclick = () => {
+    activeTab = button.dataset.tab || "items";
+    renderActiveTab();
+    hidePreview();
+  };
+});
 el("forkBtn").onclick = () => run(forkStack);
 el("importBtn").onclick = () => run(importStackJson);
 el("exportBtn").onclick = () => run(exportStackJson);
@@ -2223,8 +2724,7 @@ el("preview").onclick = (event) => {
   event.stopPropagation();
   run(() => copyPreviewText(Number(button.dataset.copyIndex)));
 };
-el("addBlockBtn").onclick = () => addItem("block");
-el("addSlotBtn").onclick = () => addItem("slot");
+el("addItemBtn").onclick = () => addItem("block");
 el("deleteItemBtn").onclick = deleteSelectedItem;
 window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
 window.addEventListener("keydown", (event) => {

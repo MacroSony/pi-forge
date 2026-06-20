@@ -162,14 +162,17 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Existing same-project editor servers are reclaimed after extension reinitialization from session navigation/new-session flows, so `/preset ui` reuses the current URL instead of opening a second port.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
+- Collapsible stack metadata panel and main-area tabs for Items, State, Regex, and Stack JSON/context work.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
 - Unsaved-change badge in the top bar.
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
 - Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
 - Edit stack `state.definitions`, including type, scope, description, defaults, and write permissions.
+- Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, pattern, flags, replacement, and runtime warnings.
 - Reorder items by drag-and-drop.
-- Add and delete stack items.
+- Add stack items through one add action, then choose block or slot in the item editor.
+- Delete stack items.
 - Toggle item enabled state from the item list.
 - Inline item validation badges when diagnostics point at a specific item.
 - Edit block content in a full-height text editor area.

@@ -532,13 +532,18 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const deleteItemIndex = pageHtml.indexOf('id="deleteItemBtn"');
 		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
 		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
-		assert.match(pageHtml, /variablesBtn/);
-		assert.match(pageHtml, /stateSchemaBtn/);
-		assert.match(pageHtml, /sessionStateBtn/);
+		assert.match(pageHtml, /metadataToggleBtn/);
+		assert.match(pageHtml, /itemsTabBtn/);
+		assert.match(pageHtml, /stateTabBtn/);
+		assert.match(pageHtml, /regexTabBtn/);
+		assert.match(pageHtml, /stackTabBtn/);
+		assert.match(pageHtml, /addItemBtn/);
+		assert.match(pageHtml, /regexRows/);
+		assert.match(pageHtml, /data-regex-row/);
+		assert.match(pageHtml, /syncRegexRulesFromModal/);
+		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
 		assert.match(pageHtml, /payloadBtn/);
 		assert.match(pageHtml, /themeBtn/);
-		assert.match(pageHtml, /contextBtn/);
-		assert.match(pageHtml, /stackJsonBtn/);
 		assert.match(pageHtml, /dirtyBadge/);
 		assert.match(pageHtml, /copyImportReportBtn/);
 		assert.match(pageHtml, /data-icon/);
@@ -562,8 +567,30 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(stackResponse.status, 200);
 		const loaded = await stackResponse.json() as { stack: any };
 		loaded.stack.name = "Edited in UI";
+		loaded.stack.regex = {
+			schemaVersion: 1,
+			rules: [{
+				id: "final-ui-ooc",
+				stage: "compiled",
+				effect: "finalize",
+				targets: ["messages"],
+				roles: ["assistant"],
+				pattern: "\\s*\\(OOC:[^)]+\\)",
+				flags: "gi",
+				replace: "",
+			}],
+		};
 		const longPreviewContent = "After history " + "x".repeat(9000);
 		loaded.stack.items.push({ kind: "block", id: "after", enabled: true, role: "user", content: longPreviewContent });
+
+		const regexValidateResponse = await fetch(new URL("/api/stacks/default/validate", editorUrl), {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: loaded.stack }),
+		});
+		assert.equal(regexValidateResponse.status, 200);
+		const regexValidateResult = await regexValidateResponse.json() as { diagnostics: Array<{ level: string; message: string }> };
+		assert.ok(regexValidateResult.diagnostics.some((diagnostic) => diagnostic.level === "warning" && /effect "finalize"/.test(diagnostic.message)));
 
 		const saveResponse = await fetch(new URL("/api/stacks/default", editorUrl), {
 			method: "PUT",
@@ -578,6 +605,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const saved = readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8");
 		assert.match(saved, /Edited in UI/);
 		assert.match(saved, /After history/);
+		assert.match(saved, /final-ui-ooc/);
 
 		const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
 			method: "POST",

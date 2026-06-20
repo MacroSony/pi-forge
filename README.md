@@ -73,7 +73,7 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 /preset ui
 ```
 
-Drag, drop, edit, validate, inspect full previews and captured payloads, manage variables/state/context, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser.
+Drag, drop, edit, validate, inspect full previews and captured payloads, manage variables/state/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. Stack metadata is collapsible so the active editor stays in view.
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
@@ -388,6 +388,8 @@ To clean a completed assistant message after streaming, use `effect: "finalize"`
 Warning: `finalize` runs at `message_end`, after raw output may already have streamed in the TUI. It returns a cleaned replacement message to Pi, so the original model output is not preserved in the stored transcript.
 
 `effect: "outgoing"` changes model input. `effect: "finalize"` changes finalized assistant transcript content. `effect: "display"` and `"both"` validate with warnings but are ignored at runtime until true display transforms are implemented.
+
+The web editor has a structured Regex dialog for these rule fields and preserves advanced unknown fields for raw JSON editing.
 
 ### Variables slot options
 
