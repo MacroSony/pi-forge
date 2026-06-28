@@ -256,7 +256,7 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 	if ((stack.mode === "append" || stack.mode === "prepend") && hasPolicyEntries(stack.skills)) {
 		diagnostics.push({
 			level: "warning",
-			message: "skills allow/deny only filters pi-forge skills slots. Use mode \"replace\" if you need the base Pi prompt to omit filtered skills.",
+			message: "skills policy only filters pi-forge skills slots. Use mode \"replace\" if you need the base Pi prompt to omit filtered skills.",
 		});
 	}
 
@@ -333,7 +333,13 @@ function normalizeResourcePolicy(value: unknown, label: string, diagnostics: Pro
 	}
 	const allow = normalizePolicyPatterns(value.allow, `${label}.allow`, diagnostics);
 	const deny = normalizePolicyPatterns(value.deny, `${label}.deny`, diagnostics);
-	return allow || deny ? { allow, deny } : {};
+	if (allow && deny) {
+		diagnostics.push({ level: "error", message: `${label} policy must use either allow or deny, not both.` });
+		return { allow };
+	}
+	if (allow) return { allow };
+	if (deny) return { deny };
+	return {};
 }
 
 function normalizePolicyPatterns(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): string[] | undefined {
@@ -356,6 +362,9 @@ function normalizePolicyPatterns(value: unknown, label: string, diagnostics: Pro
 
 function validateResourcePolicy(policy: PromptResourcePolicy | undefined, label: string): PromptStackDiagnostic[] {
 	const diagnostics: PromptStackDiagnostic[] = [];
+	if ((policy?.allow?.length ?? 0) > 0 && (policy?.deny?.length ?? 0) > 0) {
+		diagnostics.push({ level: "error", message: `${label} policy must use either allow or deny, not both.` });
+	}
 	for (const key of ["allow", "deny"] as const) {
 		const values = policy?.[key];
 		if (!values) continue;

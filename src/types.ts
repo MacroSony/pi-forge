@@ -47,10 +47,9 @@ export interface PromptRegexConfig {
 	rules?: PromptRegexRule[];
 }
 
-export interface PromptResourcePolicy {
-	allow?: string[];
-	deny?: string[];
-}
+export type PromptResourcePolicy =
+	| { allow?: string[]; deny?: never }
+	| { allow?: never; deny?: string[] };
 
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;

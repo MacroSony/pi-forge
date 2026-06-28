@@ -374,7 +374,6 @@ test("tool policy filters rendered tools and tool macros", () => {
 		id: "tool-policy",
 		tools: {
 			allow: ["read", "bash", "write"],
-			deny: ["*"],
 		},
 		items: [
 			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools", options: { format: "plain" } },
@@ -409,7 +408,6 @@ test("skill policy filters rendered skills with wildcard patterns", () => {
 		id: "skill-policy",
 		skills: {
 			allow: ["review", "browser-*"],
-			deny: ["browser-danger"],
 		},
 		items: [{ kind: "slot", id: "skills", enabled: true, role: "system", slot: "skills", options: { format: "plain" } }],
 	};

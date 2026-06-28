@@ -14,12 +14,10 @@
     "allowDuplicateChatHistory": false
   },
   "tools": {
-    "allow": ["*"],
-    "deny": []
+    "allow": ["*"]
   },
   "skills": {
-    "allow": ["*"],
-    "deny": []
+    "allow": ["*"]
   },
   "variables": {
     "user": "User",

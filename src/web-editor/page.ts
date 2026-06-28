@@ -773,6 +773,26 @@ html, body {
 .session-row {
   grid-template-columns: minmax(160px, 240px) minmax(220px, 1fr) minmax(180px, 260px) 168px;
 }
+.policy-row {
+  grid-template-columns: minmax(120px, 170px) minmax(260px, 320px) minmax(260px, 1fr) minmax(180px, 260px);
+}
+.policy-title {
+  font-weight: 650;
+  margin-bottom: 3px;
+}
+.policy-mode {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+.policy-patterns {
+  min-height: 96px;
+}
+.policy-summary {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 .regex-row {
   grid-template-columns: 72px minmax(0, 1fr) 86px;
 }
@@ -867,7 +887,7 @@ html, body {
   .item-list {
     max-height: 260px;
   }
-  .variable-row, .definition-row, .session-row, .regex-row {
+  .variable-row, .definition-row, .session-row, .policy-row, .regex-row {
     grid-template-columns: 1fr;
   }
   .regex-fields {
@@ -923,6 +943,7 @@ html, body {
       <button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>
       <button id="stateTabBtn" data-tab="state" data-icon="$" title="Edit variables, state schema, and runtime session state">State</button>
       <button id="regexTabBtn" data-tab="regex" data-icon=".*" title="Edit regex transform rules">Regex</button>
+      <button id="policyTabBtn" data-tab="policy" data-icon="⊕" title="Edit tool and skill policy">Policy</button>
       <button id="stackTabBtn" data-tab="stack" data-icon="{}" title="Edit context options and raw stack JSON">Stack</button>
     </nav>
     <section id="workspace" class="workspace">
@@ -968,6 +989,7 @@ let latestDiagnostics = [];
 let stackVariablesError = "";
 let stackDefinitionsError = "";
 let regexRulesError = "";
+let stackPolicyError = "";
 let activeTab = "items";
 let metadataCollapsed = true;
 let currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
@@ -1079,6 +1101,7 @@ async function selectStack(id, options = {}) {
   stackVariablesError = "";
   stackDefinitionsError = "";
   regexRulesError = "";
+  stackPolicyError = "";
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + currentStack.id);
@@ -1111,6 +1134,7 @@ function renderActiveTab() {
   panel.classList.add("open");
   if (activeTab === "state") renderStateTab();
   else if (activeTab === "regex") renderRegexTab();
+  else if (activeTab === "policy") renderPolicyTab();
   else if (activeTab === "stack") renderStackTab();
 }
 
@@ -1529,6 +1553,155 @@ function renderRegexTab() {
   bindRegexEditor();
 }
 
+function renderPolicyTab() {
+  if (!currentStack) return;
+  el("tabPanel").innerHTML =
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">Tool and skill policy</div>' +
+    '<div class="tab-section-meta">Choose one mode per resource. Patterns support exact names and * wildcards.</div>' +
+    '<div class="data-table" id="policyRows">' +
+    '<div class="data-row header policy-row"><div>Resource</div><div>Mode</div><div>Patterns</div><div>Status</div></div>' +
+    policyRowHtml("tools", "Tools") +
+    policyRowHtml("skills", "Skills") +
+    '</div>' +
+    '</div>';
+  bindPolicyEditor();
+}
+
+function policyRowHtml(kind, label) {
+  const policy = stackPolicyObject(kind);
+  const mode = policyMode(policy);
+  const patterns = policyPatternsToText(mode === "deny" ? policy.deny : policy.allow);
+  const disabled = mode === "none" ? " disabled" : "";
+  return '<div class="data-row policy-row" data-policy-row data-policy-kind="' + attr(kind) + '" data-policy-mode="' + attr(mode) + '">' +
+    '<div><div class="policy-title">' + escapeHtml(label) + '</div><div class="modal-meta">' + escapeHtml(kind) + '</div></div>' +
+    '<div class="field"><label>Mode</label><div class="segmented policy-mode">' +
+    policyModeButton("none", "Unrestricted", mode) +
+    policyModeButton("allow", "Allow", mode) +
+    policyModeButton("deny", "Deny", mode) +
+    '</div></div>' +
+    '<div class="field"><label>Patterns</label><textarea class="policy-patterns" data-policy-patterns spellcheck="false" placeholder="' + attr(policyPatternPlaceholder(mode)) + '"' + disabled + '>' + escapeHtml(patterns) + '</textarea></div>' +
+    '<div class="policy-summary" data-policy-summary>' + escapeHtml(policySummary(kind, policy)) + '</div>' +
+    '</div>';
+}
+
+function policyModeButton(value, label, current) {
+  return '<button type="button" data-policy-mode-option="' + attr(value) + '" class="' + (value === current ? "active" : "") + '">' + escapeHtml(label) + '</button>';
+}
+
+function bindPolicyEditor() {
+  document.querySelectorAll("[data-policy-row] [data-policy-mode-option]").forEach((button) => {
+    button.onclick = () => {
+      const row = button.closest("[data-policy-row]");
+      setPolicyRowMode(row, button.dataset.policyModeOption);
+      if (button.dataset.policyModeOption === "none") row.querySelector("[data-policy-patterns]").value = "";
+      syncResourcePolicyFromTab();
+    };
+  });
+  document.querySelectorAll("[data-policy-row] textarea").forEach((control) => {
+    control.oninput = () => syncResourcePolicyFromTab();
+  });
+  refreshPolicySummaries();
+}
+
+function syncResourcePolicyFromTab() {
+  if (!currentStack) return;
+  const errors = [];
+  document.querySelectorAll("[data-policy-row]").forEach((row) => {
+    const kind = row.dataset.policyKind;
+    const mode = row.dataset.policyMode || "none";
+    const patterns = mode === "none" ? [] : parsePolicyPatterns(row.querySelector("[data-policy-patterns]").value);
+    const duplicate = duplicatePolicyPattern(patterns);
+    if (duplicate) errors.push(kind + "." + mode + " has duplicate pattern: " + duplicate);
+    const policy = { ...stackPolicyObject(kind) };
+    delete policy.allow;
+    delete policy.deny;
+    if (mode === "allow" && patterns.length) policy.allow = patterns;
+    if (mode === "deny" && patterns.length) policy.deny = patterns;
+    if (Object.keys(policy).length) currentStack[kind] = policy;
+    else delete currentStack[kind];
+    setPolicyRowMode(row, mode);
+  });
+  stackPolicyError = errors[0] || "";
+  markDirty();
+  refreshPolicySummaries();
+  if (stackPolicyError) setStatus(stackPolicyError, "error");
+}
+
+function stackPolicyObject(kind) {
+  const policy = currentStack?.[kind];
+  return policy && typeof policy === "object" && !Array.isArray(policy) ? policy : {};
+}
+
+function policyMode(policy) {
+  const allow = Array.isArray(policy.allow) ? policy.allow : [];
+  const deny = Array.isArray(policy.deny) ? policy.deny : [];
+  if (deny.length && !allow.length) return "deny";
+  if (allow.length) return "allow";
+  return "none";
+}
+
+function setPolicyRowMode(row, mode) {
+  if (!row) return;
+  row.dataset.policyMode = mode || "none";
+  row.querySelectorAll("[data-policy-mode-option]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.policyModeOption === row.dataset.policyMode);
+  });
+  const patterns = row.querySelector("[data-policy-patterns]");
+  if (!patterns) return;
+  patterns.disabled = row.dataset.policyMode === "none";
+  patterns.placeholder = policyPatternPlaceholder(row.dataset.policyMode);
+}
+
+function policyPatternPlaceholder(mode) {
+  if (mode === "allow") return "read\nbrowser-*";
+  if (mode === "deny") return "browser-danger\nlegacy-*";
+  return "";
+}
+
+function policyPatternsToText(patterns) {
+  return Array.isArray(patterns) ? patterns.join("\n") : "";
+}
+
+function parsePolicyPatterns(value) {
+  return String(value || "")
+    .split(/[\n,]/)
+    .map((pattern) => pattern.trim())
+    .filter(Boolean);
+}
+
+function duplicatePolicyPattern(patterns) {
+  const seen = new Set();
+  for (const pattern of patterns) {
+    if (seen.has(pattern)) return pattern;
+    seen.add(pattern);
+  }
+  return "";
+}
+
+function refreshPolicySummaries() {
+  document.querySelectorAll("[data-policy-row]").forEach((row) => {
+    const summary = row.querySelector("[data-policy-summary]");
+    if (!summary) return;
+    const kind = row.dataset.policyKind;
+    const mode = row.dataset.policyMode || "none";
+    const patterns = mode === "none" ? [] : parsePolicyPatterns(row.querySelector("[data-policy-patterns]").value);
+    const policy = mode === "allow" ? { allow: patterns } : mode === "deny" ? { deny: patterns } : {};
+    summary.textContent = policySummary(kind, policy);
+    setPolicyRowMode(row, mode);
+  });
+}
+
+function policySummary(kind, policy) {
+  const allow = Array.isArray(policy.allow) ? policy.allow : [];
+  const deny = Array.isArray(policy.deny) ? policy.deny : [];
+  if (allow.length && deny.length) return "Invalid mixed policy.";
+  if (allow.some((pattern) => pattern !== "*")) return "Allow list active: " + allow.length + " pattern" + (allow.length === 1 ? "" : "s") + ".";
+  if (allow.length) return "Unrestricted " + kind + ".";
+  if (deny.length) return "Deny list active: " + deny.length + " pattern" + (deny.length === 1 ? "" : "s") + ".";
+  return "Unrestricted " + kind + ".";
+}
+
 function renderStackTab() {
   if (!currentStack) return;
   const json = JSON.stringify(stackForDisplay(), null, 2);
@@ -1602,6 +1775,7 @@ async function applyRawStackJson() {
   stackVariablesError = "";
   stackDefinitionsError = "";
   regexRulesError = "";
+  stackPolicyError = "";
   closeStackModal();
   markDirty();
   renderAll(latestDiagnostics);
@@ -2591,6 +2765,7 @@ function stackForSubmit() {
   if (stackVariablesError) throw new Error(stackVariablesError);
   if (stackDefinitionsError) throw new Error(stackDefinitionsError);
   if (regexRulesError) throw new Error(regexRulesError);
+  if (stackPolicyError) throw new Error(stackPolicyError);
   const clone = structuredClone(currentStack);
   if (!clone.type) clone.type = "pi-forge.prompt-stack";
   if (!clone.schemaVersion) clone.schemaVersion = 1;
@@ -2615,6 +2790,7 @@ function renderEmpty() {
   currentStack = null;
   selectedId = "";
   dirty = false;
+  stackPolicyError = "";
   renderDirtyState();
   el("metadataPanel").style.display = "none";
   el("settings").innerHTML = "";

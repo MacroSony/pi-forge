@@ -11,7 +11,7 @@ Think of it as a character sheet for your AI agent.
 - **Give Pi a personality** — turn it into a creative writer, a roleplay partner, a strict code reviewer, or anything in between.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
-- **Limit tools and skills per stack** — enforce active tool allow/deny policy and filter skill visibility for focused modes.
+- **Limit tools and skills per stack** — enforce active tool policy and filter skill visibility for focused modes.
 - **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
 - **Transform outgoing and finalized text** — run deterministic regex replacements on selected history, compiled prompt text, or finalized assistant messages.
 - **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
@@ -350,22 +350,20 @@ Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` 
 
 ### Tool and skill policy
 
-Prompt stacks can constrain tools and skills with stack-level `allow` and `deny` lists. Patterns are exact by default and support `*` wildcards.
+Prompt stacks can constrain tools and skills with stack-level `allow` or `deny` lists. Patterns are exact by default and support `*` wildcards.
 
 ```json
 {
   "tools": {
-    "allow": ["read", "bash"],
-    "deny": ["*"]
+    "allow": ["read", "bash"]
   },
   "skills": {
-    "allow": ["*"],
     "deny": ["browser-danger"]
   }
 }
 ```
 
-Concrete `allow` patterns take priority and define the permitted set, even when a name also matches `deny`. `deny` is applied only when `allow` is omitted or only contains `"*"`, so `allow: ["*"]` plus `deny` works as a deny-only policy.
+Use `allow` when only matching tools or skills should remain active. Use `deny` when everything except matching tools or skills should remain active. A single resource policy cannot contain both non-empty lists; mixed `allow` and `deny` entries are validation errors.
 
 Tool policy is enforced through Pi's active tool list while the stack is active. pi-forge remembers the previous active tools and restores them when prompt stacks are disabled or switched to an unrestricted stack.
 

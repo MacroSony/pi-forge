@@ -23,7 +23,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
 - Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
-- Stack validation for tool and skill allow/deny policy shape.
+- Stack validation for tool and skill policy shape.
 
 ## Prompt Compilation
 
@@ -35,8 +35,8 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Duplicate chat-history warning unless explicitly allowed.
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
-- Tool allow/deny policy filters Pi's active tool list while the stack is active and restores the previous active tools when the stack no longer applies.
-- Skill allow/deny policy filters skills rendered by pi-forge `skills` slots.
+- Tool policy filters Pi's active tool list while the stack is active and restores the previous active tools when the stack no longer applies.
+- Skill policy filters skills rendered by pi-forge `skills` slots.
 - Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
 - Finalize regex transforms can rewrite completed assistant messages at `message_end`.
 
@@ -76,7 +76,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Stack-level `tools.allow` / `tools.deny` policy.
 - Stack-level `skills.allow` / `skills.deny` policy.
 - Policy entries support exact names and `*` wildcards.
-- Concrete `allow` patterns take priority; `deny` is used only when `allow` is omitted or wildcard-only.
+- Each resource uses either `allow` or `deny`; non-empty mixed lists are validation errors.
 - Tool policy is enforced with `pi.setActiveTools()` and restored when prompt stacks are disabled or switched to an unrestricted stack.
 - Rendered `tools` slots, tool macros such as `{{tools}}`, and `tool-guidelines` respect stack tool policy.
 - Rendered `skills` slots respect stack skill policy and continue to hide skills marked `disableModelInvocation`.

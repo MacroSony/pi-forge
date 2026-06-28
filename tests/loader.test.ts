@@ -205,9 +205,10 @@ test("loadPromptStacks validates tool and skill policies", () => {
 		mode: "append",
 		tools: {
 			allow: ["read", "read"],
-			deny: "bash",
+			deny: ["bash"],
 		},
 		skills: {
+			allow: "review",
 			deny: ["browser-*"],
 		},
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -216,8 +217,9 @@ test("loadPromptStacks validates tool and skill policies", () => {
 	const loaded = loadPromptStacks(cwd)[0]!;
 	const messages = loaded.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
 
-	assert.match(messages, /tools\.deny must be an array of strings/);
+	assert.match(messages, /tools policy must use either allow or deny, not both/);
 	assert.match(messages, /Duplicate tools\.allow pattern: read/);
-	assert.match(messages, /skills allow\/deny only filters pi-forge skills slots/);
+	assert.match(messages, /skills\.allow must be an array of strings/);
+	assert.match(messages, /skills policy only filters pi-forge skills slots/);
 	assert.equal(isUsablePromptStack(loaded), false);
 });

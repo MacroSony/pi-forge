@@ -303,7 +303,6 @@ test("active stack tool policy filters and restores active tools", async () => {
 		id: "default",
 		tools: {
 			allow: ["read", "bash"],
-			deny: ["*"],
 		},
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
 	});
@@ -579,11 +578,15 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /itemsTabBtn/);
 		assert.match(pageHtml, /stateTabBtn/);
 		assert.match(pageHtml, /regexTabBtn/);
+		assert.match(pageHtml, /policyTabBtn/);
 		assert.match(pageHtml, /stackTabBtn/);
 		assert.match(pageHtml, /addItemBtn/);
 		assert.match(pageHtml, /regexRows/);
 		assert.match(pageHtml, /data-regex-row/);
 		assert.match(pageHtml, /syncRegexRulesFromModal/);
+		assert.match(pageHtml, /data-policy-row/);
+		assert.match(pageHtml, /data-policy-mode-option/);
+		assert.match(pageHtml, /syncResourcePolicyFromTab/);
 		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
 		assert.match(pageHtml, /payloadBtn/);
 		assert.match(pageHtml, /themeBtn/);
@@ -623,6 +626,8 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 				replace: "",
 			}],
 		};
+		loaded.stack.tools = { allow: ["read", "bash"] };
+		loaded.stack.skills = { deny: ["browser-danger"] };
 		const longPreviewContent = "After history " + "x".repeat(9000);
 		loaded.stack.items.push({ kind: "block", id: "after", enabled: true, role: "user", content: longPreviewContent });
 
@@ -649,6 +654,9 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(saved, /Edited in UI/);
 		assert.match(saved, /After history/);
 		assert.match(saved, /final-ui-ooc/);
+		assert.match(saved, /"tools"/);
+		assert.match(saved, /"skills"/);
+		assert.match(saved, /"browser-danger"/);
 
 		const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
 			method: "POST",
