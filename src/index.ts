@@ -14,6 +14,7 @@ import {
 } from "./compiler.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStackPath, promptStackReadDirs } from "./loader.ts";
 import { createProviderPayloadCapture, estimatePayloadTokens } from "./payload-capture.ts";
+import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
@@ -74,6 +75,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let webEditor: WebEditorServer | undefined;
 	let webEditorCwd: string | undefined;
 	let webEditorPreferredPort: number | undefined;
+	let toolPolicyBaseline: string[] | undefined;
 
 	function activeId(): string | undefined {
 		return active?.stack.id;
@@ -95,6 +97,7 @@ export default function piForge(pi: ExtensionAPI) {
 			active = undefined;
 			if (id) persistActiveSelection("none");
 			if (ctx) updateStatus(ctx);
+			syncActiveToolPolicy(ctx);
 			return true;
 		}
 
@@ -103,6 +106,7 @@ export default function piForge(pi: ExtensionAPI) {
 		active = found;
 		persistActiveSelection(found.stack.id);
 		if (ctx) updateStatus(ctx);
+		syncActiveToolPolicy(ctx);
 		return true;
 	}
 
@@ -110,6 +114,7 @@ export default function piForge(pi: ExtensionAPI) {
 		if (!ctx.isProjectTrusted()) {
 			stacks = [];
 			active = undefined;
+			syncActiveToolPolicy(ctx);
 			ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
 			updateStatus(ctx);
 			return;
@@ -118,6 +123,7 @@ export default function piForge(pi: ExtensionAPI) {
 		stacks = loadPromptStacks(ctx.cwd);
 		active = chooseDefaultStack(stacks, preferredId);
 		updateStatus(ctx);
+		syncActiveToolPolicy(ctx);
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
@@ -128,6 +134,37 @@ export default function piForge(pi: ExtensionAPI) {
 			latestCompileDiagnostics = [];
 			ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 		}
+	}
+
+	function syncActiveToolPolicy(ctx?: ExtensionContext): void {
+		const policy = active?.stack.tools;
+		if (!hasResourcePolicy(policy)) {
+			restoreToolPolicy(ctx);
+			return;
+		}
+
+		const baseline = toolPolicyBaseline ?? pi.getActiveTools();
+		toolPolicyBaseline ??= [...baseline];
+		const nextTools = applyResourcePolicy(filterKnownTools(baseline), policy);
+		pi.setActiveTools(nextTools);
+		if (ctx) {
+			const label = nextTools.length > 0 ? `tools:${nextTools.length}` : "tools:none";
+			ctx.ui.setStatus("pi-forge-tools", ctx.ui.theme.fg(nextTools.length > 0 ? "accent" : "warning", label));
+		}
+	}
+
+	function restoreToolPolicy(ctx?: ExtensionContext): void {
+		if (toolPolicyBaseline) {
+			pi.setActiveTools(filterKnownTools(toolPolicyBaseline));
+			toolPolicyBaseline = undefined;
+		}
+		if (ctx) ctx.ui.setStatus("pi-forge-tools", undefined);
+	}
+
+	function filterKnownTools(names: string[]): string[] {
+		const known = new Set(pi.getAllTools().map((tool) => tool.name));
+		if (known.size === 0) return names;
+		return names.filter((name) => known.has(name));
 	}
 
 	function notifyActivePreset(ctx: ExtensionContext, detail: string): void {
@@ -479,6 +516,7 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 
 	pi.on("turn_start", async () => {
+		syncActiveToolPolicy();
 		const id = activeId();
 		if (id) persistActiveSelection(id);
 	});

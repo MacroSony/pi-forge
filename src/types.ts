@@ -47,6 +47,11 @@ export interface PromptRegexConfig {
 	rules?: PromptRegexRule[];
 }
 
+export interface PromptResourcePolicy {
+	allow?: string[];
+	deny?: string[];
+}
+
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;
 	unresolvedMacroPolicy?: "warn" | "keep" | "error";
@@ -146,6 +151,8 @@ export interface PromptStack {
 	mode?: PromptStackMode;
 	defaults?: PromptStackDefaults;
 	context?: PromptStackContextOptions;
+	tools?: PromptResourcePolicy;
+	skills?: PromptResourcePolicy;
 	variables?: Record<string, string>;
 	state?: PromptStateConfig;
 	regex?: PromptRegexConfig;

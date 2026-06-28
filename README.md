@@ -11,6 +11,7 @@ Think of it as a character sheet for your AI agent.
 - **Give Pi a personality** — turn it into a creative writer, a roleplay partner, a strict code reviewer, or anything in between.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
+- **Limit tools and skills per stack** — enforce active tool allow/deny policy and filter skill visibility for focused modes.
 - **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
 - **Transform outgoing and finalized text** — run deterministic regex replacements on selected history, compiled prompt text, or finalized assistant messages.
 - **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
@@ -163,6 +164,8 @@ Bring your ST presets into Pi:
 
 pi-forge converts the preset to a prompt stack and generates a migration report showing what was handled and what needs manual tweaking.
 
+Deterministic SillyTavern `promptOnly` regex scripts are converted to pi-forge `regex.rules` when they can be represented safely. Display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, and unsupported regex scripts stay report-only for manual review.
+
 ### 🔍 Prompt debugging
 
 See exactly what gets sent to the model:
@@ -193,8 +196,9 @@ Items are arranged in order. When the stack is active, pi-forge:
 1. Builds a system prompt from your `system`-role blocks and slots, then applies it with the stack's `mode`.
 2. Inserts `user`/`assistant` blocks and slots around the conversation history.
 3. Expands `{{macros}}` like `{{lastUserMessage}}`, `{{date}}`, and custom variables.
-4. Applies enabled outgoing regex rules for the `history` and `compiled` stages.
-5. Optionally applies destructive `finalize` regex rules when an assistant message finishes.
+4. Applies stack tool policy to Pi's active tool set and filters pi-forge-rendered tool/skill slots.
+5. Applies enabled outgoing regex rules for the `history` and `compiled` stages.
+6. Optionally applies destructive `finalize` regex rules when an assistant message finishes.
 
 ### Slots at a glance
 
@@ -343,6 +347,29 @@ Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` 
   }
 }
 ```
+
+### Tool and skill policy
+
+Prompt stacks can constrain tools and skills with stack-level `allow` and `deny` lists. Patterns are exact by default and support `*` wildcards.
+
+```json
+{
+  "tools": {
+    "allow": ["read", "bash"],
+    "deny": ["*"]
+  },
+  "skills": {
+    "allow": ["*"],
+    "deny": ["browser-danger"]
+  }
+}
+```
+
+Concrete `allow` patterns take priority and define the permitted set, even when a name also matches `deny`. `deny` is applied only when `allow` is omitted or only contains `"*"`, so `allow: ["*"]` plus `deny` works as a deny-only policy.
+
+Tool policy is enforced through Pi's active tool list while the stack is active. pi-forge remembers the previous active tools and restores them when prompt stacks are disabled or switched to an unrestricted stack.
+
+Skill policy filters skills rendered by pi-forge's `skills` slot. If a stack uses `mode: "append"` or `"prepend"`, Pi's base prompt may already contain unfiltered skills; use `mode: "replace"` when skill visibility must be controlled.
 
 ### Regex transforms
 

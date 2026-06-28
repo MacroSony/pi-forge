@@ -195,3 +195,29 @@ test("loadPromptStacks validates regex config", () => {
 	assert.match(messages, /effect "display".*ignored/);
 	assert.equal(isUsablePromptStack(loaded), false);
 });
+
+test("loadPromptStacks validates tool and skill policies", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		mode: "append",
+		tools: {
+			allow: ["read", "read"],
+			deny: "bash",
+		},
+		skills: {
+			deny: ["browser-*"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+
+	const loaded = loadPromptStacks(cwd)[0]!;
+	const messages = loaded.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+
+	assert.match(messages, /tools\.deny must be an array of strings/);
+	assert.match(messages, /Duplicate tools\.allow pattern: read/);
+	assert.match(messages, /skills allow\/deny only filters pi-forge skills slots/);
+	assert.equal(isUsablePromptStack(loaded), false);
+});

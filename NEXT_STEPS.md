@@ -42,10 +42,13 @@ Implemented and working:
 - Web editor host/runtime context flow is bound once when the server starts; host methods no longer pass their captured command context back into runtime callbacks.
 - Regex MVP: top-level `regex.rules` validates JavaScript regex replacements, applies `history` and `compiled` outgoing transforms to prompt text before provider serialization, and can destructively rewrite finalized assistant messages with `effect: "finalize"`.
 - Web editor servers are tracked per project cwd and rebound after extension reinitialization, preventing orphaned same-project servers after `/tree` or `/new`.
+- Stack-level tool allow/deny policy filters Pi's active tool list while a stack is active and restores the previous active tools when the policy no longer applies.
+- Stack-level skill allow/deny policy filters skills rendered by pi-forge `skills` slots, with validation warnings for `append`/`prepend` mode.
+- Safe SillyTavern `promptOnly` regex scripts are converted into pi-forge outgoing `compiled` regex rules during import; display-only, mixed, JavaScript, DOM/browser, CSS/HTML decoration, invalid, and unsupported regex scripts remain report-only.
 
 ## Architecture simplification review
 
-Review findings to keep in mind before expanding regex runtime behavior, adding tool allow/deny controls, or growing the web UI:
+Review findings to keep in mind before expanding regex runtime behavior, adding richer policy controls, or growing the web UI:
 
 - `src/web-editor/page.ts` is now the highest-friction file. It is still one embedded HTML/CSS/client-script string, which is workable for small edits but risky for richer regex/tool configuration screens. Split it along practical static boundaries later (`template`, `styles`, `client-script`) or introduce a tiny build step before the browser UI grows much further.
 - `src/index.ts` is still broad, but stack file CRUD/web-editor host methods now live in `src/web-host.ts`, and payload capture/redaction lives in `src/payload-capture.ts`. Continue extracting `runtime-state` and `commands` before implementing tool policy.
@@ -111,9 +114,10 @@ Completed hardening:
 - Add collision handling when `.pi/forge/prompt-stacks/<id>.json`, legacy `.pi/prompt-stacks/<id>.json`, or `.pi/forge/import-reports/<id>.md` already exists. - done via confirmation/`--overwrite`
 - Add tests around command-level import behavior, not only the pure importer. - initial coverage done
 - Preview generated output without writing files via `--dry-run`. - done
-- Detect `extensions.regex_scripts` during import and classify enabled scripts by `promptOnly`, `markdownOnly`, both, disabled, and script name. - done, report-only
+- Detect `extensions.regex_scripts` during import and classify enabled scripts by `promptOnly`, `markdownOnly`, both, disabled, and script name. - done
 - Show import reports in the web editor after SillyTavern imports. - done
 - Treat supported `setvar`/`getvar`-style macros as handled in reports. - done
+- Convert safe prompt-only regex scripts into pi-forge outgoing compiled regex rules. - done
 
 Importer improvements:
 
@@ -166,7 +170,7 @@ Regex runtime status and design:
 - Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, warns that finalize rules are destructive, and shows match/change counts in preview/runtime diagnostics.
 - Implemented final-message cleanup uses `effect: "finalize"` at Pi `message_end`: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. This is not true display-only behavior because Pi stores the replacement and the original model output is lost from the transcript.
 - Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
-- Next implementation order: add SillyTavern prompt-only regex import conversion, then revisit true display-only and provider-payload stages.
+- Next regex implementation order: revisit true display-only and provider-payload stages only after real usage shows the current outgoing/finalize subset is insufficient.
 
 ## Priority 4: Web editor polish
 
@@ -415,7 +419,7 @@ Prompt stacks should remain about message/system layout.
 ## Suggested next coding session
 
 1. Continue splitting `src/index.ts` by moving runtime state and command handlers into focused modules.
-2. Split the embedded web editor page along practical static boundaries before adding larger regex/tool screens.
+2. Split the embedded web editor page along practical static boundaries before adding larger policy/regex screens.
 3. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
-4. Design preset-level tool allow/deny controls on top of the cleaner storage/module boundaries.
-5. Expand regex beyond outgoing transforms only after web controls and importer conversion are stable.
+4. Add better chat-history controls (`maxMessages`, tool call/result filters, synthetic message filters).
+5. Expand regex beyond outgoing/finalize transforms only after real usage justifies display or provider-payload stages.

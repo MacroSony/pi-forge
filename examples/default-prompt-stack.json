@@ -13,6 +13,14 @@
   "context": {
     "allowDuplicateChatHistory": false
   },
+  "tools": {
+    "allow": ["*"],
+    "deny": []
+  },
+  "skills": {
+    "allow": ["*"],
+    "deny": []
+  },
   "variables": {
     "user": "User",
     "char": "Assistant"

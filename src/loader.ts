@@ -4,6 +4,7 @@ import { validateRegexConfig } from "./regex.ts";
 import { promptStackReadDirs } from "./storage.ts";
 import type {
 	LoadedPromptStack,
+	PromptResourcePolicy,
 	PromptStack,
 	PromptStackDiagnostic,
 	PromptStackItem,
@@ -164,6 +165,8 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		mode: obj.mode === "append" || obj.mode === "prepend" || obj.mode === "replace" ? obj.mode : undefined,
 		defaults: isPlainObject(obj.defaults) ? (obj.defaults as PromptStack["defaults"]) : undefined,
 		context: isPlainObject(obj.context) ? (obj.context as PromptStack["context"]) : undefined,
+		tools: normalizeResourcePolicy(obj.tools, "tools", diagnostics),
+		skills: normalizeResourcePolicy(obj.skills, "skills", diagnostics),
 		variables: normalizeStringRecord(obj.variables),
 		state: normalizeStateConfig(obj.state, diagnostics),
 		regex: normalizeRegexConfig(obj.regex, diagnostics),
@@ -248,6 +251,15 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 		});
 	}
 
+	diagnostics.push(...validateResourcePolicy(stack.tools, "tools"));
+	diagnostics.push(...validateResourcePolicy(stack.skills, "skills"));
+	if ((stack.mode === "append" || stack.mode === "prepend") && hasPolicyEntries(stack.skills)) {
+		diagnostics.push({
+			level: "warning",
+			message: "skills allow/deny only filters pi-forge skills slots. Use mode \"replace\" if you need the base Pi prompt to omit filtered skills.",
+		});
+	}
+
 	diagnostics.push(...validateRegexConfig(stack.regex));
 
 	return diagnostics;
@@ -311,6 +323,55 @@ function normalizeStateConfig(value: unknown, diagnostics: PromptStackDiagnostic
 		schemaVersion: value.schemaVersion === 1 ? 1 : undefined,
 		definitions: Object.keys(definitions).length > 0 ? definitions : undefined,
 	};
+}
+
+function normalizeResourcePolicy(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): PromptResourcePolicy | undefined {
+	if (value === undefined) return undefined;
+	if (!isPlainObject(value)) {
+		diagnostics.push({ level: "error", message: `${label} policy must be an object when provided.` });
+		return undefined;
+	}
+	const allow = normalizePolicyPatterns(value.allow, `${label}.allow`, diagnostics);
+	const deny = normalizePolicyPatterns(value.deny, `${label}.deny`, diagnostics);
+	return allow || deny ? { allow, deny } : {};
+}
+
+function normalizePolicyPatterns(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) {
+		diagnostics.push({ level: "error", message: `${label} must be an array of strings when provided.` });
+		return undefined;
+	}
+
+	const patterns: string[] = [];
+	for (const [index, item] of value.entries()) {
+		if (typeof item !== "string" || !item.trim()) {
+			diagnostics.push({ level: "error", message: `${label}[${index}] must be a non-empty string.` });
+			continue;
+		}
+		patterns.push(item.trim());
+	}
+	return patterns.length > 0 ? patterns : undefined;
+}
+
+function validateResourcePolicy(policy: PromptResourcePolicy | undefined, label: string): PromptStackDiagnostic[] {
+	const diagnostics: PromptStackDiagnostic[] = [];
+	for (const key of ["allow", "deny"] as const) {
+		const values = policy?.[key];
+		if (!values) continue;
+		const seen = new Set<string>();
+		for (const value of values) {
+			if (seen.has(value)) {
+				diagnostics.push({ level: "warning", message: `Duplicate ${label}.${key} pattern: ${value}.` });
+			}
+			seen.add(value);
+		}
+	}
+	return diagnostics;
+}
+
+function hasPolicyEntries(policy: PromptResourcePolicy | undefined): boolean {
+	return !!policy && ((policy.allow?.length ?? 0) > 0 || (policy.deny?.length ?? 0) > 0);
 }
 
 function normalizeRegexConfig(value: unknown, diagnostics: PromptStackDiagnostic[]): PromptStack["regex"] | undefined {

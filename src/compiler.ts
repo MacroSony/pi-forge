@@ -13,6 +13,7 @@ import type {
 	PromptStateValue,
 	PromptVariableStore,
 } from "./types.ts";
+import { applyResourcePolicy } from "./policy.ts";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
 
@@ -196,11 +197,11 @@ function renderSlotText(
 
 	switch (slot) {
 		case "tools":
-			return renderTools(item, runtime);
+			return renderTools(item, stack, runtime);
 		case "tool-guidelines":
-			return renderToolGuidelines(item, runtime);
+			return renderToolGuidelines(item, stack, runtime);
 		case "skills":
-			return renderSkills(item, runtime);
+			return renderSkills(item, stack, runtime);
 		case "project-context":
 			return renderProjectContext(item, runtime);
 		case "append-system-prompt":
@@ -226,8 +227,8 @@ function renderSlotText(
 	}
 }
 
-function renderTools(item: PromptStackSlotItem, runtime: PromptRuntime): string {
-	const tools = runtime.options.selectedTools ?? [];
+function renderTools(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
+	const tools = scopedToolNames(stack, runtime);
 	const snippets = runtime.options.toolSnippets ?? {};
 
 	if (slotTextFormat(item) === "plain") {
@@ -257,8 +258,8 @@ function renderTools(item: PromptStackSlotItem, runtime: PromptRuntime): string 
 	return lines.join("\n");
 }
 
-function renderToolGuidelines(item: PromptStackSlotItem, runtime: PromptRuntime): string {
-	const tools = runtime.options.selectedTools ?? [];
+function renderToolGuidelines(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
+	const tools = scopedToolNames(stack, runtime);
 	const guidelines: string[] = [];
 	const seen = new Set<string>();
 	const add = (line: string) => {
@@ -279,8 +280,10 @@ function renderToolGuidelines(item: PromptStackSlotItem, runtime: PromptRuntime)
 	return ["<tool_guidelines>", ...guidelines.map((line) => `- ${line}`), "</tool_guidelines>"].join("\n");
 }
 
-function renderSkills(item: PromptStackSlotItem, runtime: PromptRuntime): string {
-	const skills = (runtime.options.skills ?? []).filter((skill) => !skill.disableModelInvocation);
+function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
+	const skills = (runtime.options.skills ?? [])
+		.filter((skill) => !skill.disableModelInvocation)
+		.filter((skill) => applyResourcePolicy([skill.name], stack.skills).length > 0);
 	if (skills.length === 0) return "";
 
 	const lines = [
@@ -310,6 +313,10 @@ function renderSkills(item: PromptStackSlotItem, runtime: PromptRuntime): string
 
 	lines.push("</available_skills>");
 	return lines.join("\n");
+}
+
+function scopedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
+	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
 }
 
 function renderProjectContext(item: PromptStackSlotItem, runtime: PromptRuntime): string {
@@ -676,7 +683,7 @@ function expandMacros(
 			return "";
 		}
 
-		const dynamicValue = getBuiltinMacro(command, runtime);
+		const dynamicValue = getBuiltinMacro(command, stack, runtime);
 		if (dynamicValue !== undefined) return dynamicValue;
 
 		const variableValue = getRuntimeVariable(runtime, stack, command);
@@ -698,7 +705,7 @@ function expandMacros(
 	return result;
 }
 
-function getBuiltinMacro(name: string, runtime: PromptRuntime): string | undefined {
+function getBuiltinMacro(name: string, stack: PromptStack, runtime: PromptRuntime): string | undefined {
 	switch (name) {
 		case "cwd":
 			return runtime.options.cwd;
@@ -710,7 +717,7 @@ function getBuiltinMacro(name: string, runtime: PromptRuntime): string | undefin
 			return runtime.latestUserMessage ?? "";
 		case "selectedTools":
 		case "tools":
-			return (runtime.options.selectedTools ?? []).join(", ");
+			return scopedToolNames(stack, runtime).join(", ");
 		case "activeModel": {
 			const model = runtime.ctx?.model;
 			return model ? `${model.provider}/${model.id}` : "";

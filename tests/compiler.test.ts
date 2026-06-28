@@ -368,6 +368,74 @@ test("structured slots render compact plain format", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("tool policy filters rendered tools and tool macros", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "tool-policy",
+		tools: {
+			allow: ["read", "bash", "write"],
+			deny: ["*"],
+		},
+		items: [
+			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools", options: { format: "plain" } },
+			{ kind: "block", id: "macro", enabled: true, role: "system", content: "Selected: {{tools}}" },
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			cwd: "/work/project",
+			selectedTools: ["read", "bash", "edit", "write"],
+			toolSnippets: {
+				read: "Read files.",
+				bash: "Run shell commands.",
+				edit: "Edit files.",
+				write: "Write files.",
+			},
+			promptGuidelines: [],
+			contextFiles: [],
+			skills: [],
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /Available tools:\n- read: Read files\.\n- bash: Run shell commands\.\n- write: Write files\./);
+	assert.doesNotMatch(result.systemPrompt, /edit/);
+	assert.match(result.systemPrompt, /Selected: read, bash, write/);
+});
+
+test("skill policy filters rendered skills with wildcard patterns", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "skill-policy",
+		skills: {
+			allow: ["review", "browser-*"],
+			deny: ["browser-danger"],
+		},
+		items: [{ kind: "slot", id: "skills", enabled: true, role: "system", slot: "skills", options: { format: "plain" } }],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			cwd: "/work/project",
+			selectedTools: [],
+			toolSnippets: {},
+			promptGuidelines: [],
+			contextFiles: [],
+			skills: [
+				testSkill("review", "Review code.", "/skills/review/SKILL.md"),
+				testSkill("browser-search", "Search browser.", "/skills/browser-search/SKILL.md"),
+				testSkill("browser-danger", "Dangerous browser.", "/skills/browser-danger/SKILL.md"),
+				testSkill("write", "Write prose.", "/skills/write/SKILL.md"),
+			],
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /- review: Review code\./);
+	assert.match(result.systemPrompt, /- browser-search: Search browser\./);
+	assert.match(result.systemPrompt, /- browser-danger: Dangerous browser\./);
+	assert.doesNotMatch(result.systemPrompt, /Write prose/);
+});
+
 test("variables slot renders all scopes as XML", () => {
 	const store = createPromptVariableStore({ mood: "happy", progress: "step 2" });
 	store.turn = { recent: "just happened" };

@@ -70,6 +70,8 @@ function createHarness() {
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	const tools: Record<string, any> = {};
 	const appended: { type: string; data: unknown }[] = [];
+	let activeTools = ["read", "bash", "edit", "write"];
+	const allTools = new Set(activeTools);
 
 	const pi = {
 		on(name: string, handler: Function) {
@@ -80,14 +82,30 @@ function createHarness() {
 		},
 		registerTool(tool: { name: string; execute?: Function }) {
 			tools[tool.name] = tool;
+			allTools.add(tool.name);
 		},
 		appendEntry(type: string, data: unknown) {
 			appended.push({ type, data });
 		},
+		getActiveTools() {
+			return [...activeTools];
+		},
+		getAllTools() {
+			return [...allTools].map((name) => ({ name }));
+		},
+		setActiveTools(names: string[]) {
+			activeTools = [...names];
+		},
 	};
 
 	piForge(pi as any);
-	return { events, commands, tools, appended };
+	return {
+		events,
+		commands,
+		tools,
+		appended,
+		getActiveTools: () => [...activeTools],
+	};
 }
 
 function createContext(cwd: string, entries: unknown[] = [], options: { trusted?: boolean; leafId?: string | null } = {}) {
@@ -275,6 +293,31 @@ test("/preset use, disable, and reload persist selection and update footer", asy
 
 	await harness.commands.preset.handler("reload", ctx);
 	assert.equal(statuses["pi-forge"], undefined);
+});
+
+test("active stack tool policy filters and restores active tools", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read", "bash"],
+			deny: ["*"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const { ctx, statuses } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read", "bash"]);
+	assert.equal(statuses["pi-forge-tools"], "tools:2");
+
+	await harness.commands.preset.handler("use none", ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read", "bash", "edit", "write"]);
+	assert.equal(statuses["pi-forge-tools"], undefined);
 });
 
 test("session_start restores active stack and typed variables", async () => {

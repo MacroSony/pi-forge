@@ -401,13 +401,65 @@ test("reports SillyTavern regex script classification", () => {
 	assert.match(result.report, /Markdown-only \/ display-only\*\*: 1/);
 	assert.match(result.report, /Prompt \+ markdown mixed\*\*: 1/);
 	assert.match(result.report, /Enabled with unspecified mode\*\*: 1/);
+	assert.match(result.report, /Converted to pi-forge rules\*\*: 2/);
 	assert.match(result.report, /Prompt Cleaner/);
 	assert.match(result.report, /Display Decorator/);
 	assert.match(result.report, /Mixed Rewrite/);
 	assert.match(result.report, /Disabled Script/);
 	assert.match(result.report, /Unspecified Script/);
 	assert.match(result.report, /DOM\/browser automation/);
-	assert.match(result.report, /not converted to runtime behavior/);
+	assert.match(result.report, /stage: "compiled"/);
+	assert.equal(result.stack.regex?.rules?.length, 2);
+	assert.deepEqual(result.stack.regex?.rules?.[0], {
+		id: "st-prompt-cleaner",
+		name: "Prompt Cleaner",
+		enabled: true,
+		stage: "compiled",
+		effect: "outgoing",
+		targets: ["system", "messages"],
+		pattern: "foo",
+		replace: "bar",
+	});
+	assert.equal(result.stack.regex?.rules?.[1]?.id, "st-disabled-script");
+	assert.equal(result.stack.regex?.rules?.[1]?.enabled, false);
+});
+
+test("skips unsupported SillyTavern regex scripts during conversion", () => {
+	const result = convertSillyTavernPreset(
+		{
+			preset_name: "Unsupported Regex",
+			prompts: [
+				{ identifier: "main", role: "system", content: "Main" },
+				{ identifier: "chatHistory", marker: true },
+			],
+			prompt_order: [
+				{
+					character_id: 1,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "chatHistory", enabled: true },
+					],
+				},
+			],
+			extensions: {
+				regex_scripts: [
+					{ script_name: "Sticky", promptOnly: true, markdownOnly: false, disabled: false, findRegex: "/foo/y", replaceString: "bar" },
+					{ script_name: "Broken", promptOnly: true, markdownOnly: false, disabled: false, findRegex: "/(/g", replaceString: "" },
+					{ script_name: "Display", promptOnly: false, markdownOnly: true, disabled: false, findRegex: "/x/g", replaceString: "y" },
+				],
+			},
+		},
+		{ sourceName: "Unsupported Regex.json" },
+	);
+
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.equal(result.stack.regex, undefined);
+	assert.match(result.report, /Converted to pi-forge rules\*\*: 0/);
+	assert.match(result.report, /unsupported regex flag: y/);
+	assert.match(result.report, /regex failed to compile/);
+	assert.match(result.report, /not prompt-only/);
 });
 
 const tgbreakFixturePath = join(process.cwd(), ".pi", "TGbreak😺V3.1.1.json");

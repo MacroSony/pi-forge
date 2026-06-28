@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { PromptStack, PromptStackItem } from "./types.ts";
+import type { PromptRegexRule, PromptStack, PromptStackItem } from "./types.ts";
 
 // ── SillyTavern preset raw types ──────────────────────────────────────────
 
@@ -61,8 +61,12 @@ interface RegexScriptReportEntry {
 	name: string;
 	mode: RegexScriptMode;
 	enabled: boolean;
+	promptOnly: boolean;
+	markdownOnly: boolean;
 	findRegex?: string;
 	replaceString?: string;
+	convertedRuleId?: string;
+	conversionNote?: string;
 }
 
 interface RegexScriptReport {
@@ -73,7 +77,9 @@ interface RegexScriptReport {
 	markdownOnly: number;
 	mixed: number;
 	unspecified: number;
+	converted: number;
 	scripts: RegexScriptReportEntry[];
+	rules: PromptRegexRule[];
 }
 
 // ── Marker identifiers ─────────────────────────────────────────────────────
@@ -378,6 +384,7 @@ export function convertSillyTavernPreset(
 		mode: "replace",
 		variables: Object.keys(variables).length > 0 ? variables : undefined,
 		context: { allowDuplicateChatHistory: false },
+		regex: regexScripts && regexScripts.rules.length > 0 ? { schemaVersion: 1, rules: regexScripts.rules } : undefined,
 		items,
 		import: {
 			source: "sillytavern",
@@ -459,15 +466,20 @@ export function convertSillyTavernPreset(
 		if (regexScripts.unspecified > 0) {
 			reportLines.push(`- **Enabled with unspecified mode**: ${regexScripts.unspecified}`);
 		}
+		reportLines.push(`- **Converted to pi-forge rules**: ${regexScripts.converted}`);
 		reportLines.push("");
-		reportLines.push("| Script | Enabled | Mode | Find regex | Replacement preview |");
-		reportLines.push("|--------|---------|------|------------|---------------------|");
+		reportLines.push("| Script | Enabled | Mode | Converted | Find regex | Replacement preview |");
+		reportLines.push("|--------|---------|------|-----------|------------|---------------------|");
 		for (const script of regexScripts.scripts) {
-			reportLines.push(`| ${markdownTableCell(script.name)} | ${script.enabled ? "yes" : "no"} | ${script.mode} | ${markdownTableCell(script.findRegex)} | ${markdownTableCell(script.replaceString)} |`);
+			const converted = script.convertedRuleId ? `yes: ${script.convertedRuleId}` : script.conversionNote ?? "no";
+			reportLines.push(`| ${markdownTableCell(script.name)} | ${script.enabled ? "yes" : "no"} | ${script.mode} | ${markdownTableCell(converted)} | ${markdownTableCell(script.findRegex)} | ${markdownTableCell(script.replaceString)} |`);
 		}
 		reportLines.push("");
-		reportLines.push("Regex scripts are report-only in this import. pi-forge does not run SillyTavern markdown rewriting, DOM/browser automation, CSS/HTML decoration, toasts, embedded JavaScript, or UI panel behavior.");
-		reportLines.push("Prompt-only regex transforms are not converted to runtime behavior yet; migrate deterministic prompt changes manually if they are semantically important.");
+		reportLines.push("pi-forge does not run SillyTavern markdown rewriting, DOM/browser automation, CSS/HTML decoration, toasts, embedded JavaScript, or UI panel behavior.");
+		if (regexScripts.converted > 0) {
+			reportLines.push("Enabled and disabled prompt-only deterministic regex scripts were converted to `regex.rules` with `stage: \"compiled\"`, `effect: \"outgoing\"`, and system/messages targets. Review them before relying on the imported stack.");
+		}
+		reportLines.push("Markdown-only, mixed prompt/markdown, unspecified, invalid, or unsupported regex scripts remain report-only and require manual review.");
 		reportLines.push("");
 	}
 
@@ -581,10 +593,22 @@ function summarizeRegexScripts(preset: StPreset): RegexScriptReport | undefined 
 		markdownOnly: 0,
 		mixed: 0,
 		unspecified: 0,
+		converted: 0,
 		scripts,
+		rules: [],
 	};
 
-	for (const script of scripts) {
+	const seenRuleIds = new Set<string>();
+	for (const [index, script] of scripts.entries()) {
+		const conversion = convertPromptOnlyRegexScript(script, index, seenRuleIds);
+		if (conversion.rule) {
+			report.rules.push(conversion.rule);
+			report.converted++;
+			script.convertedRuleId = conversion.rule.id;
+		} else if (conversion.note) {
+			script.conversionNote = conversion.note;
+		}
+
 		if (!script.enabled) {
 			report.disabled++;
 			continue;
@@ -619,9 +643,89 @@ function classifyRegexScript(raw: unknown, index: number): RegexScriptReportEntr
 		name: firstString(script.script_name, script.scriptName, script.name) ?? `regex-${index + 1}`,
 		mode,
 		enabled,
+		promptOnly,
+		markdownOnly,
 		findRegex: firstString(script.findRegex),
 		replaceString: firstString(script.replaceString),
 	};
+}
+
+function convertPromptOnlyRegexScript(
+	entry: RegexScriptReportEntry,
+	index: number,
+	seenRuleIds: Set<string>,
+): { rule?: PromptRegexRule; note?: string } {
+	if (!entry.promptOnly) return { note: entry.enabled ? "not prompt-only" : "disabled non-prompt script" };
+	if (entry.markdownOnly) return { note: "mixed prompt/display script requires review" };
+	if (!entry.findRegex) return { note: "missing findRegex" };
+
+	const parsed = parseSillyTavernRegex(entry.findRegex);
+	if ("error" in parsed) return { note: parsed.error };
+
+	const id = uniqueRegexRuleId(`st-${entry.name || `regex-${index + 1}`}`, seenRuleIds);
+	const rule: PromptRegexRule = {
+		id,
+		name: entry.name,
+		enabled: entry.enabled,
+		stage: "compiled",
+		effect: "outgoing",
+		targets: ["system", "messages"],
+		pattern: parsed.pattern,
+		replace: entry.replaceString ?? "",
+	};
+	if (parsed.flags) rule.flags = parsed.flags;
+	return {
+		rule,
+	};
+}
+
+function parseSillyTavernRegex(value: string): { pattern: string; flags?: string } | { error: string } {
+	const trimmed = value.trim();
+	if (!trimmed) return { error: "empty findRegex" };
+
+	if (!trimmed.startsWith("/")) return validateParsedRegex(trimmed, "");
+
+	const closingSlash = findRegexLiteralClosingSlash(trimmed);
+	if (closingSlash <= 0) return { error: "could not parse regex literal" };
+
+	const pattern = trimmed.slice(1, closingSlash);
+	const flags = trimmed.slice(closingSlash + 1);
+	return validateParsedRegex(pattern, flags);
+}
+
+function validateParsedRegex(pattern: string, flags: string): { pattern: string; flags?: string } | { error: string } {
+	if (!pattern) return { error: "empty regex pattern" };
+	const seen = new Set<string>();
+	for (const flag of flags) {
+		if (!["g", "i", "m", "s", "u"].includes(flag)) return { error: `unsupported regex flag: ${flag}` };
+		if (seen.has(flag)) return { error: `duplicate regex flag: ${flag}` };
+		seen.add(flag);
+	}
+	try {
+		new RegExp(pattern, flags);
+	} catch (error) {
+		return { error: `regex failed to compile: ${error instanceof Error ? error.message : String(error)}` };
+	}
+	return { pattern, flags: flags || undefined };
+}
+
+function findRegexLiteralClosingSlash(value: string): number {
+	for (let index = value.length - 1; index > 0; index--) {
+		if (value[index] !== "/") continue;
+		let slashCount = 0;
+		for (let backslash = index - 1; backslash >= 0 && value[backslash] === "\\"; backslash--) slashCount++;
+		if (slashCount % 2 === 0) return index;
+	}
+	return -1;
+}
+
+function uniqueRegexRuleId(base: string, seen: Set<string>): string {
+	const normalized = base.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "st-regex";
+	let candidate = normalized;
+	let suffix = 2;
+	while (seen.has(candidate)) candidate = `${normalized}-${suffix++}`;
+	seen.add(candidate);
+	return candidate;
 }
 
 function firstString(...values: unknown[]): string | undefined {
