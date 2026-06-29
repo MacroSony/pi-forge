@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, and cross-turn state.
+**pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, template variables, and prompt transforms.
 
 Think of it as a character sheet for your AI agent.
 
@@ -12,7 +12,7 @@ Think of it as a character sheet for your AI agent.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
 - **Limit tools and skills per stack** — enforce active tool policy and filter skill visibility for focused modes.
-- **Remember things across turns** — let the agent track progress, store notes, and recall user preferences throughout a session.
+- **Use template variables** — define static values such as `{{char}}` / `{{user}}`, and use ST-style turn/session variable macros inside prompt text.
 - **Transform outgoing and finalized text** — run deterministic regex replacements on selected history, compiled prompt text, or finalized assistant messages.
 - **Import SillyTavern presets** — bring your existing ST character presets into Pi with one command.
 - **Debug your prompts** — intercept and inspect exactly what gets sent to the model.
@@ -74,7 +74,7 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 /preset ui
 ```
 
-Drag, drop, edit, validate, inspect full previews and captured payloads, manage variables/state/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. Stack metadata is collapsible so the active editor stays in view.
+Drag, drop, edit, validate, inspect full previews and captured payloads, manage variables/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. Stack metadata is collapsible so the active editor stays in view.
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
@@ -110,7 +110,7 @@ For a copyable starter stack, see [examples/default-prompt-stack.json](examples/
 
 ### 🧑‍💻 Focused code review
 
-Create a `reviewer.json` stack with a strict review block: "prioritize correctness, regressions, security, and missing tests." Keep the `tools`, `project-context`, `variables`, and `chat-history` slots enabled so Pi can still inspect the repo and remember review state.
+Create a `reviewer.json` stack with a strict review block: "prioritize correctness, regressions, security, and missing tests." Keep the `tools`, `project-context`, `variables`, and `chat-history` slots enabled so Pi can still inspect the repo and see any template variables you expose.
 
 Use `mode: "append"` if you want to keep Pi's normal coding behavior and only add the sharper review lens.
 
@@ -131,28 +131,24 @@ Create separate stacks for different tasks:
 
 Switch with `/preset use coder`, `/preset use writer`, etc.
 
-### 🧠 Cross-turn memory
-
-Define state the agent can read and write:
+### 🔧 Template variables
 
 ```json
-"state": {
-  "definitions": {
-    "agent.progress": {
-      "type": "string",
-      "scope": "session",
-      "description": "What we're working on",
-      "agentWritable": true
-    }
-  }
+"variables": {
+  "char": "Konata",
+  "user": "User"
 }
 ```
 
-The agent updates it with `forge_state_set`. You can also set state manually:
+Use static variables for stable prompt constants, and ST-style macros for local prompt-time mutation:
 
 ```
-/state set user.preference "use TypeScript, not JavaScript"
+{{setvar::mood::focused}}
+{{getvar::mood}}
+{{setsessionvar::topic::compiler cleanup}}
 ```
+
+For durable project memory, use normal files in the repo rather than pi-forge prompt variables.
 
 ### 📦 SillyTavern migration
 
@@ -209,7 +205,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `tool-guidelines` | Tool usage instructions |
 | `skills` | Loaded Pi skills |
 | `project-context` | Project instructions and context files |
-| `variables` | Agent and user state (progress, preferences, notes) |
+| `variables` | Static/session/turn template variables |
 | `date` / `cwd` / `date-cwd` | Current date and working directory |
 | `active-model` | Which model is being used |
 | `append-system-prompt` | User's appended system prompt text |
@@ -237,17 +233,6 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/preset reload` | Reload stacks from disk |
 | `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | Copy legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks` |
 | `/preset ui [stop\|restart]` | Open, stop, or restart the web editor |
-
-### State management
-
-| Command | What it does |
-|---------|-------------|
-| `/state list` | Show all session state |
-| `/state status` | Show state definitions and current values |
-| `/state set <name> <value>` | Set a state variable |
-| `/state get <name>` | Read a state variable |
-| `/state clear [name]` | Clear state (all or by name) |
-| `/preset vars ...` | Legacy variable commands kept for older stacks |
 
 ### Import & debug
 
@@ -333,7 +318,7 @@ Set to `false` when you use `{{lastUserMessage}}` after the history — prevents
 
 ### Structured slot format options
 
-Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` to `tools`, `tool-guidelines`, `skills`, `project-context`, or `variables` slots for compact newline-separated output. The `variables` slot also supports `"format": "json"` for JSON-shaped state.
+Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` to `tools`, `tool-guidelines`, `skills`, `project-context`, or `variables` slots for compact newline-separated output.
 
 ```json
 {
@@ -421,60 +406,18 @@ The web editor has a structured Regex dialog for these rule fields and preserves
 ```json
 {
   "kind": "slot",
-  "id": "state",
+  "id": "variables",
   "enabled": true,
   "role": "user",
   "slot": "variables",
   "options": {
-    "includeScopes": ["session"],
-    "includeNamespaces": ["user.*", "agent.*"],
-    "includeMetadata": true,
-    "format": "xml",
-    "maxValueChars": 1200
+    "includeStatic": true,
+    "includeSession": true,
+    "includeTurn": false,
+    "format": "xml"
   }
 }
 ```
-
-### State definitions
-
-```json
-"state": {
-  "schemaVersion": 1,
-  "definitions": {
-    "agent.progress": {
-      "type": "string",
-      "scope": "session",
-      "description": "Current task progress",
-      "agentWritable": true
-    },
-    "user.preference": {
-      "type": "string",
-      "scope": "session",
-      "description": "User's preference for this session",
-      "userWritable": true
-    }
-  }
-}
-```
-
-Supported types: `string`, `number`, `boolean`, `null`, `object`, `array`, `string[]`, `number[]`, `boolean[]`, `unknown`, and unions like `string | null`.
-
-## Agent tools
-
-pi-forge registers two tools that the AI agent can call:
-
-### `forge_state_set`
-
-Batch-update persistent state. Only `agent.*` names are writable. Use for cross-turn tracking:
-
-- Task progress (`agent.progress`)
-- Open questions (`agent.openQuestions`)
-- Story state (`agent.storyState`)
-- User-requested notes (`agent.notes`)
-
-### `forge_set_var`
-
-Legacy alias for setting a single string value. Prefer `forge_state_set`.
 
 ## Package setup for development
 

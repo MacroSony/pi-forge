@@ -6,7 +6,7 @@ test("wildcard-only allow policy is permissive and not actively enforced", () =>
 	const policy = { allow: ["*"] };
 
 	assert.equal(hasResourcePolicy(policy), false);
-	assert.deepEqual(applyResourcePolicy(["read", "bash", "forge_state_set"], policy), ["read", "bash", "forge_state_set"]);
+	assert.deepEqual(applyResourcePolicy(["read", "bash", "edit"], policy), ["read", "bash", "edit"]);
 });
 
 test("allow policy filters names with wildcard support", () => {

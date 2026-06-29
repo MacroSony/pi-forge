@@ -493,7 +493,7 @@ export function convertSillyTavernPreset(
 			reportLines.push(`- \`${key}\` = \`${val}\` — replace with your character/persona name`);
 		}
 		reportLines.push("");
-		reportLines.push("Use `/state set <name> <value>` or edit the stack JSON to set real values.");
+		reportLines.push("Edit `stack.variables` in the stack JSON or web editor to set real values.");
 		reportLines.push("");
 	}
 
@@ -564,9 +564,9 @@ export function convertSillyTavernPreset(
 	reportLines.push("");
 	reportLines.push("## Suggested next steps");
 	reportLines.push("");
-	reportLines.push("1. Set real values for auto-populated variables with `/state set`.");
+	reportLines.push("1. Set real values for auto-populated variables by editing `stack.variables`.");
 	reportLines.push("2. Review items with migration-needed macros and rewrite for pi-forge's macro system.");
-	reportLines.push("3. Consider adding a `variables` slot for agent state visibility.");
+	reportLines.push("3. Consider adding a `variables` slot for template variable visibility.");
 	reportLines.push(`4. Run \`/preset validate ${stackId}\` to check for issues.`);
 
 	return {

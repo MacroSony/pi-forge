@@ -23,36 +23,6 @@
     "user": "User",
     "char": "Assistant"
   },
-  "state": {
-    "schemaVersion": 1,
-    "definitions": {
-      "agent.progress": {
-        "type": "string",
-        "scope": "session",
-        "description": "Concise summary of current task, story, or conversation progress.",
-        "agentWritable": true
-      },
-      "agent.openQuestions": {
-        "type": "string[]",
-        "scope": "session",
-        "description": "Short list of questions that may need user input.",
-        "agentWritable": true
-      },
-      "agent.notes": {
-        "type": "string[]",
-        "scope": "session",
-        "description": "Durable notes the user explicitly asked the agent to remember.",
-        "agentWritable": true
-      },
-      "user.preference": {
-        "type": "string",
-        "scope": "session",
-        "description": "User-provided preference or instruction for this session.",
-        "agentWritable": false,
-        "userWritable": true
-      }
-    }
-  },
   "items": [
     {
       "kind": "block",
@@ -104,16 +74,15 @@
     },
     {
       "kind": "slot",
-      "id": "prompt-state",
-      "name": "Prompt State",
+      "id": "variables",
+      "name": "Template Variables",
       "enabled": true,
       "role": "user",
       "slot": "variables",
       "options": {
-        "includeScopes": ["session"],
-        "includeNamespaces": ["user.*", "agent.*"],
-        "includeMetadata": true,
-        "maxValueChars": 1200
+        "includeStatic": true,
+        "includeSession": true,
+        "includeTurn": false
       }
     },
     {

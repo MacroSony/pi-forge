@@ -1,4 +1,4 @@
-import type { PromptStack, PromptStackDiagnostic, PromptStateDefinition, PromptStateValue } from "../types.ts";
+import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 
 export interface WebEditorStackSummary {
 	id: string;
@@ -22,9 +22,6 @@ export interface WebEditorHost {
 	deleteStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	validateStack(stack: PromptStack): PromptStackDiagnostic[];
 	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>;
-	getState(): WebEditorOperationResult<WebEditorStateSnapshot>;
-	setState(name: string, value: PromptStateValue): WebEditorOperationResult<WebEditorStateSnapshot>;
-	clearState(name?: string): WebEditorOperationResult<WebEditorStateSnapshot>;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -49,12 +46,6 @@ export interface WebEditorPreview {
 	messages: WebEditorPreviewSection[];
 	totalChars: number;
 	approxTokens: number;
-}
-
-export interface WebEditorStateSnapshot {
-	activeStackId?: string;
-	session: Record<string, PromptStateValue>;
-	definitions: Record<string, PromptStateDefinition>;
 }
 
 export interface WebEditorPayloadCapture {

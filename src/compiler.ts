@@ -9,8 +9,7 @@ import type {
 	PromptStackRole,
 	PromptStackSlotItem,
 	PromptStackSlotFormat,
-	PromptStateScope,
-	PromptStateValue,
+	PromptVariableValue,
 	PromptVariableStore,
 } from "./types.ts";
 import { applyResourcePolicy } from "./policy.ts";
@@ -26,7 +25,9 @@ const ZERO_USAGE = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-export function createPromptVariableStore(sessionVariables: Record<string, PromptStateValue> = {}): PromptVariableStore {
+type PromptVariableScope = "static" | "session" | "turn";
+
+export function createPromptVariableStore(sessionVariables: Record<string, PromptVariableValue> = {}): PromptVariableStore {
 	return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
 }
 
@@ -364,170 +365,56 @@ function renderVariables(
 ): string {
 	const options = item.options ?? {};
 	const scopes = selectedVariableScopes(options);
-	const includeMetadata = options.includeMetadata === true;
-	const format = slotTextFormat(item, { allowJson: true });
-	const includeNamespaces = normalizeStringArray(options.includeNamespaces);
-	const excludeNamespaces = normalizeStringArray(options.excludeNamespaces);
-	const maxValueChars = typeof options.maxValueChars === "number" && Number.isFinite(options.maxValueChars) && options.maxValueChars > 0
-		? Math.floor(options.maxValueChars)
-		: undefined;
+	const format = slotTextFormat(item);
 	const store = runtime.variables;
-	const grouped: Record<PromptStateScope, Record<string, PromptStateValue>> = {
+	const grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>> = {
 		static: {},
 		session: {},
 		turn: {},
 	};
 
-	if (scopes.has("static")) {
-		grouped.static = collectStaticVariables(stack);
-	}
-	if (scopes.has("session")) {
-		grouped.session = { ...collectDefaultVariables(stack, "session"), ...(store?.session ?? {}) };
-	}
-	if (scopes.has("turn")) {
-		grouped.turn = { ...collectDefaultVariables(stack, "turn"), ...(store?.turn ?? {}) };
-	}
+	if (scopes.includes("static")) grouped.static = collectStaticVariables(stack);
+	if (scopes.includes("session")) grouped.session = { ...(store?.session ?? {}) };
+	if (scopes.includes("turn")) grouped.turn = { ...(store?.turn ?? {}) };
 
-	for (const scope of ["static", "session", "turn"] as const) {
-		grouped[scope] = Object.fromEntries(
-			Object.entries(grouped[scope]).filter(([name]) => shouldRenderVariable(name, includeNamespaces, excludeNamespaces)),
-		);
-	}
-
-	const unsetDefinitions: Record<PromptStateScope, string[]> = {
-		static: [],
-		session: [],
-		turn: [],
-	};
-	if (includeMetadata) {
-		for (const [name, definition] of Object.entries(stack.state?.definitions ?? {})) {
-			const scope = definition.scope ?? "session";
-			if (!scopes.has(scope)) continue;
-			if (!shouldRenderVariable(name, includeNamespaces, excludeNamespaces)) continue;
-			if (Object.prototype.hasOwnProperty.call(grouped[scope], name)) continue;
-			unsetDefinitions[scope].push(name);
-		}
-	}
-
-	const hasRenderedState = Object.values(grouped).some((values) => Object.keys(values).length > 0)
-		|| Object.values(unsetDefinitions).some((names) => names.length > 0);
-	if (!hasRenderedState) return "";
-
-	if (format === "json") {
-		const payload: Record<string, unknown> = {};
-		for (const scope of ["static", "session", "turn"] as const) {
-			if (Object.keys(grouped[scope]).length === 0 && unsetDefinitions[scope].length === 0) continue;
-			if (!includeMetadata) {
-				payload[scope] = Object.fromEntries(Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b)));
-				continue;
-			}
-			payload[scope] = Object.fromEntries([
-				...Object.entries(grouped[scope]).map(([name, value]) => [
-					name,
-					{
-						value,
-						...metadataForVariable(stack, name),
-					},
-				]),
-				...unsetDefinitions[scope].map((name) => [
-					name,
-					{
-						unset: true,
-						...metadataForVariable(stack, name),
-					},
-				]),
-			].sort(([a], [b]) => String(a).localeCompare(String(b))));
-		}
-		return `<prompt_state format=\"json\">\n${escapeXml(JSON.stringify(payload, null, 2))}\n</prompt_state>`;
-	}
+	const hasVariables = Object.values(grouped).some((values) => Object.keys(values).length > 0);
+	if (!hasVariables) return "";
 
 	if (format === "plain") {
-		return renderPlainVariables(stack, grouped, unsetDefinitions, includeMetadata, maxValueChars);
+		return renderPlainVariables(grouped);
 	}
 
-	const parts: string[] = ["<prompt_state>"];
+	const parts: string[] = ["<variables>"];
 
-	for (const scope of ["static", "session", "turn"] as const) {
+	for (const scope of scopes) {
 		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
-		const unsetNames = unsetDefinitions[scope].sort((a, b) => a.localeCompare(b));
-		if (entries.length === 0 && unsetNames.length === 0) continue;
+		if (entries.length === 0) continue;
 		parts.push(`  <${scope}>`);
 		for (const [name, value] of entries) {
-			const metadata = includeMetadata ? metadataForVariable(stack, name) : {};
-			const attrs = [
-				`name=\"${escapeXml(name)}\"`,
-				`type=\"${escapeXml(metadata.type ?? inferStateValueType(value))}\"`,
-			];
-			if (metadata.description) attrs.push(`description=\"${escapeXml(metadata.description)}\"`);
-			if (metadata.agentWritable !== undefined) attrs.push(`agentWritable=\"${metadata.agentWritable ? "true" : "false"}\"`);
-			if (metadata.userWritable !== undefined) attrs.push(`userWritable=\"${metadata.userWritable ? "true" : "false"}\"`);
-			parts.push(`    <var ${attrs.join(" ")}>${escapeXml(truncateValue(stateValueToPromptText(value), maxValueChars))}</var>`);
-		}
-		for (const name of unsetNames) {
-			const metadata = metadataForVariable(stack, name);
-			const attrs = [
-				`name=\"${escapeXml(name)}\"`,
-				`type=\"${escapeXml(metadata.type ?? "unknown")}\"`,
-				`unset=\"true\"`,
-			];
-			if (metadata.description) attrs.push(`description=\"${escapeXml(metadata.description)}\"`);
-			if (metadata.agentWritable !== undefined) attrs.push(`agentWritable=\"${metadata.agentWritable ? "true" : "false"}\"`);
-			if (metadata.userWritable !== undefined) attrs.push(`userWritable=\"${metadata.userWritable ? "true" : "false"}\"`);
-			parts.push(`    <var ${attrs.join(" ")}></var>`);
+			parts.push(`    <var name=\"${escapeXml(name)}\">${escapeXml(variableValueToPromptText(value))}</var>`);
 		}
 		parts.push(`  </${scope}>`);
 	}
 
-	parts.push("</prompt_state>");
+	parts.push("</variables>");
 	return parts.join("\n");
 }
 
 function renderPlainVariables(
-	stack: PromptStack,
-	grouped: Record<PromptStateScope, Record<string, PromptStateValue>>,
-	unsetDefinitions: Record<PromptStateScope, string[]>,
-	includeMetadata: boolean,
-	maxValueChars: number | undefined,
+	grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>>,
 ): string {
-	const parts: string[] = ["Prompt state:"];
+	const parts: string[] = ["Variables:"];
 
 	for (const scope of ["static", "session", "turn"] as const) {
 		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
-		const unsetNames = unsetDefinitions[scope].sort((a, b) => a.localeCompare(b));
-		if (entries.length === 0 && unsetNames.length === 0) continue;
+		if (entries.length === 0) continue;
 		parts.push(`${scope}:`);
 		for (const [name, value] of entries) {
-			const metadata = includeMetadata ? metadataForVariable(stack, name) : {};
-			const label = plainVariableLabel(name, metadata.type ?? inferStateValueType(value), metadata);
-			parts.push(plainBullet(label, truncateValue(stateValueToPromptText(value), maxValueChars)));
-		}
-		for (const name of unsetNames) {
-			const metadata = metadataForVariable(stack, name);
-			const label = plainVariableLabel(name, metadata.type ?? "unknown", metadata, true);
-			parts.push(plainBullet(label, "(unset)"));
+			parts.push(plainBullet(name, variableValueToPromptText(value)));
 		}
 	}
 
 	return parts.join("\n");
-}
-
-function plainVariableLabel(
-	name: string,
-	type: string,
-	metadata: {
-		type?: string;
-		description?: string;
-		agentWritable?: boolean;
-		userWritable?: boolean;
-	},
-	unset = false,
-): string {
-	const details = [type];
-	if (unset) details.push("unset");
-	if (metadata.description) details.push(`description: ${metadata.description}`);
-	if (metadata.agentWritable !== undefined) details.push(`agentWritable: ${metadata.agentWritable ? "true" : "false"}`);
-	if (metadata.userWritable !== undefined) details.push(`userWritable: ${metadata.userWritable ? "true" : "false"}`);
-	return `${name} (${details.join("; ")})`;
 }
 
 function plainBullet(label: string, value: string): string {
@@ -542,86 +429,24 @@ function indentPlainBlock(value: string, indent: string): string {
 	return value.split("\n").map((line) => `${indent}${line}`).join("\n");
 }
 
-function selectedVariableScopes(options: Record<string, unknown>): Set<PromptStateScope> {
-	const explicit = normalizeStringArray(options.includeScopes).filter(isStateScope);
-	if (explicit.length > 0) return new Set(explicit);
-
-	const scopes = new Set<PromptStateScope>();
-	if (options.includeStatic !== false) scopes.add("static");
-	if (options.includeSession !== false) scopes.add("session");
-	if (options.includeTurn !== false) scopes.add("turn");
+function selectedVariableScopes(options: Record<string, unknown>): PromptVariableScope[] {
+	const scopes: PromptVariableScope[] = [];
+	if (options.includeStatic !== false) scopes.push("static");
+	if (options.includeSession !== false) scopes.push("session");
+	if (options.includeTurn !== false) scopes.push("turn");
 	return scopes;
 }
 
-function collectStaticVariables(stack: PromptStack): Record<string, PromptStateValue> {
-	return {
-		...collectDefaultVariables(stack, "static"),
-		...(stack.variables ?? {}),
-	};
+function collectStaticVariables(stack: PromptStack): Record<string, PromptVariableValue> {
+	return { ...(stack.variables ?? {}) };
 }
 
-function collectDefaultVariables(stack: PromptStack, scope: PromptStateScope): Record<string, PromptStateValue> {
-	const values: Record<string, PromptStateValue> = {};
-	for (const [name, definition] of Object.entries(stack.state?.definitions ?? {})) {
-		if ((definition.scope ?? "session") !== scope) continue;
-		if (definition.default !== undefined) values[name] = definition.default;
-	}
-	return values;
-}
-
-function shouldRenderVariable(name: string, includePatterns: string[], excludePatterns: string[]): boolean {
-	if (includePatterns.length > 0 && !includePatterns.some((pattern) => matchesNamespace(name, pattern))) return false;
-	if (excludePatterns.some((pattern) => matchesNamespace(name, pattern))) return false;
-	return true;
-}
-
-function matchesNamespace(name: string, pattern: string): boolean {
-	if (!pattern) return false;
-	if (pattern.endsWith("*")) return name.startsWith(pattern.slice(0, -1));
-	return name === pattern;
-}
-
-function metadataForVariable(stack: PromptStack, name: string): {
-	type?: string;
-	description?: string;
-	agentWritable?: boolean;
-	userWritable?: boolean;
-} {
-	const definition = stack.state?.definitions?.[name];
-	if (!definition) return {};
-	return {
-		type: definition.type,
-		description: definition.description,
-		agentWritable: definition.agentWritable,
-		userWritable: definition.userWritable,
-	};
-}
-
-function normalizeStringArray(value: unknown): string[] {
-	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
-function isStateScope(value: string): value is PromptStateScope {
-	return value === "static" || value === "session" || value === "turn";
-}
-
-function inferStateValueType(value: PromptStateValue): string {
-	if (value === null) return "null";
-	if (Array.isArray(value)) return "array";
-	return typeof value;
-}
-
-function truncateValue(value: string, maxChars: number | undefined): string {
-	if (!maxChars || value.length <= maxChars) return value;
-	return `${value.slice(0, maxChars)}\n[truncated]`;
-}
-
-function stateValueToPromptText(value: PromptStateValue): string {
+function variableValueToPromptText(value: PromptVariableValue): string {
 	if (typeof value === "string") return value;
 	return JSON.stringify(value, null, 2);
 }
 
-function stateValueToMacroText(value: PromptStateValue | undefined): string {
+function variableValueToMacroText(value: PromptVariableValue | undefined): string {
 	if (value === undefined) return "";
 	if (typeof value === "string") return value;
 	return JSON.stringify(value);
@@ -666,9 +491,9 @@ function expandMacros(
 				unknown.add(expression);
 				return full;
 			}
-			if (command === "getturnvar") return stateValueToMacroText(runtime.variables?.turn[name]);
-			if (command === "getsessionvar") return stateValueToMacroText(runtime.variables?.session[name]);
-			return stateValueToMacroText(getRuntimeVariable(runtime, stack, name));
+			if (command === "getturnvar") return variableValueToMacroText(runtime.variables?.turn[name]);
+			if (command === "getsessionvar") return variableValueToMacroText(runtime.variables?.session[name]);
+			return variableValueToMacroText(getRuntimeVariable(runtime, stack, name));
 		}
 
 		if (command === "clearvar" || command === "clearturnvar" || command === "clearsessionvar") {
@@ -687,7 +512,7 @@ function expandMacros(
 		if (dynamicValue !== undefined) return dynamicValue;
 
 		const variableValue = getRuntimeVariable(runtime, stack, command);
-		if (variableValue !== undefined) return stateValueToMacroText(variableValue);
+		if (variableValue !== undefined) return variableValueToMacroText(variableValue);
 
 		unknown.add(expression);
 		return full;
@@ -727,7 +552,7 @@ function getBuiltinMacro(name: string, stack: PromptStack, runtime: PromptRuntim
 	}
 }
 
-function getRuntimeVariable(runtime: PromptRuntime, stack: PromptStack, name: string): PromptStateValue | undefined {
+function getRuntimeVariable(runtime: PromptRuntime, stack: PromptStack, name: string): PromptVariableValue | undefined {
 	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.turn, name)) return runtime.variables.turn[name];
 	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) return runtime.variables.session[name];
 	const staticVariables = collectStaticVariables(stack);

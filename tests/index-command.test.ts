@@ -203,33 +203,6 @@ test("/preset completions preserve second-level subcommand text", async () => {
 	assert.ok(completions.some((item: { value: string }) => item.value === "use default"));
 });
 
-test("legacy /preset vars uses typed state validation", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		state: {
-			schemaVersion: 1,
-			definitions: {
-				"user.count": { type: "number", scope: "session", userWritable: true },
-			},
-		},
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const harness = createHarness();
-	const { ctx, notifications } = createContext(cwd);
-	await startSession(harness, ctx);
-
-	await harness.commands.preset.handler("vars set user.count nope", ctx);
-	assert.equal(harness.appended.length, 0);
-	assert.match(notifications.at(-1)?.message ?? "", /expected number/);
-
-	await harness.commands.state.handler("set user.count 2", ctx);
-	assert.equal(harness.appended.at(-1)?.type, "pi-forge-variable-state");
-	assert.deepEqual((harness.appended.at(-1)?.data as { variables: unknown }).variables, { "user.count": 2 });
-});
-
 test("/preset import-silly protects existing generated files unless confirmed", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	const presetPath = writePreset(cwd, "preset.json", {
@@ -333,7 +306,10 @@ test("session_start restores active stack and typed variables", async () => {
 		id: "other",
 		autoActivate: false,
 		variables: { staticName: "static" },
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
 	});
 	const entries = [
 		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "user.preference": "brief", bad: Number.NaN } } },
@@ -344,10 +320,10 @@ test("session_start restores active stack and typed variables", async () => {
 	await startSession(harness, ctx);
 
 	assert.equal(statuses["pi-forge"], "stack:other");
-	await harness.commands.state.handler("list", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /user\.preference = "brief"/);
+	await harness.commands.preset.handler("preview", ctx);
+	assert.match(editors.at(-1)?.text ?? "", /name="user\.preference">brief/);
 	assert.doesNotMatch(editors.at(-1)?.text ?? "", /bad/);
-	assert.match(editors.at(-1)?.text ?? "", /staticName = "static"/);
+	assert.match(editors.at(-1)?.text ?? "", /name="staticName">static/);
 });
 
 test("/preset validate shows requested stack diagnostics", async () => {
@@ -375,37 +351,6 @@ test("/preset validate shows requested stack diagnostics", async () => {
 
 	assert.equal(editors.at(-1)?.title, "pi-forge validation: bad");
 	assert.match(editors.at(-1)?.text ?? "", /Duplicate item id: dup/);
-});
-
-test("forge_state_set validates agent namespace and persists accepted updates", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		state: {
-			schemaVersion: 1,
-			definitions: {
-				"agent.count": { type: "number", scope: "session", agentWritable: true },
-			},
-		},
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const harness = createHarness();
-	const { ctx } = createContext(cwd);
-	await startSession(harness, ctx);
-
-	const tool = harness.tools.forge_state_set;
-	const rejected = await tool.execute("call-1", { updates: [{ name: "user.preference", value: "brief" }] }, undefined, undefined, ctx);
-	assert.match(rejected.content[0].text, /agents may only write agent\.\*/);
-
-	const wrongType = await tool.execute("call-2", { updates: [{ name: "agent.count", value: "two" }] }, undefined, undefined, ctx);
-	assert.match(wrongType.content[0].text, /expected number/);
-
-	const accepted = await tool.execute("call-3", { updates: [{ name: "agent.count", value: 2, reason: "test" }] }, undefined, undefined, ctx);
-	assert.match(accepted.content[0].text, /State updated: 1 set/);
-	assert.equal(harness.appended.at(-1)?.type, "pi-forge-variable-state");
-	assert.deepEqual((harness.appended.at(-1)?.data as { variables: unknown }).variables, { "agent.count": 2 });
 });
 
 test("context rewrite runs once per user turn and surfaces diagnostics", async () => {
@@ -532,13 +477,6 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		id: "default",
 		name: "Original",
 		variables: { char: "Konata" },
-		state: {
-			schemaVersion: 1,
-			definitions: {
-				"user.preference": { type: "string", scope: "session", userWritable: true },
-				"user.locked": { type: "string", scope: "session", userWritable: false },
-			},
-		},
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
 	});
 	const harness = createHarness();
@@ -576,7 +514,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
 		assert.match(pageHtml, /metadataToggleBtn/);
 		assert.match(pageHtml, /itemsTabBtn/);
-		assert.match(pageHtml, /stateTabBtn/);
+		assert.doesNotMatch(pageHtml, /stateTabBtn/);
 		assert.match(pageHtml, /regexTabBtn/);
 		assert.match(pageHtml, /policyTabBtn/);
 		assert.match(pageHtml, /stackTabBtn/);
@@ -594,7 +532,6 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /copyImportReportBtn/);
 		assert.match(pageHtml, /data-icon/);
 		assert.match(pageHtml, /validateRawStackJson/);
-		assert.match(pageHtml, /\["xml", "json", "plain"\]/);
 		assert.match(pageHtml, /\["xml", "plain"\]/);
 		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
 		assert.ok(scriptMatch?.[1]);
@@ -677,41 +614,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(previewResult.text, /preview truncated/);
 
 		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });
-		assert.equal(stateResponse.status, 200);
-		const stateSnapshot = await stateResponse.json() as {
-			activeStackId?: string;
-			session: Record<string, unknown>;
-			definitions: Record<string, { type?: string; userWritable?: boolean }>;
-		};
-		assert.equal(stateSnapshot.activeStackId, "default");
-		assert.deepEqual(stateSnapshot.session, {});
-		assert.equal(stateSnapshot.definitions["user.preference"]?.type, "string");
-
-		const stateSetResponse = await fetch(new URL("/api/state/user.preference", editorUrl), {
-			method: "PUT",
-			headers: { "content-type": "application/json", "x-pi-forge-token": token },
-			body: JSON.stringify({ value: "brief" }),
-		});
-		assert.equal(stateSetResponse.status, 200);
-		const stateSet = await stateSetResponse.json() as { session: Record<string, unknown> };
-		assert.equal(stateSet.session["user.preference"], "brief");
-		assert.equal(harness.appended.at(-1)?.type, "pi-forge-variable-state");
-		assert.deepEqual((harness.appended.at(-1)?.data as { variables: unknown }).variables, { "user.preference": "brief" });
-
-		const stateBlockedResponse = await fetch(new URL("/api/state/user.locked", editorUrl), {
-			method: "PUT",
-			headers: { "content-type": "application/json", "x-pi-forge-token": token },
-			body: JSON.stringify({ value: "blocked" }),
-		});
-		assert.equal(stateBlockedResponse.status, 400);
-
-		const stateClearResponse = await fetch(new URL("/api/state/user.preference", editorUrl), {
-			method: "DELETE",
-			headers: { "x-pi-forge-token": token },
-		});
-		assert.equal(stateClearResponse.status, 200);
-		const stateClear = await stateClearResponse.json() as { session: Record<string, unknown> };
-		assert.deepEqual(stateClear.session, {});
+		assert.equal(stateResponse.status, 404);
 
 		const payloadIdleResponse = await fetch(new URL("/api/payload", editorUrl), { headers: { "x-pi-forge-token": token } });
 		assert.equal(payloadIdleResponse.status, 200);
@@ -901,9 +804,7 @@ test("/preset ui reuses an existing server after extension reinitialization", as
 	await startSession(firstHarness, firstContext.ctx);
 
 	const secondHarness = createHarness();
-	const secondContext = createContext(cwd, [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "user.preference": "after-tree" } } },
-	]);
+	const secondContext = createContext(cwd);
 
 	try {
 		await firstHarness.commands.preset.handler("ui", firstContext.ctx);
@@ -913,10 +814,10 @@ test("/preset ui reuses an existing server after extension reinitialization", as
 		await startSession(secondHarness, secondContext.ctx);
 		assert.equal(secondContext.statuses["pi-forge-editor"], `editor:${editorUrl.port}`);
 
-		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });
-		assert.equal(stateResponse.status, 200);
-		const state = await stateResponse.json() as { session: Record<string, unknown> };
-		assert.equal(state.session["user.preference"], "after-tree");
+		const stacksResponse = await fetch(new URL("/api/stacks", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(stacksResponse.status, 200);
+		const stacks = await stacksResponse.json() as { stacks: Array<{ id: string }> };
+		assert.deepEqual(stacks.stacks.map((stack) => stack.id), ["default"]);
 
 		await secondHarness.commands.preset.handler("ui", secondContext.ctx);
 		assert.equal(latestEditorUrl(secondContext.editors).href, editorUrl.href);
@@ -941,37 +842,6 @@ test("turn_start persists default active stack only once", async () => {
 	await harness.events.turn_start({ type: "turn_start", turnIndex: 2, timestamp: 2 }, ctx);
 
 	assert.deepEqual(harness.appended, [{ type: "pi-forge-prompt-stack-state", data: { activeStackId: "default" } }]);
-});
-
-test("/state get and clear respect state write permissions", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		state: {
-			schemaVersion: 1,
-			definitions: {
-				"user.locked": { type: "string", scope: "session", userWritable: false },
-				"user.open": { type: "string", scope: "session", userWritable: true },
-			},
-		},
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const entries = [{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "user.locked": "keep", "user.open": "remove" } } }];
-	const harness = createHarness();
-	const { ctx, editors, notifications } = createContext(cwd, entries);
-	await startSession(harness, ctx);
-
-	await harness.commands.state.handler("get user.locked", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /keep/);
-
-	await harness.commands.state.handler("clear user.locked", ctx);
-	assert.match(notifications.at(-1)?.message ?? "", /not user-writable/);
-	assert.notEqual(harness.appended.at(-1)?.type, "pi-forge-variable-state");
-
-	await harness.commands.state.handler("clear user.open", ctx);
-	assert.deepEqual((harness.appended.at(-1)?.data as { variables: unknown }).variables, { "user.locked": "keep" });
 });
 
 test("/preset import-silly supports dry-run, overwrite flag, and untrusted write refusal", async () => {
@@ -1049,163 +919,61 @@ test("/preset migrate-stacks copies legacy stacks with overwrite and delete opti
 	assert.match(untrusted.notifications.at(-1)?.message ?? "", /not trusted/);
 });
 
-test("session_tree restores prompt state from the current branch only", async () => {
+test("session_tree restores macro session variables from the current branch only", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
 		type: "pi-forge.prompt-stack",
 		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables", options: { includeStatic: false, includeTurn: false } },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
 	});
 	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", id: "early-state", parentId: null, data: { variables: { "agent.progress": "early" } } },
+		{ type: "custom", customType: "pi-forge-variable-state", id: "early-state", parentId: null, data: { variables: { progress: "early" } } },
 		{ type: "message", id: "early-message", parentId: "early-state", message: { role: "user", content: "earlier" } },
-		{ type: "custom", customType: "pi-forge-variable-state", id: "later-state", parentId: "early-message", data: { variables: { "agent.progress": "later" } } },
+		{ type: "custom", customType: "pi-forge-variable-state", id: "later-state", parentId: "early-message", data: { variables: { progress: "later" } } },
 		{ type: "message", id: "later-message", parentId: "later-state", message: { role: "assistant", content: [{ type: "text", text: "later" }] } },
 	];
 	const harness = createHarness();
 	const context = createContext(cwd, entries, { leafId: "later-message" });
 	await startSession(harness, context.ctx);
 
-	await harness.commands.state.handler("get agent.progress", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /later/);
+	await harness.commands.preset.handler("preview", context.ctx);
+	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 
 	context.setLeafId("early-message");
 	await harness.events.session_tree({ type: "session_tree", oldLeafId: "later-message", newLeafId: "early-message" }, context.ctx);
-	await harness.commands.state.handler("get agent.progress", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /early/);
-	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /later/);
+	await harness.commands.preset.handler("preview", context.ctx);
+	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">early/);
+	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 });
 
-test("session_tree before any state clears restored prompt state", async () => {
+test("session_tree before any variable entry clears restored macro variables", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
 		type: "pi-forge.prompt-stack",
 		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		items: [
+			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables", options: { includeStatic: false, includeTurn: false } },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
 	});
 	const entries = [
-		{ type: "message", id: "first-message", parentId: null, message: { role: "user", content: "before state" } },
-		{ type: "custom", customType: "pi-forge-variable-state", id: "state", parentId: "first-message", data: { variables: { "agent.progress": "later" } } },
+		{ type: "message", id: "first-message", parentId: null, message: { role: "user", content: "before variables" } },
+		{ type: "custom", customType: "pi-forge-variable-state", id: "vars", parentId: "first-message", data: { variables: { progress: "later" } } },
 	];
 	const harness = createHarness();
-	const context = createContext(cwd, entries, { leafId: "state" });
+	const context = createContext(cwd, entries, { leafId: "vars" });
 	await startSession(harness, context.ctx);
 
-	await harness.commands.state.handler("get agent.progress", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /later/);
+	await harness.commands.preset.handler("preview", context.ctx);
+	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 
 	context.setLeafId("first-message");
-	await harness.events.session_tree({ type: "session_tree", oldLeafId: "state", newLeafId: "first-message" }, context.ctx);
-	await harness.commands.state.handler("get agent.progress", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /not set/);
-});
-
-test("/preset vars get shows existing and missing values", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { mood: "happy", count: 3 } } },
-	];
-	const harness = createHarness();
-	const { ctx, editors } = createContext(cwd, entries);
-	await startSession(harness, ctx);
-
-	await harness.commands.preset.handler("vars get mood", ctx);
-	assert.equal(editors.at(-1)?.title, "pi-forge variable: mood");
-	assert.match(editors.at(-1)?.text ?? "", /happy/);
-
-	await harness.commands.preset.handler("vars get count", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /3/);
-
-	await harness.commands.preset.handler("vars get missing", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
-});
-
-test("/preset vars clear removes single and all session variables", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { a: "keep", b: "remove", c: "also-keep" } } },
-	];
-	const harness = createHarness();
-	const { ctx, editors, notifications } = createContext(cwd, entries);
-	await startSession(harness, ctx);
-
-	await harness.commands.preset.handler("vars clear b", ctx);
-	assert.match(notifications.at(-1)?.message ?? "", /cleared session variable b/);
-	const afterSingle = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
-	assert.deepEqual(Object.keys(afterSingle).sort(), ["a", "c"]);
-	assert.equal(afterSingle.a, "keep");
-	assert.equal(afterSingle.c, "also-keep");
-
-	await harness.commands.preset.handler("vars clear", ctx);
-	assert.match(notifications.at(-1)?.message ?? "", /cleared all session variables/);
-	const afterAll = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
-	assert.deepEqual(afterAll, {});
-
-	await harness.commands.preset.handler("vars get a", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
-});
-
-test("/state get shows existing and missing values", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "agent.progress": "step 5", flags: ["a", "b"] } } },
-	];
-	const harness = createHarness();
-	const { ctx, editors } = createContext(cwd, entries);
-	await startSession(harness, ctx);
-
-	await harness.commands.state.handler("get agent.progress", ctx);
-	assert.equal(editors.at(-1)?.title, "pi-forge state: agent.progress");
-	assert.match(editors.at(-1)?.text ?? "", /step 5/);
-
-	await harness.commands.state.handler("get flags", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /"a"/);
-	assert.match(editors.at(-1)?.text ?? "", /"b"/);
-
-	await harness.commands.state.handler("get missing", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
-});
-
-test("/state clear without a name removes all session state", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { x: "1", y: "2", z: "3" } } },
-	];
-	const harness = createHarness();
-	const { ctx, editors, notifications } = createContext(cwd, entries);
-	await startSession(harness, ctx);
-
-	await harness.commands.state.handler("clear", ctx);
-	assert.match(notifications.at(-1)?.message ?? "", /cleared all session state/);
-	const cleared = (harness.appended.at(-1)?.data as { variables: Record<string, unknown> }).variables;
-	assert.deepEqual(cleared, {});
-
-	await harness.commands.state.handler("get x", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /\(not set\)/);
+	await harness.events.session_tree({ type: "session_tree", oldLeafId: "vars", newLeafId: "first-message" }, context.ctx);
+	await harness.commands.preset.handler("preview", context.ctx);
+	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 });

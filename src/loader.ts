@@ -9,10 +9,6 @@ import type {
 	PromptStackDiagnostic,
 	PromptStackItem,
 	PromptStackRole,
-	PromptStateConfig,
-	PromptStateDefinition,
-	PromptStateScope,
-	PromptStateValue,
 } from "./types.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
 
@@ -155,6 +151,13 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		diagnostics.push({ level: "error", message: "Prompt stack must contain an items array." });
 	}
 
+	if (isPlainObject(obj.state) && Object.keys(obj.state).length > 0) {
+		diagnostics.push({
+			level: "info",
+			message: "state is no longer supported and was ignored; use stack.variables and template variable macros instead.",
+		});
+	}
+
 	return {
 		schemaVersion,
 		type: obj.type === "pi-forge.prompt-stack" ? "pi-forge.prompt-stack" : undefined,
@@ -168,7 +171,6 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		tools: normalizeResourcePolicy(obj.tools, "tools", diagnostics),
 		skills: normalizeResourcePolicy(obj.skills, "skills", diagnostics),
 		variables: normalizeStringRecord(obj.variables),
-		state: normalizeStateConfig(obj.state, diagnostics),
 		regex: normalizeRegexConfig(obj.regex, diagnostics),
 		items,
 		import: isPlainObject(obj.import) ? (obj.import as Record<string, unknown>) : undefined,
@@ -284,47 +286,6 @@ function normalizeStringRecord(value: unknown): Record<string, string> | undefin
 	return result;
 }
 
-function normalizeStateConfig(value: unknown, diagnostics: PromptStackDiagnostic[]): PromptStateConfig | undefined {
-	if (value === undefined) return undefined;
-	if (!isPlainObject(value)) {
-		diagnostics.push({ level: "warning", message: "state must be an object when provided." });
-		return undefined;
-	}
-
-	const definitionsRaw = value.definitions;
-	const definitions: Record<string, PromptStateDefinition> = {};
-
-	if (definitionsRaw !== undefined && !isPlainObject(definitionsRaw)) {
-		diagnostics.push({ level: "warning", message: "state.definitions must be an object when provided." });
-	}
-
-	if (isPlainObject(definitionsRaw)) {
-		for (const [name, rawDefinition] of Object.entries(definitionsRaw)) {
-			if (!isPlainObject(rawDefinition)) {
-				diagnostics.push({ level: "warning", message: `state definition for ${name} must be an object.` });
-				continue;
-			}
-
-			const definition: PromptStateDefinition = {};
-			if (typeof rawDefinition.type === "string") definition.type = rawDefinition.type;
-			if (isStateScope(rawDefinition.scope)) definition.scope = rawDefinition.scope;
-			if (typeof rawDefinition.description === "string") definition.description = rawDefinition.description;
-			if (typeof rawDefinition.agentWritable === "boolean") definition.agentWritable = rawDefinition.agentWritable;
-			if (typeof rawDefinition.userWritable === "boolean") definition.userWritable = rawDefinition.userWritable;
-			if (isPromptStateValue(rawDefinition.default)) definition.default = rawDefinition.default;
-			else if (rawDefinition.default !== undefined) {
-				diagnostics.push({ level: "warning", message: `state definition default for ${name} is not a JSON-compatible value.` });
-			}
-			definitions[name] = definition;
-		}
-	}
-
-	return {
-		schemaVersion: value.schemaVersion === 1 ? 1 : undefined,
-		definitions: Object.keys(definitions).length > 0 ? definitions : undefined,
-	};
-}
-
 function normalizeResourcePolicy(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): PromptResourcePolicy | undefined {
 	if (value === undefined) return undefined;
 	if (!isPlainObject(value)) {
@@ -390,17 +351,4 @@ function normalizeRegexConfig(value: unknown, diagnostics: PromptStackDiagnostic
 		return undefined;
 	}
 	return value as PromptStack["regex"];
-}
-
-function isStateScope(value: unknown): value is PromptStateScope {
-	return value === "static" || value === "session" || value === "turn";
-}
-
-function isPromptStateValue(value: unknown): value is PromptStateValue {
-	if (value === null) return true;
-	const type = typeof value;
-	if (type === "string" || type === "number" || type === "boolean") return Number.isFinite(value as number) || type !== "number";
-	if (Array.isArray(value)) return value.every(isPromptStateValue);
-	if (!isPlainObject(value)) return false;
-	return Object.values(value).every(isPromptStateValue);
 }

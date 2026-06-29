@@ -11,26 +11,22 @@ Implemented and working:
 - Movable `chat-history` slot.
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
-- Basic macro expansion and turn/session/static prompt state.
-- `/preset` commands for list/use/preview/validate/diagnostics/reload/vars, plus `/state` commands for typed session state.
+- Basic macro expansion and turn/session/static template variables.
+- `/preset` commands for list/use/preview/validate/diagnostics/reload/import/ui.
 - `/preset import-silly <file> [character_id] [--dry-run] [--overwrite]` command that writes prompt stacks and import reports.
 - `/intercept` and `/payload next [save=<path>]` commands to display/save the next provider payload with basic redaction/truncation.
 - Local converted SillyTavern writer preset can live in `.pi/forge/prompt-stacks/default.json`.
 - Guardrails for bad stacks: stacks with error diagnostics are skipped during default activation, and empty replacement system prompts preserve Pi's base prompt.
 - Active prompt stack status in the footer.
-- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, prompt state slot rendering, SillyTavern import behavior, command/event behavior, and web-editor API smoke flows.
-- `variables` slot that renders static/session/turn prompt state as valid XML or JSON, with scope/namespace filters and optional stack metadata.
-- Branch-aware prompt state restoration during session tree navigation.
-- `/state set <name> <json-or-text-value>` command for typed JSON-compatible session state, with `/preset vars` kept as legacy string commands.
-- `forge_state_set` tool that lets the agent batch update `agent.*`-prefixed session state for cross-turn tracking, with `forge_set_var` kept as a compatibility alias.
+- Node built-in tests covering loader selection, system prompt compilation, chat-history placement, macros, diagnostics, variables slot rendering, SillyTavern import behavior, command/event behavior, and web-editor API smoke flows.
+- `variables` slot that renders static/session/turn template variables as valid XML or plain text.
+- Branch-aware macro session variable restoration during session tree navigation.
 - `/preset ui` lightweight localhost web editor for prompt-stack editing, validation, preview, native/SillyTavern JSON import, export, fork, delete, activation, and disable flows, using an available port by default with optional preferred-port fallback.
 - Full-screen web preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Web payload capture inspector that can arm the next provider request, display captures from UI or `/payload next`, preserve redaction, and show collapsible top-level JSON sections.
-- Tabbed structured web editors for items, stack static `variables`, `state.definitions`, session state, `context` options, raw stack JSON, and regex rules.
+- Tabbed structured web editors for items, stack static `variables`, `context` options, raw stack JSON, policy, and regex rules.
 - Raw stack JSON view/apply recovery path for advanced fields that do not have dedicated controls yet.
 - Web editor polish for dark mode, button icons/tooltips, unsaved-change badge, export clipboard fallback, and inline item validation badges.
-- Web runtime session-state editor that can view, set, and clear state using the same validation and persistence path as `/state`.
-- Metadata-enabled variables slots render matching state definitions as `unset` entries before runtime values exist.
 - SillyTavern `extensions.regex_scripts` import-report classification with prompt/display/disabled counts and report-only migration guidance.
 - Web SillyTavern imports display the generated import report in a copyable editor modal.
 - Supported SillyTavern-style variable macros such as `setvar`/`getvar` are reported as handled instead of migration-needed.
@@ -51,33 +47,31 @@ Implemented and working:
 Review findings to keep in mind before expanding regex runtime behavior, adding richer policy controls, or growing the web UI:
 
 - `src/web-editor/page.ts` is now the highest-friction file. It is still one embedded HTML/CSS/client-script string, which is workable for small edits but risky for richer regex/tool configuration screens. Split it along practical static boundaries later (`template`, `styles`, `client-script`) or introduce a tiny build step before the browser UI grows much further.
-- `src/index.ts` is still broad, but stack file CRUD/web-editor host methods now live in `src/web-host.ts`, and payload capture/redaction lives in `src/payload-capture.ts`. Continue extracting `runtime-state` and `commands` before implementing tool policy.
+- `src/index.ts` is still broad, but stack file CRUD/web-editor host methods now live in `src/web-host.ts`, and payload capture/redaction lives in `src/payload-capture.ts`. Continue extracting command/event handlers as behavior grows.
 - `src/sillytavern-importer.ts` has a large conversion/reporting pipeline. Split conversion, prompt-order selection, report building, regex reporting, and macro reporting into smaller pure helpers before expanding SillyTavern regex support.
-- `src/compiler.ts` should separate prompt-state collection from format rendering. `variables` already supports multiple formats, and adding true display-only versus outgoing-payload transforms will otherwise make renderer branches harder to reason about.
+- `src/compiler.ts` should keep slot collection and format rendering easy to reason about as more display-only or provider-payload transforms are considered.
 - Prompt-stack storage now writes new stacks to `.pi/forge/prompt-stacks` and reads legacy `.pi/prompt-stacks` for compatibility. Keep future persistent feature state under `.pi/forge`.
 - Keep `src/web-editor/server.ts` lightweight. A tiny route table would be enough if more APIs are added; a full web framework is not warranted yet.
 - Test coverage is healthy, but `tests/index-command.test.ts` is becoming a large integration blob. Move the reusable mocked extension harness into `tests/helpers` when the next command/API feature lands.
 
-## Priority 1: Web inspector and state editing
+## Priority 1: Web inspector
 
-Core web observability and state editing are now in place. Slash-command preview and payload intercept remain useful fallbacks, while the browser handles the larger structured views.
+Core web observability is now in place. Slash-command preview and payload intercept remain useful fallbacks, while the browser handles the larger structured views.
 
-Completed inspector/state work:
+Completed inspector work:
 
 - Replace the web editor's plain preview pane with a full-screen structured preview inspector.
 - Show system prompt and message layout as separate collapsible sections with char and approximate token counts.
 - Avoid early truncation in the browser preview; large sections render collapsed instead.
 - Add copy controls for full preview and individual sections.
-- Add structured editors for stack `variables` and `state.definitions`.
-- Add a runtime state view/editor for current session state, equivalent to `/state list/set/get/clear`.
-- Keep metadata-enabled state definitions visible in previews even before runtime values exist.
+- Add structured editing for stack `variables`.
 - Capture provider payloads into the web editor with collapsible JSON, redaction preserved, char/token estimates, copy controls, and arm/clear actions.
 - Add a structured editor for stack `context` options.
 - Add a raw JSON stack view/apply recovery path for advanced stack-level fields.
 
-Remaining inspector/state work:
+Remaining inspector work:
 
-- No immediate Priority 1 blockers. Keep new inspector and state work focused on real prompt-debugging pain points.
+- No immediate Priority 1 blockers. Keep new inspector work focused on real prompt-debugging pain points.
 
 ## Priority 2: Command and lifecycle test coverage
 
@@ -95,15 +89,14 @@ Current command/event coverage:
 2. `/preset use <id>` persists the selected stack and updates footer status. - done
 3. `/preset use none` persists the disabled selection and clears footer status. - done
 4. `/preset reload` preserves an explicit disabled selection instead of reactivating `default.json`. - done
-5. `/state set/get/clear` and legacy `/preset vars set/get/clear` update session state and persistence entries. - get/clear coverage added
+5. Macro session variables restore from branch-scoped persistence entries. - done
 6. `/preset validate` shows diagnostics for the requested stack. - done
 7. `/preset import-silly` writes the stack and report, then reloads stack state. - collision coverage done
 8. `session_start` restores variables and active stack selection. - done
 9. `turn_start` persists active stack selection only when needed. - done
 10. `/preset ui` starts/stops the local editor and protects the API with a URL token. - smoke coverage done
 11. Web editor save/create/delete operations reload current Pi stack state. - smoke coverage done
-12. Web editor runtime state API uses `/state` validation and persistence semantics. - smoke coverage done
-13. `/preset migrate-stacks` copies legacy stacks, handles collisions, supports dry-run/overwrite/delete-legacy, and refuses untrusted writes. - done
+12. `/preset migrate-stacks` copies legacy stacks, handles collisions, supports dry-run/overwrite/delete-legacy, and refuses untrusted writes. - done
 
 ## Priority 3: Harden SillyTavern importer
 
@@ -136,7 +129,7 @@ SillyTavern regex script boundary:
 
 TGbreak migration notes:
 
-- Heavy ST state macros (`setvar`/`getvar`) should keep driving pi-forge state/macro polish before broader SillyTavern regex conversion.
+- Heavy ST variable macros (`setvar`/`getvar`) should keep driving pi-forge variable/macro polish before broader SillyTavern regex conversion.
 - The preset has enough display-only regex that full ST regex compatibility would add complexity without useful TUI behavior.
 - The importer should help users distinguish prompt semantics from ST presentation polish.
 
@@ -201,14 +194,13 @@ Keep slash-command fallbacks for terminal-first workflows.
 
 ## Priority 5: Prompt slot formats and token budget
 
-Structured prompt slots can render as XML-style output by default or compact plain text when `options.format` is `"plain"`. `variables` also supports `"json"` for JSON-shaped state. XML remains the default because it gives clear boundaries, names, attributes, and nesting for mixed prompt content.
+Structured prompt slots can render as XML-style output by default or compact plain text when `options.format` is `"plain"`. XML remains the default because it gives clear boundaries, names, attributes, and nesting for mixed prompt content.
 
 Completed compact-format work:
 
 - Added `format: "plain"` as an opt-in compact format, not a default replacement.
 - Supported plain output for `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables`.
-- Kept `xml` default for backwards compatibility and for robustness around multiline values, metadata-heavy state, and prompt-injection-like content.
-- Kept `json` support for `variables`; JSON is still not supported for other structured slots.
+- Kept `xml` default for backwards compatibility and for robustness around multiline values and prompt-injection-like content.
 - Render plain text with concise headings and newline-separated bullets, for example:
 
 ```txt
@@ -219,9 +211,9 @@ Available tools:
 Available skills:
 - review: Review code for correctness. Location: /skills/review/SKILL.md
 
-Prompt state:
+Variables:
 session:
-- agent.progress (string): step 2
+- progress: step 2
 ```
 
 Follow-ups:
@@ -229,25 +221,7 @@ Follow-ups:
 - Compare real prompt previews across XML vs plain in daily use; keep XML as the recommended default unless plain output proves robust enough for specific stacks.
 - Consider stack-level format defaults only if per-slot configuration becomes repetitive.
 
-## Priority 6: Prompt state lifecycle metadata
-
-### Add update metadata later
-
-Current state definitions can declare type, scope, description, and write permissions. Later stored values could support runtime metadata:
-
-```json
-{
-  "value": "...",
-  "scope": "session",
-  "description": "What this variable means",
-  "updatedBy": "agent",
-  "updatedAt": "..."
-}
-```
-
-Keep persisted values as plain JSON for now; add metadata only if it becomes necessary for state review, expiration, or subagent curation.
-
-## Priority 7: Improve macro engine
+## Priority 6: Improve macro engine
 
 ### 1. Replace regex-only parsing with a small macro parser
 
@@ -370,12 +344,12 @@ Current and next test cases:
 13. SillyTavern importer happy path and error handling - done
 14. SillyTavern marker filtering and `lastUserMessage` handling - done
 15. context rewrite once per user turn behavior - done
-16. command behavior for `/state` and `/preset vars` - get/clear and validation coverage done
+16. branch-scoped macro session variable restore - done
 17. command behavior for `/preset validate` - done
 18. command behavior for `/preset import-silly` - collision coverage done
-19. command/tool lifecycle tests for `forge_state_set` - validation coverage done
+19. removed agent-memory tool surface stays absent - covered by command/web smoke tests
 20. `/payload next save=<path>` redaction/save behavior - done
-21. `/preset ui` API smoke test for serve/save/create/delete and runtime state set/clear - done
+21. `/preset ui` API smoke test for serve/save/create/delete - done
 22. Web preview inspector returns full structured sections without browser-side truncation - done
 23. Web payload capture API arms, captures, redacts, exposes, and clears provider payloads - done
 24. Web editor bundled page exposes context/raw JSON/polish controls and parses its inline script - done
@@ -418,7 +392,7 @@ Prompt stacks should remain about message/system layout.
 
 ## Suggested next coding session
 
-1. Continue splitting `src/index.ts` by moving runtime state and command handlers into focused modules.
+1. Continue splitting `src/index.ts` by moving command and event handlers into focused modules.
 2. Split the embedded web editor page along practical static boundaries before adding larger policy/regex screens.
 3. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
 4. Add better chat-history controls (`maxMessages`, tool call/result filters, synthetic message filters).

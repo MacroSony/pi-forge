@@ -846,10 +846,6 @@ html, body {
   display: flex;
   gap: 6px;
 }
-.state-value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-}
 .raw-json-editor {
   flex: 1;
   min-height: 0;
@@ -941,7 +937,6 @@ html, body {
     </section>
     <nav class="view-tabs" aria-label="Stack editor sections">
       <button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>
-      <button id="stateTabBtn" data-tab="state" data-icon="$" title="Edit variables, state schema, and runtime session state">State</button>
       <button id="regexTabBtn" data-tab="regex" data-icon=".*" title="Edit regex transform rules">Regex</button>
       <button id="policyTabBtn" data-tab="policy" data-icon="⊕" title="Edit tool and skill policy">Policy</button>
       <button id="stackTabBtn" data-tab="stack" data-icon="{}" title="Edit context options and raw stack JSON">Stack</button>
@@ -987,7 +982,6 @@ let previewCopyTexts = [];
 let payloadSnapshot = { status: "idle" };
 let latestDiagnostics = [];
 let stackVariablesError = "";
-let stackDefinitionsError = "";
 let regexRulesError = "";
 let stackPolicyError = "";
 let activeTab = "items";
@@ -1000,7 +994,6 @@ const slotNames = [
   "active-model", "pi-docs"
 ];
 const roles = ["", "system", "user", "assistant", "custom"];
-const stateScopes = ["", "static", "session", "turn"];
 const regexStages = ["history", "compiled"];
 const regexEffects = ["outgoing", "finalize", "display", "both"];
 const regexTargets = ["system", "messages"];
@@ -1099,7 +1092,6 @@ async function selectStack(id, options = {}) {
   dirty = false;
   optionsError = "";
   stackVariablesError = "";
-  stackDefinitionsError = "";
   regexRulesError = "";
   stackPolicyError = "";
   renderDirtyState();
@@ -1132,8 +1124,7 @@ function renderActiveTab() {
   }
   workspace.style.display = "none";
   panel.classList.add("open");
-  if (activeTab === "state") renderStateTab();
-  else if (activeTab === "regex") renderRegexTab();
+  if (activeTab === "regex") renderRegexTab();
   else if (activeTab === "policy") renderPolicyTab();
   else if (activeTab === "stack") renderStackTab();
 }
@@ -1330,15 +1321,10 @@ function renderSlotOptionsForm(item, options) {
   }
   if (item.slot === "variables") {
     fields.push(
-      optionCheckbox("includeStatic", "Include static state", options.includeStatic !== false),
-      optionCheckbox("includeSession", "Include session state", options.includeSession !== false),
-      optionCheckbox("includeTurn", "Include turn state", options.includeTurn !== false),
-      optionCheckbox("includeMetadata", "Include metadata", options.includeMetadata === true),
-      optionSelect("format", "Format", options.format || "xml", ["xml", "json", "plain"]),
-      optionText("includeScopes", "Include scopes", arrayToCsv(options.includeScopes)),
-      optionText("includeNamespaces", "Include namespaces", arrayToCsv(options.includeNamespaces)),
-      optionText("excludeNamespaces", "Exclude namespaces", arrayToCsv(options.excludeNamespaces)),
-      optionNumber("maxValueChars", "Max value chars", options.maxValueChars ?? ""),
+      optionCheckbox("includeStatic", "Include static variables", options.includeStatic !== false),
+      optionCheckbox("includeSession", "Include session variables", options.includeSession !== false),
+      optionCheckbox("includeTurn", "Include turn variables", options.includeTurn !== false),
+      optionSelect("format", "Format", options.format || "xml", ["xml", "plain"]),
     );
   }
   if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot)) {
@@ -1432,15 +1418,10 @@ function optionNumber(key, label, value) {
 function optionHelp(key) {
   const descriptions = {
     includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
-    includeStatic: "Include stack variables and static state defaults in this variables slot.",
-    includeSession: "Include persisted session state in this variables slot.",
-    includeTurn: "Include temporary turn state created during prompt compilation.",
-    includeMetadata: "Include state definition metadata such as type, description, and write permissions.",
-    format: "Choose XML, JSON where supported, or compact plain text rendering.",
-    includeScopes: "Limit output to specific scopes such as static, session, or turn.",
-    includeNamespaces: "Only include state names matching these names or wildcard prefixes.",
-    excludeNamespaces: "Hide state names matching these names or wildcard prefixes.",
-    maxValueChars: "Truncate each rendered value after this many characters.",
+    includeStatic: "Include static stack variables in this variables slot.",
+    includeSession: "Include session variables created by template macros.",
+    includeTurn: "Include temporary turn variables created during prompt compilation.",
+    format: "Choose XML or compact plain text rendering.",
   };
   return descriptions[key] || "Advanced slot option.";
 }
@@ -1486,65 +1467,6 @@ function setContextOption(key, value, defaultValue) {
   else context[key] = value;
   if (Object.keys(context).length) currentStack.context = context;
   else delete currentStack.context;
-}
-
-function renderStateTab() {
-  if (!currentStack) return;
-  const variableRows = Object.entries(currentStack.variables || {})
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, value]) => variableRowHtml(name, value))
-    .join("");
-  const definitions = currentStack.state?.definitions || {};
-  const definitionRows = Object.entries(definitions)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, definition]) => definitionRowHtml(name, definition))
-    .join("");
-  el("tabPanel").innerHTML =
-    '<div class="tab-section">' +
-    '<div class="tab-section-title">Stack variables</div>' +
-    '<div class="tab-section-meta">Static string variables available to macros and variables slots.</div>' +
-    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.variables.</span></div>' +
-    '<div class="data-table" id="variablesRows">' +
-    '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
-    variableRows +
-    '</div></div>' +
-    '<div class="tab-section">' +
-    '<div class="tab-section-title">State schema</div>' +
-    '<div class="tab-section-meta">Definitions describe session state names, metadata, defaults, and write permissions.</div>' +
-    '<div class="modal-toolbar"><button id="addDefinitionBtn" data-icon="+" title="Add a prompt state definition">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.state.definitions.</span></div>' +
-    '<div class="data-table" id="definitionRows">' +
-    '<div class="data-row header definition-row"><div>Name</div><div>Type</div><div>Scope</div><div>Description</div><div>Default JSON</div><div>Agent write</div><div>User write</div><div></div></div>' +
-    definitionRows +
-    '</div></div>' +
-    '<div class="tab-section" id="sessionStateSection">' +
-    '<div class="tab-section-title">Session state</div>' +
-    '<div class="tab-section-meta">Runtime state persisted in the current Pi session branch.</div>' +
-    '<div class="empty">Loading session state.</div>' +
-    '</div>';
-  bindVariablesEditor();
-  bindStateSchemaEditor();
-  run(loadSessionStateIntoTab);
-}
-
-async function loadSessionStateIntoTab() {
-  const section = el("sessionStateSection");
-  if (!section) return;
-  const snapshot = await api("/api/state");
-  section.innerHTML =
-    '<div class="tab-section-title">Session state</div>' +
-    '<div class="tab-section-meta">Runtime state persisted in the current Pi session branch.</div>' +
-    sessionStateEditorBody(snapshot);
-  bindSessionStateEditor();
-}
-
-function sessionStateEditorBody(snapshot) {
-  const names = [...new Set([...Object.keys(snapshot.session || {}), ...Object.keys(snapshot.definitions || {})])].sort((a, b) => a.localeCompare(b));
-  const rows = names.map((name) => sessionRowHtml(name, snapshot.session?.[name], snapshot.definitions?.[name], Object.prototype.hasOwnProperty.call(snapshot.session || {}, name))).join("");
-  return '<div class="modal-toolbar"><button id="addSessionStateBtn" data-icon="+" title="Add a runtime session state row">Add state</button><button id="refreshSessionStateBtn" data-icon="↻" title="Reload session state from Pi">Refresh</button><span class="modal-spacer"></span><button id="clearAllSessionStateBtn" class="danger" data-icon="×" title="Clear all writable runtime session state">Clear all</button></div>' +
-    '<div class="data-table" id="sessionStateRows">' +
-    '<div class="data-row header session-row"><div>Name</div><div>Value</div><div>Definition</div><div></div></div>' +
-    rows +
-    '</div>';
 }
 
 function renderRegexTab() {
@@ -1705,6 +1627,10 @@ function policySummary(kind, policy) {
 function renderStackTab() {
   if (!currentStack) return;
   const json = JSON.stringify(stackForDisplay(), null, 2);
+  const variableRows = Object.entries(currentStack.variables || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => variableRowHtml(name, value))
+    .join("");
   el("tabPanel").innerHTML =
     '<div class="tab-section">' +
     '<div class="tab-section-title">Context options</div>' +
@@ -1713,6 +1639,14 @@ function renderStackTab() {
     '<input id="allowDuplicateChatHistoryInput" type="checkbox" ' + (currentStack.context?.allowDuplicateChatHistory === true ? "checked" : "") + '> Allow duplicate chat-history slots</label>' +
     '<div class="option-note">Keep this off unless you intentionally want the same conversation history injected more than once.</div>' +
     '</div>' +
+    '<div class="tab-section">' +
+    '<div class="tab-section-title">Stack variables</div>' +
+    '<div class="tab-section-meta">Static string variables available to template macros and variables slots.</div>' +
+    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.variables.</span></div>' +
+    '<div class="data-table" id="variablesRows">' +
+    '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
+    variableRows +
+    '</div></div>' +
     '<div class="tab-section">' +
     '<div class="tab-section-title">Stack JSON</div>' +
     '<div class="tab-section-meta">Raw recovery view for advanced fields. Apply updates the editor; Save writes to disk.</div>' +
@@ -1727,6 +1661,7 @@ function renderStackTab() {
     setContextOption("allowDuplicateChatHistory", event.target.checked, false);
     markDirty();
   };
+  bindVariablesEditor();
   el("copyStackJsonBtn").onclick = () => run(copyRawStackJson);
   el("applyStackJsonBtn").onclick = () => run(applyRawStackJson);
 }
@@ -1773,7 +1708,6 @@ async function applyRawStackJson() {
   selectedItemIndex = currentStack.items.length ? Math.min(Math.max(selectedItemIndex, 0), currentStack.items.length - 1) : -1;
   optionsError = "";
   stackVariablesError = "";
-  stackDefinitionsError = "";
   regexRulesError = "";
   stackPolicyError = "";
   closeStackModal();
@@ -1865,118 +1799,6 @@ function syncVariablesFromModal() {
   stackVariablesError = duplicate ? "Duplicate stack variable names." : "";
   markDirty();
   if (duplicate) setStatus(stackVariablesError, "error");
-}
-
-function openStateSchemaEditor() {
-  if (!currentStack) return;
-  const definitions = currentStack.state?.definitions || {};
-  const rows = Object.entries(definitions)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, definition]) => definitionRowHtml(name, definition))
-    .join("");
-  showStackModal(
-    "State schema",
-    "Definitions describe session state names, metadata, defaults, and write permissions.",
-    '<div class="modal-toolbar"><button id="addDefinitionBtn" data-icon="+" title="Add a prompt state definition">Add definition</button><span class="modal-spacer"></span><span class="modal-meta">Empty default means no default value.</span></div>' +
-      '<div class="data-table" id="definitionRows">' +
-      '<div class="data-row header definition-row"><div>Name</div><div>Type</div><div>Scope</div><div>Description</div><div>Default JSON</div><div>Agent write</div><div>User write</div><div></div></div>' +
-      rows +
-      '</div>',
-  );
-  bindStateSchemaEditor();
-}
-
-function definitionRowHtml(name = "", definition = {}) {
-  return '<div class="data-row definition-row" data-definition-row>' +
-    '<input data-definition-name value="' + attr(name) + '" placeholder="agent.progress">' +
-    '<input data-definition-type value="' + attr(definition.type || "") + '" placeholder="string">' +
-    '<select data-definition-scope>' + stateScopes.map((scope) => '<option value="' + attr(scope) + '"' + ((definition.scope || "") === scope ? " selected" : "") + '>' + escapeHtml(scope || "(default)") + '</option>').join("") + '</select>' +
-    '<input data-definition-description value="' + attr(definition.description || "") + '" placeholder="Short description">' +
-    '<textarea class="state-value" data-definition-default placeholder="optional default JSON">' + escapeHtml(definition.default === undefined ? "" : JSON.stringify(definition.default, null, 2)) + '</textarea>' +
-    permissionSelect("data-definition-agent", definition.agentWritable) +
-    permissionSelect("data-definition-user", definition.userWritable) +
-    '<button type="button" class="danger" data-delete-row="true" data-icon="×" title="Delete this state definition">Delete</button>' +
-    '</div>';
-}
-
-function permissionSelect(attribute, value) {
-  const current = value === true ? "true" : value === false ? "false" : "";
-  return '<select ' + attribute + '>' +
-    '<option value=""' + (current === "" ? " selected" : "") + '>default</option>' +
-    '<option value="true"' + (current === "true" ? " selected" : "") + '>allowed</option>' +
-    '<option value="false"' + (current === "false" ? " selected" : "") + '>blocked</option>' +
-    '</select>';
-}
-
-function bindStateSchemaEditor() {
-  el("addDefinitionBtn").onclick = () => {
-    el("definitionRows").insertAdjacentHTML("beforeend", definitionRowHtml(uniqueDefinitionName()));
-    bindStateSchemaEditor();
-    syncStateDefinitionsFromModal();
-  };
-  document.querySelectorAll("[data-definition-row] input, [data-definition-row] textarea, [data-definition-row] select").forEach((control) => {
-    control.oninput = () => syncStateDefinitionsFromModal();
-    control.onchange = () => syncStateDefinitionsFromModal();
-  });
-  document.querySelectorAll("[data-definition-row] [data-delete-row]").forEach((button) => {
-    button.onclick = (event) => {
-      event.target.closest("[data-definition-row]").remove();
-      syncStateDefinitionsFromModal();
-    };
-  });
-}
-
-function uniqueDefinitionName() {
-  const existing = new Set(Object.keys(currentStack?.state?.definitions || {}));
-  let index = existing.size + 1;
-  let name = "agent.state" + index;
-  while (existing.has(name)) name = "agent.state" + (++index);
-  return name;
-}
-
-function syncStateDefinitionsFromModal() {
-  if (!currentStack) return;
-  const definitions = {};
-  const seen = new Set();
-  const errors = [];
-  document.querySelectorAll("[data-definition-row]").forEach((row) => {
-    const name = row.querySelector("[data-definition-name]").value.trim();
-    if (!name) return;
-    if (seen.has(name)) errors.push("Duplicate state definition: " + name);
-    seen.add(name);
-    const definition = {};
-    setOptionalObjectString(definition, "type", row.querySelector("[data-definition-type]").value);
-    setOptionalObjectString(definition, "scope", row.querySelector("[data-definition-scope]").value);
-    setOptionalObjectString(definition, "description", row.querySelector("[data-definition-description]").value);
-    const defaultText = row.querySelector("[data-definition-default]").value.trim();
-    if (defaultText) {
-      try {
-        const parsed = JSON.parse(defaultText);
-        if (!isJsonStateValue(parsed)) errors.push(name + ": default must be JSON-compatible.");
-        else definition.default = parsed;
-      } catch (error) {
-        errors.push(name + ": invalid default JSON.");
-      }
-    }
-    const agent = row.querySelector("[data-definition-agent]").value;
-    if (agent === "true") definition.agentWritable = true;
-    else if (agent === "false") definition.agentWritable = false;
-    const user = row.querySelector("[data-definition-user]").value;
-    if (user === "true") definition.userWritable = true;
-    else if (user === "false") definition.userWritable = false;
-    definitions[name] = definition;
-  });
-
-  if (Object.keys(definitions).length) {
-    currentStack.state = { ...(currentStack.state || {}), schemaVersion: currentStack.state?.schemaVersion || 1, definitions };
-  } else if (currentStack.state?.schemaVersion) {
-    currentStack.state = { schemaVersion: currentStack.state.schemaVersion };
-  } else {
-    delete currentStack.state;
-  }
-  stackDefinitionsError = errors[0] || "";
-  markDirty();
-  if (stackDefinitionsError) setStatus(stackDefinitionsError, "error");
 }
 
 function openRegexEditor() {
@@ -2207,98 +2029,6 @@ function regexRuleWarning(rule) {
     return 'Warning: both is ignored at runtime; create separate outgoing and finalize rules instead.';
   }
   return "";
-}
-
-async function openSessionStateEditor() {
-  const snapshot = await api("/api/state");
-  renderSessionStateEditor(snapshot);
-}
-
-function renderSessionStateEditor(snapshot) {
-  showStackModal(
-    "Session state",
-    "Runtime state persisted in the current Pi session branch.",
-    sessionStateEditorBody(snapshot),
-  );
-  bindSessionStateEditor();
-}
-
-function sessionRowHtml(name = "", value = undefined, definition = undefined, isSet = false) {
-  const details = definition
-    ? [
-      definition.type ? "type=" + definition.type : undefined,
-      definition.scope ? "scope=" + definition.scope : undefined,
-      definition.agentWritable !== undefined ? "agent=" + definition.agentWritable : undefined,
-      definition.userWritable !== undefined ? "user=" + definition.userWritable : undefined,
-      definition.description || undefined,
-    ].filter(Boolean).join(" | ")
-    : "(none)";
-  return '<div class="data-row session-row" data-session-row>' +
-    '<input data-session-name value="' + attr(name) + '" placeholder="agent.progress">' +
-    '<textarea class="state-value" data-session-value placeholder="text or JSON">' + escapeHtml(isSet ? formatStateInput(value) : "") + '</textarea>' +
-    '<div class="modal-meta">' + escapeHtml(details) + '</div>' +
-    '<div class="row-actions"><button type="button" data-session-set="true" data-icon="✓" title="Set this session state value">Set</button><button type="button" class="danger" data-session-clear="true" data-icon="×" title="Clear this session state value">Clear</button></div>' +
-    '</div>';
-}
-
-function bindSessionStateEditor() {
-  el("addSessionStateBtn").onclick = () => {
-    el("sessionStateRows").insertAdjacentHTML("beforeend", sessionRowHtml());
-    bindSessionStateEditor();
-  };
-  el("refreshSessionStateBtn").onclick = () => run(openSessionStateEditor);
-  el("clearAllSessionStateBtn").onclick = () => run(async () => {
-    if (!confirm("Clear all session state?")) return;
-    const snapshot = await api("/api/state", { method: "DELETE" });
-    renderSessionStateEditor(snapshot);
-    setStatus("Cleared all session state", "success");
-  });
-  document.querySelectorAll("[data-session-set]").forEach((button) => {
-    button.onclick = (event) => run(() => setSessionStateFromRow(event.target.closest("[data-session-row]")));
-  });
-  document.querySelectorAll("[data-session-clear]").forEach((button) => {
-    button.onclick = (event) => run(() => clearSessionStateFromRow(event.target.closest("[data-session-row]")));
-  });
-}
-
-async function setSessionStateFromRow(row) {
-  const name = row.querySelector("[data-session-name]").value.trim();
-  if (!name) throw new Error("State name is required.");
-  const value = parseStateInput(row.querySelector("[data-session-value]").value);
-  const snapshot = await api("/api/state/" + encodeURIComponent(name), { method: "PUT", body: { value } });
-  renderSessionStateEditor(snapshot);
-  setStatus("Set session state " + name, "success");
-}
-
-async function clearSessionStateFromRow(row) {
-  const name = row.querySelector("[data-session-name]").value.trim();
-  if (!name) throw new Error("State name is required.");
-  const snapshot = await api("/api/state/" + encodeURIComponent(name), { method: "DELETE" });
-  renderSessionStateEditor(snapshot);
-  setStatus("Cleared session state " + name, "success");
-}
-
-function parseStateInput(value) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|["[{])/.test(trimmed)) {
-    return JSON.parse(trimmed);
-  }
-  return value;
-}
-
-function formatStateInput(value) {
-  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
-}
-
-function isJsonStateValue(value) {
-  if (value === null) return true;
-  const type = typeof value;
-  if (type === "string" || type === "boolean") return true;
-  if (type === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isJsonStateValue);
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value).every(isJsonStateValue);
 }
 
 function setOptionalObjectString(target, key, value) {
@@ -2763,7 +2493,6 @@ function stackForSubmit() {
   if (!currentStack) throw new Error("No stack selected.");
   if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
   if (stackVariablesError) throw new Error(stackVariablesError);
-  if (stackDefinitionsError) throw new Error(stackDefinitionsError);
   if (regexRulesError) throw new Error(regexRulesError);
   if (stackPolicyError) throw new Error(stackPolicyError);
   const clone = structuredClone(currentStack);

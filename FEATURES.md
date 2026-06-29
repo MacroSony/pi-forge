@@ -1,6 +1,6 @@
 # pi-forge Implemented Features
 
-This file tracks the currently implemented feature surface for the prompt-stack runtime, typed prompt state, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
+This file tracks the currently implemented feature surface for the prompt-stack runtime, template variables, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
 
 ## Package and Runtime
 
@@ -19,7 +19,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
-- Branch-aware prompt state restore when navigating the session tree.
+- Branch-aware macro session variable restore when navigating the session tree.
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
 - Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
@@ -88,34 +88,19 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Static stack variables from `stack.variables`.
 - Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.
 - Turn variable mutation through `{{setvar::name::value}}`, `{{setturnvar::name::value}}`, and `{{clearvar::name}}`.
-- Session state mutation through `{{setsessionvar::name::value}}`, `{{setvar::session::name::value}}`, and `{{clearsessionvar::name}}`.
+- Session variable mutation through `{{setsessionvar::name::value}}`, `{{setvar::session::name::value}}`, and `{{clearsessionvar::name}}`.
 - Unknown macro diagnostics with configurable keep/warn/error policy.
-- Non-string prompt state values stringify as JSON during macro substitution.
+- Non-string variable values stringify as JSON during macro substitution.
 
-## Prompt State
+## Template Variables
 
-- JSON-compatible session state values: string, number, boolean, null, arrays, and objects.
-- Session state snapshots restore from the current session tree branch, so tree navigation rolls state back/forward with history.
-- Stack-level `state.definitions` with type, scope, description, default, and write-permission metadata.
-- Definition defaults render in the `variables` slot without initializing persisted session state.
-- Type validation for common TypeScript-like strings such as `string`, `number`, `boolean`, `object`, `array`, `string[]`, and unions.
-- Valid `<prompt_state>` rendering from the `variables` slot.
-- XML state entries rendered as `<var name="..." type="...">...</var>`.
-- Optional JSON-format prompt state rendering.
-- Scope filtering with `includeScopes`.
-- Namespace filtering with exact names and wildcard prefixes such as `agent.*`.
-- Optional metadata rendering from stack state definitions.
-- Metadata-enabled state slots show matching definitions as `unset` entries before values exist, so the agent can see writable state names and descriptions.
-- Per-value truncation with `maxValueChars`.
-- Default example stack includes visible `user.*` and `agent.*` session state.
-
-## Agent Tools
-
-- `forge_state_set` batch tool for agent-scoped persistent prompt state.
-- Agent writes restricted to `agent.*`.
-- Batch updates and clears are validated before persistence.
-- `forge_set_var` retained as a compatibility alias for one string value.
-- Tool guidance tells the agent to use state for concise cross-turn continuity and not for secrets or large transcripts.
+- Static string variables from `stack.variables`.
+- JSON-compatible session variable values: string, number, boolean, null, arrays, and objects.
+- Session variable snapshots restore from the current session tree branch, so tree navigation rolls macro variables back/forward with history.
+- Valid `<variables>` rendering from the `variables` slot.
+- XML variable entries rendered as `<var name="...">...</var>`.
+- Optional `format: "plain"` variables slot rendering.
+- Scope toggles with `includeStatic`, `includeSession`, and `includeTurn`.
 
 ## Commands
 
@@ -128,13 +113,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `/preset reload`
 - `/preset ui [stop|restart]`
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
-- `/preset vars [set <name> <value>|get <name>|clear [name]]`
 - `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
-- `/state list`
-- `/state status`
-- `/state set <name> <json-or-text-value>`
-- `/state get <name>`
-- `/state clear [name]`
 - `/intercept`
 - `/payload next [save=<path>]`
 
@@ -165,7 +144,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
-- Tests cover prompt state rendering, namespace filtering, metadata rendering, XML escaping, and typed macro stringification.
+- Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, role/message/char limits, and preservation of non-text message parts.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
@@ -178,13 +157,12 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Existing same-project editor servers are reclaimed after extension reinitialization from session navigation/new-session flows, so `/preset ui` reuses the current URL instead of opening a second port.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
-- Collapsible stack metadata panel and main-area tabs for Items, State, Regex, and Stack JSON/context work.
+- Collapsible stack metadata panel and main-area tabs for Items, Regex, Policy, and Stack JSON/context/variables work.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
 - Unsaved-change badge in the top bar.
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
 - Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
-- Edit stack `state.definitions`, including type, scope, description, defaults, and write permissions.
 - Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, pattern, flags, replacement, and runtime warnings.
 - Reorder items by drag-and-drop.
 - Add stack items through one add action, then choose block or slot in the item editor.
@@ -195,17 +173,15 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Edit slot kind, role, slot type, and common slot options through form controls.
 - Fall back to raw JSON editing for advanced slot options.
 - View, copy, and apply raw stack JSON as a recovery path for advanced stack-level fields.
-- Validate and inspect edited stack state before saving.
+- Validate and inspect edited stack JSON before saving.
 - Full-screen structured preview inspector with collapsible system/message sections, char/token estimates, and copy controls.
 - Arm and inspect the next provider payload from the web editor; captures triggered by `/payload next` are also available to the browser while the editor is open.
 - Provider payload inspector shows top-level JSON sections, redacted full text, char/token estimates, and copy controls.
-- View, set, and clear runtime session state from the web editor using the same validation and persistence path as `/state`.
-- Session state editor shows active stack definitions next to current runtime values.
-- Save existing stack JSON and immediately reload pi-forge stack state.
+- Save existing stack JSON and immediately reload pi-forge stack data.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/forge/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Show the SillyTavern import report in the web editor after import, with copy support.
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
-- Smoke tests cover editor server token checks, bundled page/script markers, save, runtime state set/clear, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.
+- Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.

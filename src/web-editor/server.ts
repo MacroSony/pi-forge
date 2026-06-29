@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from "node:net";
 
 import { convertSillyTavernPreset } from "../sillytavern-importer.ts";
-import type { PromptStack, PromptStateValue } from "../types.ts";
+import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
 import type { WebEditorHost, WebEditorOperationResult, WebEditorServer, WebEditorServerOptions } from "./types.ts";
 
@@ -145,27 +145,6 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 		return;
 	}
 
-	if (req.method === "GET" && parts[1] === "state" && parts.length === 2) {
-		sendOperation(res, host.getState());
-		return;
-	}
-
-	if ((req.method === "PUT" || req.method === "POST") && parts[1] === "state" && parts.length === 3) {
-		const body = await readJsonBody(req);
-		const parsed = readStatePayload(body);
-		if (!parsed.ok) {
-			sendJson(res, 400, { error: parsed.error });
-			return;
-		}
-		sendOperation(res, host.setState(parts[2]!, parsed.value));
-		return;
-	}
-
-	if (req.method === "DELETE" && parts[1] === "state" && (parts.length === 2 || parts.length === 3)) {
-		sendOperation(res, host.clearState(parts[2]));
-		return;
-	}
-
 	if (req.method === "GET" && parts[1] === "payload" && parts.length === 2) {
 		sendOperation(res, host.getPayload());
 		return;
@@ -248,12 +227,6 @@ function readStackPayload(body: unknown): { ok: true; stack: PromptStack; import
 	return { ok: true, stack: rawStack as unknown as PromptStack };
 }
 
-function readStatePayload(body: unknown): { ok: true; value: PromptStateValue } | { ok: false; error: string } {
-	const value = isPlainObject(body) && Object.prototype.hasOwnProperty.call(body, "value") ? body.value : body;
-	if (!isPromptStateValue(value)) return { ok: false, error: "State value must be JSON-compatible." };
-	return { ok: true, value };
-}
-
 function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
 	return Array.isArray(value.prompts) && !Array.isArray(value.items);
 }
@@ -313,14 +286,4 @@ function closeServer(server: Server, sockets: Set<Socket>): Promise<void> {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function isPromptStateValue(value: unknown): value is PromptStateValue {
-	if (value === null) return true;
-	const type = typeof value;
-	if (type === "string" || type === "boolean") return true;
-	if (type === "number") return Number.isFinite(value);
-	if (Array.isArray(value)) return value.every(isPromptStateValue);
-	if (!isPlainObject(value)) return false;
-	return Object.values(value).every(isPromptStateValue);
 }

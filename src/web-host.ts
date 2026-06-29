@@ -6,7 +6,7 @@ import {
 	promptStackPath,
 	validatePromptStack,
 } from "./loader.ts";
-import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic, PromptStateValue } from "./types.ts";
+import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type {
 	WebEditorCreateStackOptions,
 	WebEditorHost,
@@ -14,7 +14,6 @@ import type {
 	WebEditorPayloadSnapshot,
 	WebEditorPreview,
 	WebEditorStackSummary,
-	WebEditorStateSnapshot,
 } from "./web-editor/index.ts";
 
 export interface WebHostRuntime {
@@ -29,9 +28,6 @@ export interface WebHostRuntime {
 		preview: WebEditorPreview;
 		diagnostics: PromptStackDiagnostic[];
 	};
-	getState(): WebEditorOperationResult<WebEditorStateSnapshot>;
-	setState(name: string, value: PromptStateValue): WebEditorOperationResult<WebEditorStateSnapshot>;
-	clearState(name?: string): WebEditorOperationResult<WebEditorStateSnapshot>;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -56,9 +52,6 @@ export function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHo
 			const preview = runtime.buildPreview({ stack, filePath: target.filePath, diagnostics });
 			return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
 		},
-		getState: () => runtime.getState(),
-		setState: (name, value) => runtime.setState(name, value),
-		clearState: (name) => runtime.clearState(name),
 		getPayload: () => runtime.getPayload(),
 		armPayload: (savePath) => runtime.armPayload(savePath),
 		clearPayload: () => runtime.clearPayload(),
