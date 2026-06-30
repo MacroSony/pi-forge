@@ -30,6 +30,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - **Web editor: Structured editors** for stack `context` options, `variables`, tool/skill policy, and `regex.rules` with drag-and-drop reordering.
 - **Web editor: Raw JSON recovery path.** View, copy, and apply raw stack JSON for advanced stack-level fields.
 - **Compact prompt slot formats.** Opt-in `format: "plain"` for `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables` slots. XML remains the default.
+- **Chat-history thinking strip.** `chat-history` slots can opt into `stripAssistantThinking: true` to remove prior assistant thinking blocks from model-bound history while preserving visible text, tool calls, and tool results.
 - **Prompt-stack storage migration.** New stacks write to `.pi/forge/prompt-stacks/`; legacy `.pi/prompt-stacks/` remains readable and is shadowed by same-named forge files. `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into forge storage.
 - **SillyTavern regex import.** Safe `promptOnly` regex scripts are converted into pi-forge outgoing `compiled` regex rules during import. Display-only, mixed, JavaScript, DOM/browser, and CSS/HTML decoration scripts remain report-only with migration notes.
 - **`/preset ui` server reuse.** Existing same-project editor servers are reclaimed after extension reinitialization from session navigation or new-session flows, preventing orphaned servers.

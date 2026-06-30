@@ -1471,7 +1471,10 @@ function renderSlotOptionsEditor(item) {
 function renderSlotOptionsForm(item, options) {
   const fields = [];
   if (item.slot === "chat-history") {
-    fields.push(optionCheckbox("includeLastUserMessage", "Include last user message", options.includeLastUserMessage !== false));
+    fields.push(
+      optionCheckbox("includeLastUserMessage", "Include last user message", options.includeLastUserMessage !== false),
+      optionCheckbox("stripAssistantThinking", "Strip assistant thinking", options.stripAssistantThinking === true),
+    );
   }
   if (item.slot === "variables") {
     fields.push(
@@ -1547,6 +1550,7 @@ function setSlotOption(item, key, value, defaultValue) {
 
 function defaultSlotOptionValue(key) {
   if (["includeLastUserMessage", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
+  if (key === "stripAssistantThinking") return false;
   if (key === "format") return "xml";
   return undefined;
 }
@@ -1572,6 +1576,7 @@ function optionNumber(key, label, value) {
 function optionHelp(key) {
   const descriptions = {
     includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
+    stripAssistantThinking: "Remove prior assistant thinking blocks from inserted chat history while keeping visible text, tool calls, and tool results.",
     includeStatic: "Include static stack variables in this variables slot.",
     includeSession: "Include session variables created by template macros.",
     includeTurn: "Include temporary turn variables created during prompt compilation.",

@@ -129,7 +129,58 @@ test("compileMessages expands chat history at the configured slot", () => {
 	assert.equal(textOf(result.messages[1]), "first");
 	assert.equal(textOf(result.messages[2]), "reply");
 	assert.equal(textOf(result.messages[3]), "latest: latest request");
+	assert.deepEqual(result.messageSources.map((source) => source.kind), ["stack-item", "chat-history", "chat-history", "stack-item"]);
+	assert.deepEqual(result.messageSources.map((source) => source.itemId), ["pre", "history", "history", "post"]);
+	assert.deepEqual(result.messageSources.slice(1, 3).map((source) => source.historyIndex), [1, 2]);
 	assert.deepEqual(result.diagnostics, []);
+});
+
+test("chat-history can strip assistant thinking while preserving tool calls and results", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "strip-thinking",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { stripAssistantThinking: true } }],
+	};
+	const toolCall = { type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" }, thoughtSignature: "keep" };
+	const assistantMessage = assistant("visible") as unknown as { content: Array<Record<string, unknown>> };
+	assistantMessage.content = [
+		{ type: "thinking", thinking: "hidden", thinkingSignature: "sig" },
+		{ type: "text", text: "visible" },
+		toolCall,
+	];
+	const toolResult = {
+		role: "toolResult",
+		toolCallId: "call-1",
+		toolName: "read",
+		content: [{ type: "text", text: "file contents" }],
+		isError: false,
+		timestamp: Date.now(),
+	} as AgentMessage;
+
+	const result = compileMessages(stack, runtime(), [assistantMessage as unknown as AgentMessage, toolResult]);
+	const content = (result.messages[0] as unknown as { content: Array<Record<string, unknown>> }).content;
+
+	assert.deepEqual(content, [{ type: "text", text: "visible" }, toolCall]);
+	assert.equal(result.messages[1], toolResult);
+	assert.deepEqual(result.messageSources.map((source) => source.historyIndex), [1, 2]);
+	assert.ok(result.diagnostics.some((diagnostic) => /Stripped 1 assistant thinking block/.test(diagnostic.message)));
+});
+
+test("chat-history thinking strip drops assistant messages that become empty", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "strip-empty-thinking",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { stripAssistantThinking: true } }],
+	};
+	const thinkingOnly = assistant("visible") as unknown as { content: Array<Record<string, unknown>> };
+	thinkingOnly.content = [{ type: "thinking", thinking: "hidden" }];
+	const latest = user("continue");
+
+	const result = compileMessages(stack, runtime(), [thinkingOnly as unknown as AgentMessage, latest]);
+
+	assert.equal(result.messages.length, 1);
+	assert.equal(result.messages[0], latest);
+	assert.ok(result.diagnostics.some((diagnostic) => /dropped 1 empty assistant message/.test(diagnostic.message)));
 });
 
 test("history regex transforms only chat-history messages", () => {

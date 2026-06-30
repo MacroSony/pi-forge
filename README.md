@@ -310,11 +310,14 @@ Valid roles: `system`, `user`, `assistant`, `custom`.
 
 ```json
 "options": {
-  "includeLastUserMessage": false
+  "includeLastUserMessage": false,
+  "stripAssistantThinking": true
 }
 ```
 
 Set to `false` when you use `{{lastUserMessage}}` after the history — prevents the user's message from appearing twice.
+
+Set `stripAssistantThinking` to `true` to remove prior assistant thinking blocks from inserted chat history. Visible assistant text, tool calls, and tool result messages are preserved. This only affects history inserted by that slot and does not alter the current agent loop or stored transcript.
 
 ### Structured slot format options
 

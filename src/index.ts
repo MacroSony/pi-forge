@@ -8,7 +8,6 @@ import {
 	agentMessageToPreviewText,
 	getLatestUserMessage,
 	markSessionVariablesClean,
-	renderPreviewMessages,
 	resetTurnVariables,
 } from "./compiler.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks, promptStackPath, promptStackReadDirs } from "./loader.ts";
@@ -17,7 +16,7 @@ import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
-import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableValue, PromptVariableStore } from "./types.ts";
+import type { CompileMessageSource, LoadedPromptStack, PromptStackDiagnostic, PromptVariableValue, PromptVariableStore } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
 import { startWebEditorServer, type WebEditorPayloadCapture, type WebEditorPayloadSnapshot, type WebEditorPreview, type WebEditorPreviewSection, type WebEditorServer } from "./web-editor/index.ts";
 
@@ -800,7 +799,8 @@ export default function piForge(pi: ExtensionAPI) {
 		const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
 		const messageSections = messages.messages.map((message, index) => {
 			const content = agentMessageToPreviewText(message);
-			return previewSection(`message-${index}`, `${index + 1}. ${message.role}`, content, message.role);
+			const source = messages.messageSources[index];
+			return previewSection(`message-${index}`, previewMessageTitle(source, index), content, message.role);
 		});
 		const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)");
 		const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);
@@ -822,7 +822,7 @@ export default function piForge(pi: ExtensionAPI) {
 			"",
 			"## Message layout",
 			"",
-			renderPreviewMessages(messages.messages),
+			renderPreviewSectionText(messageSections),
 			"",
 			"## Diagnostics",
 			"",
@@ -830,6 +830,32 @@ export default function piForge(pi: ExtensionAPI) {
 		].join("\n");
 
 		return { text, preview, diagnostics };
+	}
+
+	function previewMessageTitle(source: CompileMessageSource | undefined, index: number): string {
+		if (source?.kind === "stack-item") {
+			return source.itemName?.trim() || source.itemId || `Stack item ${index + 1}`;
+		}
+		if (source?.kind === "chat-history") {
+			const label = source.itemName?.trim() || "Chat history";
+			return `${label} #${source.historyIndex ?? index + 1}`;
+		}
+		if (source?.kind === "implicit-history") {
+			return `Conversation history #${source.historyIndex ?? index + 1}`;
+		}
+		return `Message ${index + 1}`;
+	}
+
+	function renderPreviewSectionText(sections: WebEditorPreviewSection[], maxChars = 8000): string {
+		let text = "";
+		for (const section of sections) {
+			const role = section.role ? ` (${section.role})` : "";
+			text += `\n--- ${section.title}${role} ---\n`;
+			text += section.content;
+			text += "\n";
+			if (text.length > maxChars) return `${text.slice(0, maxChars)}\n\n[preview truncated]`;
+		}
+		return text.trimStart();
 	}
 
 	function previewSection(id: string, title: string, content: string, role?: string): WebEditorPreviewSection {

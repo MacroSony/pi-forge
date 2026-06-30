@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
+	CompileMessageSource,
 	CompileMessagesResult,
 	CompileSystemPromptResult,
 	PromptRuntime,
@@ -92,6 +93,7 @@ export function compileMessages(
 ): CompileMessagesResult {
 	const diagnostics: PromptStackDiagnostic[] = [];
 	let messages: AgentMessage[] = [];
+	let messageSources: CompileMessageSource[] = [];
 	let insertedHistory = false;
 
 	for (const item of enabledItems(stack)) {
@@ -104,7 +106,10 @@ export function compileMessages(
 				});
 				continue;
 			}
-			messages.push(...applyRegexRulesToMessages(stack, getChatHistoryMessages(originalMessages, item), "history", diagnostics));
+			const historyMessages = getChatHistoryMessages(originalMessages, item, diagnostics);
+			const transformedHistory = applyRegexRulesToMessages(stack, historyMessages, "history", diagnostics);
+			messages.push(...transformedHistory);
+			messageSources.push(...chatHistoryMessageSources(transformedHistory, item));
 			insertedHistory = true;
 			continue;
 		}
@@ -116,15 +121,18 @@ export function compileMessages(
 			: renderSlotText(item, stack, runtime, diagnostics);
 
 		if (!content.trim()) continue;
-		messages.push(createSyntheticMessage(item.role, content, stack, runtime));
+		const message = createSyntheticMessage(item.role, content, stack, runtime);
+		messages.push(message);
+		messageSources.push(stackItemMessageSource(message, item));
 	}
 
 	if (!insertedHistory) {
 		messages.push(...originalMessages);
+		messageSources.push(...implicitHistoryMessageSources(originalMessages));
 	}
 
 	messages = applyRegexRulesToMessages(stack, messages, "compiled", diagnostics);
-	return { messages, diagnostics };
+	return { messages, messageSources, diagnostics };
 }
 
 export function getLatestUserMessage(messages: AgentMessage[]): string | undefined {
@@ -163,13 +171,23 @@ export function agentMessageToPreviewText(message: AgentMessage): string {
 	return text;
 }
 
-function getChatHistoryMessages(messages: AgentMessage[], item: PromptStackSlotItem): AgentMessage[] {
-	if (item.options?.includeLastUserMessage !== false) return messages;
+function getChatHistoryMessages(
+	messages: AgentMessage[],
+	item: PromptStackSlotItem,
+	diagnostics: PromptStackDiagnostic[],
+): AgentMessage[] {
+	let result = messages;
 
-	const lastUserIndex = findLastUserMessageIndex(messages);
-	if (lastUserIndex === -1) return messages;
+	if (item.options?.includeLastUserMessage === false) {
+		const lastUserIndex = findLastUserMessageIndex(result);
+		if (lastUserIndex !== -1) result = result.filter((_message, index) => index !== lastUserIndex);
+	}
 
-	return messages.filter((_message, index) => index !== lastUserIndex);
+	if (item.options?.stripAssistantThinking === true) {
+		result = stripAssistantThinkingFromHistory(result, diagnostics, item.id);
+	}
+
+	return result;
 }
 
 function findLastUserMessageIndex(messages: AgentMessage[]): number {
@@ -177,6 +195,90 @@ function findLastUserMessageIndex(messages: AgentMessage[]): number {
 		if (messages[i].role === "user") return i;
 	}
 	return -1;
+}
+
+function chatHistoryMessageSources(messages: AgentMessage[], item: PromptStackSlotItem): CompileMessageSource[] {
+	return messages.map((message, index) => ({
+		kind: "chat-history",
+		itemId: item.id,
+		itemName: item.name,
+		slot: item.slot,
+		historyIndex: index + 1,
+		historyCount: messages.length,
+		role: String((message as { role?: unknown }).role ?? ""),
+	}));
+}
+
+function implicitHistoryMessageSources(messages: AgentMessage[]): CompileMessageSource[] {
+	return messages.map((message, index) => ({
+		kind: "implicit-history",
+		itemName: "Conversation history",
+		slot: "chat-history",
+		historyIndex: index + 1,
+		historyCount: messages.length,
+		role: String((message as { role?: unknown }).role ?? ""),
+	}));
+}
+
+function stackItemMessageSource(message: AgentMessage, item: PromptStackItem): CompileMessageSource {
+	return {
+		kind: "stack-item",
+		itemId: item.id,
+		itemName: item.name,
+		role: String((message as { role?: unknown }).role ?? ""),
+	};
+}
+
+function stripAssistantThinkingFromHistory(
+	messages: AgentMessage[],
+	diagnostics: PromptStackDiagnostic[],
+	itemId: string,
+): AgentMessage[] {
+	let strippedBlocks = 0;
+	let changedMessages = 0;
+	let droppedMessages = 0;
+	let changed = false;
+	const result: AgentMessage[] = [];
+
+	for (const message of messages) {
+		const stripped = stripAssistantThinkingFromMessage(message);
+		if (stripped.message !== message) {
+			changed = true;
+			strippedBlocks += stripped.removedBlocks;
+			changedMessages++;
+		}
+		if (!stripped.message) {
+			droppedMessages++;
+			continue;
+		}
+		result.push(stripped.message);
+	}
+
+	if (!changed) return messages;
+
+	diagnostics.push({
+		level: "info",
+		message: `Stripped ${strippedBlocks} assistant thinking block(s) from ${changedMessages} chat-history message(s)` +
+			(droppedMessages > 0 ? ` and dropped ${droppedMessages} empty assistant message(s).` : "."),
+		itemId,
+	});
+	return result;
+}
+
+function stripAssistantThinkingFromMessage(message: AgentMessage): { message?: AgentMessage; removedBlocks: number } {
+	if (message.role !== "assistant") return { message, removedBlocks: 0 };
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return { message, removedBlocks: 0 };
+
+	const nextContent = content.filter((part) => !isThinkingContent(part));
+	const removedBlocks = content.length - nextContent.length;
+	if (removedBlocks === 0) return { message, removedBlocks: 0 };
+	if (nextContent.length === 0) return { removedBlocks };
+	return { message: { ...message, content: nextContent } as AgentMessage, removedBlocks };
+}
+
+function isThinkingContent(value: unknown): boolean {
+	return !!value && typeof value === "object" && !Array.isArray(value) && (value as { type?: unknown }).type === "thinking";
 }
 
 function enabledItems(stack: PromptStack): PromptStackItem[] {

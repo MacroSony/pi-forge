@@ -505,6 +505,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const pageHtml = await pageResponse.text();
 		assert.match(pageHtml, /sidebarToggleBtn/);
 		assert.match(pageHtml, /slotOptionsFormBtn/);
+		assert.match(pageHtml, /stripAssistantThinking/);
 		assert.match(pageHtml, /forkBtn/);
 		assert.match(pageHtml, /importBtn/);
 		assert.match(pageHtml, /exportBtn/);
@@ -611,14 +612,17 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(previewResponse.status, 200);
 		const previewResult = await previewResponse.json() as {
 			text: string;
-			preview?: { system: { content: string }; messages: Array<{ role: string; content: string; chars: number }> };
+			preview?: { system: { title: string; content: string }; messages: Array<{ title: string; role: string; content: string; chars: number }> };
 		};
 		assert.ok(previewResult.preview);
+		assert.equal(previewResult.preview?.system.title, "System prompt");
 		assert.match(previewResult.preview?.system.content ?? "", /base system/);
 		const longMessage = previewResult.preview?.messages.find((message) => message.content.includes("After history"));
 		assert.ok(longMessage);
+		assert.equal(longMessage?.title, "after");
 		assert.equal(longMessage?.content.length, longPreviewContent.length);
 		assert.ok((longMessage?.chars ?? 0) > 9000);
+		assert.match(previewResult.text, /--- after \(user\) ---/);
 		assert.match(previewResult.text, /preview truncated/);
 
 		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });

@@ -9,6 +9,7 @@ Implemented and working:
 - `default.json` auto-activation unless `autoActivate` is `false`, with persisted `/preset use none` opt-out.
 - Prompt stack system prompt replacement.
 - Movable `chat-history` slot.
+- Opt-in `stripAssistantThinking` on `chat-history` slots to remove prior assistant thinking blocks while preserving visible text, tool calls, and tool results.
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
 - Basic macro expansion and turn/session/static template variables.
@@ -271,7 +272,8 @@ Current option:
 
 ```json
 "options": {
-  "includeLastUserMessage": false
+  "includeLastUserMessage": false,
+  "stripAssistantThinking": true
 }
 ```
 
@@ -280,6 +282,7 @@ Next options:
 ```json
 "options": {
   "includeLastUserMessage": false,
+  "stripAssistantThinking": true,
   "includeToolResults": true,
   "includeToolCalls": true,
   "includeSyntheticMessages": false,

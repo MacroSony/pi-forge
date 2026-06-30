@@ -89,6 +89,8 @@ export interface VariablesSlotOptions {
 export interface PromptStackSlotOptions {
 	/** For chat-history: include the latest user message in the expanded history. Default: true. */
 	includeLastUserMessage?: boolean;
+	/** For chat-history: remove assistant thinking content blocks from inserted history. Default: false. */
+	stripAssistantThinking?: boolean;
 	/** For variables: control which variable scopes are included. */
 	includeStatic?: boolean;
 	includeSession?: boolean;
@@ -160,8 +162,21 @@ export interface CompileSystemPromptResult {
 	diagnostics: PromptStackDiagnostic[];
 }
 
+export type CompileMessageSourceKind = "stack-item" | "chat-history" | "implicit-history";
+
+export interface CompileMessageSource {
+	kind: CompileMessageSourceKind;
+	itemId?: string;
+	itemName?: string;
+	slot?: string;
+	historyIndex?: number;
+	historyCount?: number;
+	role?: string;
+}
+
 export interface CompileMessagesResult {
 	messages: AgentMessage[];
+	messageSources: CompileMessageSource[];
 	diagnostics: PromptStackDiagnostic[];
 }
 

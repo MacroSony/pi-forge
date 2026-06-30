@@ -32,6 +32,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Enabled item ordering preserved during compilation.
 - Movable `chat-history` slot in message layout.
 - Optional omission of latest user message from chat history.
+- Optional stripping of prior assistant thinking blocks from inserted chat history while preserving visible text, tool calls, and tool results.
 - Duplicate chat-history warning unless explicitly allowed.
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
