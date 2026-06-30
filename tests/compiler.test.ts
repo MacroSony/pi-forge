@@ -496,6 +496,48 @@ test("structured slots render compact plain format", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("Pi-style slots mirror default prompt sections", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "pi-style",
+		items: [
+			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools", options: { format: "plain", onlyWithSnippets: true } },
+			{
+				kind: "slot",
+				id: "guidelines",
+				enabled: true,
+				role: "system",
+				slot: "tool-guidelines",
+				options: {
+					format: "plain",
+					heading: "Guidelines:",
+					includePiDefaultGuidelines: true,
+					piStyle: true,
+				},
+			},
+			{ kind: "slot", id: "pi-docs", enabled: true, role: "system", slot: "pi-docs" },
+			{ kind: "slot", id: "skills", enabled: true, role: "system", slot: "skills", options: { requireReadTool: true } },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	};
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			...runtime().options,
+			selectedTools: ["bash", "custom"],
+			toolSnippets: { bash: "Run shell commands." },
+			promptGuidelines: ["Use bash deliberately."],
+			skills: [testSkill("review", "Review code.", "/skills/review/SKILL.md")],
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /Available tools:\n- bash: Run shell commands\./);
+	assert.doesNotMatch(result.systemPrompt, /- custom:/);
+	assert.match(result.systemPrompt, /Guidelines:\n- Use bash for file operations like ls, rg, find\n- Use bash deliberately\.\n- Be concise in your responses\n- Show file paths clearly when working with files/);
+	assert.match(result.systemPrompt, /Pi documentation \(read only when the user asks about pi itself/);
+	assert.doesNotMatch(result.systemPrompt, /Review code/);
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("tool policy filters rendered tools and tool macros", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,

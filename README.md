@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+![pi-forge header](assets/pi-forge-header-concept-1.png)
+
 **pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, template variables, and prompt transforms.
 
 Think of it as a character sheet for your AI agent.
@@ -27,42 +29,16 @@ pi install npm:@zihanw/pi-forge
 
 ### Your first prompt stack
 
-Create `.pi/forge/prompt-stacks/default.json`:
+Create `.pi/forge/prompt-stacks/default.json` from [examples/default-prompt-stack.json](examples/default-prompt-stack.json).
 
-```json
-{
-  "schemaVersion": 1,
-  "type": "pi-forge.prompt-stack",
-  "id": "default",
-  "autoActivate": true,
-  "mode": "replace",
-  "items": [
-    {
-      "kind": "block",
-      "id": "role",
-      "name": "Main Role",
-      "enabled": true,
-      "role": "system",
-      "content": "You are a friendly and concise coding assistant. Prefer short answers with code examples."
-    },
-    {
-      "kind": "slot",
-      "id": "tools",
-      "name": "Available Tools",
-      "enabled": true,
-      "role": "system",
-      "slot": "tools"
-    },
-    {
-      "kind": "slot",
-      "id": "chat-history",
-      "name": "Chat History",
-      "enabled": true,
-      "slot": "chat-history"
-    }
-  ]
-}
+The default example mirrors Pi's own prompt builder from `@earendil-works/pi-coding-agent/dist/core/system-prompt.js`, but splits it into movable pi-forge slots: role, tools, guidelines, Pi docs guidance, appended system prompt text, project context, skills, date/cwd, and chat history.
+
+```bash
+mkdir -p .pi/forge/prompt-stacks
+$EDITOR .pi/forge/prompt-stacks/default.json
 ```
+
+Paste the example JSON into that file. If you are working inside this repository, you can copy it directly with `cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json`.
 
 That's it. Restart Pi or run `/preset reload`. If no stack is already selected, `default.json` auto-activates. If you previously chose another stack or `/preset use none`, run `/preset use default`.
 
@@ -106,7 +82,7 @@ Useful pattern:
 
 This keeps the latest request clear and avoids duplicating it.
 
-For a copyable starter stack, see [examples/default-prompt-stack.json](examples/default-prompt-stack.json).
+For a baseline stack to fork before turning Pi into a character, start from [examples/default-prompt-stack.json](examples/default-prompt-stack.json).
 
 ### 🧑‍💻 Focused code review
 
@@ -130,6 +106,16 @@ Create separate stacks for different tasks:
 ```
 
 Switch with `/preset use coder`, `/preset use writer`, etc.
+
+### 🧪 Presets that show off pi-forge
+
+- **Pi mirror** — start from [examples/default-prompt-stack.json](examples/default-prompt-stack.json). It preserves normal Pi behavior while making every runtime section movable and inspectable.
+- **Focused reviewer** — see [examples/reviewer-prompt-stack.json](examples/reviewer-prompt-stack.json). It denies file-writing tools, wraps prior chat history as background, removes the latest user message from history, then reinserts `{{lastUserMessage}}` as the explicit review target.
+- **Read-only scout** — use `tools.allow` for `read`, `grep`, `find`, and `ls`; omit editing tools; cap `chat-history` with `maxChars`. Good for exploration turns where the model should report findings without changing files.
+- **Surgical patcher** — keep the Pi mirror, require `read`, `edit`, and `bash`, strip assistant thinking from inserted history, and move `project-context` near the final user turn. Good for focused implementation passes.
+- **SillyTavern DM writer** — see [examples/sillytavern-dm-writer-prompt-stack.json](examples/sillytavern-dm-writer-prompt-stack.json). It defines a Dungeon Master character with `{{char}}` / `{{user}}`, wraps prior adventure history, reinserts `{{lastUserMessage}}` as the current player action, and uses regex cleanup for OOC notes, secret-roll markers, dice notation, and `Player:` prefixes.
+- **Payload lab** — include `active-model`, `date-cwd`, and variables slots, then add `compiled` regex rules for deterministic redaction or formatting. Pair it with `/payload next` or the web editor's capture view to audit exactly what changed.
+- **Docs-only Pi expert** — allow only read/search tools, enable the `pi-docs` slot, and keep project context. Useful when you want answers grounded in the installed Pi docs instead of general memory.
 
 ### 🔧 Template variables
 
@@ -342,6 +328,20 @@ Structured runtime slots default to XML-style wrappers. Add `"format": "plain"` 
   }
 }
 ```
+
+The default Pi mirror uses a few extra slot options:
+
+```json
+{
+  "slot": "tools",
+  "options": {
+    "format": "plain",
+    "onlyWithSnippets": true
+  }
+}
+```
+
+`tools.onlyWithSnippets` matches Pi's default "Available tools" section by hiding tools that do not provide prompt snippets. `tool-guidelines.heading`, `tool-guidelines.includePiDefaultGuidelines`, and `tool-guidelines.piStyle` make the guidelines slot match Pi's default heading and bullets. `skills.requireReadTool` hides skills unless the read tool is active, matching Pi's default behavior.
 
 ### Tool and skill policy
 

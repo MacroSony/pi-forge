@@ -1,4 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	CompileMessageSource,
 	CompileMessagesResult,
@@ -572,13 +574,15 @@ function renderSlotText(
 }
 
 function renderTools(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
-	const tools = scopedToolNames(stack, runtime);
 	const snippets = runtime.options.toolSnippets ?? {};
+	const tools = item.options?.onlyWithSnippets === true
+		? scopedToolNames(stack, runtime).filter((name) => !!snippets[name])
+		: scopedToolNames(stack, runtime);
 
 	if (slotTextFormat(item) === "plain") {
 		const lines = ["Available tools:"];
 		if (tools.length === 0) {
-			lines.push("- (none)");
+			lines.push(item.options?.onlyWithSnippets === true ? "(none)" : "- (none)");
 		} else {
 			for (const name of tools) {
 				lines.push(plainBullet(name, snippets[name] ?? "No prompt snippet provided."));
@@ -614,17 +618,28 @@ function renderToolGuidelines(item: PromptStackSlotItem, stack: PromptStack, run
 	};
 
 	if (tools.includes("bash") && !tools.includes("grep") && !tools.includes("find") && !tools.includes("ls")) {
-		add("Use bash for file operations like ls, rg, find.");
+		add(item.options?.piStyle === true ? "Use bash for file operations like ls, rg, find" : "Use bash for file operations like ls, rg, find.");
 	}
 
 	for (const guideline of runtime.options.promptGuidelines ?? []) add(guideline);
+	if (item.options?.includePiDefaultGuidelines === true) {
+		add("Be concise in your responses");
+		add("Show file paths clearly when working with files");
+	}
 
 	if (guidelines.length === 0) return "";
-	if (slotTextFormat(item) === "plain") return ["Tool guidelines:", ...guidelines.map((line) => `- ${plainContinuation(line, "  ")}`)].join("\n");
+	if (slotTextFormat(item) === "plain") {
+		const heading = typeof item.options?.heading === "string" ? item.options.heading.trim() : "Tool guidelines:";
+		return [
+			...(heading ? [heading] : []),
+			...guidelines.map((line) => `- ${plainContinuation(line, "  ")}`),
+		].join("\n");
+	}
 	return ["<tool_guidelines>", ...guidelines.map((line) => `- ${line}`), "</tool_guidelines>"].join("\n");
 }
 
 function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
+	if (item.options?.requireReadTool === true && !scopedToolNames(stack, runtime).includes("read")) return "";
 	const skills = (runtime.options.skills ?? [])
 		.filter((skill) => !skill.disableModelInvocation)
 		.filter((skill) => applyResourcePolicy([skill.name], stack.skills).length > 0);
@@ -694,11 +709,39 @@ function slotTextFormat(item: PromptStackSlotItem, options: { allowJson?: boolea
 }
 
 function renderPiDocsGuidance(): string {
+	const paths = piDocsPaths();
 	return [
-		"Pi documentation guidance:",
-		"- Read Pi documentation only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI.",
-		"- Resolve docs/... against Pi's installed documentation directory and examples/... against Pi's installed examples directory.",
+		"Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):",
+		`- Main documentation: ${paths.readme}`,
+		`- Additional docs: ${paths.docs}`,
+		`- Examples: ${paths.examples} (extensions, custom tools, SDK)`,
+		"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
+		"- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)",
+		"- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing",
+		"- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)",
 	].join("\n");
+}
+
+function piDocsPaths(): { readme: string; docs: string; examples: string } {
+	const fallbackRoot = "@earendil-works/pi-coding-agent";
+	try {
+		const resolve = (import.meta as unknown as { resolve?: (specifier: string) => string }).resolve;
+		if (!resolve) throw new Error("import.meta.resolve unavailable");
+		const resolved = resolve("@earendil-works/pi-coding-agent");
+		if (!resolved.startsWith("file:")) throw new Error("non-file package resolution");
+		const packageRoot = dirname(dirname(fileURLToPath(resolved)));
+		return {
+			readme: join(packageRoot, "README.md"),
+			docs: join(packageRoot, "docs"),
+			examples: join(packageRoot, "examples"),
+		};
+	} catch {
+		return {
+			readme: `${fallbackRoot}/README.md`,
+			docs: `${fallbackRoot}/docs`,
+			examples: `${fallbackRoot}/examples`,
+		};
+	}
 }
 
 function renderVariables(

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "type": "pi-forge.prompt-stack",
   "id": "default",
-  "name": "Default pi-forge Prompt Stack",
-  "description": "A starter stack that replaces Pi's default system prompt while keeping tools, skills, project context, and chat history as movable slots.",
+  "name": "Default Pi Prompt Mirror",
+  "description": "Recreates Pi's built-in prompt layout with pi-forge slots, exposing tools, guidelines, docs, append-system-prompt, project context, skills, date/cwd, and chat history as movable pieces.",
   "autoActivate": true,
   "mode": "replace",
   "defaults": {
@@ -19,18 +19,18 @@
   "skills": {
     "allow": ["*"]
   },
-  "variables": {
-    "user": "User",
-    "char": "Assistant"
-  },
   "items": [
     {
       "kind": "block",
       "id": "main-role",
-      "name": "Main Role",
+      "name": "Pi Default Role",
       "enabled": true,
       "role": "system",
-      "content": "You are an expert coding assistant operating inside pi-forge, a prompt-stack controlled Pi extension. Help the user by reading files, executing commands, editing code, and writing new files. Follow the active prompt stack layout exactly."
+      "source": {
+        "package": "@earendil-works/pi-coding-agent",
+        "file": "dist/core/system-prompt.js"
+      },
+      "content": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files."
     },
     {
       "kind": "slot",
@@ -38,15 +38,49 @@
       "name": "Available Tools",
       "enabled": true,
       "role": "system",
-      "slot": "tools"
+      "slot": "tools",
+      "options": {
+        "format": "plain",
+        "onlyWithSnippets": true
+      }
+    },
+    {
+      "kind": "block",
+      "id": "custom-tools-note",
+      "name": "Custom Tools Note",
+      "enabled": true,
+      "role": "system",
+      "content": "In addition to the tools above, you may have access to other custom tools depending on the project."
     },
     {
       "kind": "slot",
       "id": "tool-guidelines",
-      "name": "Tool Guidelines",
+      "name": "Guidelines",
       "enabled": true,
       "role": "system",
-      "slot": "tool-guidelines"
+      "slot": "tool-guidelines",
+      "options": {
+        "format": "plain",
+        "heading": "Guidelines:",
+        "includePiDefaultGuidelines": true,
+        "piStyle": true
+      }
+    },
+    {
+      "kind": "slot",
+      "id": "pi-docs",
+      "name": "Pi Documentation Guidance",
+      "enabled": true,
+      "role": "system",
+      "slot": "pi-docs"
+    },
+    {
+      "kind": "slot",
+      "id": "append-system-prompt",
+      "name": "User Append System Prompt",
+      "enabled": true,
+      "role": "system",
+      "slot": "append-system-prompt"
     },
     {
       "kind": "slot",
@@ -62,7 +96,10 @@
       "name": "Available Skills",
       "enabled": true,
       "role": "system",
-      "slot": "skills"
+      "slot": "skills",
+      "options": {
+        "requireReadTool": true
+      }
     },
     {
       "kind": "slot",
@@ -74,63 +111,10 @@
     },
     {
       "kind": "slot",
-      "id": "variables",
-      "name": "Template Variables",
-      "enabled": true,
-      "role": "user",
-      "slot": "variables",
-      "options": {
-        "includeStatic": true,
-        "includeSession": true,
-        "includeTurn": false
-      }
-    },
-    {
-      "kind": "block",
-      "id": "history-open",
-      "name": "Open Conversation Context Wrapper",
-      "enabled": true,
-      "role": "user",
-      "content": "<conversation_context>\nThe following is the current Pi conversation context. Treat it as authoritative conversation state, including user requests, assistant replies, tool calls, and tool results."
-    },
-    {
-      "kind": "slot",
       "id": "chat-history",
       "name": "Chat History",
       "enabled": true,
       "slot": "chat-history"
-    },
-    {
-      "kind": "block",
-      "id": "history-close",
-      "name": "Close Conversation Context Wrapper",
-      "enabled": true,
-      "role": "user",
-      "content": "</conversation_context>"
-    },
-    {
-      "kind": "block",
-      "id": "post-history-focus",
-      "name": "Post-History Focus Instruction",
-      "enabled": true,
-      "role": "user",
-      "content": "<current_turn_instructions>\nFocus on the latest user request. Use the wrapped conversation context only as context; do not repeat it. If tools are needed, use the available Pi tools according to their schemas.\n</current_turn_instructions>"
-    },
-    {
-      "kind": "slot",
-      "id": "append-system-prompt",
-      "name": "User Append System Prompt",
-      "enabled": true,
-      "role": "user",
-      "slot": "append-system-prompt"
-    },
-    {
-      "kind": "slot",
-      "id": "pi-docs",
-      "name": "Pi Docs Guidance",
-      "enabled": false,
-      "role": "system",
-      "slot": "pi-docs"
     }
   ]
 }

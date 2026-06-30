@@ -44,6 +44,7 @@
   "files": [
     "src/",
     "examples/",
+    "assets/",
     "README.md",
     "README.zh-CN.md",
     "LICENSE*"

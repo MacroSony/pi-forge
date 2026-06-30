@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.prompt-stack",
+  "id": "reviewer",
+  "name": "Focused Code Reviewer",
+  "description": "A review-focused stack that wraps prior chat history as background and treats the latest user message as the explicit review target.",
+  "autoActivate": false,
+  "mode": "replace",
+  "defaults": {
+    "syntheticMessagesVisible": false,
+    "unresolvedMacroPolicy": "warn"
+  },
+  "context": {
+    "allowDuplicateChatHistory": false
+  },
+  "tools": {
+    "deny": ["edit", "write"]
+  },
+  "variables": {
+    "review_focus": "correctness, regressions, security, maintainability, and missing tests",
+    "review_style": "findings first, ordered by severity",
+    "max_findings": "8"
+  },
+  "items": [
+    {
+      "kind": "block",
+      "id": "reviewer-role",
+      "name": "Reviewer Role",
+      "enabled": true,
+      "role": "system",
+      "content": "You are a senior code reviewer operating inside pi. Review the user's target with a skeptical engineering lens. Prioritize {{review_focus}}.\n\nRules:\n- Do not edit files or write patches unless the user explicitly asks for implementation.\n- You may inspect files and run safe read-only commands when needed.\n- Treat previous conversation as context, not as the target unless the latest user message says so.\n- Prefer concrete file/line references when available.\n- If there are no substantive issues, say that clearly and mention residual risks or test gaps."
+    },
+    {
+      "kind": "slot",
+      "id": "tools",
+      "name": "Available Tools",
+      "enabled": true,
+      "role": "system",
+      "slot": "tools",
+      "options": {
+        "format": "plain",
+        "onlyWithSnippets": true
+      }
+    },
+    {
+      "kind": "slot",
+      "id": "project-context",
+      "name": "Project Context",
+      "enabled": true,
+      "role": "system",
+      "slot": "project-context"
+    },
+    {
+      "kind": "slot",
+      "id": "date-cwd",
+      "name": "Date and Working Directory",
+      "enabled": true,
+      "role": "system",
+      "slot": "date-cwd"
+    },
+    {
+      "kind": "slot",
+      "id": "variables",
+      "name": "Review Variables",
+      "enabled": true,
+      "role": "system",
+      "slot": "variables",
+      "options": {
+        "includeStatic": true,
+        "includeSession": true,
+        "includeTurn": false,
+        "format": "plain"
+      }
+    },
+    {
+      "kind": "block",
+      "id": "history-open",
+      "name": "Open Review Context",
+      "enabled": true,
+      "role": "user",
+      "content": "<review_context>\nThe following is prior conversation history. Use it to understand decisions, constraints, tool results, and already-discussed code. It is background only; the current review target appears after this block."
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History Without Latest User Message",
+      "enabled": true,
+      "slot": "chat-history",
+      "options": {
+        "includeLastUserMessage": false,
+        "stripAssistantThinking": true,
+        "includeSummaries": true,
+        "toolMode": "keep",
+        "maxMessages": 50,
+        "maxChars": 40000
+      }
+    },
+    {
+      "kind": "block",
+      "id": "history-close",
+      "name": "Close Review Context",
+      "enabled": true,
+      "role": "user",
+      "content": "</review_context>"
+    },
+    {
+      "kind": "block",
+      "id": "review-target",
+      "name": "Current Review Target",
+      "enabled": true,
+      "role": "user",
+      "content": "<review_target>\n{{lastUserMessage}}\n</review_target>\n\nReview this target now. Lead with findings, ordered by severity. Limit yourself to the most important {{max_findings}} findings unless the target asks for exhaustive review. Use this format:\n\nFindings:\n- [severity] file:line - issue, impact, and suggested fix.\n\nOpen questions:\n- List only questions that materially affect the review.\n\nIf no findings are present, write \"No blocking findings\" and then summarize remaining test or operational risk."
+    }
+  ]
+}

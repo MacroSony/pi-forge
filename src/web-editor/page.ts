@@ -2217,10 +2217,7 @@ function regexRuleWarning(rule) {
     return 'Warning: both is ignored at runtime; create separate outgoing and finalize rules instead.';
   }
   if (typeof rule.replace === "string" && /\{\{\s*match\s*\}\}/i.test(rule.replace)) {
-    return 'Warning: {{match}} is SillyTavern syntax. Use $& for the full match in pi-forge rules.';
-  }
-  if (typeof rule.replace === "string" && /\$0(?!\d)/.test(rule.replace)) {
-    return 'Warning: $0 is literal in JavaScript replacements. Use $& for the full match.';
+    return 'Warning: {{match}} is SillyTavern syntax. Use $& or $0 for the full match in pi-forge rules.';
   }
   return "";
 }

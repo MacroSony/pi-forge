@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.prompt-stack",
+  "id": "dm-writer",
+  "name": "SillyTavern DM Writer",
+  "description": "A SillyTavern-style Dungeon Master character stack that uses variables, wrapped chat history, latest-message reinsertion, and regex cleanup for tabletop roleplay.",
+  "autoActivate": false,
+  "mode": "replace",
+  "defaults": {
+    "syntheticMessagesVisible": false,
+    "unresolvedMacroPolicy": "warn"
+  },
+  "context": {
+    "allowDuplicateChatHistory": false
+  },
+  "tools": {
+    "deny": ["bash", "edit", "write"]
+  },
+  "variables": {
+    "user": "Player",
+    "char": "The Ember Table DM",
+    "campaign": "The Ashen Gate",
+    "genre": "high fantasy dungeon crawl",
+    "tone": "cinematic, witty, dangerous but fair",
+    "rating": "PG-13",
+    "ruleset": "D&D 5e-inspired, rules-light when needed",
+    "party_level": "3",
+    "starting_location": "Greyfen Road"
+  },
+  "regex": {
+    "schemaVersion": 1,
+    "rules": [
+      {
+        "id": "strip-ooc-history",
+        "name": "Strip OOC Notes From Prior DM Replies",
+        "enabled": true,
+        "stage": "history",
+        "effect": "outgoing",
+        "pattern": "\\s*(?:\\(\\s*OOC\\s*:[^)]+\\)|\\[\\s*OOC\\s*:[^\\]]+\\])",
+        "flags": "gi",
+        "replace": "",
+        "roles": ["assistant"],
+        "maxMessages": 40,
+        "source": {
+          "style": "sillytavern",
+          "placement": "assistant-history"
+        }
+      },
+      {
+        "id": "strip-secret-roll-history",
+        "name": "Hide Prior Secret Roll Markers",
+        "enabled": true,
+        "stage": "history",
+        "effect": "outgoing",
+        "pattern": "\\s*\\[(?:hidden roll|secret roll|dm roll):[^\\]]+\\]",
+        "flags": "gi",
+        "replace": "",
+        "roles": ["assistant"],
+        "maxMessages": 40,
+        "source": {
+          "style": "sillytavern",
+          "placement": "assistant-history"
+        }
+      },
+      {
+        "id": "normalize-latest-dice-notation",
+        "name": "Normalize Latest Player Dice Notation",
+        "enabled": true,
+        "stage": "compiled",
+        "effect": "outgoing",
+        "targets": ["messages"],
+        "pattern": "\\b[Dd](4|6|8|10|12|20|100)\\b",
+        "flags": "g",
+        "replace": "d$1",
+        "roles": ["user"],
+        "maxMessages": 1,
+        "maxChars": 2000
+      },
+      {
+        "id": "remove-latest-player-prefix",
+        "name": "Remove Leading Player Prefix",
+        "enabled": true,
+        "stage": "compiled",
+        "effect": "outgoing",
+        "targets": ["messages"],
+        "pattern": "^\\s*(?:Player|User)\\s*:\\s*",
+        "flags": "i",
+        "replace": "",
+        "roles": ["user"],
+        "maxMessages": 1,
+        "maxChars": 2000
+      },
+      {
+        "id": "collapse-history-scene-breaks",
+        "name": "Collapse Excess Scene Breaks",
+        "enabled": true,
+        "stage": "history",
+        "effect": "outgoing",
+        "pattern": "\\n{4,}",
+        "flags": "g",
+        "replace": "\n\n\n",
+        "roles": ["assistant"],
+        "maxMessages": 40
+      }
+    ]
+  },
+  "items": [
+    {
+      "kind": "block",
+      "id": "dm-character-card",
+      "name": "DM Character Card",
+      "enabled": true,
+      "role": "system",
+      "content": "{{setsessionvar::table_mode::adventure}}{{setsessionvar::campaign_status::active}}You are {{char}}, a collaborative Dungeon Master and fantasy writer running {{campaign}} for {{user}}.\n\nPremise:\n- Genre: {{genre}}\n- Tone: {{tone}}\n- Rating: {{rating}}\n- Rules style: {{ruleset}}\n- Party level: {{party_level}}\n- Opening location: {{starting_location}}\n\nStay in character as the table's DM. Narrate vivid scenes, portray NPCs, present meaningful choices, and ask for rolls when uncertainty matters. Do not decide {{user}}'s actions, thoughts, dialogue, class features, or dice results."
+    },
+    {
+      "kind": "block",
+      "id": "table-rules",
+      "name": "Table Rules",
+      "enabled": true,
+      "role": "system",
+      "content": "Run the game like a responsive tabletop session:\n- Keep momentum high; end most replies with a clear prompt, question, or choice.\n- Use sensory details and concrete stakes instead of lore dumps.\n- Track continuity from prior chat history, but treat the latest player action as the active target.\n- When a roll is needed, name the ability or skill, the die, and why it matters.\n- If {{user}} asks an out-of-character rules or planning question, answer it briefly, then offer to return to the scene."
+    },
+    {
+      "kind": "slot",
+      "id": "runtime-variables",
+      "name": "Runtime Variables",
+      "enabled": true,
+      "role": "system",
+      "slot": "variables",
+      "options": {
+        "includeStatic": true,
+        "includeSession": true,
+        "includeTurn": true,
+        "format": "plain"
+      }
+    },
+    {
+      "kind": "slot",
+      "id": "tools",
+      "name": "Available Tools",
+      "enabled": true,
+      "role": "system",
+      "slot": "tools",
+      "options": {
+        "format": "plain",
+        "onlyWithSnippets": true
+      }
+    },
+    {
+      "kind": "block",
+      "id": "history-open",
+      "name": "Open Adventure History",
+      "enabled": true,
+      "role": "user",
+      "content": "<adventure_history>\nThe following is prior table history. Use it for continuity, NPC memory, clues, consequences, and unresolved dangers. It is background only; the current player action appears after this block."
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History Without Latest Player Action",
+      "enabled": true,
+      "slot": "chat-history",
+      "options": {
+        "includeLastUserMessage": false,
+        "stripAssistantThinking": true,
+        "includeSummaries": true,
+        "toolMode": "drop",
+        "maxMessages": 60,
+        "maxChars": 35000
+      }
+    },
+    {
+      "kind": "block",
+      "id": "history-close",
+      "name": "Close Adventure History",
+      "enabled": true,
+      "role": "user",
+      "content": "</adventure_history>"
+    },
+    {
+      "kind": "block",
+      "id": "player-action",
+      "name": "Current Player Action",
+      "enabled": true,
+      "role": "user",
+      "content": "<current_player_action>\n{{lastUserMessage}}\n</current_player_action>\n\nRespond as {{char}} to this current action. Keep the adventure moving, preserve player agency, and use the campaign variables as the stable character sheet for this scene."
+    }
+  ]
+}

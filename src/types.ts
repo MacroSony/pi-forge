@@ -110,6 +110,16 @@ export interface PromptStackSlotOptions {
 	includeSession?: boolean;
 	includeTurn?: boolean;
 	format?: PromptStackSlotFormat;
+	/** For tools: only render tools that provide prompt snippets, matching Pi's default prompt builder. */
+	onlyWithSnippets?: boolean;
+	/** For tool-guidelines: override the plain-format section heading. */
+	heading?: string;
+	/** For tool-guidelines: include Pi's default concise/file-path guideline bullets. */
+	includePiDefaultGuidelines?: boolean;
+	/** For tool-guidelines: match Pi's default wording where it differs from pi-forge's generic wording. */
+	piStyle?: boolean;
+	/** For skills: omit the skills section unless the read tool is active, matching Pi's default prompt builder. */
+	requireReadTool?: boolean;
 	[key: string]: unknown;
 }
 

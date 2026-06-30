@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { chooseDefaultStack, isUsablePromptStack, legacyPromptStacksDir, loadPromptStacks, promptStacksDir } from "../src/loader.ts";
+import { chooseDefaultStack, isUsablePromptStack, legacyPromptStacksDir, loadPromptStacks, promptStacksDir, validatePromptStack } from "../src/loader.ts";
 
 function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
@@ -14,6 +14,20 @@ function writeLegacyStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(legacyPromptStacksDir(cwd), { recursive: true });
 	writeFileSync(join(legacyPromptStacksDir(cwd), name), typeof value === "string" ? value : JSON.stringify(value, null, 2));
 }
+
+test("published example prompt stacks validate", () => {
+	const examplesDir = join(process.cwd(), "examples");
+	const excluded = new Set(["validation-issues-prompt-stack.json"]);
+	const files = readdirSync(examplesDir).filter((name) => name.endsWith(".json") && !excluded.has(name));
+
+	assert.ok(files.length > 0);
+	for (const file of files) {
+		const stack = JSON.parse(readFileSync(join(examplesDir, file), "utf8"));
+		const diagnostics = validatePromptStack(stack);
+
+		assert.deepEqual(diagnostics, [], file);
+	}
+});
 
 test("chooseDefaultStack skips an invalid default stack", () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
