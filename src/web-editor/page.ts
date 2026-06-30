@@ -1474,6 +1474,11 @@ function renderSlotOptionsForm(item, options) {
     fields.push(
       optionCheckbox("includeLastUserMessage", "Include last user message", options.includeLastUserMessage !== false),
       optionCheckbox("stripAssistantThinking", "Strip assistant thinking", options.stripAssistantThinking === true),
+      optionCheckbox("includeSummaries", "Include summaries", options.includeSummaries !== false),
+      optionSelect("toolMode", "Tool history", options.toolMode || "keep", ["keep", "drop"]),
+      optionText("roles", "Roles", Array.isArray(options.roles) ? options.roles.join(", ") : ""),
+      optionNumber("maxMessages", "Max messages", options.maxMessages ?? ""),
+      optionNumber("maxChars", "Max chars", options.maxChars ?? ""),
     );
   }
   if (item.slot === "variables") {
@@ -1549,8 +1554,9 @@ function setSlotOption(item, key, value, defaultValue) {
 }
 
 function defaultSlotOptionValue(key) {
-  if (["includeLastUserMessage", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
+  if (["includeLastUserMessage", "includeSummaries", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
   if (key === "stripAssistantThinking") return false;
+  if (key === "toolMode") return "keep";
   if (key === "format") return "xml";
   return undefined;
 }
@@ -1577,6 +1583,11 @@ function optionHelp(key) {
   const descriptions = {
     includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
     stripAssistantThinking: "Remove prior assistant thinking blocks from inserted chat history while keeping visible text, tool calls, and tool results.",
+    includeSummaries: "Keep Pi branch and compaction summary messages inside inserted chat history.",
+    toolMode: "Keep tool calls/results or drop prior tool history from inserted chat history.",
+    roles: "Optional comma-separated message roles to keep, such as user, assistant, toolResult, compactionSummary.",
+    maxMessages: "Keep only the most recent N chat-history messages after filtering.",
+    maxChars: "Keep only the most recent chat-history messages within an approximate character budget.",
     includeStatic: "Include static stack variables in this variables slot.",
     includeSession: "Include session variables created by template macros.",
     includeTurn: "Include temporary turn variables created during prompt compilation.",
@@ -2001,6 +2012,9 @@ function regexRuleRowHtml(rule = {}) {
     regexCheckGroup("Roles", "data-regex-role", regexRoles, roles, "message rules only; empty means all roles") +
     regexNumberField("data-regex-max-messages", "Max messages", rule.maxMessages ?? "") +
     regexNumberField("data-regex-max-chars", "Max chars", rule.maxChars ?? "") +
+    regexNumberField("data-regex-min-depth", "Min depth", rule.minDepth ?? "", 0) +
+    regexNumberField("data-regex-max-depth", "Max depth", rule.maxDepth ?? "", 0) +
+    regexTextArea("data-regex-trim-strings", "Trim strings", Array.isArray(rule.trimStrings) ? rule.trimStrings.join("\n") : "", "span-2", "one per line") +
     regexTextArea("data-regex-pattern", "Pattern", rule.pattern || "", "span-3", "\\\\(OOC:[^)]+\\\\)") +
     regexTextArea("data-regex-replace", "Replace", rule.replace || "", "span-3", "") +
     '<div class="regex-warning wide" data-regex-warning>' + escapeHtml(regexRuleWarning(rule)) + '</div>' +
@@ -2013,8 +2027,8 @@ function regexTextField(attribute, label, value, placeholder = "") {
   return '<div class="field"><label>' + escapeHtml(label) + '</label><input ' + attribute + ' value="' + attr(value) + '" placeholder="' + attr(placeholder) + '"></div>';
 }
 
-function regexNumberField(attribute, label, value) {
-  return '<div class="field"><label>' + escapeHtml(label) + '</label><input type="number" min="1" ' + attribute + ' value="' + attr(value) + '"></div>';
+function regexNumberField(attribute, label, value, min = 1) {
+  return '<div class="field"><label>' + escapeHtml(label) + '</label><input type="number" min="' + attr(min) + '" ' + attribute + ' value="' + attr(value) + '"></div>';
 }
 
 function regexTextArea(attribute, label, value, className, placeholder = "") {
@@ -2106,6 +2120,9 @@ function syncRegexRulesFromModal() {
     if (!rule.pattern) errors.push("Regex rule " + label + " needs a pattern.");
     if (row.querySelector("[data-regex-max-messages]").value && !rule.maxMessages) errors.push("Regex rule " + label + " maxMessages must be a positive integer.");
     if (row.querySelector("[data-regex-max-chars]").value && !rule.maxChars) errors.push("Regex rule " + label + " maxChars must be a positive integer.");
+    if (row.querySelector("[data-regex-min-depth]").value && rule.minDepth === undefined) errors.push("Regex rule " + label + " minDepth must be a non-negative integer.");
+    if (row.querySelector("[data-regex-max-depth]").value && rule.maxDepth === undefined) errors.push("Regex rule " + label + " maxDepth must be a non-negative integer.");
+    if (rule.minDepth !== undefined && rule.maxDepth !== undefined && rule.maxDepth < rule.minDepth) errors.push("Regex rule " + label + " maxDepth must be greater than or equal to minDepth.");
     rules.push(rule);
   });
 
@@ -2122,7 +2139,7 @@ function syncRegexRulesFromModal() {
 
 function regexRuleFromRow(row) {
   const rule = originalRegexRuleFromRow(row);
-  for (const key of ["id", "name", "enabled", "stage", "effect", "pattern", "flags", "replace", "roles", "targets", "maxMessages", "maxChars"]) {
+  for (const key of ["id", "name", "enabled", "stage", "effect", "pattern", "flags", "replace", "trimStrings", "roles", "targets", "maxMessages", "maxChars", "minDepth", "maxDepth"]) {
     delete rule[key];
   }
   rule.id = row.querySelector("[data-regex-id]").value.trim();
@@ -2135,14 +2152,20 @@ function regexRuleFromRow(row) {
   if (flags) rule.flags = flags;
   const replace = row.querySelector("[data-regex-replace]").value;
   if (replace) rule.replace = replace;
+  const trimStrings = row.querySelector("[data-regex-trim-strings]").value.split(/\r?\n/).filter((line) => line.length > 0);
+  if (trimStrings.length) rule.trimStrings = trimStrings;
   const roles = checkedRegexValues(row, "data-regex-role");
   if (roles.length) rule.roles = roles;
   const targets = checkedRegexValues(row, "data-regex-target");
   if (targets.length) rule.targets = targets;
   const maxMessages = positiveIntegerFromInput(row.querySelector("[data-regex-max-messages]").value);
   const maxChars = positiveIntegerFromInput(row.querySelector("[data-regex-max-chars]").value);
+  const minDepth = nonNegativeIntegerFromInput(row.querySelector("[data-regex-min-depth]").value);
+  const maxDepth = nonNegativeIntegerFromInput(row.querySelector("[data-regex-max-depth]").value);
   if (maxMessages) rule.maxMessages = maxMessages;
   if (maxChars) rule.maxChars = maxChars;
+  if (minDepth !== undefined) rule.minDepth = minDepth;
+  if (maxDepth !== undefined) rule.maxDepth = maxDepth;
   return rule;
 }
 
@@ -2167,6 +2190,12 @@ function positiveIntegerFromInput(value) {
   return Number.isInteger(number) && number > 0 ? number : undefined;
 }
 
+function nonNegativeIntegerFromInput(value) {
+  if (!String(value || "").trim()) return undefined;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : undefined;
+}
+
 function refreshRegexWarnings() {
   document.querySelectorAll("[data-regex-row]").forEach((row) => {
     const warning = row.querySelector("[data-regex-warning]");
@@ -2186,6 +2215,12 @@ function regexRuleWarning(rule) {
   }
   if (rule.effect === "both") {
     return 'Warning: both is ignored at runtime; create separate outgoing and finalize rules instead.';
+  }
+  if (typeof rule.replace === "string" && /\{\{\s*match\s*\}\}/i.test(rule.replace)) {
+    return 'Warning: {{match}} is SillyTavern syntax. Use $& for the full match in pi-forge rules.';
+  }
+  if (typeof rule.replace === "string" && /\$0(?!\d)/.test(rule.replace)) {
+    return 'Warning: $0 is literal in JavaScript replacements. Use $& for the full match.';
   }
   return "";
 }
@@ -2709,10 +2744,6 @@ function displayItemName(item) {
     if (firstLine) return firstLine.length > 46 ? firstLine.slice(0, 43) + "..." : firstLine;
   }
   return item.id || "(unnamed)";
-}
-
-function arrayToCsv(value) {
-  return Array.isArray(value) ? value.join(", ") : "";
 }
 
 function setOptionalString(target, key, value) {

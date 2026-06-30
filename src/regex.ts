@@ -21,8 +21,11 @@ interface CompiledRegexRule {
 	roles?: string[];
 	maxMessages?: number;
 	maxChars?: number;
+	minDepth?: number;
+	maxDepth?: number;
 	regexp: RegExp;
 	replace: string;
+	trimStrings?: string[];
 }
 
 interface StringTransformResult {
@@ -175,6 +178,13 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 
 	if (rawRule.replace !== undefined && typeof rawRule.replace !== "string") {
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} replace must be a string when provided.` });
+	} else if (typeof rawRule.replace === "string") {
+		if (/\{\{\s*match\s*\}\}/i.test(rawRule.replace)) {
+			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} replacement contains SillyTavern {{match}}; use JavaScript $& or re-import the SillyTavern preset to convert it.` });
+		}
+	}
+	if (rawRule.trimStrings !== undefined && !isStringArray(rawRule.trimStrings)) {
+		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} trimStrings must be an array of strings when provided.` });
 	}
 	if (rawRule.roles !== undefined && !isStringArray(rawRule.roles)) {
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} roles must be an array of strings when provided.` });
@@ -200,6 +210,15 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 	}
 	if (rawRule.maxChars !== undefined && !isPositiveInteger(rawRule.maxChars)) {
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} maxChars must be a positive integer when provided.` });
+	}
+	if (rawRule.minDepth !== undefined && !isNonNegativeInteger(rawRule.minDepth)) {
+		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} minDepth must be a non-negative integer when provided.` });
+	}
+	if (rawRule.maxDepth !== undefined && !isNonNegativeInteger(rawRule.maxDepth)) {
+		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} maxDepth must be a non-negative integer when provided.` });
+	}
+	if (isNonNegativeInteger(rawRule.minDepth) && isNonNegativeInteger(rawRule.maxDepth) && rawRule.maxDepth < rawRule.minDepth) {
+		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} maxDepth must be greater than or equal to minDepth.` });
 	}
 }
 
@@ -237,17 +256,20 @@ function compileRuntimeRule(rule: PromptRegexRule, diagnostics: PromptStackDiagn
 	const flagsError = validateRegexFlags(flags, rule.id, -1);
 	if (flagsError) return undefined;
 	try {
-		return {
-			id: rule.id.trim(),
-			stage: rule.stage,
-			effect,
-			targets: normalizeTargets(rule.targets),
-			roles: isStringArray(rule.roles) ? rule.roles : undefined,
-			maxMessages: isPositiveInteger(rule.maxMessages) ? Math.floor(rule.maxMessages) : undefined,
-			maxChars: isPositiveInteger(rule.maxChars) ? Math.floor(rule.maxChars) : undefined,
-			regexp: new RegExp(rule.pattern, flags),
-			replace: typeof rule.replace === "string" ? rule.replace : "",
-		};
+			return {
+				id: rule.id.trim(),
+				stage: rule.stage,
+				effect,
+				targets: normalizeTargets(rule.targets),
+				roles: isStringArray(rule.roles) ? rule.roles : undefined,
+				maxMessages: isPositiveInteger(rule.maxMessages) ? Math.floor(rule.maxMessages) : undefined,
+				maxChars: isPositiveInteger(rule.maxChars) ? Math.floor(rule.maxChars) : undefined,
+				minDepth: isNonNegativeInteger(rule.minDepth) ? Math.floor(rule.minDepth) : undefined,
+				maxDepth: isNonNegativeInteger(rule.maxDepth) ? Math.floor(rule.maxDepth) : undefined,
+				regexp: new RegExp(rule.pattern, flags),
+				replace: typeof rule.replace === "string" ? rule.replace : "",
+				trimStrings: isStringArray(rule.trimStrings) ? rule.trimStrings : undefined,
+			};
 	} catch (error) {
 		diagnostics.push({ level: "error", message: `Regex rule ${rule.id} failed to compile: ${error instanceof Error ? error.message : String(error)}` });
 		return undefined;
@@ -272,7 +294,11 @@ function transformMessages(messages: AgentMessage[], rule: CompiledRegexRule, st
 function eligibleMessageIndexes(messages: AgentMessage[], rule: CompiledRegexRule): number[] {
 	const indexes: number[] = [];
 	for (const [index, message] of messages.entries()) {
-		if (!rule.roles || rule.roles.includes(String((message as { role?: unknown }).role))) indexes.push(index);
+		if (rule.roles && !rule.roles.includes(String((message as { role?: unknown }).role))) continue;
+		const depth = messages.length - 1 - index;
+		if (rule.minDepth !== undefined && depth < rule.minDepth) continue;
+		if (rule.maxDepth !== undefined && depth > rule.maxDepth) continue;
+		indexes.push(index);
 	}
 	return indexes;
 }
@@ -304,13 +330,104 @@ function transformString(text: string, rule: CompiledRegexRule): StringTransform
 	const head = headLength > 0 ? text.slice(0, headLength) : "";
 	const body = headLength > 0 ? text.slice(headLength) : text;
 	const matches = countReplacementMatches(body, rule.regexp);
-	const replaced = body.replace(rule.regexp, rule.replace);
+	const replaced = rule.trimStrings && rule.trimStrings.length > 0
+		? replaceWithTrimStrings(body, rule)
+		: body.replace(rule.regexp, convertDollarZeroToFullMatch(rule.replace));
 	const result = head + replaced;
 	return {
 		text: result,
 		matches,
 		changed: result !== text,
 	};
+}
+
+/**
+ * Normalizes a JavaScript replacement string so that `$0` (not followed by another
+ * digit) behaves as the full match, matching the custom trimStrings expander and
+ * SillyTavern conventions. `$$0` stays a literal `$0`. This keeps `$0` consistent
+ * across the native and trimStrings replacement paths.
+ */
+function convertDollarZeroToFullMatch(replace: string): string {
+	let result = "";
+	for (let i = 0; i < replace.length;) {
+		const ch = replace[i];
+		if (ch !== undefined && ch !== "$") {
+			result += ch;
+			i++;
+			continue;
+		}
+		const next = replace[i + 1];
+		if (next === "$") {
+			result += "$$";
+			i += 2;
+			continue;
+		}
+		if (next === "0" && !isDigitCode(replace.charCodeAt(i + 2))) {
+			result += "$&";
+			i += 2;
+			continue;
+		}
+		result += "$";
+		i++;
+	}
+	return result;
+}
+
+function isDigitCode(code: number): boolean {
+	return code >= 48 && code <= 57;
+}
+
+function replaceWithTrimStrings(text: string, rule: CompiledRegexRule): string {
+	return text.replace(rule.regexp, (...args: unknown[]) => {
+		const groups = isPlainObject(args.at(-1)) ? args.pop() as Record<string, unknown> : undefined;
+		const input = String(args.pop() ?? "");
+		const offset = Number(args.pop() ?? 0);
+		const [match = "", ...captures] = args.map((arg) => typeof arg === "string" ? arg : "");
+		return expandReplacementTemplate(rule.replace, {
+			match,
+			captures,
+			offset,
+			input,
+			groups,
+			trimStrings: rule.trimStrings ?? [],
+		});
+	});
+}
+
+function expandReplacementTemplate(
+	template: string,
+	context: {
+		match: string;
+		captures: string[];
+		offset: number;
+		input: string;
+		groups?: Record<string, unknown>;
+		trimStrings: string[];
+	},
+): string {
+	return template.replace(/\$([$&`']|0(?!\d)|[1-9]\d?|<[^>]+>)/g, (token) => {
+		if (token === "$$") return "$";
+		if (token === "$&" || token === "$0") return trimMatchedValue(context.match, context.trimStrings);
+		if (token === "$`") return context.input.slice(0, context.offset);
+		if (token === "$'") return context.input.slice(context.offset + context.match.length);
+		if (token.startsWith("$<")) {
+			const name = token.slice(2, -1);
+			const value = context.groups?.[name];
+			return typeof value === "string" ? trimMatchedValue(value, context.trimStrings) : "";
+		}
+		const captureIndex = Number(token.slice(1)) - 1;
+		const capture = context.captures[captureIndex];
+		return capture === undefined ? "" : trimMatchedValue(capture, context.trimStrings);
+	});
+}
+
+function trimMatchedValue(value: string, trimStrings: string[]): string {
+	let result = value;
+	for (const trimString of trimStrings) {
+		if (!trimString) continue;
+		result = result.split(trimString).join("");
+	}
+	return result;
 }
 
 function countReplacementMatches(text: string, regexp: RegExp): number {
@@ -372,6 +489,10 @@ function isStringArray(value: unknown): value is string[] {
 
 function isPositiveInteger(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

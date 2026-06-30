@@ -183,6 +183,83 @@ test("chat-history thinking strip drops assistant messages that become empty", (
 	assert.ok(result.diagnostics.some((diagnostic) => /dropped 1 empty assistant message/.test(diagnostic.message)));
 });
 
+test("chat-history options filter summaries, roles, message count, and character budget", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "history-filters",
+		items: [{
+			kind: "slot",
+			id: "history",
+			enabled: true,
+			slot: "chat-history",
+			options: {
+				includeSummaries: false,
+				roles: ["user"],
+				maxMessages: 2,
+				maxChars: 20,
+			},
+		}],
+	};
+	const summary = { role: "compactionSummary", summary: "summarized", timestamp: Date.now() } as AgentMessage;
+	const messages = [summary, user("old long user message"), assistant("reply"), user("latest")];
+
+	const result = compileMessages(stack, runtime(), messages);
+
+	assert.deepEqual(result.messages.map(textOf), ["latest"]);
+	assert.ok(result.diagnostics.some((diagnostic) => /summary/.test(diagnostic.message)));
+	assert.ok(result.diagnostics.some((diagnostic) => /role/.test(diagnostic.message)));
+	assert.ok(result.diagnostics.some((diagnostic) => /maxChars/.test(diagnostic.message)));
+});
+
+test("chat-history toolMode drop removes tool calls and tool result messages", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "drop-tools",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { toolMode: "drop" } }],
+	};
+	const toolCall = { type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } };
+	const assistantMessage = assistant("visible") as unknown as { content: Array<Record<string, unknown>> };
+	assistantMessage.content = [{ type: "text", text: "visible" }, toolCall];
+	const toolResult = {
+		role: "toolResult",
+		toolCallId: "call-1",
+		toolName: "read",
+		content: [{ type: "text", text: "file contents" }],
+		isError: false,
+		timestamp: Date.now(),
+	} as AgentMessage;
+
+	const result = compileMessages(stack, runtime(), [assistantMessage as unknown as AgentMessage, toolResult, user("continue")]);
+	const content = (result.messages[0] as unknown as { content: Array<Record<string, unknown>> }).content;
+
+	assert.deepEqual(content, [{ type: "text", text: "visible" }]);
+	assert.deepEqual(result.messages.map((message) => message.role), ["assistant", "user"]);
+	assert.ok(result.diagnostics.some((diagnostic) => /Dropped tool history/.test(diagnostic.message)));
+});
+
+test("chat-history role filters repair dangling tool result messages", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "repair-tools",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { roles: ["toolResult", "user"] } }],
+	};
+	const assistantMessage = assistant("visible") as unknown as { content: Array<Record<string, unknown>> };
+	assistantMessage.content = [{ type: "toolCall", id: "call-1", name: "read" }];
+	const toolResult = {
+		role: "toolResult",
+		toolCallId: "call-1",
+		toolName: "read",
+		content: [{ type: "text", text: "file contents" }],
+		isError: false,
+		timestamp: Date.now(),
+	} as AgentMessage;
+
+	const result = compileMessages(stack, runtime(), [assistantMessage as unknown as AgentMessage, toolResult, user("continue")]);
+
+	assert.deepEqual(result.messages.map(textOf), ["continue"]);
+	assert.ok(result.diagnostics.some((diagnostic) => /Repaired tool history/.test(diagnostic.message)));
+});
+
 test("history regex transforms only chat-history messages", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,

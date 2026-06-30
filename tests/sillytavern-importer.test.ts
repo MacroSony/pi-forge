@@ -408,20 +408,89 @@ test("reports SillyTavern regex script classification", () => {
 	assert.match(result.report, /Disabled Script/);
 	assert.match(result.report, /Unspecified Script/);
 	assert.match(result.report, /DOM\/browser automation/);
-	assert.match(result.report, /stage: "compiled"/);
+	assert.match(result.report, /stage: "history"/);
 	assert.equal(result.stack.regex?.rules?.length, 2);
-	assert.deepEqual(result.stack.regex?.rules?.[0], {
-		id: "st-prompt-cleaner",
-		name: "Prompt Cleaner",
-		enabled: true,
-		stage: "compiled",
-		effect: "outgoing",
-		targets: ["system", "messages"],
-		pattern: "foo",
-		replace: "bar",
-	});
+	const firstRule = result.stack.regex?.rules?.[0];
+	assert.ok(firstRule);
+	assert.equal(firstRule.id, "st-prompt-cleaner");
+	assert.equal(firstRule.name, "Prompt Cleaner");
+	assert.equal(firstRule.enabled, true);
+	assert.equal(firstRule.stage, "history");
+	assert.equal(firstRule.effect, "outgoing");
+	assert.equal(firstRule.targets, undefined);
+	assert.equal(firstRule.pattern, "foo");
+	assert.equal(firstRule.replace, "bar");
+	assert.equal(firstRule.source?.sillytavern && typeof firstRule.source.sillytavern === "object", true);
 	assert.equal(result.stack.regex?.rules?.[1]?.id, "st-disabled-script");
 	assert.equal(result.stack.regex?.rules?.[1]?.enabled, false);
+});
+
+test("converts SillyTavern regex replacements, trim strings, depth, placement, and metadata", () => {
+	const result = convertSillyTavernPreset(
+		{
+			preset_name: "Rich Regex",
+			prompts: [
+				{ identifier: "main", role: "system", content: "Main" },
+				{ identifier: "chatHistory", marker: true },
+			],
+			prompt_order: [
+				{
+					character_id: 1,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "chatHistory", enabled: true },
+					],
+				},
+			],
+			extensions: {
+				regex_scripts: [
+					{
+						script_name: "Bracket Cleaner",
+						promptOnly: true,
+						markdownOnly: false,
+						disabled: false,
+						findRegex: "/\\[([^\\]]+)\\]/g",
+						replaceString: "**{{match}}**/$0/$1",
+						trimStrings: ["[", "]"],
+						placement: [1, 2, 6],
+						minDepth: 0,
+						maxDepth: 4,
+						substituteRegex: 1,
+					},
+					{
+						script_name: "World Info Only",
+						promptOnly: true,
+						markdownOnly: false,
+						disabled: false,
+						findRegex: "lore",
+						replaceString: "memory",
+						placement: [5],
+					},
+				],
+			},
+		},
+		{ sourceName: "Rich Regex.json" },
+	);
+
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.equal(result.stack.regex?.rules?.length, 1);
+	const rule = result.stack.regex?.rules?.[0];
+	assert.ok(rule);
+	assert.equal(rule?.replace, "**$&**/$&/$1");
+	assert.deepEqual(rule?.trimStrings, ["[", "]"]);
+	assert.deepEqual(rule?.roles, ["user", "assistant"]);
+	assert.equal(rule?.targets, undefined);
+	assert.equal(rule?.stage, "history");
+	assert.equal(rule?.minDepth, 0);
+	assert.equal(rule?.maxDepth, 4);
+	assert.equal(rule?.source?.sillytavern && typeof rule.source.sillytavern === "object", true);
+	assert.match(result.report, /converted SillyTavern \{\{match\}\}/);
+	assert.match(result.report, /converted SillyTavern-style \$0/);
+	assert.match(result.report, /substituteRegex is preserved/);
+	assert.match(result.report, /Reasoning \(6\)/);
+	assert.match(result.report, /placement has no pi-forge runtime mapping/);
 });
 
 test("skips unsupported SillyTavern regex scripts during conversion", () => {

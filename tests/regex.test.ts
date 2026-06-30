@@ -65,6 +65,54 @@ test("regex rules apply JavaScript string replacement syntax", () => {
 	assert.match(diagnostics.at(-1)?.message ?? "", /matched 1 time/);
 });
 
+test("regex trimStrings remove literals from expanded match and capture replacements", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "regex-trim",
+		regex: {
+			rules: [{
+				id: "trim-brackets",
+				stage: "compiled",
+				pattern: "\\[([^\\]]+)\\]",
+				flags: "g",
+				replace: "**$&**/$1",
+				trimStrings: ["[", "]"],
+			}],
+		},
+		items: [],
+	};
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	const messages = applyRegexRulesToMessages(stack, [user("Status: [OK]")], "compiled", diagnostics);
+
+	assert.equal(textOf(messages[0]!), "Status: **OK**/OK");
+	assert.match(diagnostics.at(-1)?.message ?? "", /matched 1 time/);
+});
+
+test("regex $0 expands to the full match on both native and trimStrings paths", () => {
+	const stack = (replace: string, trimStrings?: string[]): PromptStack => ({
+		schemaVersion: 1,
+		id: "dollar-zero",
+		items: [],
+		regex: {
+			rules: [{
+				id: "r",
+				stage: "compiled",
+				pattern: "X",
+				replace,
+				...(trimStrings ? { trimStrings } : {}),
+			}],
+		},
+	});
+
+	// Native path (no trimStrings): $0 is the full match, $$0 stays a literal $0.
+	assert.equal(textOf(applyRegexRulesToMessages(stack("[$0]"), [user("aXb")], "compiled", [])[0]!), "a[X]b");
+	assert.equal(textOf(applyRegexRulesToMessages(stack("[$$0]"), [user("aXb")], "compiled", [])[0]!), "a[$0]b");
+
+	// Custom expander path (trimStrings): $0 is also the full match.
+	assert.equal(textOf(applyRegexRulesToMessages(stack("[$0]", ["zzz"]), [user("aXb")], "compiled", [])[0]!), "a[X]b");
+});
+
 test("regex validation rejects invalid patterns, flags, targets, and duplicate ids", () => {
 	const diagnostics = validateRegexConfig({
 		rules: [
@@ -79,6 +127,21 @@ test("regex validation rejects invalid patterns, flags, targets, and duplicate i
 	assert.ok(diagnostics.some((diagnostic) => /failed to compile/i.test(diagnostic.message)));
 	assert.ok(diagnostics.some((diagnostic) => /stage must/.test(diagnostic.message)));
 	assert.ok(diagnostics.some((diagnostic) => /target must/.test(diagnostic.message)));
+});
+
+test("regex validation warns about SillyTavern replacement tokens and validates new limit fields", () => {
+	const diagnostics = validateRegexConfig({
+		rules: [
+			{ id: "st-token", stage: "compiled", pattern: "x", replace: "{{match}} $0" },
+			{ id: "bad-trim", stage: "compiled", pattern: "x", trimStrings: "x" },
+			{ id: "bad-depth", stage: "compiled", pattern: "x", minDepth: 3, maxDepth: 1 },
+		],
+	});
+
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "warning" && /\{\{match\}\}/.test(diagnostic.message)));
+	assert.ok(!diagnostics.some((diagnostic) => /\$0.*literal/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /trimStrings/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /maxDepth/.test(diagnostic.message)));
 });
 
 test("display regex effects validate with a warning and are ignored by outgoing runtime", () => {
@@ -209,4 +272,34 @@ test("regex roles, maxMessages, and maxChars limit eligible text", () => {
 	assert.equal(textOf(messages[1]!), "secret assistant");
 	assert.equal(textOf(messages[2]!), "prefix redacted");
 	assert.match(diagnostics.at(-1)?.message ?? "", /changed 1 text segment/);
+});
+
+test("regex minDepth and maxDepth limit eligible history messages", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "depth",
+		regex: {
+			rules: [{
+				id: "middle-depth",
+				stage: "compiled",
+				pattern: "secret",
+				replace: "redacted",
+				roles: ["user"],
+				minDepth: 1,
+				maxDepth: 2,
+			}],
+		},
+		items: [],
+	};
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	const messages = applyRegexRulesToMessages(stack, [
+		user("old secret"),
+		assistant("assistant secret"),
+		user("latest secret"),
+	], "compiled", diagnostics);
+
+	assert.equal(textOf(messages[0]!), "old redacted");
+	assert.equal(textOf(messages[1]!), "assistant secret");
+	assert.equal(textOf(messages[2]!), "latest secret");
 });

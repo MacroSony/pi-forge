@@ -52,6 +52,12 @@ interface StRegexScript {
 	markdownOnly?: boolean;
 	findRegex?: string;
 	replaceString?: string;
+	trimStrings?: unknown;
+	substituteRegex?: unknown;
+	placement?: unknown;
+	minDepth?: unknown;
+	maxDepth?: unknown;
+	runOnEdit?: unknown;
 	[key: string]: unknown;
 }
 
@@ -65,8 +71,14 @@ interface RegexScriptReportEntry {
 	markdownOnly: boolean;
 	findRegex?: string;
 	replaceString?: string;
+	trimStrings?: string[];
+	placement?: number[];
+	substituteRegex?: number;
+	minDepth?: number;
+	maxDepth?: number;
 	convertedRuleId?: string;
 	conversionNote?: string;
+	conversionWarnings: string[];
 }
 
 interface RegexScriptReport {
@@ -94,6 +106,15 @@ const MARKER_SKIP = new Set([
 	"scenario",
 	"dialogueExamples",
 ]);
+
+const ST_REGEX_PLACEMENT_LABELS: Record<number, string> = {
+	0: "MD Display",
+	1: "User Input",
+	2: "AI Output",
+	3: "Slash Commands",
+	5: "World Info",
+	6: "Reasoning",
+};
 
 // ── ST macros that pi-forge handles natively ───────────────────────────────
 
@@ -468,18 +489,29 @@ export function convertSillyTavernPreset(
 		}
 		reportLines.push(`- **Converted to pi-forge rules**: ${regexScripts.converted}`);
 		reportLines.push("");
-		reportLines.push("| Script | Enabled | Mode | Converted | Find regex | Replacement preview |");
-		reportLines.push("|--------|---------|------|-----------|------------|---------------------|");
-		for (const script of regexScripts.scripts) {
-			const converted = script.convertedRuleId ? `yes: ${script.convertedRuleId}` : script.conversionNote ?? "no";
-			reportLines.push(`| ${markdownTableCell(script.name)} | ${script.enabled ? "yes" : "no"} | ${script.mode} | ${markdownTableCell(converted)} | ${markdownTableCell(script.findRegex)} | ${markdownTableCell(script.replaceString)} |`);
-		}
-		reportLines.push("");
-		reportLines.push("pi-forge does not run SillyTavern markdown rewriting, DOM/browser automation, CSS/HTML decoration, toasts, embedded JavaScript, or UI panel behavior.");
-		if (regexScripts.converted > 0) {
-			reportLines.push("Enabled and disabled prompt-only deterministic regex scripts were converted to `regex.rules` with `stage: \"compiled\"`, `effect: \"outgoing\"`, and system/messages targets. Review them before relying on the imported stack.");
-		}
-		reportLines.push("Markdown-only, mixed prompt/markdown, unspecified, invalid, or unsupported regex scripts remain report-only and require manual review.");
+			reportLines.push("| Script | Enabled | Mode | Converted | Warnings | Find regex | Replacement preview |");
+			reportLines.push("|--------|---------|------|-----------|----------|------------|---------------------|");
+			for (const script of regexScripts.scripts) {
+				const converted = script.convertedRuleId ? `yes: ${script.convertedRuleId}` : script.conversionNote ?? "no";
+				const warnings = script.conversionWarnings.length > 0 ? script.conversionWarnings.join("; ") : "-";
+				reportLines.push(`| ${markdownTableCell(script.name)} | ${script.enabled ? "yes" : "no"} | ${script.mode} | ${markdownTableCell(converted)} | ${markdownTableCell(warnings)} | ${markdownTableCell(script.findRegex)} | ${markdownTableCell(script.replaceString)} |`);
+			}
+			reportLines.push("");
+			const warningEntries = regexScripts.scripts.filter((script) => script.conversionWarnings.length > 0);
+			if (warningEntries.length > 0) {
+				reportLines.push("Conversion warnings:");
+				for (const script of warningEntries) {
+					for (const warning of script.conversionWarnings) {
+						reportLines.push(`- ${script.name}: ${warning}`);
+					}
+				}
+				reportLines.push("");
+			}
+			reportLines.push("pi-forge does not run SillyTavern markdown rewriting, DOM/browser automation, CSS/HTML decoration, toasts, embedded JavaScript, or UI panel behavior.");
+			if (regexScripts.converted > 0) {
+				reportLines.push("Enabled and disabled prompt-only deterministic regex scripts were converted to `regex.rules` with `stage: \"history\"`, `effect: \"outgoing\"`, JavaScript replacement syntax, and preserved SillyTavern metadata under `source.sillytavern`. History-stage depth is relative to the filtered chat history inserted at the `chat-history` slot, matching SillyTavern's chat-relative depth, and rules do not touch the compiled system prompt. Use `stage: \"compiled\"` manually for global prompt transforms.");
+			}
+			reportLines.push("Markdown-only, mixed prompt/markdown, unspecified, invalid, or unsupported regex scripts remain report-only and require manual review.");
 		reportLines.push("");
 	}
 
@@ -647,6 +679,12 @@ function classifyRegexScript(raw: unknown, index: number): RegexScriptReportEntr
 		markdownOnly,
 		findRegex: firstString(script.findRegex),
 		replaceString: firstString(script.replaceString),
+		trimStrings: normalizeTrimStrings(script.trimStrings),
+		placement: normalizeNumberArray(script.placement),
+		substituteRegex: normalizeNumber(script.substituteRegex),
+		minDepth: normalizeDepth(script.minDepth, -1),
+		maxDepth: normalizeDepth(script.maxDepth, 0),
+		conversionWarnings: [],
 	};
 }
 
@@ -661,19 +699,50 @@ function convertPromptOnlyRegexScript(
 
 	const parsed = parseSillyTavernRegex(entry.findRegex);
 	if ("error" in parsed) return { note: parsed.error };
+	if (entry.placement && entry.placement.length > 0 && !entry.placement.some((placement) => placement === 1 || placement === 2)) {
+		return { note: "placement has no pi-forge runtime mapping" };
+	}
+	const replacement = normalizeSillyTavernReplacement(entry.replaceString ?? "", entry.conversionWarnings);
+	const roles = rolesForSillyTavernPlacement(entry.placement, entry.conversionWarnings);
+	if (entry.substituteRegex && entry.substituteRegex !== 0) {
+		entry.conversionWarnings.push("substituteRegex is preserved as metadata but dynamic find-regex macro substitution is not executed");
+	}
+	for (const placement of entry.placement ?? []) {
+		if (placement !== 1 && placement !== 2) {
+			entry.conversionWarnings.push(`placement ${placementLabel(placement)} is preserved as metadata but not directly mapped`);
+		}
+	}
 
 	const id = uniqueRegexRuleId(`st-${entry.name || `regex-${index + 1}`}`, seenRuleIds);
 	const rule: PromptRegexRule = {
 		id,
 		name: entry.name,
 		enabled: entry.enabled,
-		stage: "compiled",
+		stage: "history",
 		effect: "outgoing",
-		targets: ["system", "messages"],
 		pattern: parsed.pattern,
-		replace: entry.replaceString ?? "",
+		replace: replacement,
+		source: {
+			sillytavern: {
+				scriptName: entry.name,
+				findRegex: entry.findRegex,
+				replaceString: entry.replaceString ?? "",
+				trimStrings: entry.trimStrings ?? [],
+				placement: entry.placement ?? [],
+				placementNames: (entry.placement ?? []).map(placementLabel),
+				promptOnly: entry.promptOnly,
+				markdownOnly: entry.markdownOnly,
+				substituteRegex: entry.substituteRegex ?? 0,
+				minDepth: entry.minDepth,
+				maxDepth: entry.maxDepth,
+			},
+		},
 	};
 	if (parsed.flags) rule.flags = parsed.flags;
+	if (entry.trimStrings && entry.trimStrings.length > 0) rule.trimStrings = entry.trimStrings;
+	if (roles && roles.length > 0) rule.roles = roles;
+	if (isNonNegativeInteger(entry.minDepth)) rule.minDepth = entry.minDepth;
+	if (isNonNegativeInteger(entry.maxDepth)) rule.maxDepth = entry.maxDepth;
 	return {
 		rule,
 	};
@@ -691,6 +760,70 @@ function parseSillyTavernRegex(value: string): { pattern: string; flags?: string
 	const pattern = trimmed.slice(1, closingSlash);
 	const flags = trimmed.slice(closingSlash + 1);
 	return validateParsedRegex(pattern, flags);
+}
+
+function normalizeSillyTavernReplacement(value: string, warnings: string[]): string {
+	let result = value;
+	if (/\{\{\s*match\s*\}\}/i.test(result)) {
+		result = result.replace(/\{\{\s*match\s*\}\}/gi, () => "$&");
+		warnings.push("converted SillyTavern {{match}} to JavaScript $&");
+	}
+	if (/\$0(?!\d)/.test(result)) {
+		result = result.replace(/\$0(?!\d)/g, () => "$&");
+		warnings.push("converted SillyTavern-style $0 full match to JavaScript $&");
+	}
+	return result;
+}
+
+function rolesForSillyTavernPlacement(placement: number[] | undefined, warnings: string[]): string[] | undefined {
+	if (!placement || placement.length === 0) return undefined;
+	const roles: string[] = [];
+	if (placement.includes(1)) roles.push("user");
+	if (placement.includes(2)) roles.push("assistant");
+	if (placement.includes(6)) warnings.push("reasoning placement is preserved as metadata; use stripAssistantThinking or manual rules for thinking content");
+	return roles.length > 0 ? roles : undefined;
+}
+
+function placementLabel(value: number): string {
+	return ST_REGEX_PLACEMENT_LABELS[value] ? `${ST_REGEX_PLACEMENT_LABELS[value]} (${value})` : `unknown (${value})`;
+}
+
+function normalizeTrimStrings(value: unknown): string[] | undefined {
+	if (typeof value === "string") {
+		const strings = value.split(/\r?\n/).filter((entry) => entry.length > 0);
+		return strings.length > 0 ? strings : undefined;
+	}
+	if (!Array.isArray(value)) return undefined;
+	const strings = value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+	return strings.length > 0 ? strings : undefined;
+}
+
+function normalizeNumberArray(value: unknown): number[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const numbers = value
+		.map(normalizeNumber)
+		.filter((entry): entry is number => entry !== undefined);
+	return numbers.length > 0 ? numbers : undefined;
+}
+
+function normalizeNumber(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	if (typeof value === "boolean") return value ? 1 : 0;
+	return undefined;
+}
+
+function normalizeDepth(value: unknown, minimum: number): number | undefined {
+	const number = normalizeNumber(value);
+	if (number === undefined || !Number.isInteger(number) || number < minimum) return undefined;
+	return number;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function validateParsedRegex(pattern: string, flags: string): { pattern: string; flags?: string } | { error: string } {

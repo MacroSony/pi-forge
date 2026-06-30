@@ -13,6 +13,7 @@ import type {
 import { SUPPORTED_SLOTS } from "./types.ts";
 
 const VALID_ROLES = new Set<PromptStackRole>(["system", "user", "assistant", "custom"]);
+const VALID_CHAT_HISTORY_TOOL_MODES = new Set(["keep", "drop"]);
 
 export { isInsidePromptStackStorage, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir } from "./storage.ts";
 
@@ -141,7 +142,7 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 
 	const obj = raw as Record<string, unknown>;
 	const id = typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : basename(filePath, ".json");
-	const schemaVersion = obj.schemaVersion === 1 ? 1 : 1;
+	const schemaVersion = 1;
 	if (obj.schemaVersion !== 1) {
 		diagnostics.push({ level: "warning", message: "Missing or unsupported schemaVersion; assuming 1." });
 	}
@@ -234,6 +235,7 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 				diagnostics.push({ level: "warning", message: `Unsupported slot: ${item.slot}`, itemId: item.id });
 			}
 			if (item.enabled !== false && item.slot === "chat-history") chatHistoryCount++;
+			if (item.slot === "chat-history") validateChatHistoryOptions(item, diagnostics);
 		}
 
 		if (item.kind === "block" && item.role !== "system" && item.enabled !== false && !item.role) {
@@ -267,10 +269,48 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 	return diagnostics;
 }
 
+function validateChatHistoryOptions(
+	item: Extract<PromptStackItem, { kind: "slot" }>,
+	diagnostics: PromptStackDiagnostic[],
+): void {
+	const options = item.options;
+	if (!options) return;
+
+	for (const key of ["includeLastUserMessage", "stripAssistantThinking", "includeSummaries"]) {
+		const value = options[key];
+		if (value !== undefined && typeof value !== "boolean") {
+			diagnostics.push({ level: "warning", message: `chat-history option ${key} should be a boolean.`, itemId: item.id });
+		}
+	}
+
+	if (options.roles !== undefined && !isStringArray(options.roles)) {
+		diagnostics.push({ level: "error", message: "chat-history option roles must be an array of strings.", itemId: item.id });
+	}
+
+	if (options.toolMode !== undefined && (typeof options.toolMode !== "string" || !VALID_CHAT_HISTORY_TOOL_MODES.has(options.toolMode))) {
+		diagnostics.push({ level: "error", message: 'chat-history option toolMode must be "keep" or "drop".', itemId: item.id });
+	}
+
+	for (const key of ["maxMessages", "maxChars"]) {
+		const value = options[key];
+		if (value !== undefined && !isPositiveInteger(value)) {
+			diagnostics.push({ level: "error", message: `chat-history option ${key} must be a positive integer.`, itemId: item.id });
+		}
+	}
+}
+
 function normalizeId(value: unknown, fallback: string): string {
 	if (typeof value === "string" && value.trim()) return value.trim();
 	if (typeof value === "number" && Number.isFinite(value)) return String(value);
 	return fallback;
+}
+
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -33,6 +33,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Movable `chat-history` slot in message layout.
 - Optional omission of latest user message from chat history.
 - Optional stripping of prior assistant thinking blocks from inserted chat history while preserving visible text, tool calls, and tool results.
+- Chat history can filter summaries/roles, drop prior tool history, and cap recent history by message count or approximate characters with dangling tool calls/results repaired after filtering.
 - Duplicate chat-history warning unless explicitly allowed.
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
@@ -52,7 +53,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `effect: "finalize"` is destructive: it replaces the finalized assistant message in Pi's stored transcript, so the original model output is not preserved.
 - `effect: "display"` and `"both"` validate with warnings and are ignored until true display transforms are implemented.
 - Streaming display is not transformed; raw text may be visible until the final message replacement happens.
-- Message transforms support role filters, `maxMessages`, and `maxChars`.
+- Message transforms support role filters, `maxMessages`, `maxChars`, `minDepth`, `maxDepth`, and `trimStrings`. `$0` is supported as a full-match alias for `$&` in replacements.
 - Compiled-stage transforms support `targets: ["system"]`, `["messages"]`, or both.
 - Supported regex flags are `g`, `i`, `m`, `s`, and `u`, with duplicate/unsupported flags rejected during validation.
 - Runtime diagnostics report regex match counts and changed text segment counts.
@@ -134,8 +135,8 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Report macros that need manual migration, including normalized camelCase SillyTavern macro names.
 - Report supported SillyTavern-style variable macros such as `setvar` and `getvar` as handled by pi-forge.
 - Report SillyTavern `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes.
-- Convert safe SillyTavern `promptOnly` regex scripts into pi-forge `regex.rules` with `stage: "compiled"`, `effect: "outgoing"`, and `targets: ["system", "messages"]`.
-- Leave SillyTavern display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, unsupported-flag, and invalid regex scripts as report-only migration notes.
+- Convert safe SillyTavern `promptOnly` regex scripts into pi-forge `regex.rules` with `stage: "history"`, `effect: "outgoing"`, JavaScript replacement syntax, trim strings, depth limits, clear placement role mappings, and preserved `source.sillytavern` metadata. History-stage depth is relative to the filtered chat history, matching SillyTavern's chat-relative depth.
+- Leave SillyTavern display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, unsupported-placement, unsupported-flag, and invalid regex scripts as report-only migration notes.
 
 ## Debugging and Tests
 
@@ -146,7 +147,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
-- Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, role/message/char limits, and preservation of non-text message parts.
+- Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
 
@@ -164,7 +165,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
 - Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
-- Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, pattern, flags, replacement, and runtime warnings.
+- Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, depth, trim strings, pattern, flags, replacement, and runtime warnings.
 - Reorder items by drag-and-drop.
 - Add stack items through one add action, then choose block or slot in the item editor.
 - Delete stack items.

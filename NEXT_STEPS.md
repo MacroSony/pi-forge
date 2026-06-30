@@ -10,6 +10,7 @@ Implemented and working:
 - Prompt stack system prompt replacement.
 - Movable `chat-history` slot.
 - Opt-in `stripAssistantThinking` on `chat-history` slots to remove prior assistant thinking blocks while preserving visible text, tool calls, and tool results.
+- Chat-history slot controls for summary omission, role filters, tool-history dropping, `maxMessages`, and `maxChars`, with dangling tool calls/results repaired after filtering.
 - Context rewrite limited to the first provider request of each user-submitted turn, avoiding repeated COT/post-history injection after tool calls.
 - Runtime slots for tools, tool guidelines, skills, project context, date/cwd, active model, append-system-prompt, and Pi docs guidance.
 - Basic macro expansion and turn/session/static template variables.
@@ -41,7 +42,7 @@ Implemented and working:
 - Web editor servers are tracked per project cwd and rebound after extension reinitialization, preventing orphaned same-project servers after `/tree` or `/new`.
 - Stack-level tool allow/deny policy filters Pi's active tool list while a stack is active and restores the previous active tools when the policy no longer applies.
 - Stack-level skill allow/deny policy filters skills rendered by pi-forge `skills` slots, with validation warnings for `append`/`prepend` mode.
-- Safe SillyTavern `promptOnly` regex scripts are converted into pi-forge outgoing `compiled` regex rules during import; display-only, mixed, JavaScript, DOM/browser, CSS/HTML decoration, invalid, and unsupported regex scripts remain report-only.
+- Safe SillyTavern `promptOnly` regex scripts are converted into pi-forge outgoing `history` regex rules during import; ST full-match replacement tokens, trim strings, depth fields, and clear user/assistant placement mappings are handled, while display-only, mixed, JavaScript, DOM/browser, CSS/HTML decoration, invalid, unsupported-placement, and unsupported regex scripts remain report-only.
 
 ## Architecture simplification review
 
@@ -139,8 +140,8 @@ Regex runtime status and design:
 - Implemented MVP: opt-in, deterministic JavaScript `RegExp` find/replace only; no embedded JavaScript, no DOM access, no CSS/HTML decoration runtime, and no SillyTavern UI panel behavior.
 - Regex rules are ordered prompt-stack data under top-level `regex.schemaVersion` and `regex.rules`.
 - Model rule execution by explicit stage instead of one global text pass:
-  - `history` stage: implemented for messages selected by the `chat-history` slot. Supports role filters, `maxMessages`, and `maxChars`.
-  - `compiled` stage: implemented for final system prompt and final message text before provider serialization. Supports `targets`, role filters for messages, `maxMessages`, and `maxChars`.
+  - `history` stage: implemented for messages selected by the `chat-history` slot. Supports role filters, depth filters, `maxMessages`, `maxChars`, and `trimStrings`.
+  - `compiled` stage: implemented for final system prompt and final message text before provider serialization. Supports `targets`, role filters for messages, depth filters, `maxMessages`, `maxChars`, and `trimStrings`.
   - `payload` stage: not implemented; advanced provider-payload rewrite in `before_provider_request` should stay off by default and require explicit target paths because provider payload shapes differ.
   - `display` stage: not implemented; should transform web preview/display only and never change outgoing model input.
 - Keep outgoing versus final-transcript versus display behavior explicit with `effect: "outgoing" | "finalize" | "display" | "both"`. Current runtime applies omitted/`"outgoing"` effects to model input and `"finalize"` effects to completed assistant messages. `"display"` and `"both"` still warn and are ignored. SillyTavern `promptOnly` maps to outgoing, `markdownOnly` maps to display, and mixed rules require review.
@@ -161,7 +162,7 @@ Regex runtime status and design:
 }
 ```
 
-- Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, warns that finalize rules are destructive, and shows match/change counts in preview/runtime diagnostics.
+- Validation compiles every regex, rejects unsupported flags, requires valid IDs, warns on display-only rules in TUI contexts, warns on SillyTavern replacement tokens in native rules, warns that finalize rules are destructive, and shows match/change counts in preview/runtime diagnostics.
 - Implemented final-message cleanup uses `effect: "finalize"` at Pi `message_end`: users may see raw streamed text during generation, but the final stored/displayed transcript can be regex-cleaned afterward. This is not true display-only behavior because Pi stores the replacement and the original model output is lost from the transcript.
 - Current hooks do not support reliable `displayStreaming` cleanup; hiding partial blocks such as `(OOC: ... )` while streaming would require a future transformable streaming-display hook and a stateful buffered filter.
 - Next regex implementation order: revisit true display-only and provider-payload stages only after real usage shows the current outgoing/finalize subset is insufficient.
@@ -268,26 +269,17 @@ Useful low-risk transforms:
 
 ## Priority 8: Better chat-history controls
 
-Current option:
-
-```json
-"options": {
-  "includeLastUserMessage": false,
-  "stripAssistantThinking": true
-}
-```
-
-Next options:
+Current options:
 
 ```json
 "options": {
   "includeLastUserMessage": false,
   "stripAssistantThinking": true,
-  "includeToolResults": true,
-  "includeToolCalls": true,
-  "includeSyntheticMessages": false,
-  "maxMessages": null,
-  "maxApproxChars": null
+  "includeSummaries": true,
+  "toolMode": "keep",
+  "roles": ["user", "assistant"],
+  "maxMessages": 40,
+  "maxChars": 20000
 }
 ```
 
@@ -296,7 +288,7 @@ Potential filters:
 - omit last N user messages
 - only include current branch after last compaction
 - omit hidden/custom messages
-- include/exclude tool result messages
+- include/exclude synthetic/custom messages more explicitly
 - summarize old history later
 
 ## Priority 9: Prompt-stack lifecycle controls
@@ -398,5 +390,5 @@ Prompt stacks should remain about message/system layout.
 1. Continue splitting `src/index.ts` by moving command and event handlers into focused modules.
 2. Split the embedded web editor page along practical static boundaries before adding larger policy/regex screens.
 3. Refactor the SillyTavern importer pipeline so regex and macro reporting can grow without bloating one function.
-4. Add better chat-history controls (`maxMessages`, tool call/result filters, synthetic message filters).
+4. Add more chat-history controls only if needed after 0.3.0 feedback (synthetic/custom filters, old-history summarization).
 5. Expand regex beyond outgoing/finalize transforms only after real usage justifies display or provider-payload stages.

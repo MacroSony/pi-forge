@@ -160,7 +160,7 @@ Bring your ST presets into Pi:
 
 pi-forge converts the preset to a prompt stack and generates a migration report showing what was handled and what needs manual tweaking.
 
-Deterministic SillyTavern `promptOnly` regex scripts are converted to pi-forge `regex.rules` when they can be represented safely. Display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, and unsupported regex scripts stay report-only for manual review.
+Deterministic SillyTavern `promptOnly` regex scripts are converted to pi-forge `regex.rules` as history-stage rules when they can be represented safely, including full-match token conversion, trim strings, depth fields, and clear user/assistant placements. Display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, unsupported placements, and invalid regex scripts stay report-only for manual review.
 
 ### 🔍 Prompt debugging
 
@@ -311,13 +311,20 @@ Valid roles: `system`, `user`, `assistant`, `custom`.
 ```json
 "options": {
   "includeLastUserMessage": false,
-  "stripAssistantThinking": true
+  "stripAssistantThinking": true,
+  "includeSummaries": true,
+  "toolMode": "keep",
+  "roles": ["user", "assistant"],
+  "maxMessages": 40,
+  "maxChars": 20000
 }
 ```
 
 Set to `false` when you use `{{lastUserMessage}}` after the history — prevents the user's message from appearing twice.
 
 Set `stripAssistantThinking` to `true` to remove prior assistant thinking blocks from inserted chat history. Visible assistant text, tool calls, and tool result messages are preserved. This only affects history inserted by that slot and does not alter the current agent loop or stored transcript.
+
+Use `includeSummaries: false` to omit Pi branch/compaction summary messages, `roles` to keep only specific message roles, `toolMode: "drop"` to remove prior tool-call/tool-result history, and `maxMessages` / `maxChars` to keep only recent history. When filters or limits can break tool-call pairs, pi-forge removes dangling tool calls/results instead of sending inconsistent tool history.
 
 ### Structured slot format options
 
@@ -380,7 +387,7 @@ Prompt stacks can run deterministic regex replacements on model-bound prompt tex
 }
 ```
 
-Use `stage: "history"` to transform messages inserted by the `chat-history` slot. Use `stage: "compiled"` with optional `targets: ["system"]`, `["messages"]`, or both to transform the final compiled prompt. Message rules can filter by `roles`, `maxMessages`, and `maxChars`. Supported regex flags are `g`, `i`, `m`, `s`, and `u`.
+Use `stage: "history"` to transform messages inserted by the `chat-history` slot. Use `stage: "compiled"` with optional `targets: ["system"]`, `["messages"]`, or both to transform the final compiled prompt. Message rules can filter by `roles`, `maxMessages`, `maxChars`, `minDepth`, and `maxDepth`, where depth `0` is the latest message. Replacements use JavaScript syntax (`$&` for the full match, `$1` for captures; `$0` is also accepted as a full-match alias, and `$$` escapes a literal `$`). `trimStrings` removes literal strings from expanded replacement matches/captures, matching SillyTavern's Trim Out behavior. Supported regex flags are `g`, `i`, `m`, `s`, and `u`.
 
 To clean a completed assistant message after streaming, use `effect: "finalize"`:
 
@@ -402,7 +409,7 @@ Warning: `finalize` runs at `message_end`, after raw output may already have str
 
 `effect: "outgoing"` changes model input. `effect: "finalize"` changes finalized assistant transcript content. `effect: "display"` and `"both"` validate with warnings but are ignored at runtime until true display transforms are implemented.
 
-The web editor has a structured Regex dialog for these rule fields and preserves advanced unknown fields for raw JSON editing.
+SillyTavern imports convert deterministic prompt-only `{{match}}` / `$0` full-match replacements to JavaScript `$&` (both `$0` and `$&` work in pi-forge), preserve original regex metadata in `source.sillytavern`, and run as history-stage rules so depth stays chat-relative. Display-only/browser/unsupported-placement scripts stay report-only. The web editor has a structured Regex dialog for these rule fields and preserves advanced unknown fields for raw JSON editing.
 
 ### Variables slot options
 

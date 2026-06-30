@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
-## [0.3.0] - 2026-06-28
+## [0.3.0] - 2026-06-30
 
 ### Breaking Changes
 
@@ -18,8 +18,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Added
 
 - **Regex transforms.** Deterministic JavaScript `RegExp` find/replace on prompt text, ordered as stack-level `regex.rules`.
-  - `stage: "history"` — transforms messages inserted by the `chat-history` slot, with role filters, `maxMessages`, and `maxChars`.
-  - `stage: "compiled"` — transforms final system prompt and/or message text before provider serialization, with `targets`, role filters, `maxMessages`, and `maxChars`.
+	  - `stage: "history"` — transforms messages inserted by the `chat-history` slot, with role filters, depth filters, `maxMessages`, and `maxChars`.
+	  - `stage: "compiled"` — transforms final system prompt and/or message text before provider serialization, with `targets`, role filters, depth filters, `maxMessages`, and `maxChars`.
+	  - `trimStrings` supports deterministic SillyTavern-style Trim Out behavior for expanded replacement matches/captures.
   - `effect: "finalize"` — destructively rewrites completed assistant messages at `message_end`. Original model output is not preserved.
   - Supported flags: `g`, `i`, `m`, `s`, `u`. Invalid patterns, duplicate IDs, and unsupported flags are rejected during validation.
   - Runtime diagnostics report match counts and changed text segments.
@@ -30,9 +31,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - **Web editor: Structured editors** for stack `context` options, `variables`, tool/skill policy, and `regex.rules` with drag-and-drop reordering.
 - **Web editor: Raw JSON recovery path.** View, copy, and apply raw stack JSON for advanced stack-level fields.
 - **Compact prompt slot formats.** Opt-in `format: "plain"` for `tools`, `tool-guidelines`, `skills`, `project-context`, and `variables` slots. XML remains the default.
-- **Chat-history thinking strip.** `chat-history` slots can opt into `stripAssistantThinking: true` to remove prior assistant thinking blocks from model-bound history while preserving visible text, tool calls, and tool results.
+- **Chat-history controls.** `chat-history` slots can opt into `stripAssistantThinking: true`, summary omission, role filters, `toolMode: "drop"`, `maxMessages`, and `maxChars`. Filtering/trimming repairs dangling tool calls/results before model-bound history is sent.
 - **Prompt-stack storage migration.** New stacks write to `.pi/forge/prompt-stacks/`; legacy `.pi/prompt-stacks/` remains readable and is shadowed by same-named forge files. `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into forge storage.
-- **SillyTavern regex import.** Safe `promptOnly` regex scripts are converted into pi-forge outgoing `compiled` regex rules during import. Display-only, mixed, JavaScript, DOM/browser, and CSS/HTML decoration scripts remain report-only with migration notes.
+- **SillyTavern regex import.** Safe `promptOnly` regex scripts are converted into pi-forge outgoing `history` regex rules during import, including `{{match}}` / `$0` full-match conversion, trim strings, depth fields, clear user/assistant placement mapping, and preserved `source.sillytavern` metadata. Display-only, mixed, JavaScript, DOM/browser, CSS/HTML decoration, and unsupported-placement scripts remain report-only with migration notes.
 - **`/preset ui` server reuse.** Existing same-project editor servers are reclaimed after extension reinitialization from session navigation or new-session flows, preventing orphaned servers.
 - **`/payload next [save=<path>]` command.** Displays and optionally saves the next redacted/truncated provider payload with char/token estimates.
 - **`/preset migrate-stacks` command** with `--dry-run`, `--overwrite`, and `--delete-legacy` options.
@@ -44,7 +45,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - **Context rewrite** limited to the first provider request of each user-submitted turn, avoiding repeated injection after tool calls.
 - **`/preset import-silly`** now detects `{{lastUserMessage}}` and configures chat history accordingly. SillyTavern `{{setvar}}`/`{{getvar}}` macros reported as handled instead of migration-needed.
 - **`/preset reload`** preserves explicit disabled selection instead of reactivating `default.json`.
-- SillyTavern import reports now include `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes.
+- SillyTavern import reports now include `extensions.regex_scripts` counts, prompt/display classification, script names, per-script conversion warnings, and migration notes.
 
 ### Removed
 

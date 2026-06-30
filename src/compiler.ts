@@ -28,6 +28,8 @@ const ZERO_USAGE = {
 
 type PromptVariableScope = "static" | "session" | "turn";
 
+const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
+
 export function createPromptVariableStore(sessionVariables: Record<string, PromptVariableValue> = {}): PromptVariableStore {
 	return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
 }
@@ -146,18 +148,6 @@ export function getLatestUserMessage(messages: AgentMessage[]): string | undefin
 	return undefined;
 }
 
-export function renderPreviewMessages(messages: AgentMessage[], maxChars = 8000): string {
-	let text = "";
-	for (const message of messages) {
-		const role = message.role;
-		text += `\n--- ${role} ---\n`;
-		text += agentMessageToPreviewText(message);
-		text += "\n";
-		if (text.length > maxChars) return `${text.slice(0, maxChars)}\n\n[preview truncated]`;
-	}
-	return text.trimStart();
-}
-
 export function agentMessageToPreviewText(message: AgentMessage): string {
 	let text = contentToText((message as { content?: unknown; summary?: string; command?: string; output?: string }).content);
 	const role = message.role;
@@ -177,14 +167,46 @@ function getChatHistoryMessages(
 	diagnostics: PromptStackDiagnostic[],
 ): AgentMessage[] {
 	let result = messages;
+	const options = item.options ?? {};
+	let shouldRepairToolPairs = false;
 
-	if (item.options?.includeLastUserMessage === false) {
+	if (options.includeLastUserMessage === false) {
 		const lastUserIndex = findLastUserMessageIndex(result);
 		if (lastUserIndex !== -1) result = result.filter((_message, index) => index !== lastUserIndex);
 	}
 
-	if (item.options?.stripAssistantThinking === true) {
+	if (options.includeSummaries === false) {
+		const next = result.filter((message) => !isSummaryMessage(message));
+		addHistoryFilterDiagnostic(diagnostics, item.id, "summary", result.length, next.length);
+		result = next;
+	}
+
+	if (isStringArray(options.roles) && options.roles.length > 0) {
+		const allowedRoles = new Set(options.roles);
+		const next = result.filter((message) => allowedRoles.has(messageRole(message)));
+		addHistoryFilterDiagnostic(diagnostics, item.id, "role", result.length, next.length);
+		result = next;
+		shouldRepairToolPairs = true;
+	}
+
+	if (options.toolMode === "drop") {
+		result = dropToolHistory(result, diagnostics, item.id);
+	} else if (options.toolMode !== undefined && options.toolMode !== "keep") {
+		diagnostics.push({ level: "warning", message: `Unsupported chat-history toolMode: ${String(options.toolMode)}.`, itemId: item.id });
+	}
+
+	if (options.stripAssistantThinking === true) {
 		result = stripAssistantThinkingFromHistory(result, diagnostics, item.id);
+	}
+
+	const limited = limitChatHistory(result, options, diagnostics, item.id);
+	if (limited !== result) {
+		result = limited;
+		shouldRepairToolPairs = true;
+	}
+
+	if (shouldRepairToolPairs && options.toolMode !== "drop") {
+		result = repairToolHistory(result, diagnostics, item.id);
 	}
 
 	return result;
@@ -195,6 +217,225 @@ function findLastUserMessageIndex(messages: AgentMessage[]): number {
 		if (messages[i].role === "user") return i;
 	}
 	return -1;
+}
+
+function limitChatHistory(
+	messages: AgentMessage[],
+	options: NonNullable<PromptStackSlotItem["options"]>,
+	diagnostics: PromptStackDiagnostic[],
+	itemId: string,
+): AgentMessage[] {
+	let result = messages;
+	const maxMessages = positiveIntegerOption(options.maxMessages);
+	const maxChars = positiveIntegerOption(options.maxChars);
+
+	if (maxMessages !== undefined && result.length > maxMessages) {
+		const next = result.slice(-maxMessages);
+		diagnostics.push({
+			level: "info",
+			message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxMessages.`,
+			itemId,
+		});
+		result = next;
+	}
+
+	if (maxChars !== undefined) {
+		const next = takeRecentMessagesWithinChars(result, maxChars);
+		if (next.length < result.length) {
+			diagnostics.push({
+				level: "info",
+				message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxChars.`,
+				itemId,
+			});
+			result = next;
+		}
+	}
+
+	return result;
+}
+
+function takeRecentMessagesWithinChars(messages: AgentMessage[], maxChars: number): AgentMessage[] {
+	const selected: AgentMessage[] = [];
+	let chars = 0;
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		const messageChars = agentMessageToPreviewText(message).length;
+		if (selected.length > 0 && chars + messageChars > maxChars) break;
+		selected.push(message);
+		chars += messageChars;
+	}
+	return selected.reverse();
+}
+
+function addHistoryFilterDiagnostic(
+	diagnostics: PromptStackDiagnostic[],
+	itemId: string,
+	filter: string,
+	before: number,
+	after: number,
+): void {
+	if (before === after) return;
+	diagnostics.push({
+		level: "info",
+		message: `Filtered ${before - after} chat-history message(s) by ${filter}.`,
+		itemId,
+	});
+}
+
+function dropToolHistory(
+	messages: AgentMessage[],
+	diagnostics: PromptStackDiagnostic[],
+	itemId: string,
+): AgentMessage[] {
+	let removedToolCalls = 0;
+	let droppedToolResults = 0;
+	let droppedEmptyMessages = 0;
+	let changed = false;
+	const result: AgentMessage[] = [];
+
+	for (const message of messages) {
+		if (isToolResultMessage(message)) {
+			droppedToolResults++;
+			changed = true;
+			continue;
+		}
+		const stripped = stripToolCallParts(message, () => false);
+		removedToolCalls += stripped.removedCalls;
+		if (stripped.message !== message) changed = true;
+		if (!stripped.message) {
+			droppedEmptyMessages++;
+			continue;
+		}
+		result.push(stripped.message);
+	}
+
+	if (!changed) return messages;
+	diagnostics.push({
+		level: "info",
+		message: `Dropped tool history from chat-history: removed ${removedToolCalls} tool call(s), dropped ${droppedToolResults} tool result message(s)` +
+			(droppedEmptyMessages > 0 ? `, and dropped ${droppedEmptyMessages} empty message(s).` : "."),
+		itemId,
+	});
+	return result;
+}
+
+function repairToolHistory(
+	messages: AgentMessage[],
+	diagnostics: PromptStackDiagnostic[],
+	itemId: string,
+): AgentMessage[] {
+	const includedCallIds = new Set<string>();
+	const includedResultIds = new Set<string>();
+	for (const message of messages) {
+		for (const id of toolCallIdsForMessage(message)) includedCallIds.add(id);
+		const resultId = toolResultMessageId(message);
+		if (resultId) includedResultIds.add(resultId);
+	}
+
+	let removedToolCalls = 0;
+	let droppedToolResults = 0;
+	let droppedEmptyMessages = 0;
+	let changed = false;
+	const result: AgentMessage[] = [];
+
+	for (const message of messages) {
+		if (isToolResultMessage(message)) {
+			const resultId = toolResultMessageId(message);
+			if (!resultId || !includedCallIds.has(resultId)) {
+				droppedToolResults++;
+				changed = true;
+				continue;
+			}
+			result.push(message);
+			continue;
+		}
+
+		const stripped = stripToolCallParts(message, (id) => !!id && includedResultIds.has(id));
+		removedToolCalls += stripped.removedCalls;
+		if (stripped.message !== message) changed = true;
+		if (!stripped.message) {
+			droppedEmptyMessages++;
+			continue;
+		}
+		result.push(stripped.message);
+	}
+
+	if (!changed) return messages;
+	diagnostics.push({
+		level: "info",
+		message: `Repaired tool history after chat-history filtering: removed ${removedToolCalls} dangling tool call(s), dropped ${droppedToolResults} dangling tool result message(s)` +
+			(droppedEmptyMessages > 0 ? `, and dropped ${droppedEmptyMessages} empty message(s).` : "."),
+		itemId,
+	});
+	return result;
+}
+
+function stripToolCallParts(
+	message: AgentMessage,
+	keep: (id: string | undefined) => boolean,
+): { message?: AgentMessage; removedCalls: number } {
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return { message, removedCalls: 0 };
+
+	const nextContent = content.filter((part) => !isToolCallContent(part) || keep(toolCallPartId(part)));
+	const removedCalls = content.length - nextContent.length;
+	if (removedCalls === 0) return { message, removedCalls: 0 };
+	if (nextContent.length === 0) return { removedCalls };
+	return { message: { ...message, content: nextContent } as AgentMessage, removedCalls };
+}
+
+function toolCallIdsForMessage(message: AgentMessage): string[] {
+	const content = (message as { content?: unknown }).content;
+	if (!Array.isArray(content)) return [];
+	return content
+		.map((part) => toolCallPartId(part))
+		.filter((id): id is string => !!id);
+}
+
+function isToolCallContent(value: unknown): boolean {
+	return isPlainObject(value) && value.type === "toolCall";
+}
+
+function toolCallPartId(value: unknown): string | undefined {
+	if (!isPlainObject(value)) return undefined;
+	return firstString(value.id, value.toolCallId, value.callId);
+}
+
+function isToolResultMessage(message: AgentMessage): boolean {
+	return messageRole(message) === "toolResult";
+}
+
+function toolResultMessageId(message: AgentMessage): string | undefined {
+	if (!isToolResultMessage(message)) return undefined;
+	const raw = message as unknown as Record<string, unknown>;
+	return firstString(raw.toolCallId, raw.id, raw.callId);
+}
+
+function isSummaryMessage(message: AgentMessage): boolean {
+	return SUMMARY_ROLES.has(messageRole(message));
+}
+
+function messageRole(message: AgentMessage): string {
+	return String((message as { role?: unknown }).role ?? "");
+}
+
+function positiveIntegerOption(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+	for (const value of values) {
+		if (typeof value === "string" && value) return value;
+	}
+	return undefined;
+}
+
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function chatHistoryMessageSources(messages: AgentMessage[], item: PromptStackSlotItem): CompileMessageSource[] {

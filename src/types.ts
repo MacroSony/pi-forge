@@ -36,10 +36,14 @@ export interface PromptRegexRule {
 	pattern: string;
 	flags?: string;
 	replace?: string;
+	trimStrings?: string[];
 	roles?: string[];
 	targets?: PromptRegexTarget[];
 	maxMessages?: number;
 	maxChars?: number;
+	minDepth?: number;
+	maxDepth?: number;
+	source?: Record<string, unknown>;
 }
 
 export interface PromptRegexConfig {
@@ -91,6 +95,16 @@ export interface PromptStackSlotOptions {
 	includeLastUserMessage?: boolean;
 	/** For chat-history: remove assistant thinking content blocks from inserted history. Default: false. */
 	stripAssistantThinking?: boolean;
+	/** For chat-history: keep only messages with these roles. Default: all roles. */
+	roles?: string[];
+	/** For chat-history: include Pi branch/compaction summaries. Default: true. */
+	includeSummaries?: boolean;
+	/** For chat-history: keep or drop tool-call/tool-result history. Default: keep. */
+	toolMode?: "keep" | "drop";
+	/** For chat-history: keep only the most recent N messages after filtering. */
+	maxMessages?: number;
+	/** For chat-history: keep only the most recent messages within an approximate character budget. */
+	maxChars?: number;
 	/** For variables: control which variable scopes are included. */
 	includeStatic?: boolean;
 	includeSession?: boolean;
