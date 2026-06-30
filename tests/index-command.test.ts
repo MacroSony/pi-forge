@@ -527,6 +527,14 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /syncResourcePolicyFromTab/);
 		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
 		assert.match(pageHtml, /payloadBtn/);
+		const previewIndex = pageHtml.indexOf('id="preview"');
+		const stackModalIndex = pageHtml.indexOf('id="stackModal"');
+		assert.ok(previewIndex > pageHtml.indexOf("</main>"));
+		assert.ok(previewIndex < stackModalIndex);
+		assert.match(pageHtml, /drop-before/);
+		assert.match(pageHtml, /updateItemDragAutoScroll/);
+		assert.match(pageHtml, /handleDocumentItemDragOver/);
+		assert.match(pageHtml, /nextNumericItemId/);
 		assert.match(pageHtml, /themeBtn/);
 		assert.match(pageHtml, /dirtyBadge/);
 		assert.match(pageHtml, /copyImportReportBtn/);

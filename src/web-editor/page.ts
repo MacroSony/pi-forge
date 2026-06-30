@@ -383,6 +383,9 @@ html, body {
   flex: 1;
   min-height: 0;
 }
+.item-list.drag-active {
+  background: var(--accent-bg);
+}
 .item-row {
   width: 100%;
   text-align: left;
@@ -396,6 +399,7 @@ html, body {
   gap: 8px;
   align-items: center;
   cursor: grab;
+  position: relative;
 }
 .item-row:active {
   cursor: grabbing;
@@ -409,6 +413,26 @@ html, body {
 }
 .item-row.dragging {
   border-style: dashed;
+  opacity: .58;
+}
+.item-row.drop-before::before,
+.item-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+  pointer-events: none;
+  z-index: 2;
+}
+.item-row.drop-before::before {
+  top: -6px;
+}
+.item-row.drop-after::after {
+  bottom: -6px;
 }
 .drag-handle {
   color: var(--muted);
@@ -957,12 +981,12 @@ html, body {
       <div class="editor-pane">
         <div id="itemEditor" class="item-editor"></div>
         <div id="diagnostics" class="diagnostics"></div>
-        <div id="preview" class="preview"></div>
       </div>
     </section>
     <section id="tabPanel" class="tab-panel"></section>
   </main>
 </div>
+<div id="preview" class="preview"></div>
 <div id="stackModal" class="modal"></div>
 <script>
 const token = new URLSearchParams(location.search).get("token") || "";
@@ -974,6 +998,10 @@ let currentFilePath = "";
 let selectedItemIndex = -1;
 let dirty = false;
 let dragIndex = -1;
+let dragDropIndex = -1;
+let dragScrollFrame = 0;
+let dragScrollSpeed = 0;
+let dragClientY = 0;
 let optionsText = "";
 let optionsError = "";
 let sidebarCollapsed = false;
@@ -1187,12 +1215,16 @@ function toggleMetadata() {
 function renderItemList() {
   const list = el("itemList");
   list.innerHTML = "";
+  list.classList.toggle("drag-active", dragIndex !== -1);
   if (!currentStack) return;
   el("itemCount").textContent = currentStack.items.length + " total";
+  list.ondragover = handleItemListDragOver;
+  list.ondrop = handleItemListDrop;
   const diagnosticsByItem = diagnosticsForItems();
   currentStack.items.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = "item-row" + (index === selectedItemIndex ? " selected" : "") + (item.enabled === false ? " disabled" : "");
+    row.dataset.itemIndex = String(index);
     row.draggable = true;
     const enabled = item.enabled !== false;
     const itemDiagnostics = diagnosticsByItem[item.id] || [];
@@ -1221,21 +1253,143 @@ function renderItemList() {
       renderItemList();
       renderItemEditor();
     };
-    row.ondragstart = () => { dragIndex = index; row.classList.add("dragging"); };
-    row.ondragend = () => { dragIndex = -1; row.classList.remove("dragging"); };
-    row.ondragover = (event) => event.preventDefault();
-    row.ondrop = (event) => {
-      event.preventDefault();
-      if (dragIndex === -1 || dragIndex === index) return;
-      const moved = currentStack.items.splice(dragIndex, 1)[0];
-      currentStack.items.splice(index, 0, moved);
-      selectedItemIndex = index;
-      markDirty();
-      renderItemList();
-      renderItemEditor();
+    row.ondragstart = (event) => {
+      dragIndex = index;
+      dragDropIndex = index;
+      row.classList.add("dragging");
+      list.classList.add("drag-active");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", item.id || String(index));
+      }
+      updateItemDropIndicator();
     };
+    row.ondragend = finishItemDrag;
+    row.ondragover = handleItemListDragOver;
+    row.ondrop = handleItemListDrop;
     list.appendChild(row);
   });
+  updateItemDropIndicator();
+}
+
+function handleItemListDragOver(event) {
+  if (dragIndex === -1 || !currentStack) return;
+  event.preventDefault();
+  dragClientY = event.clientY;
+  updateItemDragAutoScroll(event.clientY);
+  setItemDropIndex(dropIndexFromClientY(event.clientY));
+}
+
+function handleItemListDrop(event) {
+  if (dragIndex === -1 || !currentStack) return;
+  event.preventDefault();
+  dropDraggedItem();
+}
+
+function dropDraggedItem() {
+  if (!currentStack || dragIndex < 0 || dragIndex >= currentStack.items.length) {
+    finishItemDrag();
+    return;
+  }
+  let insertIndex = dragDropIndex;
+  if (insertIndex < 0) insertIndex = dragIndex;
+  insertIndex = Math.max(0, Math.min(insertIndex, currentStack.items.length));
+  const [moved] = currentStack.items.splice(dragIndex, 1);
+  if (!moved) {
+    finishItemDrag();
+    return;
+  }
+  if (dragIndex < insertIndex) insertIndex--;
+  insertIndex = Math.max(0, Math.min(insertIndex, currentStack.items.length));
+  currentStack.items.splice(insertIndex, 0, moved);
+  selectedItemIndex = insertIndex;
+  const changed = dragIndex !== insertIndex;
+  finishItemDrag(false);
+  if (changed) markDirty();
+  renderItemList();
+  renderItemEditor();
+}
+
+function setItemDropIndex(index) {
+  if (!currentStack) return;
+  const next = Math.max(0, Math.min(index, currentStack.items.length));
+  if (dragDropIndex === next) return;
+  dragDropIndex = next;
+  updateItemDropIndicator();
+}
+
+function dropIndexFromClientY(clientY) {
+  const list = el("itemList");
+  const rows = [...list.querySelectorAll(".item-row")];
+  if (!rows.length) return 0;
+  const listRect = list.getBoundingClientRect();
+  if (clientY <= listRect.top) return 0;
+  if (clientY >= listRect.bottom) return rows.length;
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    const index = Number(row.dataset.itemIndex);
+    if (clientY < rect.top + rect.height / 2) return index;
+  }
+  return rows.length;
+}
+
+function updateItemDropIndicator() {
+  const list = el("itemList");
+  const rows = [...list.querySelectorAll(".item-row")];
+  for (const row of rows) row.classList.remove("drop-before", "drop-after");
+  list.classList.toggle("drag-active", dragIndex !== -1);
+  if (dragIndex === -1 || dragDropIndex === -1 || !rows.length) return;
+  if (dragDropIndex <= 0) rows[0].classList.add("drop-before");
+  else if (dragDropIndex >= rows.length) rows[rows.length - 1].classList.add("drop-after");
+  else rows[dragDropIndex].classList.add("drop-before");
+}
+
+function updateItemDragAutoScroll(clientY) {
+  const list = el("itemList");
+  const rect = list.getBoundingClientRect();
+  const edge = Math.min(72, Math.max(36, rect.height / 5));
+  let speed = 0;
+  if (clientY < rect.top) speed = -Math.min(30, 8 + (rect.top - clientY) / 3);
+  else if (clientY < rect.top + edge) speed = -Math.min(22, (rect.top + edge - clientY) / 3);
+  else if (clientY > rect.bottom) speed = Math.min(30, 8 + (clientY - rect.bottom) / 3);
+  else if (clientY > rect.bottom - edge) speed = Math.min(22, (clientY - (rect.bottom - edge)) / 3);
+  dragScrollSpeed = speed;
+  if (speed !== 0 && !dragScrollFrame) dragScrollFrame = requestAnimationFrame(runItemDragAutoScroll);
+}
+
+function runItemDragAutoScroll() {
+  dragScrollFrame = 0;
+  if (dragIndex === -1 || dragScrollSpeed === 0) return;
+  const list = el("itemList");
+  list.scrollTop += dragScrollSpeed;
+  setItemDropIndex(dropIndexFromClientY(dragClientY));
+  dragScrollFrame = requestAnimationFrame(runItemDragAutoScroll);
+}
+
+function finishItemDrag(clearIndicator = true) {
+  dragIndex = -1;
+  dragDropIndex = -1;
+  dragScrollSpeed = 0;
+  dragClientY = 0;
+  if (dragScrollFrame) {
+    cancelAnimationFrame(dragScrollFrame);
+    dragScrollFrame = 0;
+  }
+  if (clearIndicator) updateItemDropIndicator();
+}
+
+function handleDocumentItemDragOver(event) {
+  if (dragIndex === -1 || !currentStack) return;
+  event.preventDefault();
+  dragClientY = event.clientY;
+  updateItemDragAutoScroll(event.clientY);
+  setItemDropIndex(dropIndexFromClientY(event.clientY));
+}
+
+function handleDocumentItemDrop(event) {
+  if (dragIndex === -1 || !currentStack) return;
+  event.preventDefault();
+  dropDraggedItem();
 }
 
 function diagnosticsForItems() {
@@ -2038,18 +2192,24 @@ function setOptionalObjectString(target, key, value) {
 
 function addItem(kind) {
   if (!currentStack) return;
-  const idBase = kind === "slot" ? "slot" : "block";
-  let index = currentStack.items.length + 1;
-  let id = idBase + "-" + index;
-  const existing = new Set(currentStack.items.map((item) => item.id));
-  while (existing.has(id)) id = idBase + "-" + (++index);
-  currentStack.items.push(kind === "slot"
+  const id = nextNumericItemId();
+  const insertIndex = selectedItemIndex >= 0 && selectedItemIndex < currentStack.items.length
+    ? selectedItemIndex + 1
+    : currentStack.items.length;
+  currentStack.items.splice(insertIndex, 0, kind === "slot"
     ? { kind: "slot", id, enabled: true, slot: "chat-history" }
     : { kind: "block", id, enabled: true, role: "user", content: "" });
-  selectedItemIndex = currentStack.items.length - 1;
+  selectedItemIndex = insertIndex;
   markDirty();
   renderItemList();
   renderItemEditor();
+}
+
+function nextNumericItemId() {
+  const existing = new Set((currentStack?.items || []).map((item) => String(item.id)));
+  let index = 1;
+  while (existing.has(String(index))) index++;
+  return String(index);
 }
 
 function deleteSelectedItem() {
@@ -2631,6 +2791,8 @@ el("preview").onclick = (event) => {
 };
 el("addItemBtn").onclick = () => addItem("block");
 el("deleteItemBtn").onclick = deleteSelectedItem;
+document.addEventListener("dragover", handleDocumentItemDragOver);
+document.addEventListener("drop", handleDocumentItemDrop);
 window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
 window.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
