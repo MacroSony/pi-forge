@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-![pi-forge header](assets/pi-forge-header-concept-1.png)
+![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
 
 **pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, template variables, and prompt transforms.
 
