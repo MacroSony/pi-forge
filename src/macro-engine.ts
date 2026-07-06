@@ -55,6 +55,11 @@ registerMacro("lower", ({ expandArg }) => expandArg(0).toLowerCase());
 registerMacro("json", ({ expandArg }) => JSON.stringify(expandArg(0)));
 registerMacro("xml", ({ expandArg }) => escapeXml(expandArg(0)));
 
+registerMacro("ifvar", renderIfVariable);
+registerMacro("ifeq", renderIfVariableEquals);
+registerMacro("iftools", renderIfTool);
+registerMacro("ifslot", renderIfSlot);
+
 export function expandMacros(
 	text: string,
 	stack: PromptStack,
@@ -243,7 +248,51 @@ function renderClearVariable(context: MacroRenderContext): string | undefined {
 }
 
 function renderSelectedTools({ stack, runtime }: MacroRenderContext): string {
-	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools).join(", ");
+	return selectedToolNames(stack, runtime).join(", ");
+}
+
+function renderIfVariable(context: MacroRenderContext): string | undefined {
+	const name = context.expandArg(0).trim();
+	if (!name) return undefined;
+
+	return renderConditionalBranch(context, getRuntimeVariable(context.runtime, context.stack, name) !== undefined, 1, 2);
+}
+
+function renderIfVariableEquals(context: MacroRenderContext): string | undefined {
+	const name = context.expandArg(0).trim();
+	if (!name || context.rawArgs.length < 2) return undefined;
+
+	const value = getRuntimeVariable(context.runtime, context.stack, name);
+	const expected = context.expandArg(1);
+	return renderConditionalBranch(context, value !== undefined && variableValueToMacroText(value) === expected, 2, 3);
+}
+
+function renderIfTool(context: MacroRenderContext): string | undefined {
+	const name = context.expandArg(0).trim();
+	if (!name) return undefined;
+
+	return renderConditionalBranch(context, selectedToolNames(context.stack, context.runtime).includes(name), 1, 2);
+}
+
+function renderIfSlot(context: MacroRenderContext): string | undefined {
+	const name = context.expandArg(0).trim();
+	if (!name) return undefined;
+
+	const hasSlot = context.stack.items.some((item) => item.enabled !== false && item.kind === "slot" && item.slot === name);
+	return renderConditionalBranch(context, hasSlot, 1, 2);
+}
+
+function renderConditionalBranch(
+	context: MacroRenderContext,
+	condition: boolean,
+	thenIndex: number,
+	elseIndex: number,
+): string {
+	return condition ? context.expandArg(thenIndex) : context.expandArg(elseIndex);
+}
+
+function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
+	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
 }
 
 function isVariableScope(value: string): value is PromptVariableScope {

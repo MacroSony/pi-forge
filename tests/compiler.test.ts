@@ -462,6 +462,74 @@ test("macro filters transform expanded arguments", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("conditional macros render selected branches", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "conditional-macros",
+		tools: { allow: ["read"] },
+		variables: { name: "Ada", mood: "bright" },
+		items: [
+			{
+				kind: "block",
+				id: "conditions",
+				enabled: true,
+				role: "system",
+				content: [
+					"ifvar={{ifvar::name::present::missing}}/{{ifvar::absent::present::missing}}",
+					"ifeq={{ifeq::name::Ada::match::miss}}/{{ifeq::mood::dim::match::miss}}",
+					"iftools={{iftools::read::tool::no-tool}}/{{iftools::bash::tool::no-tool}}",
+					"ifslot={{ifslot::chat-history::slot::no-slot}}/{{ifslot::missing::slot::no-slot}}",
+				].join("\n"),
+			},
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	};
+	const baseRuntime = runtime();
+
+	const result = compileSystemPrompt(stack, runtime({ options: { ...baseRuntime.options, selectedTools: ["read", "bash"] } }), "base");
+
+	assert.equal(result.systemPrompt, [
+		"ifvar=present/missing",
+		"ifeq=match/miss",
+		"iftools=tool/no-tool",
+		"ifslot=slot/no-slot",
+	].join("\n"));
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("conditional macro branches are lazy", () => {
+	const store = createPromptVariableStore();
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "conditional-lazy",
+		variables: { name: "Ada" },
+		items: [
+			{
+				kind: "block",
+				id: "conditions",
+				enabled: true,
+				role: "system",
+				content: [
+					"{{ifvar::name::{{setvar::thenTouched::yes}}::{{setvar::elseTouched::yes}}}}true={{getvar::thenTouched}}/{{getvar::elseTouched}}",
+					"{{ifvar::missing::{{setvar::missingThen::yes}}::{{setvar::missingElse::yes}}}}false={{getvar::missingThen}}/{{getvar::missingElse}}",
+				].join("\n"),
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
+
+	assert.equal(result.systemPrompt, [
+		"true=yes/",
+		"false=/yes",
+	].join("\n"));
+	assert.equal(store.turn.thenTouched, "yes");
+	assert.equal(store.turn.elseTouched, undefined);
+	assert.equal(store.turn.missingThen, undefined);
+	assert.equal(store.turn.missingElse, "yes");
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("time macro renders from the runtime clock", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,

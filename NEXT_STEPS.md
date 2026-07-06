@@ -5,24 +5,24 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 ## Current Read
 
 - `0.3.0` is a complete feature release: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
-- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork is handled in the current working tree; the next macro work is lazy conditionals and the next maintainability constraint is `src/web-editor/page.ts`.
+- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork and lazy conditionals are handled in the current working tree; the next macro work is slot registry cleanup and the next maintainability constraint is `src/web-editor/page.ts`.
 - New behavior should be driven by real prompt-authoring pain, not by aiming for full SillyTavern compatibility.
 - Keep prompt stacks scoped to message/system layout. Model, provider, thinking, and broad tool-profile choices belong in a later agent-profile layer.
 
 ## Plan Assessment
 
-The plan is healthy, but it should stop treating completed release work as roadmap. The highest leverage next work is macro conditionals, with web editor cleanup before larger UI additions.
+The plan is healthy, but it should stop treating completed release work as roadmap. The highest leverage next work is slot registry cleanup or web editor cleanup before larger UI additions.
 
 Recommended ordering:
 
-1. Finish macro conditionals on top of the parser-backed macro engine.
+1. Refactor built-in slots toward the same registry shape as macros.
 2. Split `src/web-editor/page.ts` before adding larger screens.
 3. Preserve additional SillyTavern import metadata and fixtures only when real presets reveal useful drift.
 4. Defer true display regex, provider-payload rewrite, and agent profiles until usage proves the need.
 
 Risk calls:
 
-- Macro conditionals are the next meaningful feature. They touch the compiler and importer reports. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
+- Slot registry cleanup is the next macro-system hardening step. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
 - Web editor growth without a static split or tiny build step will keep making reviews noisy.
 - Provider-payload transforms are high-risk because provider shapes vary; keep them out until there is a precise use case.
 - True display-only regex needs platform support for display/stream transforms. The current finalize behavior is not a substitute because it mutates the transcript.
@@ -30,7 +30,7 @@ Risk calls:
 
 ## Priority 1: Improve Macro Engine
 
-Goal: finish the parser-backed macro engine with lazy conditionals and future trusted customization without turning prompt-stack JSON into a scripting language.
+Goal: finish the registry-backed macro and slot foundation for future trusted customization without turning prompt-stack JSON into a scripting language.
 
 Design boundaries:
 
@@ -42,16 +42,6 @@ Design boundaries:
 
 Remaining work:
 
-- Add lazy macro handler support for branch-style macros.
-- Add basic conditionals:
-  - `{{ifvar::name::then text}}`
-  - `{{ifvar::name::then text::else text}}`
-  - `{{ifeq::name::expected::then text}}`
-  - `{{ifeq::name::expected::then text::else text}}`
-  - `{{iftools::toolName::then text}}`
-  - `{{iftools::toolName::then text::else text}}`
-  - `{{ifslot::slotName::then text}}`
-  - `{{ifslot::slotName::then text::else text}}`
 - Refactor built-in slots toward the same renderer shape where practical:
   - `chat-history`
   - `tools`
@@ -59,15 +49,14 @@ Remaining work:
   - `skills`
   - `project-context`
   - `variables`
-- Preserve parser, filter, and unknown-policy compatibility while adding conditionals.
+- Preserve parser, filter, conditional, and unknown-policy compatibility while refactoring slots.
 - Prepare the trusted extension API shape, but do not expose arbitrary user code from stack JSON.
 - Defer general expression syntax, boolean algebra, loops, arithmetic, regex conditions, and arbitrary user code.
 
 Done criteria:
 
-- Conditional branches are lazily expanded, so only the chosen branch can run mutation macros.
-- Existing macro behavior and diagnostics are preserved.
-- Compiler tests cover basic conditionals, branch laziness, mutation macros, escaping, and existing nested/filter behavior.
+- Existing macro and slot behavior and diagnostics are preserved.
+- Compiler tests cover registry-backed slots, conditionals, branch laziness, mutation macros, escaping, and existing nested/filter behavior.
 - Adding a built-in macro or slot is a local registry change instead of editing one long conditional chain.
 
 ## Priority 2: Split Web Editor Page Before Larger UI Work

@@ -360,6 +360,48 @@ test("reports supported variable macros as handled instead of migration-needed",
 	assert.match(result.report, /\{\{getsessionvar\}\}.*session-only lookup/);
 });
 
+test("reports supported macro filters and conditionals as handled", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-st-import-"));
+	const path = writePreset(cwd, "conditionals.json", {
+		prompts: [
+			{
+				identifier: "main",
+				role: "system",
+				content: [
+					"{{ifvar::mood::{{upper::yes}}::{{lower::NO}}}}",
+					"{{json::{{lastUserMessage}}}}",
+					"{{xml::{{selectedTools}}}}",
+					"{{iftools::read::tool}}",
+				].join(""),
+			},
+			{ identifier: "chatHistory", marker: true },
+		],
+		prompt_order: [
+			{
+				character_id: 1,
+				order: [
+					{ identifier: "main", enabled: true },
+					{ identifier: "chatHistory", enabled: true },
+				],
+			},
+		],
+	});
+
+	const result = importSillyTavernPreset(path);
+	assert.ok("stack" in result);
+	if (!("stack" in result)) return;
+
+	assert.doesNotMatch(result.report, /Macros needing manual migration/);
+	assert.match(result.report, /Handled macros/);
+	assert.match(result.report, /\{\{ifvar\}\}.*variable-existence conditional/);
+	assert.match(result.report, /\{\{iftools\}\}.*active-tool conditional/);
+	assert.match(result.report, /\{\{upper\}\}.*uppercase filter/);
+	assert.match(result.report, /\{\{lower\}\}.*lowercase filter/);
+	assert.match(result.report, /\{\{json\}\}.*JSON string escaping/);
+	assert.match(result.report, /\{\{xml\}\}.*XML escaping/);
+	assert.match(result.report, /\{\{selectedTools\}\}.*active tool names/);
+});
+
 test("reports SillyTavern regex script classification", () => {
 	const result = convertSillyTavernPreset(
 		{
