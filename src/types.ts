@@ -112,6 +112,8 @@ export interface PromptStackSlotOptions {
 	format?: PromptStackSlotFormat;
 	/** For tools: only render tools that provide prompt snippets, matching Pi's default prompt builder. */
 	onlyWithSnippets?: boolean;
+	/** For date/date-cwd: include the exact current time. Default: false. */
+	includeTime?: boolean;
 	/** For tool-guidelines: override the plain-format section heading. */
 	heading?: string;
 	/** For tool-guidelines: include Pi's default concise/file-path guideline bullets. */
@@ -204,17 +206,4 @@ export interface CompileMessagesResult {
 	diagnostics: PromptStackDiagnostic[];
 }
 
-export const SUPPORTED_SLOTS = new Set<PromptStackSlot>([
-	"chat-history",
-	"tools",
-	"tool-guidelines",
-	"skills",
-	"project-context",
-	"append-system-prompt",
-	"date",
-	"cwd",
-	"date-cwd",
-	"active-model",
-	"pi-docs",
-	"variables",
-]);
+export { SUPPORTED_SLOTS } from "./slot-renderers.ts";

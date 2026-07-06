@@ -1492,6 +1492,9 @@ function renderSlotOptionsForm(item, options) {
   if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot)) {
     fields.push(optionSelect("format", "Format", options.format || "xml", ["xml", "plain"]));
   }
+  if (["date", "date-cwd"].includes(item.slot)) {
+    fields.push(optionCheckbox("includeTime", "Include current time", options.includeTime === true));
+  }
   if (fields.length === 0) {
     fields.push('<div class="wide option-note">This slot has no structured options yet. Use JSON mode for advanced settings.</div>');
   }
@@ -1555,7 +1558,7 @@ function setSlotOption(item, key, value, defaultValue) {
 
 function defaultSlotOptionValue(key) {
   if (["includeLastUserMessage", "includeSummaries", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
-  if (key === "stripAssistantThinking") return false;
+  if (["stripAssistantThinking", "includeTime"].includes(key)) return false;
   if (key === "toolMode") return "keep";
   if (key === "format") return "xml";
   return undefined;
@@ -1591,6 +1594,7 @@ function optionHelp(key) {
     includeStatic: "Include static stack variables in this variables slot.",
     includeSession: "Include session variables created by template macros.",
     includeTurn: "Include temporary turn variables created during prompt compilation.",
+    includeTime: "Render the current time in HH:MM:SS after the current date.",
     format: "Choose XML or compact plain text rendering.",
   };
   return descriptions[key] || "Advanced slot option.";

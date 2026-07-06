@@ -190,7 +190,7 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `skills` | 已加载的 Pi 技能 |
 | `project-context` | 项目指令和上下文文件 |
 | `variables` | 静态/会话/轮次模板变量 |
-| `date` / `cwd` / `date-cwd` | 当前日期和工作目录 |
+| `date` / `cwd` / `date-cwd` | 当前日期、可选当前时间和工作目录 |
 | `active-model` | 当前使用的模型 |
 | `append-system-prompt` | 用户追加的系统提示词 |
 | `pi-docs` | Pi 文档指导 |
@@ -309,6 +309,10 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 把 `stripAssistantThinking` 设为 `true` 可以从插入的历史中移除之前 assistant 的 thinking block。可见 assistant 文本、tool call 和 tool result 消息会保留。它只影响这个 slot 插入到模型输入里的 history，不会修改当前 agent loop 或已存储 transcript。
 
 使用 `includeSummaries: false` 可以排除 Pi 的 branch/compaction summary 消息；`roles` 可以只保留指定消息角色；`toolMode: "drop"` 可以移除之前的 tool call/tool result history；`maxMessages` / `maxChars` 可以只保留最近 history。当过滤或截断可能拆散 tool-call pair 时，pi-forge 会移除悬空的 tool call/result，避免发送不一致的 tool history。
+
+### Date slot 选项
+
+在 `date` 或 `date-cwd` slot 上设置 `"includeTime": true`，会在当前日期后加入 `HH:MM:SS` 格式的当前时间。
 
 ### 结构化 slot 格式选项
 

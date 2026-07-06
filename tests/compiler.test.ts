@@ -96,6 +96,30 @@ test("compileSystemPrompt preserves enabled system item order", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("date slots can include the current time", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "date-time",
+		mode: "replace",
+		items: [
+			{ kind: "slot", id: "date", enabled: true, role: "system", slot: "date", options: { includeTime: true } },
+			{ kind: "slot", id: "date-cwd", enabled: true, role: "system", slot: "date-cwd", options: { includeTime: true } },
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ now: new Date(2026, 5, 13, 9, 8, 7) }), "base");
+
+	assert.equal(result.systemPrompt, [
+		"Current date: 2026-06-13",
+		"Current time: 09:08:07",
+		"",
+		"Current date: 2026-06-13",
+		"Current time: 09:08:07",
+		"Current working directory: /work/project",
+	].join("\n"));
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("empty replacement system prompt preserves the base prompt", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,

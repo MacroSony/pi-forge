@@ -72,6 +72,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `active-model`
 - `pi-docs`
 - `variables`
+- `date` and `date-cwd` slots can include `Current time: HH:MM:SS` with `includeTime: true`.
 
 ## Tool and Skill Policy
 

@@ -192,7 +192,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `skills` | Loaded Pi skills |
 | `project-context` | Project instructions and context files |
 | `variables` | Static/session/turn template variables |
-| `date` / `cwd` / `date-cwd` | Current date and working directory |
+| `date` / `cwd` / `date-cwd` | Current date, optional current time, and working directory |
 | `active-model` | Which model is being used |
 | `append-system-prompt` | User's appended system prompt text |
 | `pi-docs` | Pi documentation guidance |
@@ -311,6 +311,10 @@ Set to `false` when you use `{{lastUserMessage}}` after the history — prevents
 Set `stripAssistantThinking` to `true` to remove prior assistant thinking blocks from inserted chat history. Visible assistant text, tool calls, and tool result messages are preserved. This only affects history inserted by that slot and does not alter the current agent loop or stored transcript.
 
 Use `includeSummaries: false` to omit Pi branch/compaction summary messages, `roles` to keep only specific message roles, `toolMode: "drop"` to remove prior tool-call/tool-result history, and `maxMessages` / `maxChars` to keep only recent history. When filters or limits can break tool-call pairs, pi-forge removes dangling tool calls/results instead of sending inconsistent tool history.
+
+### Date slot options
+
+Set `"includeTime": true` on a `date` or `date-cwd` slot to include the current time in `HH:MM:SS` after the current date.
 
 ### Structured slot format options
 

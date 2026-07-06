@@ -5,7 +5,7 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 ## Current Read
 
 - `0.3.0` is a complete feature release: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
-- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork and lazy conditionals are handled in the current working tree; the next macro work is slot registry cleanup and the next maintainability constraint is `src/web-editor/page.ts`.
+- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork, lazy conditionals, and slot registry cleanup are handled in the current working tree; the next macro work is the trusted extension API shape and the next maintainability constraint is `src/web-editor/page.ts`.
 - New behavior should be driven by real prompt-authoring pain, not by aiming for full SillyTavern compatibility.
 - Keep prompt stacks scoped to message/system layout. Model, provider, thinking, and broad tool-profile choices belong in a later agent-profile layer.
 
@@ -15,49 +15,43 @@ The plan is healthy, but it should stop treating completed release work as roadm
 
 Recommended ordering:
 
-1. Refactor built-in slots toward the same registry shape as macros.
+1. Prepare the trusted macro/slot extension API shape without enabling arbitrary code in stack JSON.
 2. Split `src/web-editor/page.ts` before adding larger screens.
 3. Preserve additional SillyTavern import metadata and fixtures only when real presets reveal useful drift.
 4. Defer true display regex, provider-payload rewrite, and agent profiles until usage proves the need.
 
 Risk calls:
 
-- Slot registry cleanup is the next macro-system hardening step. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
+- Trusted customization is the next macro-system hardening step. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
 - Web editor growth without a static split or tiny build step will keep making reviews noisy.
 - Provider-payload transforms are high-risk because provider shapes vary; keep them out until there is a precise use case.
 - True display-only regex needs platform support for display/stream transforms. The current finalize behavior is not a substitute because it mutates the transcript.
 - Agent profiles are a separate product surface. Mixing them into prompt stacks would muddy ownership.
 
-## Priority 1: Improve Macro Engine
+## Priority 1: Stabilize Macro And Slot Extension Design
 
-Goal: finish the registry-backed macro and slot foundation for future trusted customization without turning prompt-stack JSON into a scripting language.
+Goal: prepare trusted customization without turning prompt-stack JSON into a scripting language.
 
 Design boundaries:
 
 - Treat macros as inline renderers and slots as block/message renderers.
-- Back built-in macros and slots with registries internally, even before exposing a public registration API.
+- Keep built-in macros and slots behind registries internally.
 - Keep prompt-stack files declarative. Do not allow arbitrary JavaScript or expression code inside stack JSON.
 - Add user-defined macro/slot code later through trusted extension APIs such as `registerMacro` and `registerSlot`, not through raw prompt-stack data.
 - Keep conditions simple and lazy. Only expand the selected branch so skipped branches cannot mutate variables.
 
 Remaining work:
 
-- Refactor built-in slots toward the same renderer shape where practical:
-  - `chat-history`
-  - `tools`
-  - `tool-guidelines`
-  - `skills`
-  - `project-context`
-  - `variables`
-- Preserve parser, filter, conditional, and unknown-policy compatibility while refactoring slots.
 - Prepare the trusted extension API shape, but do not expose arbitrary user code from stack JSON.
+- Decide how extension registration is scoped, ordered, named, and diagnosed.
+- Preserve parser, filter, conditional, slot, and unknown-policy compatibility while shaping the API.
 - Defer general expression syntax, boolean algebra, loops, arithmetic, regex conditions, and arbitrary user code.
 
 Done criteria:
 
 - Existing macro and slot behavior and diagnostics are preserved.
 - Compiler tests cover registry-backed slots, conditionals, branch laziness, mutation macros, escaping, and existing nested/filter behavior.
-- Adding a built-in macro or slot is a local registry change instead of editing one long conditional chain.
+- The public customization boundary is explicit about trusted code versus stack-authored declarative data.
 
 ## Priority 2: Split Web Editor Page Before Larger UI Work
 
@@ -193,6 +187,6 @@ Decision rule:
 
 ## Next Coding Session
 
-1. Begin the macro parser and internal macro registry groundwork.
-2. Keep importer/report changes report-only unless an existing safe conversion rule already covers them.
+1. Decide whether trusted `registerMacro` / `registerSlot` APIs should be extension-only, package-level, or compiler-option based.
+2. Split `src/web-editor/page.ts` if the macro API shape does not need immediate code.
 3. Verify with focused compiler/importer tests, full test suite, typecheck, and `git diff --check`.
