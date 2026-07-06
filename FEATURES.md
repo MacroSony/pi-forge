@@ -73,6 +73,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `pi-docs`
 - `variables`
 - `date` and `date-cwd` slots can include `Current time: HH:MM:SS` with `includeTime: true`.
+- Runtime slots are registered through the same `registerSlot` definition interface used by trusted custom slots.
 
 ## Tool and Skill Policy
 
@@ -88,6 +89,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 ## Macros
 
 - Built-in macros: `{{cwd}}`, `{{date}}`, `{{time}}`, `{{lastUserMessage}}`, `{{selectedTools}}`, `{{tools}}`, `{{activeModel}}`.
+- Built-in macros are registered through the same `registerMacro` definition interface used by trusted custom macros.
 - Static stack variables from `stack.variables`.
 - Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.
 - Turn variable mutation through `{{setvar::name::value}}`, `{{setturnvar::name::value}}`, and `{{clearvar::name}}`.

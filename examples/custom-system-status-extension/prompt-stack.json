@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.prompt-stack",
+  "id": "custom-system-status",
+  "name": "Custom System Status",
+  "description": "Example stack that uses a trusted custom macro and custom slot registered by examples/custom-system-status-extension/index.ts.",
+  "mode": "append",
+  "items": [
+    {
+      "kind": "block",
+      "id": "cpu-load-macro",
+      "name": "CPU Load Macro",
+      "enabled": true,
+      "role": "system",
+      "content": "Current rough CPU load: {{cpuLoad}}"
+    },
+    {
+      "kind": "slot",
+      "id": "machine-status",
+      "name": "Machine Status Slot",
+      "enabled": true,
+      "role": "system",
+      "slot": "machine-status",
+      "options": {
+        "format": "plain",
+        "heading": "Runtime machine snapshot",
+        "includeMemory": true,
+        "includeUptime": true
+      }
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History",
+      "enabled": true,
+      "slot": "chat-history"
+    }
+  ]
+}

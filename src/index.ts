@@ -10,6 +10,36 @@ import type { PromptStackDiagnostic } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
 import { startWebEditorServer, type WebEditorServer } from "./web-editor/index.ts";
 
+export {
+	getRegisteredMacros,
+	registerMacro,
+	type PromptMacroDefinition,
+	type PromptMacroRenderContext,
+	type PromptMacroRenderer,
+} from "./macro-engine.ts";
+export {
+	getRegisteredSlots,
+	registerSlot,
+	type PromptSlotDefinition,
+	type PromptSlotRenderContext,
+	type PromptSlotRenderer,
+} from "./slot-renderers.ts";
+export {
+	type PromptExtensionArgumentDefinition,
+	type PromptExtensionOptionDefinition,
+	type PromptExtensionOptionsSchema,
+	type PromptExtensionOptionType,
+	type PromptRegistryEntry,
+} from "./extension-registry.ts";
+export {
+	createVariableAccess,
+	promptRenderHelpers,
+	type PromptRenderHelpers,
+	type PromptVariableAccess,
+	type PromptVariableScope,
+	type PromptWritableVariableScope,
+} from "./render-helpers.ts";
+
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 
 interface SharedWebEditorState {

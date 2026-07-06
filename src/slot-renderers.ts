@@ -5,39 +5,122 @@ import type {
 	PromptRuntime,
 	PromptStack,
 	PromptStackDiagnostic,
-	PromptStackSlot,
 	PromptStackSlotFormat,
 	PromptStackSlotItem,
 	PromptVariableValue,
 } from "./types.ts";
+import {
+	collectStaticVariables,
+	createVariableAccess,
+	promptRenderHelpers,
+	selectedToolNames,
+	selectedVariableScopes,
+	type PromptRenderHelpers,
+	type PromptVariableAccess,
+	type PromptVariableScope,
+} from "./render-helpers.ts";
+import { assertRegistryName, type PromptExtensionOptionsSchema, type PromptRegistryEntry } from "./extension-registry.ts";
 
-type PromptVariableScope = "static" | "session" | "turn";
-
-interface SlotRenderContext {
+export interface PromptSlotRenderContext {
 	item: PromptStackSlotItem;
 	stack: PromptStack;
 	runtime: PromptRuntime;
 	diagnostics: PromptStackDiagnostic[];
+	options: Record<string, unknown>;
+	helpers: PromptRenderHelpers;
+	variables: PromptVariableAccess;
+	format: (options?: { allowJson?: boolean }) => PromptStackSlotFormat;
 }
 
-type SlotRenderer = (context: SlotRenderContext) => string;
+export type PromptSlotRenderer = (context: PromptSlotRenderContext) => string | undefined;
 
-const SLOT_RENDERERS = new Map<PromptStackSlot, SlotRenderer>();
+export interface PromptSlotDefinition extends PromptRegistryEntry {
+	options?: PromptExtensionOptionsSchema;
+	render: PromptSlotRenderer;
+}
 
-registerSlot("chat-history", () => "");
-registerSlot("tools", ({ item, stack, runtime }) => renderTools(item, stack, runtime));
-registerSlot("tool-guidelines", ({ item, stack, runtime }) => renderToolGuidelines(item, stack, runtime));
-registerSlot("skills", ({ item, stack, runtime }) => renderSkills(item, stack, runtime));
-registerSlot("project-context", ({ item, runtime }) => renderProjectContext(item, runtime));
-registerSlot("append-system-prompt", ({ runtime }) => runtime.options.appendSystemPrompt ?? "");
-registerSlot("date", ({ item, runtime }) => renderDate(item, runtime));
-registerSlot("cwd", ({ runtime }) => renderCwd(runtime));
-registerSlot("date-cwd", ({ item, runtime }) => [renderDate(item, runtime), renderCwd(runtime)].join("\n"));
-registerSlot("active-model", ({ runtime }) => renderActiveModel(runtime));
-registerSlot("pi-docs", () => renderPiDocsGuidance());
-registerSlot("variables", ({ item, stack, runtime }) => renderVariables(item, stack, runtime));
+interface PromptSlotRegistryState {
+	slots: Map<string, PromptSlotDefinition>;
+	supportedSlots: Set<string>;
+}
 
-export const SUPPORTED_SLOTS = new Set<PromptStackSlot>(SLOT_RENDERERS.keys());
+type PromptSlotGlobal = typeof globalThis & {
+	__piForgeSlotRegistry?: PromptSlotRegistryState;
+};
+
+function slotRegistryState(): PromptSlotRegistryState {
+	const globalScope = globalThis as PromptSlotGlobal;
+	globalScope.__piForgeSlotRegistry ??= { slots: new Map(), supportedSlots: new Set() };
+	return globalScope.__piForgeSlotRegistry;
+}
+
+const SLOT_REGISTRY = slotRegistryState();
+const SLOT_RENDERERS = SLOT_REGISTRY.slots;
+export const SUPPORTED_SLOTS = SLOT_REGISTRY.supportedSlots;
+let registeringBuiltInSlots = true;
+
+const FORMAT_OPTION = {
+	type: "enum",
+	values: ["xml", "plain"],
+	default: "xml",
+	description: "Render as XML-style wrappers or compact plain text.",
+} as const;
+
+const INCLUDE_TIME_OPTION = {
+	type: "boolean",
+	default: false,
+	description: "Include Current time: HH:MM:SS after the current date.",
+} as const;
+
+registerSlot({ name: "chat-history", description: "Conversation history insertion point.", render: () => "" });
+registerSlot({
+	name: "tools",
+	description: "Available tools and prompt snippets.",
+	options: {
+		format: FORMAT_OPTION,
+		onlyWithSnippets: { type: "boolean", default: false, description: "Only render tools that provide prompt snippets." },
+	},
+	render: renderTools,
+});
+registerSlot({
+	name: "tool-guidelines",
+	description: "Tool usage guidelines.",
+	options: {
+		format: FORMAT_OPTION,
+		heading: { type: "string", default: "Tool guidelines:", description: "Plain-format heading." },
+		includePiDefaultGuidelines: { type: "boolean", default: false, description: "Include Pi's default concise/file-path guideline bullets." },
+		piStyle: { type: "boolean", default: false, description: "Use Pi-style wording for default bash guidance." },
+	},
+	render: renderToolGuidelines,
+});
+registerSlot({
+	name: "skills",
+	description: "Available Pi skills.",
+	options: {
+		format: FORMAT_OPTION,
+		requireReadTool: { type: "boolean", default: false, description: "Omit the section unless the read tool is active." },
+	},
+	render: renderSkills,
+});
+registerSlot({ name: "project-context", description: "Project context files.", options: { format: FORMAT_OPTION }, render: renderProjectContext });
+registerSlot({ name: "append-system-prompt", description: "User appended system prompt text.", render: ({ runtime }) => runtime.options.appendSystemPrompt ?? "" });
+registerSlot({ name: "date", description: "Current date.", options: { includeTime: INCLUDE_TIME_OPTION }, render: renderDate });
+registerSlot({ name: "cwd", description: "Current working directory.", render: ({ runtime }) => renderCwd(runtime) });
+registerSlot({ name: "date-cwd", description: "Current date and working directory.", options: { includeTime: INCLUDE_TIME_OPTION }, render: (context) => [renderDate(context), renderCwd(context.runtime)].join("\n") });
+registerSlot({ name: "active-model", description: "Current model provider/id.", render: ({ runtime }) => renderActiveModel(runtime) });
+registerSlot({ name: "pi-docs", description: "Pi documentation guidance.", render: () => renderPiDocsGuidance() });
+registerSlot({
+	name: "variables",
+	description: "Static, session, and turn variables.",
+	options: {
+		format: FORMAT_OPTION,
+		includeStatic: { type: "boolean", default: true, description: "Include static stack variables." },
+		includeSession: { type: "boolean", default: true, description: "Include session variables." },
+		includeTurn: { type: "boolean", default: true, description: "Include turn variables." },
+	},
+	render: renderVariables,
+});
+registeringBuiltInSlots = false;
 
 export function renderSlotText(
 	item: PromptStackSlotItem,
@@ -45,32 +128,72 @@ export function renderSlotText(
 	runtime: PromptRuntime,
 	diagnostics: PromptStackDiagnostic[],
 ): string {
-	const renderer = SLOT_RENDERERS.get(item.slot as PromptStackSlot);
-	if (!renderer) {
+	const definition = SLOT_RENDERERS.get(item.slot);
+	if (!definition) {
 		diagnostics.push({ level: "warning", message: `Unsupported slot: ${item.slot}`, itemId: item.id });
 		return "";
 	}
 
-	return renderer({ item, stack, runtime, diagnostics });
+	try {
+		return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics)) ?? "";
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		diagnostics.push({ level: "error", message: `Slot "${item.slot}" failed: ${detail}`, itemId: item.id });
+		return "";
+	}
 }
 
-function registerSlot(name: PromptStackSlot, renderer: SlotRenderer): void {
-	SLOT_RENDERERS.set(name, renderer);
+export function registerSlot(definition: PromptSlotDefinition): () => void {
+	assertRegistryName("Slot", definition.name);
+	if (SLOT_RENDERERS.has(definition.name)) {
+		if (registeringBuiltInSlots) return () => {};
+		throw new Error(`Slot is already registered: ${definition.name}`);
+	}
+	SLOT_RENDERERS.set(definition.name, definition);
+	SUPPORTED_SLOTS.add(definition.name);
+	return () => {
+		if (SLOT_RENDERERS.get(definition.name) === definition) {
+			SLOT_RENDERERS.delete(definition.name);
+			SUPPORTED_SLOTS.delete(definition.name);
+		}
+	};
 }
 
-function renderTools(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
+export function getRegisteredSlots(): readonly PromptSlotDefinition[] {
+	return [...SLOT_RENDERERS.values()];
+}
+
+function createSlotRenderContext(
+	item: PromptStackSlotItem,
+	stack: PromptStack,
+	runtime: PromptRuntime,
+	diagnostics: PromptStackDiagnostic[],
+): PromptSlotRenderContext {
+	return {
+		item,
+		stack,
+		runtime,
+		diagnostics,
+		options: item.options ?? {},
+		helpers: promptRenderHelpers,
+		variables: createVariableAccess(runtime, stack),
+		format: (options) => promptRenderHelpers.slotTextFormat(item, options),
+	};
+}
+
+function renderTools({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
 	const snippets = runtime.options.toolSnippets ?? {};
 	const tools = item.options?.onlyWithSnippets === true
-		? scopedToolNames(stack, runtime).filter((name) => !!snippets[name])
-		: scopedToolNames(stack, runtime);
+		? selectedToolNames(stack, runtime).filter((name) => !!snippets[name])
+		: selectedToolNames(stack, runtime);
 
-	if (slotTextFormat(item) === "plain") {
+	if (format() === "plain") {
 		const lines = ["Available tools:"];
 		if (tools.length === 0) {
 			lines.push(item.options?.onlyWithSnippets === true ? "(none)" : "- (none)");
 		} else {
 			for (const name of tools) {
-				lines.push(plainBullet(name, snippets[name] ?? "No prompt snippet provided."));
+				lines.push(helpers.plainBullet(name, snippets[name] ?? "No prompt snippet provided."));
 			}
 		}
 		return lines.join("\n");
@@ -83,7 +206,7 @@ function renderTools(item: PromptStackSlotItem, stack: PromptStack, runtime: Pro
 	} else {
 		for (const name of tools) {
 			const snippet = snippets[name] ?? "No prompt snippet provided.";
-			lines.push(`  <tool name=\"${escapeXml(name)}\">${escapeXml(snippet)}</tool>`);
+			lines.push(`  <tool name=\"${helpers.escapeXml(name)}\">${helpers.escapeXml(snippet)}</tool>`);
 		}
 	}
 
@@ -91,8 +214,8 @@ function renderTools(item: PromptStackSlotItem, stack: PromptStack, runtime: Pro
 	return lines.join("\n");
 }
 
-function renderToolGuidelines(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
-	const tools = scopedToolNames(stack, runtime);
+function renderToolGuidelines({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
+	const tools = selectedToolNames(stack, runtime);
 	const guidelines: string[] = [];
 	const seen = new Set<string>();
 	const add = (line: string) => {
@@ -113,18 +236,18 @@ function renderToolGuidelines(item: PromptStackSlotItem, stack: PromptStack, run
 	}
 
 	if (guidelines.length === 0) return "";
-	if (slotTextFormat(item) === "plain") {
+	if (format() === "plain") {
 		const heading = typeof item.options?.heading === "string" ? item.options.heading.trim() : "Tool guidelines:";
 		return [
 			...(heading ? [heading] : []),
-			...guidelines.map((line) => `- ${plainContinuation(line, "  ")}`),
+			...guidelines.map((line) => `- ${helpers.plainContinuation(line, "  ")}`),
 		].join("\n");
 	}
 	return ["<tool_guidelines>", ...guidelines.map((line) => `- ${line}`), "</tool_guidelines>"].join("\n");
 }
 
-function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: PromptRuntime): string {
-	if (item.options?.requireReadTool === true && !scopedToolNames(stack, runtime).includes("read")) return "";
+function renderSkills({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
+	if (item.options?.requireReadTool === true && !selectedToolNames(stack, runtime).includes("read")) return "";
 	const skills = (runtime.options.skills ?? [])
 		.filter((skill) => !skill.disableModelInvocation)
 		.filter((skill) => applyResourcePolicy([skill.name], stack.skills).length > 0);
@@ -137,11 +260,11 @@ function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: Pr
 		"",
 	];
 
-	if (slotTextFormat(item) === "plain") {
+	if (format() === "plain") {
 		lines.push("Available skills:");
 		for (const skill of skills) {
-			lines.push(plainBullet(skill.name, skill.description));
-			lines.push(`  Location: ${plainContinuation(skill.filePath, "  ")}`);
+			lines.push(helpers.plainBullet(skill.name, skill.description));
+			lines.push(`  Location: ${helpers.plainContinuation(skill.filePath, "  ")}`);
 		}
 		return lines.join("\n");
 	}
@@ -149,9 +272,9 @@ function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: Pr
 	lines.push("<available_skills>");
 	for (const skill of skills) {
 		lines.push("  <skill>");
-		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+		lines.push(`    <name>${helpers.escapeXml(skill.name)}</name>`);
+		lines.push(`    <description>${helpers.escapeXml(skill.description)}</description>`);
+		lines.push(`    <location>${helpers.escapeXml(skill.filePath)}</location>`);
 		lines.push("  </skill>");
 	}
 
@@ -159,26 +282,22 @@ function renderSkills(item: PromptStackSlotItem, stack: PromptStack, runtime: Pr
 	return lines.join("\n");
 }
 
-function scopedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
-	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
-}
-
-function renderProjectContext(item: PromptStackSlotItem, runtime: PromptRuntime): string {
+function renderProjectContext({ item, runtime, format, helpers }: PromptSlotRenderContext): string {
 	const contextFiles = runtime.options.contextFiles ?? [];
 	if (contextFiles.length === 0) return "";
 
-	if (slotTextFormat(item) === "plain") {
+	if (format() === "plain") {
 		const lines = ["Project context:", "", "Project-specific instructions and guidelines:", ""];
 		for (const file of contextFiles) {
 			lines.push(`Path: ${file.path}`);
-			lines.push(indentPlainBlock(file.content, "  "), "");
+			lines.push(helpers.indentPlainBlock(file.content, "  "), "");
 		}
 		return lines.join("\n").trimEnd();
 	}
 
 	const lines = ["<project_context>", "", "Project-specific instructions and guidelines:", ""];
 	for (const file of contextFiles) {
-		lines.push(`<project_instructions path=\"${escapeXml(file.path)}\">`);
+		lines.push(`<project_instructions path=\"${helpers.escapeXml(file.path)}\">`);
 		lines.push(file.content);
 		lines.push("</project_instructions>", "");
 	}
@@ -186,28 +305,21 @@ function renderProjectContext(item: PromptStackSlotItem, runtime: PromptRuntime)
 	return lines.join("\n");
 }
 
-function renderDate(item: PromptStackSlotItem, runtime: PromptRuntime): string {
-	const lines = [`Current date: ${formatDate(runtime.now)}`];
+function renderDate({ item, runtime, helpers }: PromptSlotRenderContext): string {
+	const lines = [`Current date: ${helpers.formatDate(runtime.now)}`];
 	if (item.options?.includeTime === true) {
-		lines.push(`Current time: ${formatTime(runtime.now)}`);
+		lines.push(`Current time: ${helpers.formatTime(runtime.now)}`);
 	}
 	return lines.join("\n");
 }
 
 function renderCwd(runtime: PromptRuntime): string {
-	return `Current working directory: ${runtime.options.cwd.replace(/\\/g, "/")}`;
+	return `Current working directory: ${promptRenderHelpers.normalizePath(runtime.options.cwd)}`;
 }
 
 function renderActiveModel(runtime: PromptRuntime): string {
 	const model = runtime.ctx?.model;
 	return model ? `Current model: ${model.provider}/${model.id}` : "Current model: (none)";
-}
-
-function slotTextFormat(item: PromptStackSlotItem, options: { allowJson?: boolean } = {}): PromptStackSlotFormat {
-	const format = item.options?.format;
-	if (format === "plain") return "plain";
-	if (format === "json" && options.allowJson) return "json";
-	return "xml";
 }
 
 function renderPiDocsGuidance(): string {
@@ -246,14 +358,8 @@ function piDocsPaths(): { readme: string; docs: string; examples: string } {
 	}
 }
 
-function renderVariables(
-	item: PromptStackSlotItem,
-	stack: PromptStack,
-	runtime: PromptRuntime,
-): string {
-	const options = item.options ?? {};
+function renderVariables({ stack, runtime, options, format, variables, helpers }: PromptSlotRenderContext): string {
 	const scopes = selectedVariableScopes(options);
-	const format = slotTextFormat(item);
 	const store = runtime.variables;
 	const grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>> = {
 		static: {},
@@ -268,8 +374,8 @@ function renderVariables(
 	const hasVariables = Object.values(grouped).some((values) => Object.keys(values).length > 0);
 	if (!hasVariables) return "";
 
-	if (format === "plain") {
-		return renderPlainVariables(grouped);
+	if (format() === "plain") {
+		return renderPlainVariables(grouped, variables, helpers);
 	}
 
 	const parts: string[] = ["<variables>"];
@@ -279,7 +385,7 @@ function renderVariables(
 		if (entries.length === 0) continue;
 		parts.push(`  <${scope}>`);
 		for (const [name, value] of entries) {
-			parts.push(`    <var name=\"${escapeXml(name)}\">${escapeXml(variableValueToPromptText(value))}</var>`);
+			parts.push(`    <var name=\"${helpers.escapeXml(name)}\">${helpers.escapeXml(variables.toPromptText(value))}</var>`);
 		}
 		parts.push(`  </${scope}>`);
 	}
@@ -290,6 +396,8 @@ function renderVariables(
 
 function renderPlainVariables(
 	grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>>,
+	variables: PromptVariableAccess,
+	helpers: PromptRenderHelpers,
 ): string {
 	const parts: string[] = ["Variables:"];
 
@@ -298,61 +406,9 @@ function renderPlainVariables(
 		if (entries.length === 0) continue;
 		parts.push(`${scope}:`);
 		for (const [name, value] of entries) {
-			parts.push(plainBullet(name, variableValueToPromptText(value)));
+			parts.push(helpers.plainBullet(name, variables.toPromptText(value)));
 		}
 	}
 
 	return parts.join("\n");
-}
-
-function plainBullet(label: string, value: string): string {
-	return `- ${label}: ${plainContinuation(value, "  ")}`;
-}
-
-function plainContinuation(value: string, indent: string): string {
-	return value.split("\n").map((line, index) => index === 0 ? line : `${indent}${line}`).join("\n");
-}
-
-function indentPlainBlock(value: string, indent: string): string {
-	return value.split("\n").map((line) => `${indent}${line}`).join("\n");
-}
-
-function selectedVariableScopes(options: Record<string, unknown>): PromptVariableScope[] {
-	const scopes: PromptVariableScope[] = [];
-	if (options.includeStatic !== false) scopes.push("static");
-	if (options.includeSession !== false) scopes.push("session");
-	if (options.includeTurn !== false) scopes.push("turn");
-	return scopes;
-}
-
-function collectStaticVariables(stack: PromptStack): Record<string, PromptVariableValue> {
-	return { ...(stack.variables ?? {}) };
-}
-
-function variableValueToPromptText(value: PromptVariableValue): string {
-	if (typeof value === "string") return value;
-	return JSON.stringify(value, null, 2);
-}
-
-function formatDate(now: Date): string {
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, "0");
-	const day = String(now.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
-}
-
-function formatTime(now: Date): string {
-	const hours = String(now.getHours()).padStart(2, "0");
-	const minutes = String(now.getMinutes()).padStart(2, "0");
-	const seconds = String(now.getSeconds()).padStart(2, "0");
-	return `${hours}:${minutes}:${seconds}`;
-}
-
-function escapeXml(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\"/g, "&quot;")
-		.replace(/'/g, "&apos;");
 }

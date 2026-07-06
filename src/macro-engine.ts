@@ -2,63 +2,99 @@ import type {
 	PromptRuntime,
 	PromptStack,
 	PromptStackDiagnostic,
-	PromptVariableValue,
 } from "./types.ts";
-import { applyResourcePolicy } from "./policy.ts";
-
-type PromptVariableScope = "static" | "session" | "turn";
+import {
+	createVariableAccess,
+	escapeXml,
+	formatDate,
+	formatTime,
+	getRuntimeVariable,
+	promptRenderHelpers,
+	selectedToolNames,
+	type PromptRenderHelpers,
+	type PromptVariableAccess,
+	type PromptVariableScope,
+	variableValueToMacroText,
+} from "./render-helpers.ts";
+import { assertRegistryName, type PromptExtensionArgumentDefinition, type PromptRegistryEntry } from "./extension-registry.ts";
 
 interface MacroExpansionState {
 	stack: PromptStack;
 	runtime: PromptRuntime;
+	diagnostics: PromptStackDiagnostic[];
+	itemId: string;
 	unknown: Set<string>;
 }
 
-interface MacroRenderContext {
+export interface PromptMacroRenderContext {
+	name: string;
 	command: string;
 	stack: PromptStack;
 	runtime: PromptRuntime;
 	rawArgs: readonly string[];
 	expandArg: (index: number) => string;
 	expandJoinedArgs: (startIndex: number) => string;
+	helpers: PromptRenderHelpers;
+	variables: PromptVariableAccess;
 }
 
-type MacroHandler = (context: MacroRenderContext) => string | undefined;
+export type PromptMacroRenderer = (context: PromptMacroRenderContext) => string | undefined;
 
-const BUILTIN_MACROS = new Map<string, MacroHandler>();
+export interface PromptMacroDefinition extends PromptRegistryEntry {
+	args?: readonly PromptExtensionArgumentDefinition[];
+	render: PromptMacroRenderer;
+}
 
-registerMacro("cwd", ({ runtime }) => runtime.options.cwd);
-registerMacro("date", ({ runtime }) => formatDate(runtime.now));
-registerMacro("time", ({ runtime }) => formatTime(runtime.now));
-registerMacro("lastUserMessage", ({ runtime }) => runtime.latestUserMessage ?? "");
-registerMacro("selectedTools", renderSelectedTools);
-registerMacro("tools", renderSelectedTools);
-registerMacro("activeModel", ({ runtime }) => {
+interface PromptMacroRegistryState {
+	macros: Map<string, PromptMacroDefinition>;
+}
+
+type PromptMacroGlobal = typeof globalThis & {
+	__piForgeMacroRegistry?: PromptMacroRegistryState;
+};
+
+function macroRegistryState(): PromptMacroRegistryState {
+	const globalScope = globalThis as PromptMacroGlobal;
+	globalScope.__piForgeMacroRegistry ??= { macros: new Map() };
+	return globalScope.__piForgeMacroRegistry;
+}
+
+const MACROS = macroRegistryState().macros;
+let registeringBuiltInMacros = true;
+
+registerMacro({ name: "cwd", description: "Current working directory.", render: ({ runtime }) => runtime.options.cwd });
+registerMacro({ name: "date", description: "Current date in YYYY-MM-DD format.", render: ({ runtime }) => formatDate(runtime.now) });
+registerMacro({ name: "time", description: "Current time in HH:MM:SS format.", render: ({ runtime }) => formatTime(runtime.now) });
+registerMacro({ name: "lastUserMessage", description: "Latest user message text.", render: ({ runtime }) => runtime.latestUserMessage ?? "" });
+registerMacro({ name: "selectedTools", description: "Comma-separated selected tool names after stack policy.", render: renderSelectedTools });
+registerMacro({ name: "tools", description: "Alias for selectedTools.", render: renderSelectedTools });
+registerMacro({ name: "activeModel", description: "Current model as provider/id.", render: ({ runtime }) => {
 	const model = runtime.ctx?.model;
 	return model ? `${model.provider}/${model.id}` : "";
-});
+} });
 
-registerMacro("setvar", renderSetVariable);
-registerMacro("setturnvar", renderSetVariable);
-registerMacro("setsessionvar", renderSetVariable);
-registerMacro("getvar", renderGetVariable);
-registerMacro("var", renderGetVariable);
-registerMacro("getturnvar", renderGetVariable);
-registerMacro("getsessionvar", renderGetVariable);
-registerMacro("clearvar", renderClearVariable);
-registerMacro("clearturnvar", renderClearVariable);
-registerMacro("clearsessionvar", renderClearVariable);
+registerMacro({ name: "setvar", description: "Set a turn variable, or set a scoped variable with setvar::session|turn::name::value.", render: renderSetVariable });
+registerMacro({ name: "setturnvar", description: "Set a turn variable.", render: renderSetVariable });
+registerMacro({ name: "setsessionvar", description: "Set a session variable.", render: renderSetVariable });
+registerMacro({ name: "getvar", description: "Read a turn, session, or static variable.", render: renderGetVariable });
+registerMacro({ name: "var", description: "Alias for getvar.", render: renderGetVariable });
+registerMacro({ name: "getturnvar", description: "Read a turn variable.", render: renderGetVariable });
+registerMacro({ name: "getsessionvar", description: "Read a session variable.", render: renderGetVariable });
+registerMacro({ name: "clearvar", description: "Clear a turn variable, or clear a scoped variable with clearvar::session|turn::name.", render: renderClearVariable });
+registerMacro({ name: "clearturnvar", description: "Clear a turn variable.", render: renderClearVariable });
+registerMacro({ name: "clearsessionvar", description: "Clear a session variable.", render: renderClearVariable });
 
-registerMacro("trim", ({ expandArg }) => expandArg(0).trim());
-registerMacro("upper", ({ expandArg }) => expandArg(0).toUpperCase());
-registerMacro("lower", ({ expandArg }) => expandArg(0).toLowerCase());
-registerMacro("json", ({ expandArg }) => JSON.stringify(expandArg(0)));
-registerMacro("xml", ({ expandArg }) => escapeXml(expandArg(0)));
+registerMacro({ name: "trim", description: "Trim whitespace from an expanded argument.", args: [{ name: "value", required: true }], render: ({ expandArg }) => expandArg(0).trim() });
+registerMacro({ name: "upper", description: "Uppercase an expanded argument.", args: [{ name: "value", required: true }], render: ({ expandArg }) => expandArg(0).toUpperCase() });
+registerMacro({ name: "lower", description: "Lowercase an expanded argument.", args: [{ name: "value", required: true }], render: ({ expandArg }) => expandArg(0).toLowerCase() });
+registerMacro({ name: "json", description: "JSON-string escape an expanded argument.", args: [{ name: "value", required: true }], render: ({ expandArg }) => JSON.stringify(expandArg(0)) });
+registerMacro({ name: "xml", description: "XML-escape an expanded argument.", args: [{ name: "value", required: true }], render: ({ expandArg }) => escapeXml(expandArg(0)) });
 
-registerMacro("ifvar", renderIfVariable);
-registerMacro("ifeq", renderIfVariableEquals);
-registerMacro("iftools", renderIfTool);
-registerMacro("ifslot", renderIfSlot);
+registerMacro({ name: "ifvar", description: "Render a lazy branch based on whether a variable exists.", render: renderIfVariable });
+registerMacro({ name: "ifeq", description: "Render a lazy branch based on whether a variable equals a string.", render: renderIfVariableEquals });
+registerMacro({ name: "iftools", description: "Render a lazy branch based on whether a tool is selected.", render: renderIfTool });
+registerMacro({ name: "ifslot", description: "Render a lazy branch based on whether an enabled slot exists in the stack.", render: renderIfSlot });
+registeringBuiltInMacros = false;
 
 export function expandMacros(
 	text: string,
@@ -68,7 +104,7 @@ export function expandMacros(
 	itemId: string,
 ): string {
 	const policy = stack.defaults?.unresolvedMacroPolicy ?? "warn";
-	const state: MacroExpansionState = { stack, runtime, unknown: new Set<string>() };
+	const state: MacroExpansionState = { stack, runtime, diagnostics, itemId, unknown: new Set<string>() };
 	const result = expandMacroText(text, state);
 
 	for (const name of state.unknown) {
@@ -83,8 +119,20 @@ export function expandMacros(
 	return result;
 }
 
-function registerMacro(name: string, handler: MacroHandler): void {
-	BUILTIN_MACROS.set(name, handler);
+export function registerMacro(definition: PromptMacroDefinition): () => void {
+	assertRegistryName("Macro", definition.name);
+	if (MACROS.has(definition.name)) {
+		if (registeringBuiltInMacros) return () => {};
+		throw new Error(`Macro is already registered: ${definition.name}`);
+	}
+	MACROS.set(definition.name, definition);
+	return () => {
+		if (MACROS.get(definition.name) === definition) MACROS.delete(definition.name);
+	};
+}
+
+export function getRegisteredMacros(): readonly PromptMacroDefinition[] {
+	return [...MACROS.values()];
 }
 
 function expandMacroText(text: string, state: MacroExpansionState): string {
@@ -144,9 +192,20 @@ function renderMacro(rawExpression: string, fullMacro: string, state: MacroExpan
 	if (!command) return fullMacro;
 
 	const rawArgs = parts.slice(1);
-	const handler = BUILTIN_MACROS.get(command);
-	if (handler) {
-		const value = handler(createMacroRenderContext(command, rawArgs, state));
+	const definition = MACROS.get(command);
+	if (definition) {
+		let value: string | undefined;
+		try {
+			value = definition.render(createMacroRenderContext(command, rawArgs, state));
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			state.diagnostics.push({
+				level: "error",
+				message: `Macro {{${command}}} failed: ${detail}`,
+				itemId: state.itemId,
+			});
+			return fullMacro;
+		}
 		if (value !== undefined) return value;
 		state.unknown.add(expression);
 		return fullMacro;
@@ -191,7 +250,7 @@ function createMacroRenderContext(
 	command: string,
 	rawArgs: readonly string[],
 	state: MacroExpansionState,
-): MacroRenderContext {
+): PromptMacroRenderContext {
 	const expandedArgs = new Map<number, string>();
 
 	const expandArg = (index: number): string => {
@@ -202,6 +261,7 @@ function createMacroRenderContext(
 	};
 
 	return {
+		name: command,
 		command,
 		stack: state.stack,
 		runtime: state.runtime,
@@ -209,10 +269,12 @@ function createMacroRenderContext(
 		expandArg,
 		expandJoinedArgs: (startIndex: number) =>
 			rawArgs.slice(startIndex).map((_, offset) => expandArg(startIndex + offset)).join("::"),
+		helpers: promptRenderHelpers,
+		variables: createVariableAccess(state.runtime, state.stack),
 	};
 }
 
-function renderSetVariable(context: MacroRenderContext): string | undefined {
+function renderSetVariable(context: PromptMacroRenderContext): string | undefined {
 	const scoped = context.command === "setvar" && isVariableScope(context.expandArg(0).trim());
 	const scope = context.command === "setsessionvar" || (scoped && context.expandArg(0).trim() === "session")
 		? "session"
@@ -222,20 +284,20 @@ function renderSetVariable(context: MacroRenderContext): string | undefined {
 	const name = context.expandArg(nameIndex).trim();
 	if (!name) return undefined;
 
-	setRuntimeVariable(context.runtime, scope, name, context.expandJoinedArgs(valueIndex));
+	context.variables.set(scope, name, context.expandJoinedArgs(valueIndex));
 	return "";
 }
 
-function renderGetVariable(context: MacroRenderContext): string | undefined {
+function renderGetVariable(context: PromptMacroRenderContext): string | undefined {
 	const name = context.expandArg(0).trim();
 	if (!name) return undefined;
 
-	if (context.command === "getturnvar") return variableValueToMacroText(context.runtime.variables?.turn[name]);
-	if (context.command === "getsessionvar") return variableValueToMacroText(context.runtime.variables?.session[name]);
-	return variableValueToMacroText(getRuntimeVariable(context.runtime, context.stack, name));
+	if (context.command === "getturnvar") return context.variables.toMacroText(context.variables.get(name, "turn"));
+	if (context.command === "getsessionvar") return context.variables.toMacroText(context.variables.get(name, "session"));
+	return context.variables.toMacroText(context.variables.get(name));
 }
 
-function renderClearVariable(context: MacroRenderContext): string | undefined {
+function renderClearVariable(context: PromptMacroRenderContext): string | undefined {
 	const scoped = context.command === "clearvar" && isVariableScope(context.expandArg(0).trim());
 	const scope = context.command === "clearsessionvar" || (scoped && context.expandArg(0).trim() === "session")
 		? "session"
@@ -243,38 +305,38 @@ function renderClearVariable(context: MacroRenderContext): string | undefined {
 	const name = context.expandArg(scoped ? 1 : 0).trim();
 	if (!name) return undefined;
 
-	clearRuntimeVariable(context.runtime, scope, name);
+	context.variables.clear(scope, name);
 	return "";
 }
 
-function renderSelectedTools({ stack, runtime }: MacroRenderContext): string {
+function renderSelectedTools({ stack, runtime }: PromptMacroRenderContext): string {
 	return selectedToolNames(stack, runtime).join(", ");
 }
 
-function renderIfVariable(context: MacroRenderContext): string | undefined {
+function renderIfVariable(context: PromptMacroRenderContext): string | undefined {
 	const name = context.expandArg(0).trim();
 	if (!name) return undefined;
 
-	return renderConditionalBranch(context, getRuntimeVariable(context.runtime, context.stack, name) !== undefined, 1, 2);
+	return renderConditionalBranch(context, context.variables.get(name) !== undefined, 1, 2);
 }
 
-function renderIfVariableEquals(context: MacroRenderContext): string | undefined {
+function renderIfVariableEquals(context: PromptMacroRenderContext): string | undefined {
 	const name = context.expandArg(0).trim();
 	if (!name || context.rawArgs.length < 2) return undefined;
 
-	const value = getRuntimeVariable(context.runtime, context.stack, name);
+	const value = context.variables.get(name);
 	const expected = context.expandArg(1);
 	return renderConditionalBranch(context, value !== undefined && variableValueToMacroText(value) === expected, 2, 3);
 }
 
-function renderIfTool(context: MacroRenderContext): string | undefined {
+function renderIfTool(context: PromptMacroRenderContext): string | undefined {
 	const name = context.expandArg(0).trim();
 	if (!name) return undefined;
 
 	return renderConditionalBranch(context, selectedToolNames(context.stack, context.runtime).includes(name), 1, 2);
 }
 
-function renderIfSlot(context: MacroRenderContext): string | undefined {
+function renderIfSlot(context: PromptMacroRenderContext): string | undefined {
 	const name = context.expandArg(0).trim();
 	if (!name) return undefined;
 
@@ -283,7 +345,7 @@ function renderIfSlot(context: MacroRenderContext): string | undefined {
 }
 
 function renderConditionalBranch(
-	context: MacroRenderContext,
+	context: PromptMacroRenderContext,
 	condition: boolean,
 	thenIndex: number,
 	elseIndex: number,
@@ -291,75 +353,6 @@ function renderConditionalBranch(
 	return condition ? context.expandArg(thenIndex) : context.expandArg(elseIndex);
 }
 
-function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
-	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
-}
-
 function isVariableScope(value: string): value is PromptVariableScope {
 	return value === "turn" || value === "session";
-}
-
-function variableValueToMacroText(value: PromptVariableValue | undefined): string {
-	if (value === undefined) return "";
-	if (typeof value === "string") return value;
-	return JSON.stringify(value);
-}
-
-function getRuntimeVariable(runtime: PromptRuntime, stack: PromptStack, name: string): PromptVariableValue | undefined {
-	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.turn, name)) return runtime.variables.turn[name];
-	if (runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) return runtime.variables.session[name];
-	const staticVariables = collectStaticVariables(stack);
-	if (Object.prototype.hasOwnProperty.call(staticVariables, name)) return staticVariables[name];
-	return undefined;
-}
-
-function collectStaticVariables(stack: PromptStack): Record<string, PromptVariableValue> {
-	return { ...(stack.variables ?? {}) };
-}
-
-function setRuntimeVariable(runtime: PromptRuntime, scope: PromptVariableScope, name: string, value: string): void {
-	if (!runtime.variables) return;
-	if (scope === "session") {
-		if (runtime.variables.session[name] !== value) {
-			runtime.variables.session[name] = value;
-			runtime.variables.sessionDirty = true;
-		}
-		return;
-	}
-	runtime.variables.turn[name] = value;
-}
-
-function clearRuntimeVariable(runtime: PromptRuntime, scope: PromptVariableScope, name: string): void {
-	if (!runtime.variables) return;
-	if (scope === "session") {
-		if (Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) {
-			delete runtime.variables.session[name];
-			runtime.variables.sessionDirty = true;
-		}
-		return;
-	}
-	delete runtime.variables.turn[name];
-}
-
-function formatDate(now: Date): string {
-	const year = now.getFullYear();
-	const month = String(now.getMonth() + 1).padStart(2, "0");
-	const day = String(now.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
-}
-
-function formatTime(now: Date): string {
-	const hours = String(now.getHours()).padStart(2, "0");
-	const minutes = String(now.getMinutes()).padStart(2, "0");
-	const seconds = String(now.getSeconds()).padStart(2, "0");
-	return `${hours}:${minutes}:${seconds}`;
-}
-
-function escapeXml(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\"/g, "&quot;")
-		.replace(/'/g, "&apos;");
 }

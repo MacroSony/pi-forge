@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { chooseDefaultStack, isUsablePromptStack, legacyPromptStacksDir, loadPromptStacks, promptStacksDir, validatePromptStack } from "../src/loader.ts";
+import { registerSlot } from "../src/index.ts";
+import type { PromptStack } from "../src/types.ts";
 
 function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
@@ -236,4 +238,34 @@ test("loadPromptStacks validates tool and skill policies", () => {
 	assert.match(messages, /skills\.allow must be an array of strings/);
 	assert.match(messages, /skills policy only filters pi-forge skills slots/);
 	assert.equal(isUsablePromptStack(loaded), false);
+});
+
+test("loadPromptStacks accepts registered custom slots", () => {
+	const unregister = registerSlot({
+		name: "test-loader-slot",
+		description: "Test-only loader slot.",
+		render: () => "",
+	});
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "custom",
+		items: [
+			{ kind: "slot", id: "custom-slot", enabled: true, role: "system", slot: "test-loader-slot" },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	};
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "custom.json", stack);
+
+	try {
+		const loaded = loadPromptStacks(cwd)[0]!;
+
+		assert.deepEqual(loaded.diagnostics, []);
+	} finally {
+		unregister();
+	}
+
+	const diagnostics = validatePromptStack(stack);
+	assert.match(diagnostics.map((diagnostic) => diagnostic.message).join("\n"), /Unsupported slot: test-loader-slot/);
 });

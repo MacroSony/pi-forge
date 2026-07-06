@@ -6,6 +6,12 @@ import {
 	compileSystemPrompt,
 	createPromptVariableStore,
 } from "../src/compiler.ts";
+import {
+	getRegisteredMacros,
+	getRegisteredSlots,
+	registerMacro,
+	registerSlot,
+} from "../src/index.ts";
 import type { PromptRuntime, PromptStack } from "../src/types.ts";
 
 function runtime(overrides: Partial<PromptRuntime> = {}): PromptRuntime {
@@ -486,6 +492,37 @@ test("macro filters transform expanded arguments", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
+test("registered custom macros use the public render context", () => {
+	const unregister = registerMacro({
+		name: "testCustomMacro",
+		description: "Test-only custom macro.",
+		args: [{ name: "value", required: true }],
+		render: (context) => [
+			context.helpers.formatDate(context.runtime.now),
+			context.expandArg(0).toUpperCase(),
+			context.variables.toMacroText(context.variables.get("topic")),
+		].join("|"),
+	});
+
+	try {
+		assert.ok(getRegisteredMacros().some((macro) => macro.name === "testCustomMacro"));
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "custom-macro",
+			items: [{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{testCustomMacro::{{lastUserMessage}}}}" }],
+		};
+
+		const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "hello" }), "base");
+
+		assert.equal(result.systemPrompt, "2026-06-13|HELLO|session topic");
+		assert.deepEqual(result.diagnostics, []);
+	} finally {
+		unregister();
+	}
+
+	assert.ok(!getRegisteredMacros().some((macro) => macro.name === "testCustomMacro"));
+});
+
 test("conditional macros render selected branches", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
@@ -731,6 +768,84 @@ test("Pi-style slots mirror default prompt sections", () => {
 	assert.match(result.systemPrompt, /Pi documentation \(read only when the user asks about pi itself/);
 	assert.doesNotMatch(result.systemPrompt, /Review code/);
 	assert.deepEqual(result.diagnostics, []);
+});
+
+test("registered custom slots use options, helpers, and variables", () => {
+	const unregister = registerSlot({
+		name: "test-custom-slot",
+		description: "Test-only custom slot.",
+		options: {
+			heading: { type: "string", default: "Custom" },
+		},
+		render: (context) => [
+			String(context.options.heading ?? "Custom"),
+			context.helpers.escapeXml(context.variables.toMacroText(context.variables.get("topic"))),
+			context.helpers.normalizePath(context.runtime.options.cwd),
+		].join("\n"),
+	});
+
+	try {
+		assert.ok(getRegisteredSlots().some((slot) => slot.name === "test-custom-slot"));
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "custom-slot",
+			items: [{
+				kind: "slot",
+				id: "custom",
+				enabled: true,
+				role: "system",
+				slot: "test-custom-slot",
+				options: { heading: "Registered" },
+			}],
+		};
+
+		const result = compileSystemPrompt(stack, runtime(), "base");
+
+		assert.equal(result.systemPrompt, [
+			"Registered",
+			"session topic",
+			"/work/project",
+		].join("\n"));
+		assert.deepEqual(result.diagnostics, []);
+	} finally {
+		unregister();
+	}
+
+	assert.ok(!getRegisteredSlots().some((slot) => slot.name === "test-custom-slot"));
+});
+
+test("custom registrations are shared across module instances", async () => {
+	const macroApi = (await import("../src/macro-engine.ts" + "?copy=shared-registry")) as typeof import("../src/macro-engine.ts");
+	const slotApi = (await import("../src/slot-renderers.ts" + "?copy=shared-registry")) as typeof import("../src/slot-renderers.ts");
+	const unregisterMacro = macroApi.registerMacro({
+		name: "testSharedRegistryMacro",
+		description: "Test macro registered through another module instance.",
+		render: () => "macro-ok",
+	});
+	const unregisterSlot = slotApi.registerSlot({
+		name: "test-shared-registry-slot",
+		description: "Test slot registered through another module instance.",
+		render: () => "slot-ok",
+	});
+
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "shared-registry",
+			items: [
+				{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{testSharedRegistryMacro}}" },
+				{ kind: "slot", id: "slot", enabled: true, role: "system", slot: "test-shared-registry-slot" },
+			],
+		};
+
+		const result = compileSystemPrompt(stack, runtime(), "base");
+
+		assert.equal(result.systemPrompt, "macro-ok\n\nslot-ok");
+		assert.deepEqual(result.diagnostics, []);
+	} finally {
+		unregisterMacro();
+		unregisterSlot();
+	}
 });
 
 test("tool policy filters rendered tools and tool macros", () => {

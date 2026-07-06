@@ -255,6 +255,39 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 {{clearsessionvar::name}}      清除会话变量
 ```
 
+### 可信自定义宏和 slot
+
+自定义宏和 slot 由可信扩展代码注册，不把可执行代码写进 prompt-stack JSON。Stack 只引用已注册名称并传入声明式 options；真正的 `render` 逻辑放在 Pi 扩展或明确安装的包里。
+
+```ts
+import { registerMacro, registerSlot } from "@zihanw/pi-forge";
+
+registerMacro({
+  name: "ticketId",
+  description: "从会话变量读取当前 ticket id。",
+  render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+});
+
+registerSlot({
+  name: "ticket-context",
+  description: "渲染当前任务的 ticket 上下文。",
+  options: {
+    heading: { type: "string", default: "Ticket context" },
+  },
+  render: (ctx) => [
+    String(ctx.options.heading ?? "Ticket context") + ":",
+    "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+    "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
+  ].join("\n"),
+});
+```
+
+缺失的自定义 slot 会产生校验 warning，直到对应注册扩展安装并加载。内置宏和 slot 也使用同一个 registry，可用 `getRegisteredMacros()` 和 `getRegisteredSlots()` 作为实现参考。
+
+完整可复制的扩展和 stack 示例见 [examples/custom-system-status-extension](examples/custom-system-status-extension)。它在可信 Pi 扩展文件中注册 `{{cpuLoad}}` 宏和 `machine-status` slot。
+
+如果 pi-forge 是作为 package 安装的，自定义扩展可以 import `@zihanw/pi-forge`。如果你是通过 Pi settings 加载本地 checkout，请按示例 README 设置显式路径，例如 `PI_FORGE_MODULE=/path/to/pi-forge/src/index.ts`。pi-forge 会把 macro/slot registry 放在当前进程的 global registry 中，因此兼容的本地模块副本可以共享注册结果。
+
 ## Stack 参考
 
 ### 完整条目类型

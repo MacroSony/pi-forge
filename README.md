@@ -257,6 +257,54 @@ Use these in block content to insert dynamic values:
 {{clearsessionvar::name}}     clear a session variable
 ```
 
+### Trusted custom macros and slots
+
+Custom macros and slots are registered by trusted extension code, not embedded in prompt-stack JSON. A stack can reference the registered name and pass declarative options; the executable `render` body lives in a Pi extension or another explicitly installed package.
+
+```ts
+import { registerMacro, registerSlot } from "@zihanw/pi-forge";
+
+registerMacro({
+  name: "ticketId",
+  description: "Current ticket id from session variables.",
+  render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+});
+
+registerSlot({
+  name: "ticket-context",
+  description: "Render ticket context for the current task.",
+  options: {
+    heading: { type: "string", default: "Ticket context" },
+  },
+  render: (ctx) => [
+    String(ctx.options.heading ?? "Ticket context") + ":",
+    "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+    "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
+  ].join("\n"),
+});
+```
+
+The stack remains declarative:
+
+```json
+{
+  "kind": "slot",
+  "id": "ticket-context",
+  "enabled": true,
+  "role": "system",
+  "slot": "ticket-context",
+  "options": {
+    "heading": "Current ticket"
+  }
+}
+```
+
+Missing custom slots are validation warnings until the registering extension is installed and loaded. Built-in macros and slots use the same registry internally, so `getRegisteredMacros()` and `getRegisteredSlots()` can be used as implementation references.
+
+For a complete copyable extension and stack, see [examples/custom-system-status-extension](examples/custom-system-status-extension). It registers a `{{cpuLoad}}` macro and a `machine-status` slot from a trusted Pi extension file.
+
+When pi-forge is installed as a package, custom extensions can import `@zihanw/pi-forge`. When developing from a local checkout loaded through Pi settings, set an explicit local path as shown in the example README, such as `PI_FORGE_MODULE=/path/to/pi-forge/src/index.ts`. pi-forge keeps the macro/slot registry process-global so compatible local module copies share registrations.
+
 ## Stack reference
 
 ### Full item types
