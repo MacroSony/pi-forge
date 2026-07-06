@@ -5,24 +5,24 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 ## Current Read
 
 - `0.3.0` is a complete feature release: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
-- The command/lifecycle and SillyTavern importer pipeline extractions are handled in the current working tree. The next maintainability constraint is `src/web-editor/page.ts`, alongside continued discipline keeping `src/index.ts` as extension wiring.
+- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork is handled in the current working tree; the next macro work is lazy conditionals and the next maintainability constraint is `src/web-editor/page.ts`.
 - New behavior should be driven by real prompt-authoring pain, not by aiming for full SillyTavern compatibility.
 - Keep prompt stacks scoped to message/system layout. Model, provider, thinking, and broad tool-profile choices belong in a later agent-profile layer.
 
 ## Plan Assessment
 
-The plan is healthy, but it should stop treating completed release work as roadmap. The highest leverage next work is the macro parser/registry, with web editor cleanup before larger UI additions.
+The plan is healthy, but it should stop treating completed release work as roadmap. The highest leverage next work is macro conditionals, with web editor cleanup before larger UI additions.
 
 Recommended ordering:
 
-1. Improve the macro parser as the next major user-facing feature.
+1. Finish macro conditionals on top of the parser-backed macro engine.
 2. Split `src/web-editor/page.ts` before adding larger screens.
 3. Preserve additional SillyTavern import metadata and fixtures only when real presets reveal useful drift.
 4. Defer true display regex, provider-payload rewrite, and agent profiles until usage proves the need.
 
 Risk calls:
 
-- Macro parsing is the next meaningful feature. It touches the compiler and importer reports. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
+- Macro conditionals are the next meaningful feature. They touch the compiler and importer reports. Keep prompt-stack JSON declarative; custom macro/slot code should live in trusted extension APIs, not inline stack data.
 - Web editor growth without a static split or tiny build step will keep making reviews noisy.
 - Provider-payload transforms are high-risk because provider shapes vary; keep them out until there is a precise use case.
 - True display-only regex needs platform support for display/stream transforms. The current finalize behavior is not a substitute because it mutates the transcript.
@@ -30,7 +30,7 @@ Risk calls:
 
 ## Priority 1: Improve Macro Engine
 
-Goal: replace regex-only macro scanning with a parser and registry-backed renderers that can handle nested macros, simple conditionals, and future trusted customization without turning prompt-stack JSON into a scripting language.
+Goal: finish the parser-backed macro engine with lazy conditionals and future trusted customization without turning prompt-stack JSON into a scripting language.
 
 Design boundaries:
 
@@ -40,35 +40,10 @@ Design boundaries:
 - Add user-defined macro/slot code later through trusted extension APIs such as `registerMacro` and `registerSlot`, not through raw prompt-stack data.
 - Keep conditions simple and lazy. Only expand the selected branch so skipped branches cannot mutate variables.
 
-Work:
+Remaining work:
 
-- Parse balanced `{{...}}` spans.
-- Recursively expand macro arguments.
-- Preserve unknown macros according to the existing unknown-macro policy.
-- Keep diagnostics tied to item IDs where possible.
-- Refactor built-in macros into an internal registry:
-  - `cwd`
-  - `date`
-  - `time`
-  - `lastUserMessage`
-  - `selectedTools`
-  - `tools`
-  - `activeModel`
-  - variable get/set/clear macros
-- Refactor built-in slots toward the same renderer shape where practical:
-  - `chat-history`
-  - `tools`
-  - `tool-guidelines`
-  - `skills`
-  - `project-context`
-  - `variables`
-- Add safe output filters/transforms:
-  - `{{trim::...}}`
-  - `{{upper::...}}`
-  - `{{lower::...}}`
-  - `{{json::...}}`
-  - `{{xml::...}}`
-- Add basic conditionals after parser behavior is stable:
+- Add lazy macro handler support for branch-style macros.
+- Add basic conditionals:
   - `{{ifvar::name::then text}}`
   - `{{ifvar::name::then text::else text}}`
   - `{{ifeq::name::expected::then text}}`
@@ -77,15 +52,23 @@ Work:
   - `{{iftools::toolName::then text::else text}}`
   - `{{ifslot::slotName::then text}}`
   - `{{ifslot::slotName::then text::else text}}`
+- Refactor built-in slots toward the same renderer shape where practical:
+  - `chat-history`
+  - `tools`
+  - `tool-guidelines`
+  - `skills`
+  - `project-context`
+  - `variables`
+- Preserve parser, filter, and unknown-policy compatibility while adding conditionals.
+- Prepare the trusted extension API shape, but do not expose arbitrary user code from stack JSON.
 - Defer general expression syntax, boolean algebra, loops, arithmetic, regex conditions, and arbitrary user code.
 
 Done criteria:
 
-- Nested macro case works, for example `{{setvar::latest::{{lastUserMessage}}}}`.
 - Conditional branches are lazily expanded, so only the chosen branch can run mutation macros.
 - Existing macro behavior and diagnostics are preserved.
-- Compiler tests cover nested expansion, unknown macros, mutation macros, escaping, filter output, and basic conditionals.
-- Internal macro registration makes adding a built-in macro a local change instead of editing one long conditional chain.
+- Compiler tests cover basic conditionals, branch laziness, mutation macros, escaping, and existing nested/filter behavior.
+- Adding a built-in macro or slot is a local registry change instead of editing one long conditional chain.
 
 ## Priority 2: Split Web Editor Page Before Larger UI Work
 

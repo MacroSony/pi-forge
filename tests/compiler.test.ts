@@ -384,6 +384,84 @@ test("variables resolve in turn, session, then static order", () => {
 	assert.equal(store.sessionDirty, true);
 });
 
+test("macro arguments expand nested macros", () => {
+	const store = createPromptVariableStore();
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "nested-macros",
+		items: [
+			{
+				kind: "block",
+				id: "vars",
+				enabled: true,
+				role: "system",
+				content: "{{setvar::latest::{{lastUserMessage}}}}Latest={{getvar::latest}}",
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "Use read first.", variables: store }), "base");
+
+	assert.equal(result.systemPrompt, "Latest=Use read first.");
+	assert.equal(store.turn.latest, "Use read first.");
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("macro argument splitting preserves separators inside nested macro output", () => {
+	const store = createPromptVariableStore();
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "nested-separators",
+		items: [
+			{
+				kind: "block",
+				id: "vars",
+				enabled: true,
+				role: "system",
+				content: "{{setvar::joined::prefix::{{lastUserMessage}}::suffix}}{{joined}}",
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "middle::value", variables: store }), "base");
+
+	assert.equal(result.systemPrompt, "prefix::middle::value::suffix");
+	assert.equal(store.turn.joined, "prefix::middle::value::suffix");
+	assert.deepEqual(result.diagnostics, []);
+});
+
+test("macro filters transform expanded arguments", () => {
+	const latestUserMessage = ' Use "fast" & <plan> ';
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "macro-filters",
+		items: [
+			{
+				kind: "block",
+				id: "filters",
+				enabled: true,
+				role: "system",
+				content: [
+					"json={{json::{{lastUserMessage}}}}",
+					"xml={{xml::{{lastUserMessage}}}}",
+					"upper={{upper::{{trim::{{lastUserMessage}}}}}}",
+					"lower={{lower::{{trim::LOUD}}}}",
+				].join("\n"),
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ latestUserMessage }), "base");
+
+	assert.equal(result.systemPrompt, [
+		`json=${JSON.stringify(latestUserMessage)}`,
+		"xml= Use &quot;fast&quot; &amp; &lt;plan&gt; ",
+		"upper=USE \"FAST\" & <PLAN>",
+		"lower=loud",
+	].join("\n"));
+	assert.deepEqual(result.diagnostics, []);
+});
+
 test("time macro renders from the runtime clock", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
@@ -410,6 +488,31 @@ test("unknown macros are kept and diagnosed", () => {
 	assert.equal(result.diagnostics[0]?.level, "warning");
 	assert.equal(result.diagnostics[0]?.itemId, "block");
 	assert.match(result.diagnostics[0]?.message ?? "", /Unresolved macro/);
+});
+
+test("unknown macros do not expand nested arguments", () => {
+	const store = createPromptVariableStore();
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "unknown-nested",
+		defaults: { unresolvedMacroPolicy: "error" },
+		items: [
+			{
+				kind: "block",
+				id: "block",
+				enabled: true,
+				role: "system",
+				content: "A {{missing::{{setvar::touched::yes}}}} B",
+			},
+		],
+	};
+
+	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
+
+	assert.equal(result.systemPrompt, "A {{missing::{{setvar::touched::yes}}}} B");
+	assert.equal(store.turn.touched, undefined);
+	assert.equal(result.diagnostics[0]?.level, "error");
+	assert.equal(result.diagnostics[0]?.message, "Unresolved macro: {{missing::{{setvar::touched::yes}}}}");
 });
 
 test("duplicate chat-history slots warn and only expand once by default", () => {
