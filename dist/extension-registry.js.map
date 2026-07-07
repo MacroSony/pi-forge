@@ -1,0 +1,1 @@
+{"version":3,"file":"extension-registry.js","sourceRoot":"","sources":["../src/extension-registry.ts"],"names":[],"mappings":"AA4BA,MAAM,UAAU,kBAAkB,CAAC,IAAY,EAAE,IAAY;IAC5D,IAAI,CAAC,2BAA2B,CAAC,IAAI,CAAC,IAAI,CAAC,EAAE,CAAC;QAC7C,MAAM,IAAI,KAAK,CAAC,GAAG,IAAI,iGAAiG,IAAI,EAAE,CAAC,CAAC;IACjI,CAAC;AACF,CAAC"}
