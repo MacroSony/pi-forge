@@ -504,6 +504,8 @@ SillyTavern imports convert deterministic prompt-only `{{match}}` / `$0` full-ma
 ```bash
 git clone <repo>
 cd pi-forge
+npm install
+npm run build
 # .pi/settings.json already points at the package root
 pi    # start Pi, trust the project, /reload if needed
 ```
@@ -518,6 +520,12 @@ Typecheck:
 
 ```bash
 npm run typecheck
+```
+
+Build package output:
+
+```bash
+npm run build
 ```
 
 ## License

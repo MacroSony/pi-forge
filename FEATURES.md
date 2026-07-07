@@ -4,9 +4,9 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 
 ## Package and Runtime
 
-- Pi package manifest with `src/index.ts` exposed through `package.json` `pi.extensions`.
+- Pi package manifest with compiled `dist/index.js` exposed through `package.json` `pi.extensions`.
 - Public npm package configuration for `@zihanw/pi-forge`.
-- Source and examples included in the npm package tarball.
+- Compiled `dist` JavaScript, source, and examples included in the npm package tarball.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 

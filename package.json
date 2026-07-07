@@ -4,8 +4,26 @@
   "description": "Pi extension for prompt stack and agent profile management.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./src/*": "./src/*",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./src/*.ts": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
+    "./src/*.js": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
+    "./src/*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
     "./examples/*": "./examples/*"
   },
   "keywords": [
@@ -16,7 +34,7 @@
   "license": "MIT",
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ]
   },
   "peerDependencies": {
@@ -43,10 +61,13 @@
     "typescript": "latest"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts"
   },
   "files": [
+    "dist/",
     "src/",
     "examples/",
     "README.md",

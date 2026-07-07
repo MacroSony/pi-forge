@@ -487,6 +487,8 @@ SillyTavern 导入会把确定性的 prompt-only `{{match}}` / `$0` full-match r
 ```bash
 git clone <repo>
 cd pi-forge
+npm install
+npm run build
 # .pi/settings.json 已指向包根目录
 pi    # 启动 Pi，信任项目，必要时 /reload
 ```
@@ -501,6 +503,12 @@ npm test
 
 ```bash
 npm run typecheck
+```
+
+构建 package 输出：
+
+```bash
+npm run build
 ```
 
 ## License

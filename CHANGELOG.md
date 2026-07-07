@@ -23,6 +23,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- **Package install exports.** npm installs now load compiled `dist` JavaScript instead of raw `.ts` files under `node_modules`, so `import { registerMacro, registerSlot } from "@zihanw/pi-forge"` works for trusted extension packages without relying on Node TypeScript stripping.
 - **Preview policy simulation.** Web preview now compiles with the edited stack's tool policy applied to selected tools, snippets, and tool guidelines. This prevents preview from showing unrelated tool guidelines from the current Pi tool state.
 - **Empty-project web editor UX.** Empty stack directories now show a create/import path instead of leaving the editor in a dead-end state.
 

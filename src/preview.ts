@@ -1,4 +1,5 @@
-import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { BuildSystemPromptOptions, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
 	compileMessages,
@@ -25,12 +26,12 @@ export function buildPreview(
 	optionsOverride?: BuildSystemPromptOptions,
 ): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
 	const options = optionsOverride ?? ctx.getSystemPromptOptions();
-	const sessionContext = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
-	const latestUserMessage = getLatestUserMessage(sessionContext.messages);
+	const sessionMessages = getPreviewSessionMessages(ctx);
+	const latestUserMessage = getLatestUserMessage(sessionMessages);
 	const previewVariables = createPromptVariableStore(sessionVariables);
 	const runtime = { options, ctx, latestUserMessage, now: new Date(), variables: previewVariables };
 	const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
-	const messages = compileMessages(target.stack, runtime, sessionContext.messages);
+	const messages = compileMessages(target.stack, runtime, sessionMessages);
 	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
 	const messageSections = messages.messages.map((message, index) => {
 		const content = agentMessageToPreviewText(message);
@@ -65,6 +66,113 @@ export function buildPreview(
 	].join("\n");
 
 	return { text, preview, diagnostics };
+}
+
+interface SessionEntryLike {
+	id?: unknown;
+	parentId?: unknown;
+	type?: unknown;
+	timestamp?: unknown;
+	message?: unknown;
+	summary?: unknown;
+	firstKeptEntryId?: unknown;
+	tokensBefore?: unknown;
+	fromId?: unknown;
+	customType?: unknown;
+	content?: unknown;
+	display?: unknown;
+	details?: unknown;
+}
+
+function getPreviewSessionMessages(ctx: ExtensionCommandContext): AgentMessage[] {
+	const entries = getCurrentBranchEntries(ctx).map(asSessionEntry);
+	const compaction = latestCompactionEntry(entries);
+	const messages: AgentMessage[] = [];
+
+	const appendMessage = (entry: SessionEntryLike): void => {
+		if (entry.type === "message" && isAgentMessage(entry.message)) {
+			messages.push(entry.message);
+			return;
+		}
+		if (entry.type === "custom_message" && typeof entry.customType === "string") {
+			messages.push({
+				role: "custom",
+				customType: entry.customType,
+				content: typeof entry.content === "string" || Array.isArray(entry.content) ? entry.content : "",
+				display: entry.display === true,
+				details: entry.details,
+				timestamp: entryTimestamp(entry),
+			} as AgentMessage);
+			return;
+		}
+		if (entry.type === "branch_summary" && typeof entry.summary === "string" && entry.summary) {
+			messages.push({
+				role: "branchSummary",
+				summary: entry.summary,
+				fromId: typeof entry.fromId === "string" ? entry.fromId : "",
+				timestamp: entryTimestamp(entry),
+			} as AgentMessage);
+		}
+	};
+
+	if (compaction && typeof compaction.summary === "string") {
+		messages.push({
+			role: "compactionSummary",
+			summary: compaction.summary,
+			tokensBefore: typeof compaction.tokensBefore === "number" ? compaction.tokensBefore : 0,
+			timestamp: entryTimestamp(compaction),
+		} as AgentMessage);
+
+		const compactionIndex = entries.findIndex((entry) => entry.type === "compaction" && entry.id === compaction.id);
+		let foundFirstKept = false;
+		for (let index = 0; index < compactionIndex; index++) {
+			const entry = entries[index]!;
+			if (entry.id === compaction.firstKeptEntryId) foundFirstKept = true;
+			if (foundFirstKept) appendMessage(entry);
+		}
+		for (let index = compactionIndex + 1; index < entries.length; index++) {
+			appendMessage(entries[index]!);
+		}
+		return messages;
+	}
+
+	for (const entry of entries) appendMessage(entry);
+	return messages;
+}
+
+function latestCompactionEntry(entries: SessionEntryLike[]): SessionEntryLike | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index]!;
+		if (entry.type === "compaction") return entry;
+	}
+	return undefined;
+}
+
+function getCurrentBranchEntries(ctx: ExtensionCommandContext): unknown[] {
+	const leafId = ctx.sessionManager.getLeafId();
+	if (leafId === null) return [];
+	const sessionManager = ctx.sessionManager as {
+		getBranch?: (fromId?: string) => unknown[];
+		getEntries: () => unknown[];
+	};
+	return sessionManager.getBranch ? sessionManager.getBranch(leafId ?? undefined) : sessionManager.getEntries();
+}
+
+function asSessionEntry(value: unknown): SessionEntryLike {
+	return value && typeof value === "object" ? value as SessionEntryLike : {};
+}
+
+function isAgentMessage(value: unknown): value is AgentMessage {
+	return !!value && typeof value === "object" && typeof (value as { role?: unknown }).role === "string";
+}
+
+function entryTimestamp(entry: SessionEntryLike): number {
+	if (typeof entry.timestamp === "number") return entry.timestamp;
+	if (typeof entry.timestamp === "string") {
+		const timestamp = new Date(entry.timestamp).getTime();
+		if (Number.isFinite(timestamp)) return timestamp;
+	}
+	return Date.now();
 }
 
 function previewMessageTitle(source: CompileMessageSource | undefined, index: number): string {
