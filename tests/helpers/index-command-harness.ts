@@ -4,6 +4,7 @@ import { createServer as createNetServer, type Server as NetServer } from "node:
 import { join } from "node:path";
 import piForge from "../../src/index.ts";
 import { legacyPromptStacksDir, promptStacksDir } from "../../src/loader.ts";
+import { forgeExtensionsDir, globalForgeExtensionsDir } from "../../src/storage.ts";
 
 export function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
@@ -54,6 +55,22 @@ export function writeForgeConfig(cwd: string, value: unknown): void {
 	const dir = join(cwd, ".pi", "forge");
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "config.json"), JSON.stringify(value, null, 2));
+}
+
+export function writeForgeExtension(cwd: string, name: string, content: string): string {
+	const dir = forgeExtensionsDir(cwd);
+	mkdirSync(dir, { recursive: true });
+	const path = join(dir, name);
+	writeFileSync(path, content);
+	return path;
+}
+
+export function writeGlobalForgeExtension(name: string, content: string): string {
+	const dir = globalForgeExtensionsDir();
+	mkdirSync(dir, { recursive: true });
+	const path = join(dir, name);
+	writeFileSync(path, content);
+	return path;
 }
 
 export function latestEditorUrl(editors: { title: string; text: string }[]): URL {

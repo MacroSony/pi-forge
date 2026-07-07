@@ -1,4 +1,5 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.ts";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.ts";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.ts";
@@ -31,6 +32,10 @@ export {
 	type PromptExtensionOptionType,
 	type PromptRegistryEntry,
 } from "./extension-registry.ts";
+export {
+	type ForgeExtensionApi,
+	type ForgeExtensionRegister,
+} from "./forge-extensions.ts";
 export {
 	createVariableAccess,
 	promptRenderHelpers,
@@ -69,6 +74,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let webEditorCwd: string | undefined;
 	let webEditorPreferredPort: number | undefined;
 	let toolPolicyBaseline: string[] | undefined;
+	const forgeExtensionState = createForgeExtensionState();
 
 	function activeId(): string | undefined {
 		return state.active?.stack.id;
@@ -102,8 +108,11 @@ export default function piForge(pi: ExtensionAPI) {
 		return true;
 	}
 
-	function reloadStacks(ctx: ExtensionContext, preferredId?: string): void {
+	async function reloadStacks(ctx: ExtensionContext, preferredId?: string): Promise<void> {
 		if (!ctx.isProjectTrusted()) {
+			const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
+			state.forgeExtensionDiagnostics = unloadDiagnostics;
+			state.forgeExtensionPaths = [];
 			state.stacks = [];
 			state.active = undefined;
 			syncActiveToolPolicy(ctx);
@@ -112,7 +121,13 @@ export default function piForge(pi: ExtensionAPI) {
 			return;
 		}
 
+		const extensionResult = await reloadForgeExtensions(ctx.cwd, forgeExtensionState);
+		state.forgeExtensionDiagnostics = extensionResult.diagnostics;
+		state.forgeExtensionPaths = extensionResult.loadedPaths;
 		state.stacks = loadPromptStacks(ctx.cwd);
+		if (state.forgeExtensionDiagnostics.length > 0) {
+			for (const loaded of state.stacks) loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
+		}
 		state.active = chooseDefaultStack(state.stacks, preferredId);
 		updateStatus(ctx);
 		syncActiveToolPolicy(ctx);

@@ -18,9 +18,9 @@ export interface WebEditorHost {
 	listStacks(): WebEditorStackSummary[];
 	listResources(): WebEditorPolicyResources;
 	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[] } | undefined;
-	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>;
-	saveStack(id: string, stack: PromptStack): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>;
-	deleteStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
+	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
+	saveStack(id: string, stack: PromptStack): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
+	deleteStack(id: string): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
 	validateStack(stack: PromptStack): PromptStackDiagnostic[];
 	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -28,7 +28,7 @@ export interface WebEditorHost {
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	activateStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	disableStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
-	reloadStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
+	reloadStacks(): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
 }
 
 export interface WebEditorPreviewSection {

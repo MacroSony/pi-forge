@@ -17,6 +17,8 @@ export interface PiForgeRuntimeState {
 	sessionVariables: Record<string, PromptVariableValue>;
 	lastPersistedActiveId?: string;
 	latestCompileDiagnostics: PromptStackDiagnostic[];
+	forgeExtensionDiagnostics: PromptStackDiagnostic[];
+	forgeExtensionPaths: string[];
 	interceptNextProviderPayload: boolean;
 	interceptPayloadSavePath?: string;
 	interceptPayloadDisplayTarget: PayloadDisplayTarget;
@@ -30,6 +32,8 @@ export function createRuntimeState(): PiForgeRuntimeState {
 		contextRewritePending: false,
 		sessionVariables: {},
 		latestCompileDiagnostics: [],
+		forgeExtensionDiagnostics: [],
+		forgeExtensionPaths: [],
 		interceptNextProviderPayload: false,
 		interceptPayloadDisplayTarget: "editor",
 	};

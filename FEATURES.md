@@ -16,6 +16,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Legacy `.pi/prompt-stacks/*.json` stacks remain readable and editable for compatibility.
 - Same-named files in `.pi/forge/prompt-stacks` shadow legacy stack files.
 - New stacks, imports, and forks write to `.pi/forge/prompt-stacks`.
+- Trusted global and project-local macro/slot registration modules load from `~/.pi/forge/extensions` and `.pi/forge/extensions` before stack validation and reload on `/preset reload`.
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
@@ -74,7 +75,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `variables`
 - `date` and `date-cwd` slots can include `Current time: HH:MM:SS` with `includeTime: true`.
 - Runtime slots are registered through the same `registerSlot` definition interface used by trusted custom slots.
-- Trusted extension code can register additional runtime slots through `registerSlot`, with declarative option schemas and shared render helpers.
+- Trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules and reusable Pi packages can register additional runtime slots through `registerSlot`, with declarative option schemas and shared render helpers.
 
 ## Tool and Skill Policy
 
@@ -94,7 +95,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Parser-backed macro expansion supports nested `{{...}}` expressions and `::` argument splitting at the current macro depth.
 - Filter macros: `{{trim::value}}`, `{{upper::value}}`, `{{lower::value}}`, `{{json::value}}`, and `{{xml::value}}`.
 - Lazy conditional macros: `{{ifvar::name::then::else}}`, `{{ifeq::name::expected::then::else}}`, `{{iftools::tool::then::else}}`, and `{{ifslot::slot::then::else}}`. Only the selected branch is expanded.
-- Trusted extension code can register additional macros through `registerMacro`, with argument metadata and shared runtime/variable/helper access.
+- Trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules and reusable Pi packages can register additional macros through `registerMacro`, with argument metadata and shared runtime/variable/helper access.
 - `getRegisteredMacros()` and `getRegisteredSlots()` expose the active macro/slot definitions for implementation references and UI/resource inspection.
 - Static stack variables from `stack.variables`.
 - Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.

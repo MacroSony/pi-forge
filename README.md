@@ -277,29 +277,32 @@ Conditional branches are lazy: only the selected branch is expanded, so skipped 
 
 ### Trusted custom macros and slots
 
-Custom macros and slots are registered by trusted extension code, not embedded in prompt-stack JSON. A stack can reference the registered name and pass declarative options; the executable `render` body lives in a Pi extension or another explicitly installed package.
+Custom macros and slots are registered by trusted extension code, not embedded in prompt-stack JSON. For project-local customization, put registration modules in `.pi/forge/extensions/`. For machine-wide personal customization, put them in `~/.pi/forge/extensions/`. pi-forge loads global modules first, then project-local modules, after project trust and before stack validation. Both locations reload on `/preset reload`.
+
+These modules receive the registration API from pi-forge, so they do not need to import `@zihanw/pi-forge` or know where pi-forge is installed.
 
 ```ts
-import { registerMacro, registerSlot } from "@zihanw/pi-forge";
+// .pi/forge/extensions/ticket-context.ts
+export default function register(api) {
+  api.registerMacro({
+    name: "ticketId",
+    description: "Current ticket id from session variables.",
+    render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+  });
 
-registerMacro({
-  name: "ticketId",
-  description: "Current ticket id from session variables.",
-  render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
-});
-
-registerSlot({
-  name: "ticket-context",
-  description: "Render ticket context for the current task.",
-  options: {
-    heading: { type: "string", default: "Ticket context" },
-  },
-  render: (ctx) => [
-    String(ctx.options.heading ?? "Ticket context") + ":",
-    "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
-    "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
-  ].join("\n"),
-});
+  api.registerSlot({
+    name: "ticket-context",
+    description: "Render ticket context for the current task.",
+    options: {
+      heading: { type: "string", default: "Ticket context" },
+    },
+    render: (ctx) => [
+      String(ctx.options.heading ?? "Ticket context") + ":",
+      "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+      "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
+    ].join("\n"),
+  });
+}
 ```
 
 The stack remains declarative:
@@ -317,11 +320,15 @@ The stack remains declarative:
 }
 ```
 
-Missing custom slots are validation warnings until the registering extension is installed and loaded. Built-in macros and slots use the same registry internally, so `getRegisteredMacros()` and `getRegisteredSlots()` can be used as implementation references.
+Supported module files are `.ts`, `.js`, `.mjs`, `.cjs`, and `index.*` inside a subdirectory. TypeScript modules should stick to syntax Node can strip at runtime, or you can use `.js` / `.mjs` instead. A module can export either `default function register(api)` or `export function register(api)`. Registered macro and slot names must be unique across built-ins, global extensions, and project extensions; duplicate names show as extension load warnings.
 
-For a complete copyable extension and stack, see [examples/custom-system-status-extension](examples/custom-system-status-extension). It registers a `{{cpuLoad}}` macro and a `machine-status` slot from a trusted Pi extension file.
+The API includes `cwd`, `forgeDir`, `extensionPath`, `helpers`, `registerMacro`, `registerSlot`, `getRegisteredMacros`, and `getRegisteredSlots`. For global modules, `forgeDir` is `~/.pi/forge`; for project modules, it is `<project>/.pi/forge`.
 
-When pi-forge is installed as a package, custom extensions can import `@zihanw/pi-forge`. When developing from a local checkout loaded through Pi settings, set an explicit local path as shown in the example README, such as `PI_FORGE_MODULE=/path/to/pi-forge/src/index.ts`. pi-forge keeps the macro/slot registry process-global so compatible local module copies share registrations.
+Missing custom slots are validation warnings until the registering module is loaded. Built-in macros and slots use the same registry internally, so `getRegisteredMacros()` and `getRegisteredSlots()` can be used as implementation references. `/preset diagnostics` shows loaded pi-forge extension files and load failures.
+
+For a complete copyable extension and stack, see [examples/custom-system-status-extension](examples/custom-system-status-extension). It registers a `{{cpuLoad}}` macro and a `machine-status` slot from `.pi/forge/extensions/system-status.ts`.
+
+Reusable Pi packages can still import `registerMacro` and `registerSlot` from `@zihanw/pi-forge`. The `.pi/forge/extensions` and `~/.pi/forge/extensions` loaders are intended for small trusted customizations without package boilerplate.
 
 ## Stack reference
 

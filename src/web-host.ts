@@ -23,7 +23,7 @@ export interface WebHostRuntime {
 	getActiveId(): string | undefined;
 	getSelectedActiveId(): string | undefined;
 	setActive(id: string | undefined): boolean;
-	reloadStacks(preferredId?: string): void;
+	reloadStacks(preferredId?: string): Promise<void>;
 	buildPreview(target: LoadedPromptStack): {
 		text: string;
 		preview: WebEditorPreview;
@@ -66,8 +66,8 @@ export function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHo
 			runtime.setActive("none");
 			return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 		},
-		reloadStacks: () => {
-			runtime.reloadStacks(runtime.getSelectedActiveId());
+		reloadStacks: async () => {
+			await runtime.reloadStacks(runtime.getSelectedActiveId());
 			return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 		},
 	};
@@ -131,12 +131,12 @@ export function loadWebEditorSettings(ctx: ExtensionCommandContext): { preferred
 	};
 }
 
-function saveStackFile(
+async function saveStackFile(
 	ctx: ExtensionCommandContext,
 	runtime: WebHostRuntime,
 	id: string,
 	stack: PromptStack,
-): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }> {
+): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
 		return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
 	}
@@ -149,18 +149,18 @@ function saveStackFile(
 
 	writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
 	const preferredId = runtime.getActive()?.stack.id === id ? stack.id : runtime.getSelectedActiveId();
-	runtime.reloadStacks(preferredId);
+	await runtime.reloadStacks(preferredId);
 	const saved = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id) ?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
 	if (!saved) return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
 	return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
 
-function createStackFile(
+async function createStackFile(
 	ctx: ExtensionCommandContext,
 	runtime: WebHostRuntime,
 	stack: PromptStack,
 	options: WebEditorCreateStackOptions,
-): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }> {
+): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
 		return { ok: false, status: 403, error: "Project is not trusted; refusing to create prompt stacks." };
 	}
@@ -185,7 +185,7 @@ function createStackFile(
 	const previousSelection = runtime.getSelectedActiveId();
 	mkdirSync(dirname(targetPath), { recursive: true });
 	writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-	runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
+	await runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
 	if (options.activate) runtime.setActive(stack.id);
 
 	const created = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id);
@@ -193,11 +193,11 @@ function createStackFile(
 	return { ok: true, stack: stackSummary(created, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
 
-function deleteStackFile(
+async function deleteStackFile(
 	ctx: ExtensionCommandContext,
 	runtime: WebHostRuntime,
 	id: string,
-): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }> {
+): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
 		return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
 	}
@@ -212,9 +212,9 @@ function deleteStackFile(
 	unlinkSync(target.filePath);
 	if (wasActive) {
 		runtime.setActive("none");
-		runtime.reloadStacks("none");
+		await runtime.reloadStacks("none");
 	} else {
-		runtime.reloadStacks(runtime.getSelectedActiveId());
+		await runtime.reloadStacks(runtime.getSelectedActiveId());
 	}
 	return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }

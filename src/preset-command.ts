@@ -6,12 +6,13 @@ import { renderDiagnostics, renderPreview, showText } from "./preview.ts";
 import type { PiForgeRuntimeState } from "./runtime-state.ts";
 import { importSillyTavernPreset } from "./sillytavern-importer.ts";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
+import { forgeExtensionsDir, globalForgeExtensionsDir } from "./storage.ts";
 import type { LoadedPromptStack } from "./types.ts";
 
 export interface PresetCommandDeps {
 	selectedActiveId(): string | undefined;
 	setActive(id: string | undefined, ctx?: ExtensionCommandContext): boolean;
-	reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): void;
+	reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): Promise<void>;
 	openWebEditor(ctx: ExtensionCommandContext, mode?: "open" | "restart"): Promise<void>;
 	stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
 }
@@ -65,7 +66,7 @@ async function handlePresetCommand(
 			return;
 
 		case "reload":
-			deps.reloadStacks(ctx, deps.selectedActiveId());
+			await deps.reloadStacks(ctx, deps.selectedActiveId());
 			ctx.ui.notify(`pi-forge: reloaded ${state.stacks.length} prompt stack(s).`, "info");
 			return;
 
@@ -130,7 +131,7 @@ async function handlePresetCommand(
 				overwrite: flags.has("--overwrite"),
 				deleteLegacy: flags.has("--delete-legacy"),
 			});
-			if (!dryRun) deps.reloadStacks(ctx, deps.selectedActiveId());
+			if (!dryRun) await deps.reloadStacks(ctx, deps.selectedActiveId());
 			const changed = report.copied + report.overwritten;
 			const summary = dryRun
 				? `pi-forge: migration dry run found ${report.files.length} legacy stack file(s).`
@@ -220,7 +221,7 @@ async function handleImportSilly(
 	if (!existsSync(reportDir)) mkdirSync(reportDir, { recursive: true });
 	writeFileSync(reportPath, result.report, "utf8");
 
-	deps.reloadStacks(ctx, deps.selectedActiveId());
+	await deps.reloadStacks(ctx, deps.selectedActiveId());
 
 	ctx.ui.notify(`pi-forge: imported ${result.stack.id} (${result.stack.items.length} items)`, "info");
 	await showText(ctx, `pi-forge import report: ${result.stack.id}`, `Stack written to: ${stackPath}\nReport written to: ${reportPath}\n\n${result.report}`);
@@ -230,6 +231,10 @@ function renderStackList(state: PiForgeRuntimeState, ctx: ExtensionCommandContex
 	const lines = [
 		"Prompt stack directories:",
 		...promptStackReadDirs(ctx.cwd).map((dir, index) => `  ${index === 0 ? "primary" : "legacy"}: ${dir}`),
+		"Forge extension directories:",
+		`  global: ${globalForgeExtensionsDir()}`,
+		`  project: ${forgeExtensionsDir(ctx.cwd)}`,
+		`Loaded forge extensions: ${state.forgeExtensionPaths.length}`,
 		`Active stack: ${state.active?.stack.id ?? "(none)"}`,
 		"",
 	];
@@ -256,6 +261,10 @@ function renderCurrentDiagnostics(state: PiForgeRuntimeState): string {
 	const lines = ["# pi-forge diagnostics", ""];
 	lines.push("## Active stack load/validation diagnostics", "");
 	lines.push(state.active ? renderDiagnostics(state.active.diagnostics) : "No active prompt stack.");
+	lines.push("", "## pi-forge extension diagnostics", "");
+	lines.push(renderDiagnostics(state.forgeExtensionDiagnostics));
+	lines.push("", "## Loaded pi-forge extensions", "");
+	lines.push(state.forgeExtensionPaths.length > 0 ? state.forgeExtensionPaths.map((path) => `- ${path}`).join("\n") : "(none)");
 	lines.push("", "## Latest runtime compile diagnostics", "");
 	lines.push(renderDiagnostics(state.latestCompileDiagnostics));
 	return lines.join("\n");

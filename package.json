@@ -1,6 +1,6 @@
 {
   "name": "@zihanw/pi-forge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Pi extension for prompt stack and agent profile management.",
   "type": "module",
   "exports": {

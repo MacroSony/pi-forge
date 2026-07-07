@@ -12,7 +12,7 @@ import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from 
 import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
 
 export interface LifecycleDeps {
-	reloadStacks(ctx: ExtensionContext, preferredId?: string): void;
+	reloadStacks(ctx: ExtensionContext, preferredId?: string): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
@@ -23,19 +23,19 @@ export interface LifecycleDeps {
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
 	pi.on("session_start", async (event, ctx) => {
-		restoreBranchScopedRuntime(ctx, state, deps);
+		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
-		restoreBranchScopedRuntime(ctx, state, deps);
+		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after tree navigation");
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
-		restoreBranchScopedRuntime(ctx, state, deps);
+		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after compaction");
 	});
@@ -105,12 +105,12 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 }
 
-function restoreBranchScopedRuntime(ctx: ExtensionContext, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
+async function restoreBranchScopedRuntime(ctx: ExtensionContext, state: PiForgeRuntimeState, deps: LifecycleDeps): Promise<void> {
 	state.sessionVariables = getRestoredVariables(ctx);
 	state.currentVariableStore = undefined;
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
-	deps.reloadStacks(ctx, restoredActiveId);
+	await deps.reloadStacks(ctx, restoredActiveId);
 }
 
 function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {

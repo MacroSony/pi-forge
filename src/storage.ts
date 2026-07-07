@@ -1,7 +1,24 @@
+import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 export function promptStacksDir(cwd: string): string {
 	return join(cwd, ".pi", "forge", "prompt-stacks");
+}
+
+export function forgeDir(cwd: string): string {
+	return join(cwd, ".pi", "forge");
+}
+
+export function forgeExtensionsDir(cwd: string): string {
+	return join(forgeDir(cwd), "extensions");
+}
+
+export function globalForgeDir(): string {
+	return join(homedir(), ".pi", "forge");
+}
+
+export function globalForgeExtensionsDir(): string {
+	return join(globalForgeDir(), "extensions");
 }
 
 export function legacyPromptStacksDir(cwd: string): string {

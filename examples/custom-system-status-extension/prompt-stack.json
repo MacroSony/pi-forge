@@ -3,7 +3,7 @@
   "type": "pi-forge.prompt-stack",
   "id": "custom-system-status",
   "name": "Custom System Status",
-  "description": "Example stack that uses a trusted custom macro and custom slot registered by examples/custom-system-status-extension/index.ts.",
+  "description": "Example stack that uses a trusted custom macro and custom slot registered from .pi/forge/extensions/system-status.ts.",
   "mode": "append",
   "items": [
     {

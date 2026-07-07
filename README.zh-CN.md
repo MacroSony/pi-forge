@@ -275,36 +275,43 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 
 ### 可信自定义宏和 slot
 
-自定义宏和 slot 由可信扩展代码注册，不把可执行代码写进 prompt-stack JSON。Stack 只引用已注册名称并传入声明式 options；真正的 `render` 逻辑放在 Pi 扩展或明确安装的包里。
+自定义宏和 slot 由可信扩展代码注册，不把可执行代码写进 prompt-stack JSON。项目本地自定义代码放在 `.pi/forge/extensions/`。机器级个人自定义代码放在 `~/.pi/forge/extensions/`。pi-forge 会在项目受信任后、stack 校验前先加载全局模块，再加载项目本地模块；两个位置都会在 `/preset reload` 时重新加载。
+
+这些模块会从 pi-forge 接收注册 API，所以不需要 import `@zihanw/pi-forge`，也不需要知道 pi-forge 安装在哪里。
 
 ```ts
-import { registerMacro, registerSlot } from "@zihanw/pi-forge";
+// .pi/forge/extensions/ticket-context.ts
+export default function register(api) {
+  api.registerMacro({
+    name: "ticketId",
+    description: "从会话变量读取当前 ticket id。",
+    render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+  });
 
-registerMacro({
-  name: "ticketId",
-  description: "从会话变量读取当前 ticket id。",
-  render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
-});
-
-registerSlot({
-  name: "ticket-context",
-  description: "渲染当前任务的 ticket 上下文。",
-  options: {
-    heading: { type: "string", default: "Ticket context" },
-  },
-  render: (ctx) => [
-    String(ctx.options.heading ?? "Ticket context") + ":",
-    "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
-    "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
-  ].join("\n"),
-});
+  api.registerSlot({
+    name: "ticket-context",
+    description: "渲染当前任务的 ticket 上下文。",
+    options: {
+      heading: { type: "string", default: "Ticket context" },
+    },
+    render: (ctx) => [
+      String(ctx.options.heading ?? "Ticket context") + ":",
+      "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+      "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
+    ].join("\n"),
+  });
+}
 ```
 
-缺失的自定义 slot 会产生校验 warning，直到对应注册扩展安装并加载。内置宏和 slot 也使用同一个 registry，可用 `getRegisteredMacros()` 和 `getRegisteredSlots()` 作为实现参考。
+支持 `.ts`、`.js`、`.mjs`、`.cjs` 文件，也支持子目录里的 `index.*`。TypeScript 模块应使用 Node 运行时可直接 strip 的语法；如果需要更复杂的构建，使用 `.js` / `.mjs`。模块可以导出 `default function register(api)`，也可以导出具名 `register(api)`。注册的宏和 slot 名称必须在内置项、全局扩展、项目扩展之间唯一；重复名称会显示为扩展加载 warning。
 
-完整可复制的扩展和 stack 示例见 [examples/custom-system-status-extension](examples/custom-system-status-extension)。它在可信 Pi 扩展文件中注册 `{{cpuLoad}}` 宏和 `machine-status` slot。
+API 包含 `cwd`、`forgeDir`、`extensionPath`、`helpers`、`registerMacro`、`registerSlot`、`getRegisteredMacros`、`getRegisteredSlots`。对全局模块来说，`forgeDir` 是 `~/.pi/forge`；对项目模块来说，它是 `<project>/.pi/forge`。
 
-如果 pi-forge 是作为 package 安装的，自定义扩展可以 import `@zihanw/pi-forge`。如果你是通过 Pi settings 加载本地 checkout，请按示例 README 设置显式路径，例如 `PI_FORGE_MODULE=/path/to/pi-forge/src/index.ts`。pi-forge 会把 macro/slot registry 放在当前进程的 global registry 中，因此兼容的本地模块副本可以共享注册结果。
+缺失的自定义 slot 会产生校验 warning，直到对应注册模块加载。内置宏和 slot 也使用同一个 registry，可用 `getRegisteredMacros()` 和 `getRegisteredSlots()` 作为实现参考。`/preset diagnostics` 会显示已加载的 pi-forge extension 文件和加载失败信息。
+
+完整可复制的扩展和 stack 示例见 [examples/custom-system-status-extension](examples/custom-system-status-extension)。它通过 `.pi/forge/extensions/system-status.ts` 注册 `{{cpuLoad}}` 宏和 `machine-status` slot。
+
+可复用的 Pi package 仍然可以从 `@zihanw/pi-forge` import `registerMacro` 和 `registerSlot`。`.pi/forge/extensions` 和 `~/.pi/forge/extensions` loader 主要用于不需要 package 样板的小型可信自定义逻辑。
 
 ## Stack 参考
 

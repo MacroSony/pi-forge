@@ -76,7 +76,7 @@ async function handleRequest(host, token, req, res) {
         const options = isPlainObject(body)
             ? { activate: body.activate === true, overwrite: body.overwrite === true }
             : {};
-        const result = host.createStack(parsed.stack, options);
+        const result = await host.createStack(parsed.stack, options);
         if (result.ok && parsed.importFormat) {
             sendJson(res, 200, { ...result, importFormat: parsed.importFormat, importReport: parsed.importReport });
             return;
@@ -100,11 +100,11 @@ async function handleRequest(host, token, req, res) {
             sendJson(res, 400, { error: parsed.error });
             return;
         }
-        sendOperation(res, host.saveStack(parts[2], parsed.stack));
+        sendOperation(res, await host.saveStack(parts[2], parsed.stack));
         return;
     }
     if (req.method === "DELETE" && parts[1] === "stacks" && parts.length === 3) {
-        sendOperation(res, host.deleteStack(parts[2]));
+        sendOperation(res, await host.deleteStack(parts[2]));
         return;
     }
     if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "validate") {
@@ -150,7 +150,7 @@ async function handleRequest(host, token, req, res) {
         return;
     }
     if (req.method === "POST" && parts[1] === "reload" && parts.length === 2) {
-        sendOperation(res, host.reloadStacks());
+        sendOperation(res, await host.reloadStacks());
         return;
     }
     sendJson(res, 404, { error: "Unknown pi-forge editor API route." });

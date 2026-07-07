@@ -4,7 +4,7 @@ import type { LoadedPromptStack } from "./types.ts";
 export interface PresetCommandDeps {
     selectedActiveId(): string | undefined;
     setActive(id: string | undefined, ctx?: ExtensionCommandContext): boolean;
-    reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): void;
+    reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): Promise<void>;
     openWebEditor(ctx: ExtensionCommandContext, mode?: "open" | "restart"): Promise<void>;
     stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
 }

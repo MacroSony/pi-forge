@@ -34,8 +34,8 @@ export function createWebEditorHost(ctx, runtime) {
             runtime.setActive("none");
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
-        reloadStacks: () => {
-            runtime.reloadStacks(runtime.getSelectedActiveId());
+        reloadStacks: async () => {
+            await runtime.reloadStacks(runtime.getSelectedActiveId());
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
     };
@@ -92,7 +92,7 @@ export function loadWebEditorSettings(ctx) {
         warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using an available editor port.`],
     };
 }
-function saveStackFile(ctx, runtime, id, stack) {
+async function saveStackFile(ctx, runtime, id, stack) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
     }
@@ -104,13 +104,13 @@ function saveStackFile(ctx, runtime, id, stack) {
     }
     writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
     const preferredId = runtime.getActive()?.stack.id === id ? stack.id : runtime.getSelectedActiveId();
-    runtime.reloadStacks(preferredId);
+    await runtime.reloadStacks(preferredId);
     const saved = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id) ?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
     if (!saved)
         return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
     return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
-function createStackFile(ctx, runtime, stack, options) {
+async function createStackFile(ctx, runtime, stack, options) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to create prompt stacks." };
     }
@@ -131,7 +131,7 @@ function createStackFile(ctx, runtime, stack, options) {
     const previousSelection = runtime.getSelectedActiveId();
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-    runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
+    await runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
     if (options.activate)
         runtime.setActive(stack.id);
     const created = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id);
@@ -139,7 +139,7 @@ function createStackFile(ctx, runtime, stack, options) {
         return { ok: false, status: 500, error: "Created stack could not be reloaded." };
     return { ok: true, stack: stackSummary(created, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
-function deleteStackFile(ctx, runtime, id) {
+async function deleteStackFile(ctx, runtime, id) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
     }
@@ -153,10 +153,10 @@ function deleteStackFile(ctx, runtime, id) {
     unlinkSync(target.filePath);
     if (wasActive) {
         runtime.setActive("none");
-        runtime.reloadStacks("none");
+        await runtime.reloadStacks("none");
     }
     else {
-        runtime.reloadStacks(runtime.getSelectedActiveId());
+        await runtime.reloadStacks(runtime.getSelectedActiveId());
     }
     return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }

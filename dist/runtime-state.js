@@ -6,6 +6,8 @@ export function createRuntimeState() {
         contextRewritePending: false,
         sessionVariables: {},
         latestCompileDiagnostics: [],
+        forgeExtensionDiagnostics: [],
+        forgeExtensionPaths: [],
         interceptNextProviderPayload: false,
         interceptPayloadDisplayTarget: "editor",
     };

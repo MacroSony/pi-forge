@@ -3,17 +3,17 @@ import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
     pi.on("session_start", async (event, ctx) => {
-        restoreBranchScopedRuntime(ctx, state, deps);
+        await restoreBranchScopedRuntime(ctx, state, deps);
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after session " + event.reason);
     });
     pi.on("session_tree", async (_event, ctx) => {
-        restoreBranchScopedRuntime(ctx, state, deps);
+        await restoreBranchScopedRuntime(ctx, state, deps);
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after tree navigation");
     });
     pi.on("session_compact", async (_event, ctx) => {
-        restoreBranchScopedRuntime(ctx, state, deps);
+        await restoreBranchScopedRuntime(ctx, state, deps);
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after compaction");
     });
@@ -71,12 +71,12 @@ export function registerLifecycleHandlers(pi, state, deps) {
         state.contextRewritePending = false;
     });
 }
-function restoreBranchScopedRuntime(ctx, state, deps) {
+async function restoreBranchScopedRuntime(ctx, state, deps) {
     state.sessionVariables = getRestoredVariables(ctx);
     state.currentVariableStore = undefined;
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;
-    deps.reloadStacks(ctx, restoredActiveId);
+    await deps.reloadStacks(ctx, restoredActiveId);
 }
 function getCurrentBranchEntries(ctx) {
     const leafId = ctx.sessionManager.getLeafId();

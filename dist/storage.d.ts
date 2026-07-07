@@ -1,4 +1,8 @@
 export declare function promptStacksDir(cwd: string): string;
+export declare function forgeDir(cwd: string): string;
+export declare function forgeExtensionsDir(cwd: string): string;
+export declare function globalForgeDir(): string;
+export declare function globalForgeExtensionsDir(): string;
 export declare function legacyPromptStacksDir(cwd: string): string;
 export declare function promptStackReadDirs(cwd: string): string[];
 export declare function promptStackPath(cwd: string, id: string): string;

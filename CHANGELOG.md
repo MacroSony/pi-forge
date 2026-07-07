@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.3.2] - 2026-07-07
+
+### Added
+
+- **Global forge extensions.** pi-forge now loads trusted macro/slot registration modules from `~/.pi/forge/extensions` before project-local `.pi/forge/extensions`, so users can keep personal custom macros and slots available across projects without importing `@zihanw/pi-forge`.
+
+### Changed
+
+- `/preset list` now shows both global and project forge extension directories.
+- Documentation and examples now describe global and project-local forge extension placement.
+- No breaking changes.
+
 ## [0.3.1] - 2026-07-07
 
 ### Added
@@ -13,7 +25,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - **Parser-backed macro expansion.** Macros now support nested `{{...}}` expressions and split `::` arguments only at the current macro depth.
 - **Macro filters and lazy conditionals.** Added `{{trim}}`, `{{upper}}`, `{{lower}}`, `{{json}}`, `{{xml}}`, plus lazy `{{ifvar}}`, `{{ifeq}}`, `{{iftools}}`, and `{{ifslot}}` conditionals. Skipped conditional branches are not expanded, so they cannot mutate variables.
 - **Trusted custom macro and slot APIs.** Added `registerMacro`, `registerSlot`, `getRegisteredMacros`, `getRegisteredSlots`, shared render helpers, and process-global registries so trusted Pi extensions can add custom macros and slots without embedding executable code in stack JSON.
-- **Example custom extension.** Added `examples/custom-system-status-extension`, which registers a `{{cpuLoad}}` macro and `machine-status` slot from trusted extension code.
+- **Project-local forge extensions.** Added trusted `.pi/forge/extensions` modules for project-local macro/slot registration. pi-forge loads them before stack validation, reloads them on `/preset reload`, and lists loaded files or load warnings in `/preset diagnostics`.
+- **Example custom extension.** Added `examples/custom-system-status-extension`, which registers a `{{cpuLoad}}` macro and `machine-status` slot from a project-local forge extension module.
 - **Slot registry and date-time option.** Built-in slots now use the public slot registry, and `date` / `date-cwd` slots support `includeTime: true`.
 - **Web editor: new stack workflow.** The browser can create a stack even when no stack files exist yet. New stacks start from the default Pi prompt mirror layout so users can edit a complete working stack instead of a blank skeleton.
 - **Web editor: policy resource picker.** The Policy tab now lists registered tools and loaded skills, marks active tools and hidden skills, hides exact selected names from the available list, supports removable selected-pattern chips, and includes a filter/autocomplete input for adding exact names while keeping wildcard/manual textarea editing.
@@ -23,7 +36,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
-- **Package install exports.** Installs now load compiled `dist` JavaScript instead of raw `.ts` files under `node_modules`, so `import { registerMacro, registerSlot } from "@zihanw/pi-forge"` works for trusted extension packages without relying on Node TypeScript stripping. Git installs include the compiled output and do not require TypeScript during Pi's `npm install --omit=dev` step.
+- **Package install exports.** Installs now load compiled `dist` JavaScript instead of raw `.ts` files under `node_modules`, so `import { registerMacro, registerSlot } from "@zihanw/pi-forge"` works for reusable trusted extension packages without relying on Node TypeScript stripping. Git installs include the compiled output and do not require TypeScript during Pi's `npm install --omit=dev` step.
 - **Preview policy simulation.** Web preview now compiles with the edited stack's tool policy applied to selected tools, snippets, and tool guidelines. This prevents preview from showing unrelated tool guidelines from the current Pi tool state.
 - **Empty-project web editor UX.** Empty stack directories now show a create/import path instead of leaving the editor in a dead-end state.
 

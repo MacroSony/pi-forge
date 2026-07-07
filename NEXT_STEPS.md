@@ -4,8 +4,8 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 
 ## Current Read
 
-- `0.3.1` is a patch release candidate on top of the complete `0.3.0` feature surface: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
-- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork, lazy conditionals, slot registry cleanup, trusted macro/slot registration APIs, and 0.3.1 web editor QoL are handled. The next maintainability constraint is `src/web-editor/page.ts`.
+- `0.3.2` is a patch release candidate on top of the complete `0.3.0` feature surface: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
+- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork, lazy conditionals, slot registry cleanup, trusted macro/slot registration APIs, global/project `.pi/forge/extensions` loading, and 0.3.1 web editor QoL are handled. The next maintainability constraint is `src/web-editor/page.ts`.
 - New behavior should be driven by real prompt-authoring pain, not by aiming for full SillyTavern compatibility.
 - Keep prompt stacks scoped to message/system layout. Model, provider, thinking, and broad tool-profile choices belong in a later agent-profile layer.
 
@@ -22,7 +22,7 @@ Recommended ordering:
 
 Risk calls:
 
-- Trusted customization now has a code-level registration boundary. Keep prompt-stack JSON declarative; if portability pain appears, add dependency metadata instead of inline code.
+- Trusted customization now has a code-level registration boundary through `~/.pi/forge/extensions`, `.pi/forge/extensions`, and reusable package APIs. Keep prompt-stack JSON declarative; if portability pain appears, add dependency metadata instead of inline code.
 - Web editor growth without a static split or tiny build step will keep making reviews noisy.
 - Provider-payload transforms are high-risk because provider shapes vary; keep them out until there is a precise use case.
 - True display-only regex needs platform support for display/stream transforms. The current finalize behavior is not a substitute because it mutates the transcript.
@@ -60,7 +60,7 @@ Design boundaries:
 - Treat macros as inline renderers and slots as block/message renderers.
 - Keep built-in macros and slots behind registries internally.
 - Keep prompt-stack files declarative. Do not allow arbitrary JavaScript or expression code inside stack JSON.
-- User-defined macro/slot code lives in trusted extension APIs such as `registerMacro` and `registerSlot`, not raw prompt-stack data.
+- User-defined macro/slot code lives in trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules or reusable Pi packages that call `registerMacro` and `registerSlot`, not raw prompt-stack data.
 - Keep conditions simple and lazy. Only expand the selected branch so skipped branches cannot mutate variables.
 
 Potential work:
@@ -188,5 +188,5 @@ Decision rule:
 ## Next Coding Session
 
 1. Split `src/web-editor/page.ts` along page shell, styles, and client script boundaries.
-2. Keep custom macro/slot portability metadata deferred until a real sharing problem appears.
+2. Keep custom macro/slot portability metadata deferred until extension sharing shows real friction.
 3. Verify with focused compiler/importer tests, full test suite, typecheck, and `git diff --check`.

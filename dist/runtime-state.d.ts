@@ -14,6 +14,8 @@ export interface PiForgeRuntimeState {
     sessionVariables: Record<string, PromptVariableValue>;
     lastPersistedActiveId?: string;
     latestCompileDiagnostics: PromptStackDiagnostic[];
+    forgeExtensionDiagnostics: PromptStackDiagnostic[];
+    forgeExtensionPaths: string[];
     interceptNextProviderPayload: boolean;
     interceptPayloadSavePath?: string;
     interceptPayloadDisplayTarget: PayloadDisplayTarget;

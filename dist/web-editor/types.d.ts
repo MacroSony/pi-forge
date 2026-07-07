@@ -20,18 +20,18 @@ export interface WebEditorHost {
         filePath: string;
         diagnostics: PromptStackDiagnostic[];
     } | undefined;
-    createStack(stack: PromptStack, options: WebEditorCreateStackOptions): WebEditorOperationResult<{
+    createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
         stacks: WebEditorStackSummary[];
-    }>;
-    saveStack(id: string, stack: PromptStack): WebEditorOperationResult<{
+    }>>;
+    saveStack(id: string, stack: PromptStack): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
         stacks: WebEditorStackSummary[];
-    }>;
-    deleteStack(id: string): WebEditorOperationResult<{
+    }>>;
+    deleteStack(id: string): Promise<WebEditorOperationResult<{
         activeId?: string;
         stacks: WebEditorStackSummary[];
-    }>;
+    }>>;
     validateStack(stack: PromptStack): PromptStackDiagnostic[];
     previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{
         text: string;
@@ -49,10 +49,10 @@ export interface WebEditorHost {
         activeId?: string;
         stacks: WebEditorStackSummary[];
     }>;
-    reloadStacks(): WebEditorOperationResult<{
+    reloadStacks(): Promise<WebEditorOperationResult<{
         activeId?: string;
         stacks: WebEditorStackSummary[];
-    }>;
+    }>>;
 }
 export interface WebEditorPreviewSection {
     id: string;

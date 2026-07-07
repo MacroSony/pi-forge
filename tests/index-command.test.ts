@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,10 +12,15 @@ import {
 	latestEditorUrl,
 	startSession,
 	writeForgeConfig,
+	writeForgeExtension,
+	writeGlobalForgeExtension,
 	writeLegacyStack,
 	writePreset,
 	writeStack,
 } from "./helpers/index-command-harness.ts";
+
+const TEST_HOME = mkdtempSync(join(tmpdir(), "pi-forge-home-"));
+process.env.HOME = TEST_HOME;
 
 test("/preset completions preserve second-level subcommand text", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
@@ -122,6 +127,116 @@ test("active stack tool policy filters and restores active tools", async () => {
 
 	assert.deepEqual(harness.getActiveTools(), ["read", "bash", "edit", "write"]);
 	assert.equal(statuses["pi-forge-tools"], undefined);
+});
+
+test("trusted pi-forge extension modules register custom macros and slots before validation", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeForgeExtension(cwd, "system-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "forgeCustomMacro", render: () => "macro-v1" });
+  api.registerSlot({ name: "forge-custom-slot", render: () => "slot-v1" });
+}
+`);
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [
+			{ kind: "block", id: "macro", enabled: true, role: "system", content: "Macro {{forgeCustomMacro}}" },
+			{ kind: "slot", id: "slot", enabled: true, role: "system", slot: "forge-custom-slot" },
+			{ kind: "slot", id: "history", enabled: true, role: "user", slot: "chat-history" },
+		],
+	});
+
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	await harness.commands.preset.handler("validate", context.ctx);
+	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /Unsupported slot: forge-custom-slot/);
+
+	const first = await harness.events.before_agent_start({
+		type: "before_agent_start",
+		systemPromptOptions: context.ctx.getSystemPromptOptions(),
+		systemPrompt: "base system",
+		prompt: "hello",
+	}, context.ctx);
+	assert.equal(first.systemPrompt, "Macro macro-v1\n\nslot-v1");
+
+	writeForgeExtension(cwd, "system-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "forgeCustomMacro", render: () => "macro-v2" });
+  api.registerSlot({ name: "forge-custom-slot", render: () => "slot-v2" });
+}
+`);
+	await harness.commands.preset.handler("reload", context.ctx);
+
+	const second = await harness.events.before_agent_start({
+		type: "before_agent_start",
+		systemPromptOptions: context.ctx.getSystemPromptOptions(),
+		systemPrompt: "base system",
+		prompt: "hello",
+	}, context.ctx);
+	assert.equal(second.systemPrompt, "Macro macro-v2\n\nslot-v2");
+
+	const untrusted = createContext(cwd, [], { trusted: false });
+	await startSession(harness, untrusted.ctx);
+});
+
+test("global and project pi-forge extension modules load before validation", async () => {
+	rmSync(join(TEST_HOME, ".pi", "forge"), { recursive: true, force: true });
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalPath = writeGlobalForgeExtension("global-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "globalForgeMacro", render: () => "global-macro" });
+  api.registerSlot({ name: "global-forge-slot", render: () => "global-slot" });
+}
+`);
+	const projectPath = writeForgeExtension(cwd, "project-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "projectForgeMacro", render: () => "project-macro" });
+  api.registerSlot({ name: "project-forge-slot", render: () => "project-slot" });
+}
+`);
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [
+			{ kind: "block", id: "global-macro", enabled: true, role: "system", content: "Global {{globalForgeMacro}}" },
+			{ kind: "slot", id: "global-slot", enabled: true, role: "system", slot: "global-forge-slot" },
+			{ kind: "block", id: "project-macro", enabled: true, role: "system", content: "Project {{projectForgeMacro}}" },
+			{ kind: "slot", id: "project-slot", enabled: true, role: "system", slot: "project-forge-slot" },
+			{ kind: "slot", id: "history", enabled: true, role: "user", slot: "chat-history" },
+		],
+	});
+
+	const harness = createHarness();
+	const context = createContext(cwd);
+	try {
+		await startSession(harness, context.ctx);
+
+		await harness.commands.preset.handler("validate", context.ctx);
+		const validation = context.editors.at(-1)?.text ?? "";
+		assert.doesNotMatch(validation, /Unsupported slot: (global-forge-slot|project-forge-slot)/);
+
+		const result = await harness.events.before_agent_start({
+			type: "before_agent_start",
+			systemPromptOptions: context.ctx.getSystemPromptOptions(),
+			systemPrompt: "base system",
+			prompt: "hello",
+		}, context.ctx);
+		assert.equal(result.systemPrompt, "Global global-macro\n\nglobal-slot\n\nProject project-macro\n\nproject-slot");
+
+		await harness.commands.preset.handler("diagnostics", context.ctx);
+		const diagnostics = context.editors.at(-1)?.text ?? "";
+		assert.match(diagnostics, new RegExp(escapeRegExp(globalPath)));
+		assert.match(diagnostics, new RegExp(escapeRegExp(projectPath)));
+	} finally {
+		const untrusted = createContext(cwd, [], { trusted: false });
+		await startSession(harness, untrusted.ctx);
+		rmSync(join(TEST_HOME, ".pi", "forge"), { recursive: true, force: true });
+	}
 });
 
 test("session_start restores active stack and typed variables", async () => {
@@ -928,3 +1043,7 @@ test("session_tree before any variable entry clears restored macro variables", a
 	await harness.commands.preset.handler("preview", context.ctx);
 	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 });
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

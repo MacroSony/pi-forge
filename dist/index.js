@@ -1,3 +1,4 @@
+import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.js";
 import { registerLifecycleHandlers } from "./lifecycle.js";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.js";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.js";
@@ -23,6 +24,7 @@ export default function piForge(pi) {
     let webEditorCwd;
     let webEditorPreferredPort;
     let toolPolicyBaseline;
+    const forgeExtensionState = createForgeExtensionState();
     function activeId() {
         return state.active?.stack.id;
     }
@@ -55,8 +57,11 @@ export default function piForge(pi) {
         syncActiveToolPolicy(ctx);
         return true;
     }
-    function reloadStacks(ctx, preferredId) {
+    async function reloadStacks(ctx, preferredId) {
         if (!ctx.isProjectTrusted()) {
+            const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
+            state.forgeExtensionDiagnostics = unloadDiagnostics;
+            state.forgeExtensionPaths = [];
             state.stacks = [];
             state.active = undefined;
             syncActiveToolPolicy(ctx);
@@ -64,7 +69,14 @@ export default function piForge(pi) {
             updateStatus(ctx);
             return;
         }
+        const extensionResult = await reloadForgeExtensions(ctx.cwd, forgeExtensionState);
+        state.forgeExtensionDiagnostics = extensionResult.diagnostics;
+        state.forgeExtensionPaths = extensionResult.loadedPaths;
         state.stacks = loadPromptStacks(ctx.cwd);
+        if (state.forgeExtensionDiagnostics.length > 0) {
+            for (const loaded of state.stacks)
+                loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
+        }
         state.active = chooseDefaultStack(state.stacks, preferredId);
         updateStatus(ctx);
         syncActiveToolPolicy(ctx);

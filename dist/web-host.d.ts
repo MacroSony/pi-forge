@@ -7,7 +7,7 @@ export interface WebHostRuntime {
     getActiveId(): string | undefined;
     getSelectedActiveId(): string | undefined;
     setActive(id: string | undefined): boolean;
-    reloadStacks(preferredId?: string): void;
+    reloadStacks(preferredId?: string): Promise<void>;
     buildPreview(target: LoadedPromptStack): {
         text: string;
         preview: WebEditorPreview;
