@@ -4,8 +4,8 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 
 ## Current Read
 
-- `0.3.0` is a complete feature release: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
-- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork, lazy conditionals, slot registry cleanup, and trusted macro/slot registration APIs are handled in the current working tree. The next maintainability constraint is `src/web-editor/page.ts`.
+- `0.3.1` is a patch release candidate on top of the complete `0.3.0` feature surface: prompt stacks, storage migration, policy, regex MVP, SillyTavern import, web editor, payload inspector, and command/lifecycle coverage are shipped.
+- The command/lifecycle and SillyTavern importer pipeline extractions are handled. Macro parser/registry groundwork, lazy conditionals, slot registry cleanup, trusted macro/slot registration APIs, and 0.3.1 web editor QoL are handled. The next maintainability constraint is `src/web-editor/page.ts`.
 - New behavior should be driven by real prompt-authoring pain, not by aiming for full SillyTavern compatibility.
 - Keep prompt stacks scoped to message/system layout. Model, provider, thinking, and broad tool-profile choices belong in a later agent-profile layer.
 
@@ -42,7 +42,7 @@ Work:
 Follow-up UI candidates:
 
 - Pasted JSON import flow, not only file selection.
-- Keyboard shortcuts for save, validate, preview, and closing dialogs.
+- Dynamic registered slot/macro discovery in the structured editor.
 - Larger policy/regex screens only after the page split.
 
 Done criteria:

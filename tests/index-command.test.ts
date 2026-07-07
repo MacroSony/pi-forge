@@ -312,7 +312,30 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
 	});
 	const harness = createHarness();
+	harness.tools.read = {
+		name: "read",
+		description: "Read files.",
+		promptSnippet: "Read files.",
+		promptGuidelines: ["Use read before editing files."],
+	};
+	harness.tools.bash = {
+		name: "bash",
+		description: "Run shell commands.",
+		promptSnippet: "Run shell commands.",
+		promptGuidelines: ["Use bash deliberately."],
+	};
 	const { ctx, editors, statuses } = createContext(cwd);
+	ctx.getSystemPromptOptions = () => ({
+		cwd,
+		selectedTools: ["read", "bash"],
+		toolSnippets: { read: "Read files.", bash: "Run shell commands." },
+		promptGuidelines: ["Use read before editing files.", "Use bash deliberately."],
+		contextFiles: [],
+		skills: [
+			{ name: "review", description: "Review code.", filePath: "/skills/review/SKILL.md" },
+			{ name: "browser-danger", description: "Dangerous browser.", filePath: "/skills/browser-danger/SKILL.md", disableModelInvocation: true },
+		],
+	});
 	await startSession(harness, ctx);
 
 	try {
@@ -336,6 +359,14 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(pageResponse.status, 200);
 		const pageHtml = await pageResponse.text();
 		assert.match(pageHtml, /sidebarToggleBtn/);
+		assert.match(pageHtml, /newStackBtn/);
+		assert.match(pageHtml, /createNewStack/);
+		assert.match(pageHtml, /Default Pi Prompt Mirror/);
+		assert.match(pageHtml, /tool-guidelines/);
+		assert.match(pageHtml, /pi-docs/);
+		assert.match(pageHtml, /emptyNewStackBtn/);
+		assert.match(pageHtml, /handleEditorShortcut/);
+		assert.match(pageHtml, /Ctrl\/Cmd\+S/);
 			assert.match(pageHtml, /slotOptionsFormBtn/);
 			assert.match(pageHtml, /stripAssistantThinking/);
 			assert.match(pageHtml, /includeSummaries/);
@@ -354,6 +385,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(pageHtml, /policyTabBtn/);
 		assert.match(pageHtml, /stackTabBtn/);
 		assert.match(pageHtml, /addItemBtn/);
+		assert.match(pageHtml, /addSlotBtn/);
 			assert.match(pageHtml, /regexRows/);
 			assert.match(pageHtml, /data-regex-row/);
 			assert.match(pageHtml, /data-regex-trim-strings/);
@@ -362,6 +394,11 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 			assert.match(pageHtml, /syncRegexRulesFromModal/);
 		assert.match(pageHtml, /data-policy-row/);
 		assert.match(pageHtml, /data-policy-mode-option/);
+		assert.match(pageHtml, /resourcePickerHtml/);
+		assert.match(pageHtml, /data-resource-name/);
+		assert.match(pageHtml, /data-remove-policy-pattern/);
+		assert.match(pageHtml, /data-resource-filter/);
+		assert.match(pageHtml, /policyResourceAutocompleteValue/);
 		assert.match(pageHtml, /syncResourcePolicyFromTab/);
 		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
 		assert.match(pageHtml, /payloadBtn/);
@@ -391,6 +428,16 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const list = await listResponse.json() as { stacks: Array<{ id: string; active: boolean }> };
 		assert.deepEqual(list.stacks.map((stack) => stack.id), ["default"]);
 		assert.equal(list.stacks[0]?.active, true);
+
+		const resourcesResponse = await fetch(new URL("/api/resources", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(resourcesResponse.status, 200);
+		const resources = await resourcesResponse.json() as {
+			tools: Array<{ name: string; active?: boolean; description?: string }>;
+			skills: Array<{ name: string; hidden?: boolean; description?: string }>;
+		};
+		assert.ok(resources.tools.some((tool) => tool.name === "read" && tool.active && /Read files/.test(tool.description ?? "")));
+		assert.ok(resources.skills.some((skill) => skill.name === "review" && /Review code/.test(skill.description ?? "")));
+		assert.ok(resources.skills.some((skill) => skill.name === "browser-danger" && skill.hidden));
 
 		const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers: { "x-pi-forge-token": token } });
 		assert.equal(stackResponse.status, 200);
@@ -441,10 +488,17 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.match(saved, /"skills"/);
 		assert.match(saved, /"browser-danger"/);
 
+		const previewStack = structuredClone(loaded.stack);
+		previewStack.mode = "append";
+		previewStack.tools = { allow: ["read"] };
+		previewStack.items.unshift(
+			{ kind: "slot", id: "preview-tools", enabled: true, role: "system", slot: "tools", options: { format: "plain", onlyWithSnippets: true } },
+			{ kind: "slot", id: "preview-guidelines", enabled: true, role: "system", slot: "tool-guidelines", options: { format: "plain" } },
+		);
 		const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
 			method: "POST",
 			headers: { "content-type": "application/json", "x-pi-forge-token": token },
-			body: JSON.stringify({ stack: loaded.stack }),
+			body: JSON.stringify({ stack: previewStack }),
 		});
 		assert.equal(previewResponse.status, 200);
 		const previewResult = await previewResponse.json() as {
@@ -454,6 +508,9 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.ok(previewResult.preview);
 		assert.equal(previewResult.preview?.system.title, "System prompt");
 		assert.match(previewResult.preview?.system.content ?? "", /base system/);
+		assert.match(previewResult.preview?.system.content ?? "", /Available tools:\n- read: Read files\./);
+		assert.match(previewResult.preview?.system.content ?? "", /Use read before editing files\./);
+		assert.doesNotMatch(previewResult.preview?.system.content ?? "", /Use bash deliberately\./);
 		const longMessage = previewResult.preview?.messages.find((message) => message.content.includes("After history"));
 		assert.ok(longMessage);
 		assert.equal(longMessage?.title, "after");
@@ -601,6 +658,51 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.ok(Number(reopenedUrl.port) > 0);
 		const reopenedPage = await fetch(reopenedUrl);
 		assert.equal(reopenedPage.status, 200);
+	} finally {
+		await harness.commands.preset.handler("ui stop", ctx);
+	}
+	assert.equal(statuses["pi-forge-editor"], undefined);
+});
+
+test("/preset ui can create the first stack in an empty project", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const harness = createHarness();
+	const { ctx, editors, statuses } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", ctx);
+		const editorUrl = latestEditorUrl(editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+
+		const emptyListResponse = await fetch(new URL("/api/stacks", editorUrl), { headers: { "x-pi-forge-token": token } });
+		assert.equal(emptyListResponse.status, 200);
+		const emptyList = await emptyListResponse.json() as { stacks: Array<{ id: string }> };
+		assert.deepEqual(emptyList.stacks, []);
+
+		const stack = {
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "first",
+			name: "First Stack",
+			mode: "replace",
+			items: [
+				{ kind: "block", id: "system", enabled: true, role: "system", content: "First system prompt." },
+				{ kind: "slot", id: "chat-history", enabled: true, slot: "chat-history" },
+			],
+		};
+		const createResponse = await fetch(new URL("/api/stacks", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ stack, activate: true }),
+		});
+		assert.equal(createResponse.status, 200);
+		const createResult = await createResponse.json() as { stack: { id: string; active: boolean }; stacks: Array<{ id: string; active: boolean }> };
+		assert.equal(createResult.stack.id, "first");
+		assert.equal(createResult.stack.active, true);
+		assert.deepEqual(createResult.stacks.map((item) => item.id), ["first"]);
+		assert.match(readFileSync(join(promptStacksDir(cwd), "first.json"), "utf8"), /First system prompt/);
 	} finally {
 		await harness.commands.preset.handler("ui stop", ctx);
 	}

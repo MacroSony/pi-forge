@@ -192,6 +192,11 @@ html, body {
   overflow: auto;
   height: calc(100% - 74px);
 }
+.side-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px;
+}
 .stack-row {
   display: block;
   width: 100%;
@@ -579,6 +584,17 @@ html, body {
   color: var(--muted);
   padding: 24px;
 }
+.empty-title {
+  color: var(--text);
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
 .diagnostics {
   border-top: 1px solid var(--line);
   background: var(--pane);
@@ -798,7 +814,7 @@ html, body {
   grid-template-columns: minmax(160px, 240px) minmax(220px, 1fr) minmax(180px, 260px) 168px;
 }
 .policy-row {
-  grid-template-columns: minmax(120px, 170px) minmax(260px, 320px) minmax(260px, 1fr) minmax(180px, 260px);
+  grid-template-columns: minmax(110px, 150px) minmax(230px, 290px) minmax(220px, 1fr) minmax(220px, 1fr) minmax(150px, 220px);
 }
 .policy-title {
   font-weight: 650;
@@ -812,10 +828,76 @@ html, body {
 .policy-patterns {
   min-height: 96px;
 }
+.selected-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.selected-pattern-chip {
+  min-height: 26px;
+  padding: 2px 7px;
+  font-size: 12px;
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.selected-pattern-chip span {
+  margin-left: 6px;
+  color: var(--muted);
+}
+.selected-pattern-empty {
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+}
 .policy-summary {
   color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+.resource-picker label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.resource-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 132px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.resource-filter {
+  margin-bottom: 8px;
+}
+.resource-chip {
+  max-width: 100%;
+  min-height: 26px;
+  padding: 2px 7px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.resource-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.resource-chip.hidden {
+  border-style: dashed;
+  opacity: .72;
+}
+.resource-empty {
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 8px;
 }
 .regex-row {
   grid-template-columns: 72px minmax(0, 1fr) 86px;
@@ -939,10 +1021,11 @@ html, body {
   </aside>
   <main class="main">
     <div class="main-actions">
+      <button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)">New stack</button>
       <button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session">Activate</button>
-      <button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk">Save</button>
-      <button id="validateBtn" data-icon="!" title="Validate the edited stack without saving">Validate</button>
-      <button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it">Preview</button>
+      <button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)">Save</button>
+      <button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)">Validate</button>
+      <button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)">Preview</button>
       <button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
       <button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
       <button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
@@ -972,7 +1055,8 @@ html, body {
           <span id="itemCount" class="stack-meta"></span>
         </div>
         <div class="item-tools">
-          <button id="addItemBtn" data-icon="+" title="Add an item, then choose block or slot in the editor">Add item</button>
+          <button id="addItemBtn" data-icon="+" title="Add a prompt block item">Add block</button>
+          <button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
           <span class="item-tools-spacer"></span>
           <button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
         </div>
@@ -1008,6 +1092,7 @@ let sidebarCollapsed = false;
 let slotOptionsMode = "form";
 let previewCopyTexts = [];
 let payloadSnapshot = { status: "idle" };
+let policyResources = { tools: [], skills: [] };
 let latestDiagnostics = [];
 let stackVariablesError = "";
 let regexRulesError = "";
@@ -1097,11 +1182,29 @@ function renderDirtyState() {
   const badge = el("dirtyBadge");
   if (!badge) return;
   badge.classList.toggle("visible", dirty);
+  updateActionState();
+}
+
+function updateActionState() {
+  const hasStack = !!currentStack;
+  for (const id of ["activateBtn", "saveBtn", "validateBtn", "previewBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn", "metadataToggleBtn"]) {
+    const button = el(id);
+    if (button) button.disabled = !hasStack;
+  }
+  const deleteItemButton = el("deleteItemBtn");
+  if (deleteItemButton) deleteItemButton.disabled = !hasStack || selectedItemIndex < 0;
+  document.querySelectorAll("[data-tab]").forEach((button) => {
+    button.disabled = !hasStack;
+  });
 }
 
 async function loadStacks(preferId = selectedId) {
-  const data = await api("/api/stacks");
+  const [data, resources] = await Promise.all([
+    api("/api/stacks"),
+    api("/api/resources"),
+  ]);
   stacks = data.stacks || [];
+  policyResources = normalizePolicyResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
@@ -1134,6 +1237,7 @@ function renderAll(diagnostics = []) {
   renderActiveTab();
   renderDiagnostics(diagnostics);
   hidePreview();
+  updateActionState();
 }
 
 function renderActiveTab() {
@@ -1160,6 +1264,10 @@ function renderActiveTab() {
 function renderStackList() {
   const list = el("stackList");
   list.innerHTML = "";
+  if (!stacks.length) {
+    list.innerHTML = '<div class="side-empty">No prompt stacks in this project.</div>';
+    return;
+  }
   for (const stack of stacks) {
     const row = document.createElement("button");
     row.className = "stack-row" + (stack.active ? " active" : "") + (stack.id === selectedId ? " selected" : "");
@@ -1170,6 +1278,26 @@ function renderStackList() {
     row.onclick = () => selectStack(stack.id);
     list.appendChild(row);
   }
+}
+
+function normalizePolicyResources(value) {
+  return {
+    tools: normalizeResourceList(value?.tools),
+    skills: normalizeResourceList(value?.skills),
+  };
+}
+
+function normalizeResourceList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((resource) => resource && typeof resource === "object" && typeof resource.name === "string" && resource.name.trim())
+    .map((resource) => ({
+      name: resource.name.trim(),
+      description: typeof resource.description === "string" ? resource.description : "",
+      source: typeof resource.source === "string" ? resource.source : "",
+      active: resource.active === true,
+      hidden: resource.hidden === true,
+    }));
 }
 
 function renderSettings() {
@@ -1656,7 +1784,7 @@ function renderPolicyTab() {
     '<div class="tab-section-title">Tool and skill policy</div>' +
     '<div class="tab-section-meta">Choose one mode per resource. Patterns support exact names and * wildcards.</div>' +
     '<div class="data-table" id="policyRows">' +
-    '<div class="data-row header policy-row"><div>Resource</div><div>Mode</div><div>Patterns</div><div>Status</div></div>' +
+    '<div class="data-row header policy-row"><div>Resource</div><div>Mode</div><div>Patterns</div><div>Available</div><div>Status</div></div>' +
     policyRowHtml("tools", "Tools") +
     policyRowHtml("skills", "Skills") +
     '</div>' +
@@ -1667,7 +1795,9 @@ function renderPolicyTab() {
 function policyRowHtml(kind, label) {
   const policy = stackPolicyObject(kind);
   const mode = policyMode(policy);
-  const patterns = policyPatternsToText(mode === "deny" ? policy.deny : policy.allow);
+  const rawPatterns = mode === "deny" ? policy.deny : mode === "allow" ? policy.allow : [];
+  const patterns = Array.isArray(rawPatterns) ? rawPatterns : [];
+  const patternText = policyPatternsToText(patterns);
   const disabled = mode === "none" ? " disabled" : "";
   return '<div class="data-row policy-row" data-policy-row data-policy-kind="' + attr(kind) + '" data-policy-mode="' + attr(mode) + '">' +
     '<div><div class="policy-title">' + escapeHtml(label) + '</div><div class="modal-meta">' + escapeHtml(kind) + '</div></div>' +
@@ -1676,9 +1806,77 @@ function policyRowHtml(kind, label) {
     policyModeButton("allow", "Allow", mode) +
     policyModeButton("deny", "Deny", mode) +
     '</div></div>' +
-    '<div class="field"><label>Patterns</label><textarea class="policy-patterns" data-policy-patterns spellcheck="false" placeholder="' + attr(policyPatternPlaceholder(mode)) + '"' + disabled + '>' + escapeHtml(patterns) + '</textarea></div>' +
+    '<div class="field"><label>Patterns</label>' + selectedPolicyPatternsHtml(patterns) + '<textarea class="policy-patterns" data-policy-patterns spellcheck="false" placeholder="' + attr(policyPatternPlaceholder(mode)) + '"' + disabled + '>' + escapeHtml(patternText) + '</textarea></div>' +
+    resourcePickerHtml(kind, patterns) +
     '<div class="policy-summary" data-policy-summary>' + escapeHtml(policySummary(kind, policy)) + '</div>' +
     '</div>';
+}
+
+function selectedPolicyPatternsHtml(patterns) {
+  return '<div class="selected-patterns" data-selected-patterns>' + selectedPolicyPatternButtonsHtml(patterns) + '</div>';
+}
+
+function selectedPolicyPatternButtonsHtml(patterns) {
+  if (!patterns.length) return '<span class="selected-pattern-empty">No selected patterns.</span>';
+  return patterns.map((pattern) =>
+    '<button type="button" class="selected-pattern-chip" data-remove-policy-pattern="' + attr(pattern) + '" title="Remove selected pattern">' +
+    escapeHtml(pattern) + '<span aria-hidden="true">x</span></button>'
+  ).join("");
+}
+
+function resourcePickerHtml(kind, selectedPatterns = []) {
+  const resources = policyResources[kind] || [];
+  if (!resources.length) {
+    return '<div class="resource-picker"><label>Available ' + escapeHtml(kind) + '</label><div class="resource-empty">No registered ' + escapeHtml(kind) + ' reported.</div></div>';
+  }
+  const listId = "resource-options-" + kind;
+  return '<div class="resource-picker"><label>Available ' + escapeHtml(kind) + '</label><div>' +
+    '<input class="resource-filter" data-resource-filter list="' + attr(listId) + '" placeholder="Type to filter or add">' +
+    '<datalist id="' + attr(listId) + '" data-resource-options>' + resourceOptionsHtml(kind, selectedPatterns) + '</datalist>' +
+    '<div class="resource-list" data-resource-list>' + resourceListHtml(kind, selectedPatterns) + '</div>' +
+    '</div></div>';
+}
+
+function resourceOptionsHtml(kind, selectedPatterns = []) {
+  return availablePolicyResources(kind, selectedPatterns)
+    .map((resource) => '<option value="' + attr(resource.name) + '"></option>')
+    .join("");
+}
+
+function resourceListHtml(kind, selectedPatterns = [], filter = "") {
+  const resources = availablePolicyResources(kind, selectedPatterns, filter);
+  if (!resources.length) return '<div class="resource-empty">No matching unselected ' + escapeHtml(kind) + '.</div>';
+  return resources.map((resource) => resourceChipHtml(resource)).join("");
+}
+
+function availablePolicyResources(kind, selectedPatterns = [], filter = "") {
+  const selected = new Set(selectedPatterns);
+  const needle = filter.trim().toLowerCase();
+  return (policyResources[kind] || [])
+    .filter((resource) => !selected.has(resource.name))
+    .filter((resource) => !needle || policyResourceMatchesFilter(resource, needle));
+}
+
+function policyResourceMatchesFilter(resource, needle) {
+  return [resource.name, resource.description, resource.source]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(needle));
+}
+
+function resourceChipHtml(resource) {
+  const classes = ["resource-chip"];
+  if (resource.active) classes.push("active");
+  if (resource.hidden) classes.push("hidden");
+  const notes = [
+    resource.description,
+    resource.source ? "Source: " + resource.source : "",
+    resource.active ? "Active tool" : "",
+    resource.hidden ? "Hidden from model invocation" : "",
+  ].filter(Boolean);
+  const suffix = resource.active ? " *" : resource.hidden ? " hidden" : "";
+  return '<button type="button" class="' + attr(classes.join(" ")) + '" data-resource-name="' + attr(resource.name) + '" title="' + attr(notes.join("\n") || resource.name) + '">' +
+    escapeHtml(resource.name + suffix) +
+    '</button>';
 }
 
 function policyModeButton(value, label, current) {
@@ -1686,18 +1884,108 @@ function policyModeButton(value, label, current) {
 }
 
 function bindPolicyEditor() {
-  document.querySelectorAll("[data-policy-row] [data-policy-mode-option]").forEach((button) => {
-    button.onclick = () => {
-      const row = button.closest("[data-policy-row]");
-      setPolicyRowMode(row, button.dataset.policyModeOption);
-      if (button.dataset.policyModeOption === "none") row.querySelector("[data-policy-patterns]").value = "";
+  const rows = el("policyRows");
+  rows.onclick = (event) => {
+    const modeButton = event.target.closest?.("[data-policy-mode-option]");
+    if (modeButton) {
+      const row = modeButton.closest("[data-policy-row]");
+      setPolicyRowMode(row, modeButton.dataset.policyModeOption);
+      if (modeButton.dataset.policyModeOption === "none") row.querySelector("[data-policy-patterns]").value = "";
       syncResourcePolicyFromTab();
-    };
-  });
-  document.querySelectorAll("[data-policy-row] textarea").forEach((control) => {
-    control.oninput = () => syncResourcePolicyFromTab();
-  });
+      return;
+    }
+
+    const removeButton = event.target.closest?.("[data-remove-policy-pattern]");
+    if (removeButton) {
+      const row = removeButton.closest("[data-policy-row]");
+      removePolicyPattern(row, removeButton.dataset.removePolicyPattern || "");
+      syncResourcePolicyFromTab();
+      return;
+    }
+
+    const resourceButton = event.target.closest?.("[data-resource-name]");
+    if (resourceButton) {
+      const row = resourceButton.closest("[data-policy-row]");
+      addPolicyPattern(row, resourceButton.dataset.resourceName || "");
+      clearPolicyResourceFilter(row);
+      syncResourcePolicyFromTab();
+    }
+  };
+  rows.oninput = (event) => {
+    const target = event.target;
+    if (target.matches?.("[data-policy-patterns]")) {
+      syncResourcePolicyFromTab();
+      return;
+    }
+    if (target.matches?.("[data-resource-filter]")) {
+      refreshPolicyResourceControls(target.closest("[data-policy-row]"));
+    }
+  };
+  rows.onkeydown = (event) => {
+    const target = event.target;
+    if (!target.matches?.("[data-resource-filter]") || event.key !== "Enter") return;
+    event.preventDefault();
+    const row = target.closest("[data-policy-row]");
+    const name = policyResourceAutocompleteValue(row, target.value);
+    if (!name) return;
+    addPolicyPattern(row, name);
+    target.value = "";
+    syncResourcePolicyFromTab();
+  };
   refreshPolicySummaries();
+  refreshPolicyResourceControls();
+}
+
+function clearPolicyResourceFilter(row) {
+  const filter = row?.querySelector("[data-resource-filter]");
+  if (filter) filter.value = "";
+}
+
+function policyResourceAutocompleteValue(row, value) {
+  if (!row) return "";
+  const typed = value.trim();
+  if (!typed) return "";
+  const kind = row.dataset.policyKind;
+  const selected = selectedPolicyPatterns(row);
+  const resources = availablePolicyResources(kind, selected, typed);
+  const exact = resources.find((resource) => resource.name.toLowerCase() === typed.toLowerCase());
+  return exact?.name || resources[0]?.name || typed;
+}
+
+function removePolicyPattern(row, pattern) {
+  if (!row || !pattern) return;
+  const textarea = row.querySelector("[data-policy-patterns]");
+  const patterns = parsePolicyPatterns(textarea.value).filter((candidate) => candidate !== pattern);
+  textarea.value = patterns.join("\n");
+}
+
+function refreshPolicyResourceControls(root = document) {
+  const rows = root.matches?.("[data-policy-row]") ? [root] : root.querySelectorAll("[data-policy-row]");
+  rows.forEach((row) => {
+    const kind = row.dataset.policyKind;
+    const patterns = selectedPolicyPatterns(row);
+    const selected = row.querySelector("[data-selected-patterns]");
+    if (selected) selected.innerHTML = selectedPolicyPatternButtonsHtml(patterns);
+    const filter = row.querySelector("[data-resource-filter]")?.value || "";
+    const options = row.querySelector("[data-resource-options]");
+    if (options) options.innerHTML = resourceOptionsHtml(kind, patterns);
+    const list = row.querySelector("[data-resource-list]");
+    if (list) list.innerHTML = resourceListHtml(kind, patterns, filter);
+  });
+}
+
+function selectedPolicyPatterns(row) {
+  if (!row || (row.dataset.policyMode || "none") === "none") return [];
+  return parsePolicyPatterns(row.querySelector("[data-policy-patterns]")?.value || "");
+}
+
+function addPolicyPattern(row, name) {
+  if (!row || !name) return;
+  if ((row.dataset.policyMode || "none") === "none") setPolicyRowMode(row, "allow");
+  const textarea = row.querySelector("[data-policy-patterns]");
+  const patterns = parsePolicyPatterns(textarea.value);
+  if (!patterns.includes(name)) patterns.push(name);
+  textarea.value = patterns.join("\n");
 }
 
 function syncResourcePolicyFromTab() {
@@ -1721,6 +2009,7 @@ function syncResourcePolicyFromTab() {
   stackPolicyError = errors[0] || "";
   markDirty();
   refreshPolicySummaries();
+  refreshPolicyResourceControls();
   if (stackPolicyError) setStatus(stackPolicyError, "error");
 }
 
@@ -2288,7 +2577,7 @@ async function createStackRemote(stack, options = {}) {
   }
 }
 
-async function openImportedStack(stack, activate, actionLabel, extraOptions = {}) {
+async function createAndOpenStack(stack, activate, actionLabel, extraOptions = {}) {
   const data = await createStackRemote(stack, { ...extraOptions, activate });
   stacks = data.stacks || stacks;
   selectedId = data.stack?.id || stack.id;
@@ -2298,6 +2587,143 @@ async function openImportedStack(stack, activate, actionLabel, extraOptions = {}
   const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
   setStatus(actionLabel + converted + " " + selectedId, "success");
   if (data.importReport) showImportReport(data.importReport, selectedId);
+}
+
+async function createNewStack() {
+  if (dirty && !confirm("Discard unsaved changes?")) return;
+  const promptedId = prompt("New stack id", uniqueStackId("new-stack"));
+  if (promptedId === null) return;
+  const id = sanitizeStackId(promptedId);
+  if (!id) throw new Error("Stack id must not be empty.");
+  if (id !== promptedId.trim() && !confirm("Use stack id '" + id + "'?")) return;
+  const promptedName = prompt("Stack display name", "Default Pi Prompt Mirror");
+  if (promptedName === null) return;
+  const stack = defaultNewStack(id, promptedName.trim() || id);
+  const activate = stacks.length === 0 || confirm("Activate new stack now?");
+  await createAndOpenStack(stack, activate, "Created");
+}
+
+function defaultNewStack(id, name) {
+  return {
+    schemaVersion: 1,
+    type: "pi-forge.prompt-stack",
+    id,
+    name,
+    description: "Recreates Pi's built-in prompt layout with pi-forge slots, exposing tools, guidelines, docs, append-system-prompt, project context, skills, date/cwd, and chat history as movable pieces.",
+    autoActivate: stacks.length === 0,
+    mode: "replace",
+    defaults: {
+      syntheticMessagesVisible: false,
+      unresolvedMacroPolicy: "warn",
+    },
+    context: {
+      allowDuplicateChatHistory: false,
+    },
+    tools: {
+      allow: ["*"],
+    },
+    skills: {
+      allow: ["*"],
+    },
+    items: [
+      {
+        kind: "block",
+        id: "main-role",
+        name: "Pi Default Role",
+        enabled: true,
+        role: "system",
+        source: {
+          package: "@earendil-works/pi-coding-agent",
+          file: "dist/core/system-prompt.js",
+        },
+        content: "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+      },
+      {
+        kind: "slot",
+        id: "tools",
+        name: "Available Tools",
+        enabled: true,
+        role: "system",
+        slot: "tools",
+        options: {
+          format: "plain",
+          onlyWithSnippets: true,
+        },
+      },
+      {
+        kind: "block",
+        id: "custom-tools-note",
+        name: "Custom Tools Note",
+        enabled: true,
+        role: "system",
+        content: "In addition to the tools above, you may have access to other custom tools depending on the project.",
+      },
+      {
+        kind: "slot",
+        id: "tool-guidelines",
+        name: "Guidelines",
+        enabled: true,
+        role: "system",
+        slot: "tool-guidelines",
+        options: {
+          format: "plain",
+          heading: "Guidelines:",
+          includePiDefaultGuidelines: true,
+          piStyle: true,
+        },
+      },
+      {
+        kind: "slot",
+        id: "pi-docs",
+        name: "Pi Documentation Guidance",
+        enabled: true,
+        role: "system",
+        slot: "pi-docs",
+      },
+      {
+        kind: "slot",
+        id: "append-system-prompt",
+        name: "User Append System Prompt",
+        enabled: true,
+        role: "system",
+        slot: "append-system-prompt",
+      },
+      {
+        kind: "slot",
+        id: "project-context",
+        name: "Project Context",
+        enabled: true,
+        role: "system",
+        slot: "project-context",
+      },
+      {
+        kind: "slot",
+        id: "skills",
+        name: "Available Skills",
+        enabled: true,
+        role: "system",
+        slot: "skills",
+        options: {
+          requireReadTool: true,
+        },
+      },
+      {
+        kind: "slot",
+        id: "date-cwd",
+        name: "Date and Working Directory",
+        enabled: true,
+        role: "system",
+        slot: "date-cwd",
+      },
+      {
+        kind: "slot",
+        id: "chat-history",
+        name: "Chat History",
+        enabled: true,
+        slot: "chat-history",
+      },
+    ],
+  };
 }
 
 function showImportReport(report, stackId) {
@@ -2328,7 +2754,7 @@ async function handleImportFile(event) {
     const characterId = promptSillyTavernCharacterId(imported);
     if (characterId === null) return;
     const activate = confirm("Convert and activate imported SillyTavern stack now?");
-    await openImportedStack(imported, activate, "Imported", { sourceName: file.name, characterId });
+    await createAndOpenStack(imported, activate, "Imported", { sourceName: file.name, characterId });
     return;
   }
 
@@ -2342,7 +2768,7 @@ async function handleImportFile(event) {
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   const activate = confirm("Activate imported stack now?");
-  await openImportedStack(stack, activate, "Imported");
+  await createAndOpenStack(stack, activate, "Imported");
 }
 
 function isSillyTavernImport(value) {
@@ -2376,7 +2802,7 @@ async function forkStack() {
   if (forkName && forkName.trim()) fork.name = forkName;
   fork.autoActivate = false;
   const activate = confirm("Activate fork now?");
-  await openImportedStack(fork, activate, "Forked");
+  await createAndOpenStack(fork, activate, "Forked");
 }
 
 async function exportStackJson() {
@@ -2415,6 +2841,15 @@ function uniqueForkId(baseId) {
   let candidate = base + "-fork";
   let index = 2;
   while (existing.has(candidate)) candidate = base + "-fork-" + index++;
+  return candidate;
+}
+
+function uniqueStackId(baseId) {
+  const base = sanitizeStackId(baseId || "stack") || "stack";
+  const existing = new Set(stacks.map((stack) => stack.id));
+  let candidate = base;
+  let index = 2;
+  while (existing.has(candidate)) candidate = base + "-" + index++;
   return candidate;
 }
 
@@ -2720,16 +3155,33 @@ function renderEmpty() {
   currentStack = null;
   selectedId = "";
   dirty = false;
+  activeTab = "items";
   stackPolicyError = "";
   renderDirtyState();
+  document.querySelectorAll("[data-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === activeTab);
+  });
+  el("workspace").style.display = "";
   el("metadataPanel").style.display = "none";
   el("settings").innerHTML = "";
+  el("itemCount").textContent = "";
   el("itemList").innerHTML = "";
-  el("itemEditor").innerHTML = '<div class="empty">No prompt stacks found.</div>';
+  el("itemEditor").innerHTML =
+    '<div class="empty">' +
+    '<div class="empty-title">No prompt stacks found.</div>' +
+    '<div>Create a stack in this project, or import an existing pi-forge/SillyTavern JSON file.</div>' +
+    '<div class="empty-actions">' +
+    '<button id="emptyNewStackBtn" class="primary" data-icon="+" title="Create a new prompt stack">New stack</button>' +
+    '<button id="emptyImportBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>' +
+    '</div>' +
+    '</div>';
   el("tabPanel").classList.remove("open");
   el("tabPanel").innerHTML = "";
   renderDiagnostics([]);
+  el("emptyNewStackBtn").onclick = () => run(createNewStack);
+  el("emptyImportBtn").onclick = () => run(importStackJson);
   setStatus("No prompt stacks found");
+  updateActionState();
 }
 
 function field(label, control, className = "") {
@@ -2778,6 +3230,7 @@ function toggleSidebar() {
 
 el("sidebarToggleBtn").onclick = toggleSidebar;
 el("themeBtn").onclick = toggleTheme;
+el("newStackBtn").onclick = () => run(createNewStack);
 el("reloadBtn").onclick = () => run(reloadFromDisk);
 el("disableBtn").onclick = () => run(disableStacks);
 el("activateBtn").onclick = () => run(activateStack);
@@ -2827,15 +3280,44 @@ el("preview").onclick = (event) => {
   run(() => copyPreviewText(Number(button.dataset.copyIndex)));
 };
 el("addItemBtn").onclick = () => addItem("block");
+el("addSlotBtn").onclick = () => addItem("slot");
 el("deleteItemBtn").onclick = deleteSelectedItem;
 document.addEventListener("dragover", handleDocumentItemDragOver);
 document.addEventListener("drop", handleDocumentItemDrop);
 window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
-window.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  if (el("preview").classList.contains("open")) hidePreview();
-  else if (el("stackModal").classList.contains("open")) closeStackModal();
-});
+window.addEventListener("keydown", handleEditorShortcut);
+
+function handleEditorShortcut(event) {
+  if (event.key === "Escape") {
+    if (el("preview").classList.contains("open")) hidePreview();
+    else if (el("stackModal").classList.contains("open")) closeStackModal();
+    return;
+  }
+
+  const modifier = event.ctrlKey || event.metaKey;
+  if (!modifier || event.altKey) return;
+  const key = event.key.toLowerCase();
+
+  if (key === "n") {
+    event.preventDefault();
+    run(createNewStack);
+    return;
+  }
+  if (key === "s") {
+    event.preventDefault();
+    if (currentStack) run(saveStack);
+    return;
+  }
+  if (key === "enter" && event.shiftKey) {
+    event.preventDefault();
+    if (currentStack) run(validateStack);
+    return;
+  }
+  if (key === "enter") {
+    event.preventDefault();
+    if (currentStack) run(previewStack);
+  }
+}
 
 run(async () => {
   await loadStacks();

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.ts";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.ts";
@@ -6,9 +6,9 @@ import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { buildPreview, showText } from "./preview.ts";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.ts";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.ts";
-import type { PromptStackDiagnostic } from "./types.ts";
+import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
-import { startWebEditorServer, type WebEditorServer } from "./web-editor/index.ts";
+import { startWebEditorServer, type WebEditorPolicyResource, type WebEditorPolicyResources, type WebEditorServer } from "./web-editor/index.ts";
 
 export {
 	getRegisteredMacros,
@@ -186,7 +186,8 @@ export default function piForge(pi: ExtensionAPI) {
 			getSelectedActiveId: selectedActiveId,
 			setActive: (id) => setActive(id, ctx),
 			reloadStacks: (preferredId) => reloadStacks(ctx, preferredId),
-			buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables),
+			buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, previewOptionsForStack(ctx, target.stack)),
+			getPolicyResources: () => getPolicyResources(ctx),
 			getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
 			armPayload: (savePath) => {
 				armPayloadIntercept(state, ctx, savePath, "web");
@@ -197,6 +198,113 @@ export default function piForge(pi: ExtensionAPI) {
 				return { ok: true, ...webPayloadSnapshot(state) };
 			},
 		};
+	}
+
+	function getPolicyResources(ctx: ExtensionCommandContext): WebEditorPolicyResources {
+		const options = ctx.getSystemPromptOptions();
+		const activeTools = new Set(pi.getActiveTools());
+		const snippets = options.toolSnippets ?? {};
+		const tools = pi.getAllTools()
+			.map((tool) => normalizeToolResource(tool, activeTools, snippets))
+			.filter(hasPolicyResourceName)
+			.sort(comparePolicyResource);
+		const skills = (options.skills ?? [])
+			.map(normalizeSkillResource)
+			.filter(hasPolicyResourceName)
+			.sort(comparePolicyResource);
+		return { tools, skills };
+	}
+
+	function previewOptionsForStack(ctx: ExtensionCommandContext, stack: PromptStack): BuildSystemPromptOptions {
+		const base = ctx.getSystemPromptOptions();
+		const baseSelectedTools = Array.isArray(base.selectedTools) ? base.selectedTools : pi.getActiveTools();
+		const policyActive = hasResourcePolicy(stack.tools);
+		const baselineTools = policyActive ? (toolPolicyBaseline ?? pi.getActiveTools()) : baseSelectedTools;
+		const selectedTools = policyActive
+			? applyResourcePolicy(filterKnownTools(baselineTools), stack.tools)
+			: baseSelectedTools;
+		const selectedToolSet = new Set(selectedTools);
+		const toolSnippets = filterToolSnippets(base.toolSnippets ?? {}, selectedToolSet);
+		const toolInfos = pi.getAllTools();
+		for (const tool of toolInfos) {
+			const name = stringValue((tool as { name?: unknown }).name);
+			if (!name || !selectedToolSet.has(name) || toolSnippets[name]) continue;
+			const snippet = stringValue((tool as { promptSnippet?: unknown }).promptSnippet);
+			if (snippet) toolSnippets[name] = snippet;
+		}
+
+		const mappedGuidelines = toolInfos
+			.filter((tool) => {
+				const name = stringValue((tool as { name?: unknown }).name);
+				return !!name && selectedToolSet.has(name);
+			})
+			.flatMap((tool) => stringArrayValue((tool as { promptGuidelines?: unknown }).promptGuidelines));
+		const promptGuidelines = policyActive && !sameStringSet(baseSelectedTools, selectedTools)
+			? mappedGuidelines
+			: (base.promptGuidelines ?? mappedGuidelines);
+
+		return { ...base, selectedTools, toolSnippets, promptGuidelines };
+	}
+
+	function filterToolSnippets(snippets: Record<string, string | undefined>, selectedTools: Set<string>): Record<string, string> {
+		const filtered: Record<string, string> = {};
+		for (const [name, snippet] of Object.entries(snippets)) {
+			if (selectedTools.has(name) && snippet) filtered[name] = snippet;
+		}
+		return filtered;
+	}
+
+	function normalizeToolResource(
+		tool: { name?: unknown; description?: unknown; promptSnippet?: unknown; sourceInfo?: unknown },
+		activeTools: Set<string>,
+		snippets: Record<string, string | undefined>,
+	): WebEditorPolicyResource {
+		const name = String(tool.name ?? "");
+		return {
+			name,
+			description: stringValue(tool.description) ?? stringValue(tool.promptSnippet) ?? snippets[name],
+			source: sourceLabel(tool.sourceInfo),
+			active: activeTools.has(name),
+		};
+	}
+
+	function normalizeSkillResource(skill: { name?: unknown; description?: unknown; filePath?: unknown; disableModelInvocation?: unknown }): WebEditorPolicyResource {
+		return {
+			name: String(skill.name ?? ""),
+			description: stringValue(skill.description),
+			source: stringValue(skill.filePath),
+			hidden: skill.disableModelInvocation === true,
+		};
+	}
+
+	function stringValue(value: unknown): string | undefined {
+		return typeof value === "string" && value.trim() ? value : undefined;
+	}
+
+	function stringArrayValue(value: unknown): string[] {
+		return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && !!item.trim()) : [];
+	}
+
+	function sourceLabel(value: unknown): string | undefined {
+		if (!value || typeof value !== "object") return undefined;
+		const source = stringValue((value as { source?: unknown }).source);
+		const path = stringValue((value as { path?: unknown }).path);
+		if (source && path) return `${source}: ${path}`;
+		return source ?? path;
+	}
+
+	function comparePolicyResource(a: WebEditorPolicyResource, b: WebEditorPolicyResource): number {
+		return a.name.localeCompare(b.name);
+	}
+
+	function hasPolicyResourceName(resource: WebEditorPolicyResource): boolean {
+		return !!resource.name.trim();
+	}
+
+	function sameStringSet(a: string[], b: string[]): boolean {
+		if (a.length !== b.length) return false;
+		const bSet = new Set(b);
+		return a.every((value) => bSet.has(value));
 	}
 
 	function sharedWebEditorForCwd(cwd: string): SharedWebEditorState {

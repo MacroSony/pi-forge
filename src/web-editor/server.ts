@@ -78,6 +78,11 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 		return;
 	}
 
+	if (req.method === "GET" && parts[1] === "resources" && parts.length === 2) {
+		sendJson(res, 200, host.listResources());
+		return;
+	}
+
 	if (req.method === "POST" && parts[1] === "stacks" && parts.length === 2) {
 		const body = await readJsonBody(req);
 		const parsed = readStackPayload(body);

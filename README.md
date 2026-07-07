@@ -50,7 +50,7 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 /preset ui
 ```
 
-Drag, drop, edit, validate, inspect full previews and captured payloads, manage variables/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. Stack metadata is collapsible so the active editor stays in view.
+Drag, drop, create, edit, validate, inspect full previews and captured payloads, manage variables/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. New stacks start from the default Pi prompt mirror layout. Stack metadata is collapsible so the active editor stays in view. The policy tab shows registered tools and loaded skills with selected-pattern chips and filtering, so allow/deny rules can be built from exact names while still supporting wildcards.
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
@@ -256,6 +256,24 @@ Use these in block content to insert dynamic values:
 {{clearturnvar::name}}        clear a turn variable
 {{clearsessionvar::name}}     clear a session variable
 ```
+
+### Filter and conditional macros
+
+Nested macros are supported, and `::` separators are parsed only at the current macro depth.
+
+| Macro | Expands to |
+|-------|-----------|
+| `{{trim::value}}` | `value` with leading/trailing whitespace removed |
+| `{{upper::value}}` | Uppercase `value` |
+| `{{lower::value}}` | Lowercase `value` |
+| `{{json::value}}` | JSON string literal for `value` |
+| `{{xml::value}}` | XML-escaped `value` |
+| `{{ifvar::name::then::else}}` | `then` when a variable exists, otherwise `else` |
+| `{{ifeq::name::expected::then::else}}` | `then` when a variable equals `expected`, otherwise `else` |
+| `{{iftools::tool::then::else}}` | `then` when the selected tool list includes `tool`, otherwise `else` |
+| `{{ifslot::slot::then::else}}` | `then` when the enabled stack items include `slot`, otherwise `else` |
+
+Conditional branches are lazy: only the selected branch is expanded, so skipped branches cannot set or clear variables. The final `else` argument is optional and defaults to empty text.
 
 ### Trusted custom macros and slots
 

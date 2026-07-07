@@ -89,7 +89,7 @@ export function createHarness() {
 			return [...activeTools];
 		},
 		getAllTools() {
-			return [...allTools].map((name) => ({ name }));
+			return [...allTools].map((name) => tools[name] ? { name, ...tools[name] } : { name });
 		},
 		setActiveTools(names: string[]) {
 			activeTools = [...names];

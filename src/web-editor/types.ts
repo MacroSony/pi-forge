@@ -16,6 +16,7 @@ export interface WebEditorStackSummary {
 export interface WebEditorHost {
 	cwd: string;
 	listStacks(): WebEditorStackSummary[];
+	listResources(): WebEditorPolicyResources;
 	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[] } | undefined;
 	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>;
 	saveStack(id: string, stack: PromptStack): WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>;
@@ -68,6 +69,19 @@ export type WebEditorPayloadSnapshot =
 export interface WebEditorCreateStackOptions {
 	activate?: boolean;
 	overwrite?: boolean;
+}
+
+export interface WebEditorPolicyResource {
+	name: string;
+	description?: string;
+	source?: string;
+	active?: boolean;
+	hidden?: boolean;
+}
+
+export interface WebEditorPolicyResources {
+	tools: WebEditorPolicyResource[];
+	skills: WebEditorPolicyResource[];
 }
 
 export type WebEditorOperationResult<T> = ({ ok: true } & T) | { ok: false; status?: number; error: string };

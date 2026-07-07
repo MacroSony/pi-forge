@@ -1,4 +1,4 @@
-import { buildSessionContext, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, type BuildSystemPromptOptions, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
 	compileMessages,
@@ -22,8 +22,9 @@ export function buildPreview(
 	ctx: ExtensionCommandContext,
 	target: LoadedPromptStack,
 	sessionVariables: Record<string, PromptVariableValue>,
+	optionsOverride?: BuildSystemPromptOptions,
 ): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
-	const options = ctx.getSystemPromptOptions();
+	const options = optionsOverride ?? ctx.getSystemPromptOptions();
 	const sessionContext = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
 	const latestUserMessage = getLatestUserMessage(sessionContext.messages);
 	const previewVariables = createPromptVariableStore(sessionVariables);

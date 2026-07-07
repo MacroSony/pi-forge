@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.3.1] - 2026-07-07
+
+### Added
+
+- **Parser-backed macro expansion.** Macros now support nested `{{...}}` expressions and split `::` arguments only at the current macro depth.
+- **Macro filters and lazy conditionals.** Added `{{trim}}`, `{{upper}}`, `{{lower}}`, `{{json}}`, `{{xml}}`, plus lazy `{{ifvar}}`, `{{ifeq}}`, `{{iftools}}`, and `{{ifslot}}` conditionals. Skipped conditional branches are not expanded, so they cannot mutate variables.
+- **Trusted custom macro and slot APIs.** Added `registerMacro`, `registerSlot`, `getRegisteredMacros`, `getRegisteredSlots`, shared render helpers, and process-global registries so trusted Pi extensions can add custom macros and slots without embedding executable code in stack JSON.
+- **Example custom extension.** Added `examples/custom-system-status-extension`, which registers a `{{cpuLoad}}` macro and `machine-status` slot from trusted extension code.
+- **Slot registry and date-time option.** Built-in slots now use the public slot registry, and `date` / `date-cwd` slots support `includeTime: true`.
+- **Web editor: new stack workflow.** The browser can create a stack even when no stack files exist yet. New stacks start from the default Pi prompt mirror layout so users can edit a complete working stack instead of a blank skeleton.
+- **Web editor: policy resource picker.** The Policy tab now lists registered tools and loaded skills, marks active tools and hidden skills, hides exact selected names from the available list, supports removable selected-pattern chips, and includes a filter/autocomplete input for adding exact names while keeping wildcard/manual textarea editing.
+- **Web editor shortcuts.** Added browser shortcuts for new stack, save, validate, preview, and closing dialogs/inspectors.
+- **Web editor item actions.** Added direct Add block and Add slot actions.
+- **Read-only web resource inventory API.** Added editor host support for listing known tools and skills for UI policy editing.
+
+### Fixed
+
+- **Preview policy simulation.** Web preview now compiles with the edited stack's tool policy applied to selected tools, snippets, and tool guidelines. This prevents preview from showing unrelated tool guidelines from the current Pi tool state.
+- **Empty-project web editor UX.** Empty stack directories now show a create/import path instead of leaving the editor in a dead-end state.
+
+### Changed
+
+- Documentation and feature inventory now describe the 0.3.1 web editor workflow.
+- No breaking changes.
+
 ## [0.3.0] - 2026-06-30
 
 ### Breaking Changes

@@ -74,6 +74,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - `variables`
 - `date` and `date-cwd` slots can include `Current time: HH:MM:SS` with `includeTime: true`.
 - Runtime slots are registered through the same `registerSlot` definition interface used by trusted custom slots.
+- Trusted extension code can register additional runtime slots through `registerSlot`, with declarative option schemas and shared render helpers.
 
 ## Tool and Skill Policy
 
@@ -90,6 +91,11 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 
 - Built-in macros: `{{cwd}}`, `{{date}}`, `{{time}}`, `{{lastUserMessage}}`, `{{selectedTools}}`, `{{tools}}`, `{{activeModel}}`.
 - Built-in macros are registered through the same `registerMacro` definition interface used by trusted custom macros.
+- Parser-backed macro expansion supports nested `{{...}}` expressions and `::` argument splitting at the current macro depth.
+- Filter macros: `{{trim::value}}`, `{{upper::value}}`, `{{lower::value}}`, `{{json::value}}`, and `{{xml::value}}`.
+- Lazy conditional macros: `{{ifvar::name::then::else}}`, `{{ifeq::name::expected::then::else}}`, `{{iftools::tool::then::else}}`, and `{{ifslot::slot::then::else}}`. Only the selected branch is expanded.
+- Trusted extension code can register additional macros through `registerMacro`, with argument metadata and shared runtime/variable/helper access.
+- `getRegisteredMacros()` and `getRegisteredSlots()` expose the active macro/slot definitions for implementation references and UI/resource inspection.
 - Static stack variables from `stack.variables`.
 - Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.
 - Turn variable mutation through `{{setvar::name::value}}`, `{{setturnvar::name::value}}`, and `{{clearvar::name}}`.
@@ -165,12 +171,14 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Collapsible stack metadata panel and main-area tabs for Items, Regex, Policy, and Stack JSON/context/variables work.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
 - Unsaved-change badge in the top bar.
+- Create a new prompt stack from the browser, including when no stack files exist yet; new stacks start from the default Pi prompt mirror layout.
 - Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
 - Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
 - Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, depth, trim strings, pattern, flags, replacement, and runtime warnings.
+- Policy editor lists registered tools and loaded skills, hides exact selected names from the available list, and supports removable selected-pattern chips plus filter/autocomplete input.
 - Reorder items by drag-and-drop.
-- Add stack items through one add action, then choose block or slot in the item editor.
+- Add block and slot stack items directly.
 - Delete stack items.
 - Toggle item enabled state from the item list.
 - Inline item validation badges when diagnostics point at a specific item.
@@ -183,6 +191,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Arm and inspect the next provider payload from the web editor; captures triggered by `/payload next` are also available to the browser while the editor is open.
 - Provider payload inspector shows top-level JSON sections, redacted full text, char/token estimates, and copy controls.
 - Save existing stack JSON and immediately reload pi-forge stack data.
+- Keyboard shortcuts for new stack, save, validate, preview, and closing dialogs/inspectors.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/forge/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Show the SillyTavern import report in the web editor after import, with copy support.
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.

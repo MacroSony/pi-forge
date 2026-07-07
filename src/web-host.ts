@@ -12,6 +12,7 @@ import type {
 	WebEditorHost,
 	WebEditorOperationResult,
 	WebEditorPayloadSnapshot,
+	WebEditorPolicyResources,
 	WebEditorPreview,
 	WebEditorStackSummary,
 } from "./web-editor/index.ts";
@@ -28,6 +29,7 @@ export interface WebHostRuntime {
 		preview: WebEditorPreview;
 		diagnostics: PromptStackDiagnostic[];
 	};
+	getPolicyResources(): WebEditorPolicyResources;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -37,6 +39,7 @@ export function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHo
 	return {
 		cwd: ctx.cwd,
 		listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
+		listResources: () => runtime.getPolicyResources(),
 		getStack: (id) => {
 			const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
 			return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;

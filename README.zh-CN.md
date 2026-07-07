@@ -50,7 +50,7 @@ $EDITOR .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-拖拽、编辑、校验、查看完整预览和捕获的 payload、用 tabs 管理变量/context/regex 规则、切换深色模式、通过原始 stack JSON 修复高级字段、导入、导出、fork、删除栈 —— 全在浏览器里完成。Stack metadata 可以折叠，方便把当前编辑区留在屏幕内。
+拖拽、新建、编辑、校验、查看完整预览和捕获的 payload、用 tabs 管理变量/context/regex 规则、切换深色模式、通过原始 stack JSON 修复高级字段、导入、导出、fork、删除栈 —— 全在浏览器里完成。新栈会从默认 Pi prompt mirror 布局开始。Stack metadata 可以折叠，方便把当前编辑区留在屏幕内。Policy tab 会显示已注册工具和已加载 skills，并提供已选 pattern chips 和过滤输入，方便用精确名称编写 allow/deny 规则，同时保留通配符写法。
 
 导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
 
@@ -254,6 +254,24 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 {{clearturnvar::name}}         清除轮次变量
 {{clearsessionvar::name}}      清除会话变量
 ```
+
+### 过滤和条件宏
+
+宏支持嵌套，`::` 分隔符只会在当前宏深度拆分。
+
+| 宏 | 展开为 |
+|----|--------|
+| `{{trim::value}}` | 去掉首尾空白后的 `value` |
+| `{{upper::value}}` | 大写 `value` |
+| `{{lower::value}}` | 小写 `value` |
+| `{{json::value}}` | `value` 的 JSON 字符串字面量 |
+| `{{xml::value}}` | XML 转义后的 `value` |
+| `{{ifvar::name::then::else}}` | 变量存在时输出 `then`，否则输出 `else` |
+| `{{ifeq::name::expected::then::else}}` | 变量等于 `expected` 时输出 `then`，否则输出 `else` |
+| `{{iftools::tool::then::else}}` | 当前工具列表包含 `tool` 时输出 `then`，否则输出 `else` |
+| `{{ifslot::slot::then::else}}` | 启用的 stack 条目包含 `slot` 时输出 `then`，否则输出 `else` |
+
+条件宏是 lazy 的：只有选中的分支会展开，所以被跳过的分支不会设置或清除变量。最后的 `else` 参数可省略，默认输出空文本。
 
 ### 可信自定义宏和 slot
 
