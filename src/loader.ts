@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { hasResourcePolicy } from "./policy.ts";
 import { validateRegexConfig } from "./regex.ts";
 import { promptStackReadDirs } from "./storage.ts";
 import type {
@@ -257,7 +258,14 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 
 	diagnostics.push(...validateResourcePolicy(stack.tools, "tools"));
 	diagnostics.push(...validateResourcePolicy(stack.skills, "skills"));
-	if ((stack.mode === "append" || stack.mode === "prepend") && hasPolicyEntries(stack.skills)) {
+	const hasSkillPolicy = hasResourcePolicy(stack.skills);
+	if (hasSkillPolicy) {
+		diagnostics.push({
+			level: "info",
+			message: "skills policy only filters model-visible skills rendered by pi-forge skills slots; it does not disable explicit skill invocation and is not a security boundary.",
+		});
+	}
+	if ((stack.mode === "append" || stack.mode === "prepend") && hasSkillPolicy) {
 		diagnostics.push({
 			level: "warning",
 			message: "skills policy only filters pi-forge skills slots. Use mode \"replace\" if you need the base Pi prompt to omit filtered skills.",
@@ -378,10 +386,6 @@ function validateResourcePolicy(policy: PromptResourcePolicy | undefined, label:
 		}
 	}
 	return diagnostics;
-}
-
-function hasPolicyEntries(policy: PromptResourcePolicy | undefined): boolean {
-	return !!policy && ((policy.allow?.length ?? 0) > 0 || (policy.deny?.length ?? 0) > 0);
 }
 
 function normalizeRegexConfig(value: unknown, diagnostics: PromptStackDiagnostic[]): PromptStack["regex"] | undefined {

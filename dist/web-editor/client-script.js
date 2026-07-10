@@ -707,8 +707,8 @@ function renderPolicyTab() {
   if (!currentStack) return;
   el("tabPanel").innerHTML =
     '<div class="tab-section">' +
-    '<div class="tab-section-title">Tool and skill policy</div>' +
-    '<div class="tab-section-meta">Choose one mode per resource. Patterns support exact names and * wildcards.</div>' +
+    '<div class="tab-section-title">Tool policy and skill visibility</div>' +
+    '<div class="tab-section-meta">Tool rules constrain active tools. Skill rules only filter model-visible skills rendered by pi-forge; they do not block explicit skill invocation. Patterns support exact names and * wildcards.</div>' +
     '<div class="data-table" id="policyRows">' +
     '<div class="data-row header policy-row"><div>Resource</div><div>Mode</div><div>Patterns</div><div>Available</div><div>Status</div></div>' +
     policyRowHtml("tools", "Tools") +

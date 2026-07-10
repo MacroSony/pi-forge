@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [Unreleased]
+
+### Added
+
+- **Browser-level editor smoke coverage.** CI now launches the real localhost editor in headless Chrome and verifies load, metadata editing, validation, policy guidance, save, and browser-console behavior.
+
+### Fixed
+
+- **Tool policy restoration across Pi reload.** pi-forge now restores the pre-policy active tool set during extension shutdown, before Pi snapshots built-in tools for a replacement runtime. This prevents restrictive stacks from leaving built-in tools such as `bash`, `edit`, and `write` inactive after `/reload` followed by `/preset use none`.
+- **Skill-policy semantics.** Validation, documentation, and editor guidance now state that skill policy filters model-visible pi-forge skill listings; it does not disable explicit skill invocation and is not a security boundary.
+
+### Changed
+
+- The web editor shell, styles, and browser script are maintained as separate source modules.
+- Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.79.2 through 0.79.x; matching development dependencies are pinned for reproducible verification.
+- The roadmap now treats agent profiles as one-shot presets while leaving their exact interface and fields for a dedicated design decision.
+
 ## [0.3.2] - 2026-07-07
 
 ### Added

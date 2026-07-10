@@ -27,6 +27,8 @@ Think of it as a character sheet for your AI agent.
 pi install npm:@zihanw/pi-forge
 ```
 
+The current package supports `@earendil-works/pi-*` 0.79.x starting at 0.79.2 and requires Node.js 22.19 or newer.
+
 ### Your first prompt stack
 
 Create `.pi/forge/prompt-stacks/default.json` from [examples/default-prompt-stack.json](examples/default-prompt-stack.json).
@@ -422,7 +424,7 @@ The default Pi mirror uses a few extra slot options:
 
 ### Tool and skill policy
 
-Prompt stacks can constrain tools and skills with stack-level `allow` or `deny` lists. Patterns are exact by default and support `*` wildcards.
+Prompt stacks can constrain active tools and filter model-visible skills with stack-level `allow` or `deny` lists. Patterns are exact by default and support `*` wildcards.
 
 ```json
 {
@@ -435,11 +437,11 @@ Prompt stacks can constrain tools and skills with stack-level `allow` or `deny` 
 }
 ```
 
-Use `allow` when only matching tools or skills should remain active. Use `deny` when everything except matching tools or skills should remain active. A single resource policy cannot contain both non-empty lists; mixed `allow` and `deny` entries are validation errors.
+For tools, use `allow` when only matching active tools should remain and `deny` when matching active tools should be removed. For skills, the same patterns control which skills remain visible in pi-forge's rendered `skills` slots. A single resource policy cannot contain both non-empty lists; mixed `allow` and `deny` entries are validation errors.
 
 Tool policy is enforced through Pi's active tool list while the stack is active. pi-forge remembers the previous active tools and restores them when prompt stacks are disabled or switched to an unrestricted stack.
 
-Skill policy filters skills rendered by pi-forge's `skills` slot. If a stack uses `mode: "append"` or `"prepend"`, Pi's base prompt may already contain unfiltered skills; use `mode: "replace"` when skill visibility must be controlled.
+Skill policy filters skills rendered by pi-forge's `skills` slot. It does not disable explicit skill invocation and is not a capability or security boundary. If a stack uses `mode: "append"` or `"prepend"`, Pi's base prompt may already contain unfiltered skills; use `mode: "replace"` when model-visible skill listings must be controlled.
 
 ### Regex transforms
 
@@ -521,6 +523,12 @@ Run tests:
 
 ```bash
 npm test
+```
+
+Run the real-browser editor smoke test (set `CHROME_PATH` if Chrome is not in a standard location):
+
+```bash
+npm run test:browser
 ```
 
 Typecheck:

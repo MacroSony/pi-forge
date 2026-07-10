@@ -27,6 +27,8 @@
 pi install npm:@zihanw/pi-forge
 ```
 
+当前 package 支持从 0.79.2 开始的 `@earendil-works/pi-*` 0.79.x，并要求 Node.js 22.19 或更高版本。
+
 ### 第一个 prompt stack
 
 从 [examples/default-prompt-stack.json](examples/default-prompt-stack.json) 创建 `.pi/forge/prompt-stacks/default.json`。
@@ -405,7 +407,7 @@ API 包含 `cwd`、`forgeDir`、`extensionPath`、`helpers`、`registerMacro`、
 
 ### 工具和技能策略
 
-Prompt stack 可以用栈级 `allow` 或 `deny` 列表限制工具和技能。模式默认精确匹配，也支持 `*` 通配符。
+Prompt stack 可以用栈级 `allow` 或 `deny` 列表限制 active tools，并过滤模型可见的技能。模式默认精确匹配，也支持 `*` 通配符。
 
 ```json
 {
@@ -418,11 +420,11 @@ Prompt stack 可以用栈级 `allow` 或 `deny` 列表限制工具和技能。�
 }
 ```
 
-使用 `allow` 时，只有匹配的工具或技能保持启用。使用 `deny` 时，除匹配项以外的工具或技能保持启用。同一个资源策略不能同时包含非空 `allow` 和 `deny` 列表；混用会产生 validation error。
+对于工具，`allow` 只保留匹配的 active tools，`deny` 移除匹配的 active tools。对于技能，同样的 pattern 控制哪些技能保留在 pi-forge 渲染的 `skills` slot 中。同一个资源策略不能同时包含非空 `allow` 和 `deny` 列表；混用会产生 validation error。
 
 工具策略会在栈激活期间通过 Pi 的 active tool list 强制执行。pi-forge 会记住之前的 active tools，并在禁用 prompt stack 或切换到没有工具策略的 stack 时恢复。
 
-技能策略会过滤 pi-forge `skills` slot 渲染出的技能。如果 stack 使用 `mode: "append"` 或 `"prepend"`，Pi base prompt 里可能已经包含未过滤的技能；需要控制技能可见性时请使用 `mode: "replace"`。
+技能策略会过滤 pi-forge `skills` slot 渲染出的技能。它不会禁用显式技能调用，也不是 capability 或安全边界。如果 stack 使用 `mode: "append"` 或 `"prepend"`，Pi base prompt 里可能已经包含未过滤的技能；需要控制模型可见的技能列表时请使用 `mode: "replace"`。
 
 ### Regex 转换
 
@@ -504,6 +506,12 @@ pi    # 启动 Pi，信任项目，必要时 /reload
 
 ```bash
 npm test
+```
+
+运行真实浏览器中的编辑器 smoke test（如果 Chrome 不在标准路径，请设置 `CHROME_PATH`）：
+
+```bash
+npm run test:browser
 ```
 
 类型检查：

@@ -236,6 +236,7 @@ test("loadPromptStacks validates tool and skill policies", () => {
 	assert.match(messages, /tools policy must use either allow or deny, not both/);
 	assert.match(messages, /Duplicate tools\.allow pattern: read/);
 	assert.match(messages, /skills\.allow must be an array of strings/);
+	assert.match(messages, /does not disable explicit skill invocation.*not a security boundary/);
 	assert.match(messages, /skills policy only filters pi-forge skills slots/);
 	assert.equal(isUsablePromptStack(loaded), false);
 });

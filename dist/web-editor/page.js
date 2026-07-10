@@ -6,6 +6,7 @@ export function renderEditorHtml() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>pi-forge stack editor</title>
 <style>${EDITOR_STYLES}</style>
 </head>
@@ -53,7 +54,7 @@ export function renderEditorHtml() {
     <nav class="view-tabs" aria-label="Stack editor sections">
       <button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>
       <button id="regexTabBtn" data-tab="regex" data-icon=".*" title="Edit regex transform rules">Regex</button>
-      <button id="policyTabBtn" data-tab="policy" data-icon="⊕" title="Edit tool and skill policy">Policy</button>
+      <button id="policyTabBtn" data-tab="policy" data-icon="⊕" title="Edit active-tool policy and model-visible skill filtering">Policy</button>
       <button id="stackTabBtn" data-tab="stack" data-icon="{}" title="Edit context options and raw stack JSON">Stack</button>
     </nav>
     <section id="workspace" class="workspace">

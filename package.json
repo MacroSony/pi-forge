@@ -1,7 +1,7 @@
 {
   "name": "@zihanw/pi-forge",
   "version": "0.3.2",
-  "description": "Pi extension for prompt stack and agent profile management.",
+  "description": "Pi extension for prompt stack authoring, policy, import, and debugging.",
   "type": "module",
   "exports": {
     ".": {
@@ -32,15 +32,18 @@
     "prompt-stack"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "pi": {
     "extensions": [
       "./dist/index.js"
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-agent-core": ">=0.79.2 <0.80.0",
+    "@earendil-works/pi-ai": ">=0.79.2 <0.80.0",
+    "@earendil-works/pi-coding-agent": ">=0.79.2 <0.80.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
@@ -54,10 +57,11 @@
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "*",
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@types/node": "latest",
+    "@earendil-works/pi-agent-core": "0.79.2",
+    "@earendil-works/pi-ai": "0.79.2",
+    "@earendil-works/pi-coding-agent": "0.79.2",
+    "@types/node": "22.20.1",
+    "playwright-core": "1.61.1",
     "typescript": "6.0.3"
   },
   "scripts": {
@@ -66,7 +70,8 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
-    "verify": "npm test && npm run typecheck && npm run check:dist"
+    "test:browser": "node --test tests-browser/*.test.ts",
+    "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:dist"
   },
   "files": [
     "dist/",

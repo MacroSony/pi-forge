@@ -7,6 +7,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Pi package manifest with compiled `dist/index.js` exposed through `package.json` `pi.extensions`.
 - Public npm package configuration for `@zihanw/pi-forge`.
 - Compiled `dist` JavaScript, source, and examples included in the npm package tarball.
+- Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.79.2 through 0.79.x.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 
@@ -39,6 +40,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
 - Context rewrite limited to the first provider request of each user-submitted turn.
 - Tool policy filters Pi's active tool list while the stack is active and restores the previous active tools when the stack no longer applies.
+- Tool policy restores its pre-policy baseline during extension shutdown so Pi reload/session replacement cannot carry a restricted built-in tool set into the replacement runtime.
 - Skill policy filters skills rendered by pi-forge `skills` slots.
 - Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
 - Finalize regex transforms can rewrite completed assistant messages at `message_end`.
@@ -86,6 +88,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Tool policy is enforced with `pi.setActiveTools()` and restored when prompt stacks are disabled or switched to an unrestricted stack.
 - Rendered `tools` slots, tool macros such as `{{tools}}`, and `tool-guidelines` respect stack tool policy.
 - Rendered `skills` slots respect stack skill policy and continue to hide skills marked `disableModelInvocation`.
+- Skill policy controls model-visible skill listings rendered by pi-forge; it does not disable explicit skill invocation and is not a security boundary.
 - Validation warns when skill policy is used with `append` or `prepend` mode because Pi's base prompt may already include unfiltered skills.
 
 ## Macros
@@ -158,6 +161,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
 - Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
+- A real headless-Chrome smoke test covers editor load, metadata editing, validation, policy guidance, save, disk persistence, and browser-console errors.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
 
