@@ -518,6 +518,14 @@ npm run typecheck
 npm run build
 ```
 
+运行完整仓库验证，包括在临时目录中执行干净构建，并逐字节检查已跟踪的 `dist/` 是否与 `src/` 一致：
+
+```bash
+npm run verify
+```
+
+CI 会运行同一套验证。源代码变更影响生成输出时，请运行 `npm run build`，并将对应的 `dist/` 变更与源代码一起提交。
+
 ## License
 
 MIT

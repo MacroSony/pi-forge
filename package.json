@@ -58,13 +58,15 @@
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@types/node": "latest",
-    "typescript": "latest"
+    "typescript": "6.0.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "check:dist": "node scripts/check-dist.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts"
+    "test": "node --test tests/*.test.ts",
+    "verify": "npm test && npm run typecheck && npm run check:dist"
   },
   "files": [
     "dist/",

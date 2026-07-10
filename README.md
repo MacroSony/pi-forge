@@ -535,6 +535,14 @@ Build package output:
 npm run build
 ```
 
+Run the full repository verification, including a clean temporary build that checks tracked `dist/` byte-for-byte against `src/`:
+
+```bash
+npm run verify
+```
+
+The same verification runs in CI. When source changes affect generated output, run `npm run build` and commit the matching `dist/` changes with the source changes.
+
 ## License
 
 MIT
