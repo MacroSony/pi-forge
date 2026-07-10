@@ -6,6 +6,7 @@ export interface LifecycleDeps {
     refreshWebEditorHost(ctx: ExtensionContext): void;
     notifyActivePreset(ctx: ExtensionContext, detail: string): void;
     syncActiveToolPolicy(ctx?: ExtensionContext): void;
+    restoreActiveToolPolicy(): void;
     activeId(): string | undefined;
     persistActiveSelection(id: string): void;
     recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;

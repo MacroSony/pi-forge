@@ -359,6 +359,7 @@ export default function piForge(pi) {
         refreshWebEditorHost,
         notifyActivePreset,
         syncActiveToolPolicy,
+        restoreActiveToolPolicy: () => restoreToolPolicy(),
         activeId,
         persistActiveSelection,
         recordCompileDiagnostics,

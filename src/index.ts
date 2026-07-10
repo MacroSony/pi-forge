@@ -429,6 +429,7 @@ export default function piForge(pi: ExtensionAPI) {
 		refreshWebEditorHost,
 		notifyActivePreset,
 		syncActiveToolPolicy,
+		restoreActiveToolPolicy: () => restoreToolPolicy(),
 		activeId,
 		persistActiveSelection,
 		recordCompileDiagnostics,

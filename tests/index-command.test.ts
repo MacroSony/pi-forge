@@ -129,6 +129,43 @@ test("active stack tool policy filters and restores active tools", async () => {
 	assert.equal(statuses["pi-forge-tools"], undefined);
 });
 
+test("session_shutdown restores tool policy baseline before reload", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const baselineTools = [
+		"read",
+		"bash",
+		"edit",
+		"write",
+		"paint_list_workflows",
+		"paint_get_details",
+		"paint_validate_workflow",
+	];
+	const harness = createHarness({ activeTools: baselineTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+
+	await harness.events.session_start({ type: "session_start", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+});
+
 test("trusted pi-forge extension modules register custom macros and slots before validation", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeForgeExtension(cwd, "system-status.ts", `

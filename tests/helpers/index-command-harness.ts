@@ -80,13 +80,13 @@ export function latestEditorUrl(editors: { title: string; text: string }[]): URL
 	return new URL(urlMatch[0]);
 }
 
-export function createHarness() {
+export function createHarness(options: { activeTools?: string[]; allTools?: string[] } = {}) {
 	const events: Record<string, Function> = {};
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	const tools: Record<string, any> = {};
 	const appended: { type: string; data: unknown }[] = [];
-	let activeTools = ["read", "bash", "edit", "write"];
-	const allTools = new Set(activeTools);
+	let activeTools = [...(options.activeTools ?? ["read", "bash", "edit", "write"])];
+	const allTools = new Set(options.allTools ?? activeTools);
 
 	const pi = {
 		on(name: string, handler: Function) {

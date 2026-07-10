@@ -16,12 +16,20 @@ export interface LifecycleDeps {
 	refreshWebEditorHost(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
+	restoreActiveToolPolicy(): void;
 	activeId(): string | undefined;
 	persistActiveSelection(id: string): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
 }
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
+	pi.on("session_shutdown", async () => {
+		// Pi carries the old runtime's active built-in tool names into a replacement
+		// runtime. Restore the pre-policy set before reload/session replacement so the
+		// replacement pi-forge instance can capture a complete baseline.
+		deps.restoreActiveToolPolicy();
+	});
+
 	pi.on("session_start", async (event, ctx) => {
 		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);

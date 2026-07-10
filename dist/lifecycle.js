@@ -2,6 +2,12 @@ import { compileMessages, compileSystemPrompt, createPromptVariableStore, getLat
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
+    pi.on("session_shutdown", async () => {
+        // Pi carries the old runtime's active built-in tool names into a replacement
+        // runtime. Restore the pre-policy set before reload/session replacement so the
+        // replacement pi-forge instance can capture a complete baseline.
+        deps.restoreActiveToolPolicy();
+    });
     pi.on("session_start", async (event, ctx) => {
         await restoreBranchScopedRuntime(ctx, state, deps);
         deps.refreshWebEditorHost(ctx);
