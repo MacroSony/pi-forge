@@ -1,7 +1,7 @@
 {
   "name": "@zihanw/pi-forge",
   "version": "0.3.2",
-  "description": "Pi extension for prompt stack authoring, policy, import, and debugging.",
+  "description": "Pi extension for prompt stacks, one-shot agent profiles, policy, import, and debugging.",
   "type": "module",
   "exports": {
     ".": {
@@ -29,7 +29,8 @@
   "keywords": [
     "pi-package",
     "pi-extension",
-    "prompt-stack"
+    "prompt-stack",
+    "agent-profile"
   ],
   "license": "MIT",
   "engines": {

@@ -10,6 +10,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Added
 
+- **Native one-shot agent profiles.** Project profiles under `.pi/forge/agent-profiles` store an exact model, thinking level, and prompt-stack reference. `/profile use` preflights and applies once, `/profile save` captures the current runtime, and list/status/preview/validate/reload/forget commands cover diagnostics, drift, direct file editing, and branch-scoped provenance without automatic reapplication.
+- **Profile resolution API.** Exported strict profile types, loading, validation, exact model/auth/thinking/stack resolution, fingerprints, provenance guards, and diagnostics for future subagent adapters without adding a runner dependency. Prompt stacks remain the single source of truth for tool policy and model-visible skill filtering.
 - **Browser-level editor smoke coverage.** CI now launches the real localhost editor in headless Chrome and verifies load, metadata editing, validation, policy guidance, save, and browser-console behavior.
 
 ### Fixed
@@ -21,7 +23,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 - The web editor shell, styles, and browser script are maintained as separate source modules.
 - Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
-- The roadmap now treats agent profiles as one-shot presets while leaving their exact interface and fields for a dedicated design decision.
+- The roadmap now records the implemented profile v1 contract and moves forward to profile UI and a narrow runner-independent subagent adapter.
 
 ## [0.3.2] - 2026-07-07
 

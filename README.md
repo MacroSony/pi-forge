@@ -4,7 +4,7 @@
 
 ![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
 
-**pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks — JSON files that can replace, append to, or prepend Pi's default system prompt while controlling the AI's personality, visible tools, conversation history layout, template variables, and prompt transforms.
+**pi-forge** lets you customize how Pi thinks and behaves. It gives you prompt stacks for prompt/tool policy and agent profiles that apply a model, thinking level, and prompt stack as a reusable one-shot preset.
 
 Think of it as a character sheet for your AI agent.
 
@@ -12,6 +12,7 @@ Think of it as a character sheet for your AI agent.
 
 - **Give Pi a personality** — turn it into a creative writer, a roleplay partner, a strict code reviewer, or anything in between.
 - **Switch contexts instantly** — one command to swap between "coding mode", "writing mode", and "translation mode".
+- **Save complete agent presets** — capture the current model, thinking level, and prompt stack, then apply them together later.
 - **Control what the AI sees** — choose which tools, skills, and project context appear in each prompt.
 - **Limit tools and skills per stack** — enforce active tool policy and filter skill visibility for focused modes.
 - **Use template variables** — define static values such as `{{char}}` / `{{user}}`, and use ST-style turn/session variable macros inside prompt text.
@@ -69,6 +70,39 @@ To prefer a specific port, create `.pi/forge/config.json`. If that port is busy,
   }
 }
 ```
+
+### Agent profiles
+
+Agent profiles are project-local JSON files under `.pi/forge/agent-profiles`. The quickest way to create one is to configure Pi normally and capture the current model, thinking level, and prompt-stack selection:
+
+```text
+/profile save reviewer
+/profile use reviewer
+```
+
+Profiles are applied once. They do not continuously own Pi's model or thinking level, so later manual changes are preserved until `/profile use reviewer` is run again. Prompt-stack tool policy remains strict for as long as that stack is active.
+
+A profile can also be written directly:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.agent-profile",
+  "id": "reviewer",
+  "name": "Reviewer",
+  "description": "Reviews code without making changes.",
+  "model": {
+    "provider": "provider-id",
+    "id": "model-id"
+  },
+  "thinkingLevel": "high",
+  "promptStack": "reviewer"
+}
+```
+
+`promptStack` may be `null`. Tool names and skill lists do not belong in profile v1: the referenced prompt stack is the single source of truth for tool policy and model-visible skill filtering. Profile validation rejects unsupported fields rather than silently retaining inert generation or runner settings.
+
+`/profile preview <id>` resolves the model, authentication, thinking-level support, prompt stack, and effective tools without changing runtime state. `/profile status` reports the last-applied profile and current drift; it deliberately does not describe a profile as active. Provenance follows the session branch for status purposes but never causes automatic reapplication during reload or tree navigation.
 
 ## Use cases
 
@@ -221,6 +255,19 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/preset reload` | Reload stacks from disk |
 | `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | Copy legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks` |
 | `/preset ui [stop\|restart]` | Open, stop, or restart the web editor |
+
+### Managing agent profiles
+
+| Command | What it does |
+|---------|-------------|
+| `/profile list` | Show project profiles and resolution diagnostics |
+| `/profile use <id>` | Preflight and apply a profile once |
+| `/profile save <id> [--overwrite]` | Capture the current model, thinking level, and prompt stack |
+| `/profile status` | Show current runtime, last-applied provenance, and drift |
+| `/profile preview <id>` | Preview resolved effects and effective tools without applying |
+| `/profile validate [id]` | Validate one profile, or all profiles when omitted |
+| `/profile reload` | Reload profile files without applying them |
+| `/profile forget` | Forget last-applied provenance without changing runtime state |
 
 ### Import & debug
 

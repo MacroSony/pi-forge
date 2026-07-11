@@ -4,7 +4,7 @@
 
 ![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
 
-**pi-forge** 让你自定义 Pi 的思考方式和行为。它提供 prompt stack（提示栈）：这些 JSON 文件可以替换、追加到或插入到 Pi 的默认系统提示词之前，并控制 AI 的性格、可见工具、对话历史布局、模板变量和 prompt 转换。
+**pi-forge** 让你自定义 Pi 的思考方式和行为。它提供用于 prompt/工具策略的 prompt stack（提示栈），也提供可一次性应用模型、思考等级和提示栈的 agent profile（agent 配置预设）。
 
 可以把它理解为 AI agent 的角色卡。
 
@@ -12,6 +12,7 @@
 
 - **赋予 Pi 个性** — 把它变成创意写手、角色扮演搭档、严格的代码审查员，或任何你想要的风格。
 - **一键切换模式** — 在"写代码"、"写小说"、"做翻译"之间用一条命令切换。
+- **保存完整 agent 预设** — 捕获当前模型、思考等级和提示栈，以后一条命令一起应用。
 - **控制 AI 看到什么** — 选择每个 prompt 中出现哪些工具、技能和项目上下文。
 - **按栈限制工具和技能** — 为专注模式启用工具策略，并过滤技能可见性。
 - **使用模板变量** — 定义 `{{char}}` / `{{user}}` 这样的静态值，并在 prompt 文本里使用 ST 风格的轮次/会话变量宏。
@@ -69,6 +70,39 @@ $EDITOR .pi/forge/prompt-stacks/default.json
   }
 }
 ```
+
+### Agent profile
+
+Agent profile 是保存在 `.pi/forge/agent-profiles` 下的项目级 JSON 文件。先正常配置 Pi，然后捕获当前模型、思考等级和 prompt stack，就能快速创建：
+
+```text
+/profile save reviewer
+/profile use reviewer
+```
+
+Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之后的手动修改会一直保留，直到再次执行 `/profile use reviewer`。被选中的 prompt stack 仍会在激活期间持续执行严格工具策略。
+
+也可以直接编写 profile：
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.agent-profile",
+  "id": "reviewer",
+  "name": "Reviewer",
+  "description": "只审查代码，不做修改。",
+  "model": {
+    "provider": "provider-id",
+    "id": "model-id"
+  },
+  "thinkingLevel": "high",
+  "promptStack": "reviewer"
+}
+```
+
+`promptStack` 可以为 `null`。Profile v1 不保存工具名或 skill 列表；引用的 prompt stack 是工具策略和模型可见 skill 过滤的唯一来源。校验会拒绝不支持的字段，避免悄悄保留无效的生成参数或 runner 配置。
+
+`/profile preview <id>` 会解析模型、认证、思考等级支持、prompt stack 和最终工具集，但不会改变运行时。`/profile status` 显示上次应用的 profile 和当前 drift；profile provenance 会跟随 session branch 恢复用于状态显示，但 reload 或 tree navigation 绝不会自动重新应用 profile。
 
 ## 使用场景
 
@@ -219,6 +253,19 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `/preset reload` | 从磁盘重新加载栈 |
 | `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | 将旧 `.pi/prompt-stacks` 文件复制到 `.pi/forge/prompt-stacks` |
 | `/preset ui [stop\|restart]` | 打开、停止或重启 Web 编辑器 |
+
+### 管理 agent profile
+
+| 命令 | 作用 |
+|------|------|
+| `/profile list` | 显示项目 profile 和解析诊断 |
+| `/profile use <id>` | 预检并一次性应用 profile |
+| `/profile save <id> [--overwrite]` | 捕获当前模型、思考等级和 prompt stack |
+| `/profile status` | 显示当前运行时、上次应用来源和 drift |
+| `/profile preview <id>` | 不应用，只预览解析结果和最终工具 |
+| `/profile validate [id]` | 校验一个 profile；省略 id 时校验全部 |
+| `/profile reload` | 从磁盘重新加载 profile，但不应用 |
+| `/profile forget` | 忘记上次应用来源，不改变运行时 |
 
 ### 导入 & 调试
 

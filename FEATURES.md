@@ -1,6 +1,6 @@
 # pi-forge Implemented Features
 
-This file tracks the currently implemented feature surface for the prompt-stack runtime, template variables, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
+This file tracks the currently implemented feature surface for agent profiles, the prompt-stack runtime, template variables, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
 
 ## Package and Runtime
 
@@ -10,6 +10,22 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.80.6 through 0.80.x.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
+
+## Agent Profiles
+
+- Strict schema-versioned project profiles from `.pi/forge/agent-profiles/*.json`.
+- Profile v1 stores an exact provider/model reference, thinking level, and prompt-stack ID or `null`, with optional name and description metadata.
+- Unsupported fields are errors so unimplemented generation, tool, skill, or runner settings cannot become inert configuration.
+- Tool policy and model-visible skill filtering remain owned by the referenced prompt stack rather than duplicated in profiles.
+- Pure profile resolution checks model existence, configured authentication, thinking-level clamping, prompt-stack validity, and unmatched tool allow patterns before application.
+- `/profile use <id>` applies model, thinking level, and prompt stack once after complete preflight; later manual runtime changes are preserved.
+- Failed application performs best-effort rollback and never records successful provenance.
+- `/profile save <id> [--overwrite]` captures current runtime fields without tools, secrets, history, or provenance, preserving existing name/description metadata.
+- `/profile preview <id>` reports resolved changes, prompt-stack tool policy, effective tools, and diagnostics without mutation.
+- `/profile status` compares the current runtime with the last-applied resolved snapshot and reports source-definition changes separately.
+- Last-applied provenance is branch-scoped session metadata used only for drift reporting; reload and tree navigation never reapply a profile.
+- `/profile reload` reloads definitions without applying them, and `/profile forget` clears provenance without changing runtime state.
+- Project trust gates profile loading, application, and writes.
 
 ## Prompt Stack Loading and Storage
 
@@ -122,6 +138,14 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 
 ## Commands
 
+- `/profile list`
+- `/profile use <id>`
+- `/profile save <id> [--overwrite]`
+- `/profile status`
+- `/profile preview <id>`
+- `/profile validate [id]`
+- `/profile reload`
+- `/profile forget`
 - `/preset list`
 - `/preset status`
 - `/preset use <id|none>`
@@ -161,7 +185,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - The web editor can arm, poll, clear, and inspect the next redacted provider payload in a full-screen collapsible JSON inspector.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - `/preset ui` starts a token-protected localhost web editor for stack management.
-- Node built-in tests cover compiler, loader, SillyTavern importer, and a small command/event harness.
+- Node built-in tests cover agent-profile resolution/application/provenance, compiler, loader, SillyTavern importer, and the command/event harness.
 - Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
 - A real headless-Chrome smoke test covers editor load, metadata editing, validation, policy guidance, save, disk persistence, and browser-console errors.

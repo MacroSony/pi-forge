@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -187,4 +187,32 @@ test("resolveAgentProfile reports unknown models and prompt stacks", () => {
 
 	assert.match(messages, /Unknown model: missing-provider\/missing-model/);
 	assert.match(messages, /Unknown prompt stack: missing-stack/);
+});
+
+test("resolveAgentProfile warns when allowed tool patterns match no registered tools", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-"));
+	writeStack(cwd, "researcher");
+	const stackPath = join(promptStacksDir(cwd), "researcher.json");
+	const stack = JSON.parse(readFileSync(stackPath, "utf8"));
+	stack.tools = { allow: ["read", "web_*"] };
+	writeFileSync(stackPath, JSON.stringify(stack, null, 2));
+	writeProfile(cwd, "researcher.json", {
+		schemaVersion: 1,
+		type: AGENT_PROFILE_TYPE,
+		id: "researcher",
+		model: { provider: "test-provider", id: "test-model" },
+		thinkingLevel: "off",
+		promptStack: "researcher",
+	});
+	const targetModel = model();
+
+	const resolved = resolveAgentProfile(loadAgentProfiles(cwd)[0]!, {
+		models: [targetModel],
+		availableModels: [targetModel],
+		promptStacks: loadPromptStacks(cwd),
+		toolNames: ["read"],
+	});
+
+	assert.equal(isResolvedAgentProfileUsable(resolved), true);
+	assert.match(resolved.diagnostics.find((diagnostic) => diagnostic.level === "warning")?.message ?? "", /web_\*.*matches no registered tools/);
 });

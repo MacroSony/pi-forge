@@ -5,83 +5,33 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 ## Current Read
 
 - `0.3.2` is the current released baseline. Prompt stacks, storage migration, tool policy, model-visible skill filtering, regex MVP, SillyTavern import, web editor, payload inspection, trusted macro/slot extensions, and command/lifecycle coverage are shipped.
+- The current 0.4 branch implements strict project-local agent profiles with exact model, thinking-level, and prompt-stack references; one-shot save/use; preflight and preview; branch-scoped last-applied provenance; and runtime drift reporting.
 - The web editor page shell, static styles, and browser client are split. Browser smoke verification now gates larger UI work.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
-- The likely 0.4 path remains profile-first and subagent-ready, but the exact agent-profile interface, fields, storage, and limits are intentionally undecided.
+- Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
 - New prompt-stack behavior should be driven by real prompt-authoring pain, not by aiming for complete SillyTavern compatibility.
 
 ## Plan Assessment
 
 Recommended ordering:
 
-1. Decide the minimal native agent-profile interface and storage contract.
-2. Implement profile schema, loading, validation, preview, and one-shot CLI application.
-3. Add profile UI only after the CLI/runtime behavior is stable, extending the browser smoke suite with each workflow.
-4. Add a narrow subagent adapter boundary without requiring a subagent package.
-5. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
-6. Defer provider-payload rewriting, true display regex, and an owned subagent runner until stable hooks and concrete use cases exist.
+1. Exercise the profile CLI against real installed providers and extension toolsets, then fix any compatibility findings without expanding the schema.
+2. Add profile UI on top of the stable loader/resolver/application core, extending browser smoke coverage with each workflow.
+3. Add a narrow subagent adapter boundary without requiring a subagent package.
+4. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
+5. Defer provider-payload rewriting, true display regex, and an owned subagent runner until stable hooks and concrete use cases exist.
 
 Risk calls:
 
 - Keep prompt-stack JSON declarative. Trusted executable customization belongs in `~/.pi/forge/extensions`, `.pi/forge/extensions`, or reusable packages.
 - Treat an agent profile as a one-shot preset. Applying it configures Pi once; subsequent user changes must not be continuously overwritten.
-- Keep prompt-stack tool policy separate from profile application. Tool policy is a strict constraint while its stack is active.
+- Keep tool names out of agent profiles. The referenced prompt stack is the single source of truth for strict tool policy while active.
 - Treat skill policy as model-visible prompt filtering only. It does not disable explicit skill invocation or provide a security boundary.
+- Keep generation parameters, model fallbacks, global storage, and runner limits out of profile v1 until a concrete consumer can enforce their semantics consistently.
 - Avoid expanding the browser editor without browser-level workflow coverage.
-- Do not add delegation until profile resolution, application diagnostics, and runtime drift reporting are coherent.
+- Do not add delegation until real-world profile CLI testing confirms resolution, application diagnostics, and runtime drift reporting are coherent.
 
-## Priority 1: Agent Profile Interface Decision
-
-Goal: agree on the smallest stable profile contract before writing schema or command code.
-
-Agreed behavior:
-
-- Profiles are one-shot agent presets, not continuous runtime owners.
-- Stored profiles remain unchanged when the parent runtime later drifts.
-- Applying a profile should preflight its references and effects before mutating Pi.
-- Prompt stacks are referenced by ID rather than embedded.
-- `/profile` is the command namespace because `/preset` already means prompt stack.
-- Future subagents resolve stored profiles afresh rather than copying mutable parent runtime state.
-
-Decisions still required:
-
-- Exact profile fields and schema version 1 shape.
-- Project-only versus project and global storage locations.
-- Exact tool representation: explicit active set, allow/deny resolution, or another form.
-- Model/provider reference and fallback behavior.
-- Skill visibility representation.
-- Whether provenance uses `clear`, `use none`, or another command model.
-- What, if anything, is persisted across session branches without reapplying runtime effects.
-- Which limits belong in the profile once a subagent adapter can enforce them.
-- Preflight, application ordering, partial-failure, and rollback rules.
-
-Done criteria:
-
-- The interface and semantics are recorded with representative JSON examples.
-- Every field has an identified consumer and observable behavior.
-- Inert runner/subagent fields are excluded until an adapter consumes them.
-- Parent-session application and future subagent resolution have explicit, non-conflicting semantics.
-
-## Priority 2: Native Agent Profile Core and CLI
-
-Goal: implement the decided interface without coupling it to the web editor or a subagent runner.
-
-Expected work after Priority 1:
-
-- Add profile types, storage, loading, validation, and diagnostics.
-- Add a pure resolution result independent of command handlers and UI.
-- Add preview and one-shot application with preflight.
-- Add `/profile` list, status, use, preview, validate, reload, and the decided provenance-clearing behavior.
-- Report drift between the last-applied profile and current model, thinking, tools, and prompt-stack state without reapplying automatically.
-
-Done criteria:
-
-- Manual model, thinking, tool, and prompt-stack changes survive after profile application.
-- Applying the same profile again is the explicit reapply/reset operation.
-- Missing models, authentication, prompt stacks, and tools produce actionable diagnostics.
-- Profile core has focused unit tests and command/lifecycle coverage.
-
-## Priority 3: Profile UI
+## Priority 1: Profile UI
 
 Goal: expose profile management only after profile core and CLI semantics are stable.
 
@@ -99,7 +49,7 @@ Done criteria:
 - Profile UI does not duplicate prompt-stack item editing logic.
 - Browser smoke tests cover token checks, validation, save, application, drift display, and deletion.
 
-## Priority 4: Subagent Adapter Boundary
+## Priority 2: Subagent Adapter Boundary
 
 Goal: make stored profiles useful to subagent systems without committing to one runner.
 
@@ -107,7 +57,7 @@ Boundaries:
 
 - Do not hard-depend on `pi-subagents`, `@gotgenes/pi-subagents`, Archimedes, or another runner in 0.4.
 - Keep profile definition, validation, resolution, preview, and export as pi-forge's responsibility.
-- Resolve provider plus model ID, thinking level, tool names, prompt-stack reference, and diagnostics into a stable adapter-facing object.
+- Resolve provider plus model ID, thinking level, loaded prompt-stack/tool policy, and diagnostics into a stable adapter-facing object. The runner supplies its available tool baseline; the stack policy filters it.
 - Do not export parent chat history or dynamic compiled context by default.
 - Verify any optional event-bus adapter against the supported Pi version range before adopting it.
 
@@ -117,7 +67,7 @@ Done criteria:
 - No subagent package is required to install or use pi-forge.
 - Documentation explains which fields an external runner must enforce itself.
 
-## Priority 5: Owned Subagent Runner Decision
+## Priority 3: Owned Subagent Runner Decision
 
 Default answer: do not build a full runner in 0.4.
 
@@ -138,7 +88,7 @@ Decision rule:
 - Build native only if stored profiles need behavior external runners cannot provide without taking over pi-forge's product surface.
 - Otherwise provide adapters/export and let dedicated packages own orchestration.
 
-## Priority 6: Custom Macro/Slot Portability Metadata
+## Priority 4: Custom Macro/Slot Portability Metadata
 
 Goal: improve sharing for stacks that depend on trusted registration code without allowing executable code in stack JSON.
 
@@ -167,7 +117,7 @@ Decision rule:
 
 - Existing behavior stays stable unless a real fixture proves the need for a change.
 
-## Priority 7: Chat-History Controls
+## Priority 5: Chat-History Controls
 
 Potential filters:
 
@@ -181,7 +131,7 @@ Done criteria:
 - Each option has a concrete use case and tests for dangling tool calls/results.
 - Existing defaults remain stable.
 
-## Priority 8: Prompt-Stack Lifecycle Controls
+## Priority 6: Prompt-Stack Lifecycle Controls
 
 Potential configuration:
 
@@ -199,7 +149,7 @@ Decision rule:
 
 - Add configuration only when users need behavior beyond the current safe default.
 
-## Priority 9: Payload and Regex Expansion
+## Priority 7: Payload and Regex Expansion
 
 Keep deferred:
 
@@ -226,7 +176,7 @@ Decision rule:
 
 ## Next Design Session
 
-1. Decide the exact profile interface, fields, and storage locations.
-2. Write representative parent-session and subagent profile examples.
-3. Define preflight, application order, provenance, drift, and failure semantics.
-4. Update this plan with the agreed schema before implementing profile code.
+1. Run `/profile save`, `preview`, `use`, `status`, `reload`, and `forget` against real providers, model switches, restrictive stacks, and extension tools.
+2. Decide the smallest profile editor workflow and add its browser-test cases before implementation.
+3. Define the adapter-facing resolved-profile contract and which side owns tool registration, cancellation, and result formatting.
+4. Keep generation parameters and enforceable limits deferred until the adapter or a chosen runner exposes a stable consumer.

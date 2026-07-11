@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer as createNetServer, type Server as NetServer } from "node:net";
 import { join } from "node:path";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import piForge from "../../src/index.ts";
+import { agentProfilesDir } from "../../src/agent-profile.ts";
 import { legacyPromptStacksDir, promptStacksDir } from "../../src/loader.ts";
 import { forgeExtensionsDir, globalForgeExtensionsDir } from "../../src/storage.ts";
 
 export function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });
 	writeFileSync(join(promptStacksDir(cwd), name), JSON.stringify(value, null, 2));
+}
+
+export function writeProfile(cwd: string, name: string, value: unknown): void {
+	mkdirSync(agentProfilesDir(cwd), { recursive: true });
+	writeFileSync(join(agentProfilesDir(cwd), name), JSON.stringify(value, null, 2));
 }
 
 export function writeLegacyStack(cwd: string, name: string, value: unknown): void {
@@ -80,14 +87,34 @@ export function latestEditorUrl(editors: { title: string; text: string }[]): URL
 	return new URL(urlMatch[0]);
 }
 
-export function createHarness(options: { activeTools?: string[]; allTools?: string[] } = {}) {
+export function createHarness(options: {
+	activeTools?: string[];
+	allTools?: string[];
+	models?: any[];
+	availableModels?: any[];
+	currentModel?: any;
+	thinkingLevel?: any;
+	resolveThinkingLevel?: (model: any, requested: any) => any;
+} = {}) {
 	const events: Record<string, Function> = {};
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	const tools: Record<string, any> = {};
 	const appended: { type: string; data: unknown }[] = [];
 	const setActiveToolsCalls: string[][] = [];
+	const setModelCalls: any[] = [];
+	const setThinkingLevelCalls: any[] = [];
 	let activeTools = [...(options.activeTools ?? ["read", "bash", "edit", "write"])];
 	const allTools = new Set(options.allTools ?? activeTools);
+	let currentModel = options.currentModel;
+	let thinkingLevel = options.thinkingLevel ?? "off";
+	const models = options.models ?? (currentModel ? [currentModel] : []);
+	const availableModels = options.availableModels ?? models;
+	const modelRegistry = {
+		getAll: () => [...models],
+		getAvailable: () => [...availableModels],
+		find: (provider: string, id: string) => models.find((model) => model.provider === provider && model.id === id),
+		hasConfiguredAuth: (model: any) => availableModels.some((candidate) => candidate.provider === model.provider && candidate.id === model.id),
+	};
 
 	const pi = {
 		on(name: string, handler: Function) {
@@ -113,6 +140,22 @@ export function createHarness(options: { activeTools?: string[]; allTools?: stri
 			activeTools = [...names];
 			setActiveToolsCalls.push([...names]);
 		},
+		async setModel(model: any) {
+			setModelCalls.push(model);
+			if (!availableModels.some((candidate) => candidate.provider === model.provider && candidate.id === model.id)) return false;
+			currentModel = model;
+			thinkingLevel = clampThinkingLevel(model, thinkingLevel);
+			return true;
+		},
+		getThinkingLevel() {
+			return thinkingLevel;
+		},
+		setThinkingLevel(level: any) {
+			setThinkingLevelCalls.push(level);
+			thinkingLevel = currentModel
+				? options.resolveThinkingLevel?.(currentModel, level) ?? clampThinkingLevel(currentModel, level)
+				: "off";
+		},
 	};
 
 	piForge(pi as any);
@@ -122,14 +165,25 @@ export function createHarness(options: { activeTools?: string[]; allTools?: stri
 		tools,
 		appended,
 		setActiveToolsCalls,
+		setModelCalls,
+		setThinkingLevelCalls,
+		modelRegistry,
 		getActiveTools: () => [...activeTools],
+		getCurrentModel: () => currentModel,
+		getThinkingLevel: () => thinkingLevel,
 		getAllTools: () => pi.getAllTools(),
 		registerTool: (tool: { name: string; execute?: Function }) => pi.registerTool(tool),
 		setActiveTools: (names: string[]) => pi.setActiveTools(names),
+		setModel: (model: any) => pi.setModel(model),
+		setThinkingLevel: (level: any) => pi.setThinkingLevel(level),
 	};
 }
 
-export function createContext(cwd: string, entries: unknown[] = [], options: { trusted?: boolean; leafId?: string | null } = {}) {
+export function createContext(cwd: string, entries: unknown[] = [], options: {
+	trusted?: boolean;
+	leafId?: string | null;
+	modelRuntime?: { getCurrentModel(): any; modelRegistry: any };
+} = {}) {
 	const notifications: { message: string; type?: string }[] = [];
 	const statuses: Record<string, string | undefined> = {};
 	const editors: { title: string; text: string }[] = [];
@@ -155,7 +209,15 @@ export function createContext(cwd: string, entries: unknown[] = [], options: { t
 		cwd,
 		hasUI: true,
 		mode: "tui",
-		model: undefined,
+		get model() {
+			return options.modelRuntime?.getCurrentModel();
+		},
+		modelRegistry: options.modelRuntime?.modelRegistry ?? {
+			getAll: () => [],
+			getAvailable: () => [],
+			find: () => undefined,
+			hasConfiguredAuth: () => false,
+		},
 		signal: undefined,
 		sessionManager: {
 			getEntries: () => entries,

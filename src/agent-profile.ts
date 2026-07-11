@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
+import { resourcePatternMatches } from "./policy.ts";
 import { agentProfilesDir } from "./storage.ts";
 import type { LoadedPromptStack } from "./types.ts";
 
@@ -48,6 +49,7 @@ export interface AgentProfileResolutionResources {
 	models: readonly Model<any>[];
 	availableModels?: readonly Model<any>[];
 	promptStacks: readonly LoadedPromptStack[];
+	toolNames?: readonly string[];
 }
 
 export interface ResolvedAgentProfile {
@@ -56,6 +58,20 @@ export interface ResolvedAgentProfile {
 	promptStack?: LoadedPromptStack;
 	effectiveThinkingLevel: ThinkingLevel;
 	diagnostics: AgentProfileDiagnostic[];
+}
+
+export interface AgentProfileRuntimeSnapshot {
+	model: AgentProfileModelReference;
+	thinkingLevel: ThinkingLevel;
+	promptStack: string | null;
+}
+
+export interface AgentProfileProvenance {
+	profileId: string;
+	sourcePath: string;
+	sourceFingerprint: string;
+	appliedAt: string;
+	snapshot: AgentProfileRuntimeSnapshot;
 }
 
 export { agentProfilePath, agentProfilesDir } from "./storage.ts";
@@ -177,6 +193,17 @@ export function resolveAgentProfile(
 					message: `Prompt stack ${promptStack.stack.id}: ${diagnostic.message}`,
 				});
 			}
+			const allowedPatterns = promptStack.stack.tools?.allow?.filter((pattern) => pattern !== "*") ?? [];
+			if (resources.toolNames && !promptStack.stack.tools?.allow?.includes("*")) {
+				for (const pattern of allowedPatterns) {
+					if (resources.toolNames.some((name) => resourcePatternMatches(name, pattern))) continue;
+					diagnostics.push({
+						level: "warning",
+						field: "promptStack",
+						message: `Prompt stack ${promptStack.stack.id} allows tool pattern "${pattern}", but it matches no registered tools.`,
+					});
+				}
+			}
 		}
 	}
 
@@ -204,6 +231,20 @@ export function renderAgentProfileDiagnostics(diagnostics: readonly AgentProfile
 
 export function agentProfileFingerprint(profile: AgentProfile): string {
 	return JSON.stringify(profile);
+}
+
+export function isAgentProfileProvenance(value: unknown): value is AgentProfileProvenance {
+	if (!isPlainObject(value) || !isPlainObject(value.snapshot) || !isPlainObject(value.snapshot.model)) return false;
+	return typeof value.profileId === "string"
+		&& isValidAgentProfileId(value.profileId)
+		&& typeof value.sourcePath === "string"
+		&& typeof value.sourceFingerprint === "string"
+		&& typeof value.appliedAt === "string"
+		&& !!nonEmptyString(value.snapshot.model.provider)
+		&& !!nonEmptyString(value.snapshot.model.id)
+		&& typeof value.snapshot.thinkingLevel === "string"
+		&& VALID_THINKING_LEVELS.has(value.snapshot.thinkingLevel as ThinkingLevel)
+		&& (value.snapshot.promptStack === null || !!nonEmptyString(value.snapshot.promptStack));
 }
 
 function findModel(models: readonly Model<any>[], reference: AgentProfileModelReference): Model<any> | undefined {

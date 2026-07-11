@@ -32,6 +32,7 @@ export interface AgentProfileResolutionResources {
     models: readonly Model<any>[];
     availableModels?: readonly Model<any>[];
     promptStacks: readonly LoadedPromptStack[];
+    toolNames?: readonly string[];
 }
 export interface ResolvedAgentProfile {
     loaded: LoadedAgentProfile;
@@ -39,6 +40,18 @@ export interface ResolvedAgentProfile {
     promptStack?: LoadedPromptStack;
     effectiveThinkingLevel: ThinkingLevel;
     diagnostics: AgentProfileDiagnostic[];
+}
+export interface AgentProfileRuntimeSnapshot {
+    model: AgentProfileModelReference;
+    thinkingLevel: ThinkingLevel;
+    promptStack: string | null;
+}
+export interface AgentProfileProvenance {
+    profileId: string;
+    sourcePath: string;
+    sourceFingerprint: string;
+    appliedAt: string;
+    snapshot: AgentProfileRuntimeSnapshot;
 }
 export { agentProfilePath, agentProfilesDir } from "./storage.ts";
 export declare function isValidAgentProfileId(id: string): boolean;
@@ -51,4 +64,5 @@ export declare function isResolvedAgentProfileUsable(resolved: ResolvedAgentProf
 export declare function hasAgentProfileErrors(diagnostics: readonly AgentProfileDiagnostic[]): boolean;
 export declare function renderAgentProfileDiagnostics(diagnostics: readonly AgentProfileDiagnostic[]): string;
 export declare function agentProfileFingerprint(profile: AgentProfile): string;
+export declare function isAgentProfileProvenance(value: unknown): value is AgentProfileProvenance;
 //# sourceMappingURL=agent-profile.d.ts.map

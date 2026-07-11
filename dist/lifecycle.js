@@ -1,6 +1,7 @@
 import { compileMessages, compileSystemPrompt, createPromptVariableStore, getLatestUserMessage, markSessionVariablesClean, resetTurnVariables, } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
-import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
+import { isAgentProfileProvenance } from "./agent-profile.js";
+import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
     let startupToolPolicyPending = false;
     pi.on("session_shutdown", async () => {
@@ -101,10 +102,23 @@ export function registerLifecycleHandlers(pi, state, deps) {
 }
 async function restoreBranchScopedRuntime(ctx, state, deps, options) {
     state.sessionVariables = getRestoredVariables(ctx);
+    state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
     state.currentVariableStore = undefined;
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;
     await deps.reloadStacks(ctx, restoredActiveId, options);
+}
+function getRestoredProfileProvenance(ctx) {
+    const entries = getCurrentBranchEntries(ctx);
+    for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (entry.type !== "custom" || entry.customType !== PROFILE_ENTRY_TYPE)
+            continue;
+        if (entry.data?.provenance === null)
+            return undefined;
+        return isAgentProfileProvenance(entry.data?.provenance) ? entry.data.provenance : undefined;
+    }
+    return undefined;
 }
 function getCurrentBranchEntries(ctx) {
     const leafId = ctx.sessionManager.getLeafId();

@@ -8,7 +8,8 @@ import {
 	resetTurnVariables,
 } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
-import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
+import { isAgentProfileProvenance } from "./agent-profile.ts";
+import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
 import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
 
 export interface LifecycleDeps {
@@ -145,10 +146,22 @@ async function restoreBranchScopedRuntime(
 	options?: { deferToolPolicy?: boolean },
 ): Promise<void> {
 	state.sessionVariables = getRestoredVariables(ctx);
+	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
 	state.currentVariableStore = undefined;
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
 	await deps.reloadStacks(ctx, restoredActiveId, options);
+}
+
+function getRestoredProfileProvenance(ctx: ExtensionContext) {
+	const entries = getCurrentBranchEntries(ctx);
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i] as { type?: string; customType?: string; data?: { provenance?: unknown } };
+		if (entry.type !== "custom" || entry.customType !== PROFILE_ENTRY_TYPE) continue;
+		if (entry.data?.provenance === null) return undefined;
+		return isAgentProfileProvenance(entry.data?.provenance) ? entry.data.provenance : undefined;
+	}
+	return undefined;
 }
 
 function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {

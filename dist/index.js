@@ -1,3 +1,4 @@
+import { loadAgentProfiles, resolveAgentProfile } from "./agent-profile.js";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.js";
 import { registerLifecycleHandlers } from "./lifecycle.js";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.js";
@@ -5,12 +6,13 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.js";
 import { buildPreview, showText } from "./preview.js";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.js";
+import { registerProfileCommand } from "./profile-command.js";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.js";
 import { createWebEditorHost, loadWebEditorSettings } from "./web-host.js";
 import { startWebEditorServer } from "./web-editor/index.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
-export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, } from "./agent-profile.js";
+export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, isAgentProfileProvenance, } from "./agent-profile.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 function getSharedWebEditorRegistry() {
@@ -82,12 +84,24 @@ export default function piForge(pi) {
         syncActiveToolPolicy(ctx);
         return true;
     }
+    function reloadProfiles(ctx) {
+        state.profiles = ctx.isProjectTrusted() ? loadAgentProfiles(ctx.cwd) : [];
+    }
+    function resolveProfile(target, ctx) {
+        return resolveAgentProfile(target, {
+            models: ctx.modelRegistry.getAll(),
+            availableModels: ctx.modelRegistry.getAvailable(),
+            promptStacks: state.stacks,
+            toolNames: pi.getAllTools().map((tool) => tool.name),
+        });
+    }
     async function reloadStacks(ctx, preferredId, options = {}) {
         if (!ctx.isProjectTrusted()) {
             const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
             state.forgeExtensionDiagnostics = unloadDiagnostics;
             state.forgeExtensionPaths = [];
             state.stacks = [];
+            state.profiles = [];
             state.active = undefined;
             if (!options.deferToolPolicy)
                 syncActiveToolPolicy(ctx);
@@ -99,6 +113,7 @@ export default function piForge(pi) {
         state.forgeExtensionDiagnostics = extensionResult.diagnostics;
         state.forgeExtensionPaths = extensionResult.loadedPaths;
         state.stacks = loadPromptStacks(ctx.cwd);
+        reloadProfiles(ctx);
         if (state.forgeExtensionDiagnostics.length > 0) {
             for (const loaded of state.stacks)
                 loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
@@ -250,6 +265,10 @@ export default function piForge(pi) {
             ? mappedGuidelines
             : (base.promptGuidelines ?? mappedGuidelines);
         return { ...base, selectedTools, toolSnippets, promptGuidelines };
+    }
+    function previewToolNames(stack) {
+        const baseline = filterKnownTools(toolPolicyBaseline ?? pi.getActiveTools());
+        return stack && hasResourcePolicy(stack.tools) ? applyResourcePolicy(baseline, stack.tools) : baseline;
     }
     function filterToolSnippets(snippets, selectedTools) {
         const filtered = {};
@@ -421,6 +440,12 @@ export default function piForge(pi) {
         reloadStacks,
         openWebEditor,
         stopWebEditor,
+    });
+    registerProfileCommand(pi, state, {
+        reloadProfiles,
+        resolveProfile,
+        setActive,
+        previewToolNames,
     });
 }
 //# sourceMappingURL=index.js.map

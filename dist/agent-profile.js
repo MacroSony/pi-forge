@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import { resourcePatternMatches } from "./policy.js";
 import { agentProfilesDir } from "./storage.js";
 export const AGENT_PROFILE_TYPE = "pi-forge.agent-profile";
 export const AGENT_PROFILE_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -119,6 +120,18 @@ export function resolveAgentProfile(loaded, resources) {
                     message: `Prompt stack ${promptStack.stack.id}: ${diagnostic.message}`,
                 });
             }
+            const allowedPatterns = promptStack.stack.tools?.allow?.filter((pattern) => pattern !== "*") ?? [];
+            if (resources.toolNames && !promptStack.stack.tools?.allow?.includes("*")) {
+                for (const pattern of allowedPatterns) {
+                    if (resources.toolNames.some((name) => resourcePatternMatches(name, pattern)))
+                        continue;
+                    diagnostics.push({
+                        level: "warning",
+                        field: "promptStack",
+                        message: `Prompt stack ${promptStack.stack.id} allows tool pattern "${pattern}", but it matches no registered tools.`,
+                    });
+                }
+            }
         }
     }
     return { loaded, model, promptStack, effectiveThinkingLevel, diagnostics };
@@ -141,6 +154,20 @@ export function renderAgentProfileDiagnostics(diagnostics) {
 }
 export function agentProfileFingerprint(profile) {
     return JSON.stringify(profile);
+}
+export function isAgentProfileProvenance(value) {
+    if (!isPlainObject(value) || !isPlainObject(value.snapshot) || !isPlainObject(value.snapshot.model))
+        return false;
+    return typeof value.profileId === "string"
+        && isValidAgentProfileId(value.profileId)
+        && typeof value.sourcePath === "string"
+        && typeof value.sourceFingerprint === "string"
+        && typeof value.appliedAt === "string"
+        && !!nonEmptyString(value.snapshot.model.provider)
+        && !!nonEmptyString(value.snapshot.model.id)
+        && typeof value.snapshot.thinkingLevel === "string"
+        && VALID_THINKING_LEVELS.has(value.snapshot.thinkingLevel)
+        && (value.snapshot.promptStack === null || !!nonEmptyString(value.snapshot.promptStack));
 }
 function findModel(models, reference) {
     return models.find((model) => model.provider === reference.provider && model.id === reference.id);

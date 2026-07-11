@@ -1,4 +1,5 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadAgentProfiles, resolveAgentProfile, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.ts";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.ts";
@@ -6,6 +7,7 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { buildPreview, showText } from "./preview.ts";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.ts";
+import { registerProfileCommand } from "./profile-command.ts";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
@@ -56,8 +58,11 @@ export {
 	type AgentProfileDiagnosticLevel,
 	type AgentProfileModelReference,
 	type AgentProfileResolutionResources,
+	type AgentProfileProvenance,
+	type AgentProfileRuntimeSnapshot,
 	type LoadedAgentProfile,
 	type ResolvedAgentProfile,
+	isAgentProfileProvenance,
 } from "./agent-profile.ts";
 export {
 	createVariableAccess,
@@ -156,6 +161,19 @@ export default function piForge(pi: ExtensionAPI) {
 		return true;
 	}
 
+	function reloadProfiles(ctx: ExtensionContext): void {
+		state.profiles = ctx.isProjectTrusted() ? loadAgentProfiles(ctx.cwd) : [];
+	}
+
+	function resolveProfile(target: LoadedAgentProfile, ctx: ExtensionContext): ResolvedAgentProfile {
+		return resolveAgentProfile(target, {
+			models: ctx.modelRegistry.getAll(),
+			availableModels: ctx.modelRegistry.getAvailable(),
+			promptStacks: state.stacks,
+			toolNames: pi.getAllTools().map((tool) => tool.name),
+		});
+	}
+
 	async function reloadStacks(
 		ctx: ExtensionContext,
 		preferredId?: string,
@@ -166,6 +184,7 @@ export default function piForge(pi: ExtensionAPI) {
 			state.forgeExtensionDiagnostics = unloadDiagnostics;
 			state.forgeExtensionPaths = [];
 			state.stacks = [];
+			state.profiles = [];
 			state.active = undefined;
 			if (!options.deferToolPolicy) syncActiveToolPolicy(ctx);
 			ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
@@ -177,6 +196,7 @@ export default function piForge(pi: ExtensionAPI) {
 		state.forgeExtensionDiagnostics = extensionResult.diagnostics;
 		state.forgeExtensionPaths = extensionResult.loadedPaths;
 		state.stacks = loadPromptStacks(ctx.cwd);
+		reloadProfiles(ctx);
 		if (state.forgeExtensionDiagnostics.length > 0) {
 			for (const loaded of state.stacks) loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
 		}
@@ -329,6 +349,11 @@ export default function piForge(pi: ExtensionAPI) {
 			: (base.promptGuidelines ?? mappedGuidelines);
 
 		return { ...base, selectedTools, toolSnippets, promptGuidelines };
+	}
+
+	function previewToolNames(stack: PromptStack | undefined): string[] {
+		const baseline = filterKnownTools(toolPolicyBaseline ?? pi.getActiveTools());
+		return stack && hasResourcePolicy(stack.tools) ? applyResourcePolicy(baseline, stack.tools) : baseline;
 	}
 
 	function filterToolSnippets(snippets: Record<string, string | undefined>, selectedTools: Set<string>): Record<string, string> {
@@ -513,5 +538,11 @@ export default function piForge(pi: ExtensionAPI) {
 		reloadStacks,
 		openWebEditor,
 		stopWebEditor,
+	});
+	registerProfileCommand(pi, state, {
+		reloadProfiles,
+		resolveProfile,
+		setActive,
+		previewToolNames,
 	});
 }
