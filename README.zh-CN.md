@@ -27,7 +27,7 @@
 pi install npm:@zihanw/pi-forge
 ```
 
-当前 package 支持从 0.79.2 开始的 `@earendil-works/pi-*` 0.79.x，并要求 Node.js 22.19 或更高版本。
+当前 package 支持从 0.80.6 开始的 `@earendil-works/pi-*` 0.80.x，并要求 Node.js 22.19 或更高版本。
 
 ### 第一个 prompt stack
 
@@ -498,9 +498,11 @@ git clone <repo>
 cd pi-forge
 npm install
 npm run build
-# .pi/settings.json 已指向包根目录
+# .pi/settings.json 会加载 package 构建后的 dist/index.js
 pi    # 启动 Pi，信任项目，必要时 /reload
 ```
+
+常规开发和接近 release 的测试应使用已跟踪的 `dist/index.js`。如果需要不先重新构建、直接进行源码级 smoke test，可以从另一个项目显式加载 TypeScript entry，例如 `pi -e ../pi-forge/src/index.ts`。不要让这个参数和另一个已启用的 pi-forge 安装同时生效。
 
 运行测试：
 

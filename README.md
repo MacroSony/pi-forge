@@ -27,7 +27,7 @@ Think of it as a character sheet for your AI agent.
 pi install npm:@zihanw/pi-forge
 ```
 
-The current package supports `@earendil-works/pi-*` 0.79.x starting at 0.79.2 and requires Node.js 22.19 or newer.
+The current package supports `@earendil-works/pi-*` 0.80.x starting at 0.80.6 and requires Node.js 22.19 or newer.
 
 ### Your first prompt stack
 
@@ -515,9 +515,11 @@ git clone <repo>
 cd pi-forge
 npm install
 npm run build
-# .pi/settings.json already points at the package root
+# .pi/settings.json loads the package's built dist/index.js
 pi    # start Pi, trust the project, /reload if needed
 ```
+
+Use the tracked `dist/index.js` path for normal development and release-like testing. For a deliberate source-level smoke test without rebuilding first, load the TypeScript entry explicitly from another project, for example `pi -e ../pi-forge/src/index.ts`. Do not combine that flag with another enabled pi-forge installation.
 
 Run tests:
 

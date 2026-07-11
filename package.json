@@ -41,9 +41,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.79.2 <0.80.0",
-    "@earendil-works/pi-ai": ">=0.79.2 <0.80.0",
-    "@earendil-works/pi-coding-agent": ">=0.79.2 <0.80.0"
+    "@earendil-works/pi-agent-core": ">=0.80.6 <0.81.0",
+    "@earendil-works/pi-ai": ">=0.80.6 <0.81.0",
+    "@earendil-works/pi-coding-agent": ">=0.80.6 <0.81.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
@@ -57,9 +57,9 @@
     }
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "0.79.2",
-    "@earendil-works/pi-ai": "0.79.2",
-    "@earendil-works/pi-coding-agent": "0.79.2",
+    "@earendil-works/pi-agent-core": "0.80.6",
+    "@earendil-works/pi-ai": "0.80.6",
+    "@earendil-works/pi-coding-agent": "0.80.6",
     "@types/node": "22.20.1",
     "playwright-core": "1.61.1",
     "typescript": "6.0.3"

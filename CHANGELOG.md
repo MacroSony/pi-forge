@@ -20,7 +20,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Changed
 
 - The web editor shell, styles, and browser script are maintained as separate source modules.
-- Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.79.2 through 0.79.x; matching development dependencies are pinned for reproducible verification.
+- Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
 - The roadmap now treats agent profiles as one-shot presets while leaving their exact interface and fields for a dedicated design decision.
 
 ## [0.3.2] - 2026-07-07

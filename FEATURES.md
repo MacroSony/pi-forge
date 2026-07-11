@@ -7,7 +7,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Pi package manifest with compiled `dist/index.js` exposed through `package.json` `pi.extensions`.
 - Public npm package configuration for `@zihanw/pi-forge`.
 - Compiled `dist` JavaScript, source, and examples included in the npm package tarball.
-- Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.79.2 through 0.79.x.
+- Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.80.6 through 0.80.x.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 
