@@ -12,28 +12,44 @@ import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from 
 import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
 
 export interface LifecycleDeps {
-	reloadStacks(ctx: ExtensionContext, preferredId?: string): Promise<void>;
+	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean }): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
 	restoreActiveToolPolicy(): void;
+	toolPolicyBlockReason(toolName: string): string | undefined;
 	activeId(): string | undefined;
 	persistActiveSelection(id: string): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
 }
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
+	let startupToolPolicyPending = false;
+
 	pi.on("session_shutdown", async () => {
 		// Pi carries the old runtime's active built-in tool names into a replacement
 		// runtime. Restore the pre-policy set before reload/session replacement so the
 		// replacement pi-forge instance can capture a complete baseline.
+		startupToolPolicyPending = false;
 		deps.restoreActiveToolPolicy();
 	});
 
 	pi.on("session_start", async (event, ctx) => {
-		await restoreBranchScopedRuntime(ctx, state, deps);
+		startupToolPolicyPending = true;
+		try {
+			await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true });
+		} catch (error) {
+			startupToolPolicyPending = false;
+			throw error;
+		}
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
+	});
+
+	pi.on("resources_discover", async (_event, ctx) => {
+		if (!startupToolPolicyPending) return;
+		startupToolPolicyPending = false;
+		deps.syncActiveToolPolicy(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
@@ -52,6 +68,15 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		deps.syncActiveToolPolicy();
 		const id = deps.activeId();
 		if (id) deps.persistActiveSelection(id);
+	});
+
+	pi.on("input", async () => {
+		deps.syncActiveToolPolicy();
+	});
+
+	pi.on("tool_call", async (event) => {
+		const reason = deps.toolPolicyBlockReason(event.toolName);
+		return reason ? { block: true, reason } : undefined;
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
@@ -113,12 +138,17 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 }
 
-async function restoreBranchScopedRuntime(ctx: ExtensionContext, state: PiForgeRuntimeState, deps: LifecycleDeps): Promise<void> {
+async function restoreBranchScopedRuntime(
+	ctx: ExtensionContext,
+	state: PiForgeRuntimeState,
+	deps: LifecycleDeps,
+	options?: { deferToolPolicy?: boolean },
+): Promise<void> {
 	state.sessionVariables = getRestoredVariables(ctx);
 	state.currentVariableStore = undefined;
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
-	await deps.reloadStacks(ctx, restoredActiveId);
+	await deps.reloadStacks(ctx, restoredActiveId, options);
 }
 
 function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {

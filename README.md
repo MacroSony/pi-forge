@@ -439,7 +439,7 @@ Prompt stacks can constrain active tools and filter model-visible skills with st
 
 For tools, use `allow` when only matching active tools should remain and `deny` when matching active tools should be removed. For skills, the same patterns control which skills remain visible in pi-forge's rendered `skills` slots. A single resource policy cannot contain both non-empty lists; mixed `allow` and `deny` entries are validation errors.
 
-Tool policy is enforced through Pi's active tool list while the stack is active. pi-forge remembers the previous active tools and restores them when prompt stacks are disabled or switched to an unrestricted stack.
+Tool policy is enforced through Pi's active tool list while the stack is active. On startup and reload, pi-forge waits for other extensions to finish their `session_start` tool configuration before capturing the baseline and applying the stack policy. It reasserts the policy before user input and turns, and a tool-call guard blocks disallowed model tool execution even if another extension later calls `setActiveTools()`. External tool additions are preserved in the restorable baseline, which is restored when prompt stacks are disabled or switched to an unrestricted stack.
 
 Skill policy filters skills rendered by pi-forge's `skills` slot. It does not disable explicit skill invocation and is not a capability or security boundary. If a stack uses `mode: "append"` or `"prepend"`, Pi's base prompt may already contain unfiltered skills; use `mode: "replace"` when model-visible skill listings must be controlled.
 

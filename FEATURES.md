@@ -41,6 +41,7 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Context rewrite limited to the first provider request of each user-submitted turn.
 - Tool policy filters Pi's active tool list while the stack is active and restores the previous active tools when the stack no longer applies.
 - Tool policy restores its pre-policy baseline during extension shutdown so Pi reload/session replacement cannot carry a restricted built-in tool set into the replacement runtime.
+- Startup tool enforcement waits until extension `session_start` configuration is complete, reasserts before user input and turns, and blocks disallowed model tool calls at execution time.
 - Skill policy filters skills rendered by pi-forge `skills` slots.
 - Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
 - Finalize regex transforms can rewrite completed assistant messages at `message_end`.
@@ -86,6 +87,8 @@ This file tracks the currently implemented feature surface for the prompt-stack 
 - Policy entries support exact names and `*` wildcards.
 - Each resource uses either `allow` or `deny`; non-empty mixed lists are validation errors.
 - Tool policy is enforced with `pi.setActiveTools()` and restored when prompt stacks are disabled or switched to an unrestricted stack.
+- Tool policy preserves later extension tool additions in the restorable baseline while keeping them filtered from an active restrictive stack.
+- A `tool_call` guard blocks tools outside the active stack policy even if another extension later changes Pi's active tool list.
 - Rendered `tools` slots, tool macros such as `{{tools}}`, and `tool-guidelines` respect stack tool policy.
 - Rendered `skills` slots respect stack skill policy and continue to hide skills marked `disableModelInvocation`.
 - Skill policy controls model-visible skill listings rendered by pi-forge; it does not disable explicit skill invocation and is not a security boundary.

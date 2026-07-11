@@ -85,6 +85,7 @@ export function createHarness(options: { activeTools?: string[]; allTools?: stri
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	const tools: Record<string, any> = {};
 	const appended: { type: string; data: unknown }[] = [];
+	const setActiveToolsCalls: string[][] = [];
 	let activeTools = [...(options.activeTools ?? ["read", "bash", "edit", "write"])];
 	const allTools = new Set(options.allTools ?? activeTools);
 
@@ -110,6 +111,7 @@ export function createHarness(options: { activeTools?: string[]; allTools?: stri
 		},
 		setActiveTools(names: string[]) {
 			activeTools = [...names];
+			setActiveToolsCalls.push([...names]);
 		},
 	};
 
@@ -119,7 +121,11 @@ export function createHarness(options: { activeTools?: string[]; allTools?: stri
 		commands,
 		tools,
 		appended,
+		setActiveToolsCalls,
 		getActiveTools: () => [...activeTools],
+		getAllTools: () => pi.getAllTools(),
+		registerTool: (tool: { name: string; execute?: Function }) => pi.registerTool(tool),
+		setActiveTools: (names: string[]) => pi.setActiveTools(names),
 	};
 }
 
@@ -198,4 +204,5 @@ export function createContext(cwd: string, entries: unknown[] = [], options: { t
 
 export async function startSession(harness: ReturnType<typeof createHarness>, ctx: any): Promise<void> {
 	await harness.events.session_start?.({ type: "session_start", reason: "startup" }, ctx);
+	await harness.events.resources_discover?.({ type: "resources_discover", cwd: ctx.cwd, reason: "startup" }, ctx);
 }

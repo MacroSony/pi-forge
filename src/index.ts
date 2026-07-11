@@ -67,6 +67,30 @@ function getSharedWebEditorRegistry(): SharedWebEditorRegistry {
 	return globalScope[WEB_EDITOR_GLOBAL_KEY];
 }
 
+function sameToolSet(left: string[], right: string[]): boolean {
+	if (left.length !== right.length) return false;
+	const rightSet = new Set(right);
+	return left.every((name) => rightSet.has(name));
+}
+
+function reconcileToolPolicyBaseline(baseline: string[], lastApplied: string[], current: string[]): string[] {
+	const baselineSet = new Set(baseline);
+	const lastAppliedSet = new Set(lastApplied);
+	const currentSet = new Set(current);
+
+	for (const name of current) {
+		if (!lastAppliedSet.has(name)) baselineSet.add(name);
+	}
+	for (const name of lastApplied) {
+		if (!currentSet.has(name)) baselineSet.delete(name);
+	}
+
+	return [
+		...baseline.filter((name) => baselineSet.has(name)),
+		...current.filter((name) => baselineSet.has(name) && !baseline.includes(name)),
+	];
+}
+
 export default function piForge(pi: ExtensionAPI) {
 	const sharedWebEditors = getSharedWebEditorRegistry();
 	const state = createRuntimeState();
@@ -74,6 +98,7 @@ export default function piForge(pi: ExtensionAPI) {
 	let webEditorCwd: string | undefined;
 	let webEditorPreferredPort: number | undefined;
 	let toolPolicyBaseline: string[] | undefined;
+	let lastAppliedToolPolicy: string[] | undefined;
 	const forgeExtensionState = createForgeExtensionState();
 
 	function activeId(): string | undefined {
@@ -108,14 +133,18 @@ export default function piForge(pi: ExtensionAPI) {
 		return true;
 	}
 
-	async function reloadStacks(ctx: ExtensionContext, preferredId?: string): Promise<void> {
+	async function reloadStacks(
+		ctx: ExtensionContext,
+		preferredId?: string,
+		options: { deferToolPolicy?: boolean } = {},
+	): Promise<void> {
 		if (!ctx.isProjectTrusted()) {
 			const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
 			state.forgeExtensionDiagnostics = unloadDiagnostics;
 			state.forgeExtensionPaths = [];
 			state.stacks = [];
 			state.active = undefined;
-			syncActiveToolPolicy(ctx);
+			if (!options.deferToolPolicy) syncActiveToolPolicy(ctx);
 			ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
 			updateStatus(ctx);
 			return;
@@ -130,7 +159,7 @@ export default function piForge(pi: ExtensionAPI) {
 		}
 		state.active = chooseDefaultStack(state.stacks, preferredId);
 		updateStatus(ctx);
-		syncActiveToolPolicy(ctx);
+		if (!options.deferToolPolicy) syncActiveToolPolicy(ctx);
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
@@ -150,10 +179,15 @@ export default function piForge(pi: ExtensionAPI) {
 			return;
 		}
 
-		const baseline = toolPolicyBaseline ?? pi.getActiveTools();
+		const currentTools = filterKnownTools(pi.getActiveTools());
+		if (toolPolicyBaseline && lastAppliedToolPolicy) {
+			toolPolicyBaseline = reconcileToolPolicyBaseline(toolPolicyBaseline, lastAppliedToolPolicy, currentTools);
+		}
+		const baseline = toolPolicyBaseline ?? currentTools;
 		toolPolicyBaseline ??= [...baseline];
 		const nextTools = applyResourcePolicy(filterKnownTools(baseline), policy);
-		pi.setActiveTools(nextTools);
+		if (!sameToolSet(currentTools, nextTools)) pi.setActiveTools(nextTools);
+		lastAppliedToolPolicy = [...nextTools];
 		if (ctx) {
 			const label = nextTools.length > 0 ? `tools:${nextTools.length}` : "tools:none";
 			ctx.ui.setStatus("pi-forge-tools", ctx.ui.theme.fg(nextTools.length > 0 ? "accent" : "warning", label));
@@ -162,10 +196,23 @@ export default function piForge(pi: ExtensionAPI) {
 
 	function restoreToolPolicy(ctx?: ExtensionContext): void {
 		if (toolPolicyBaseline) {
-			pi.setActiveTools(filterKnownTools(toolPolicyBaseline));
+			const currentTools = filterKnownTools(pi.getActiveTools());
+			if (lastAppliedToolPolicy) {
+				toolPolicyBaseline = reconcileToolPolicyBaseline(toolPolicyBaseline, lastAppliedToolPolicy, currentTools);
+			}
+			const restoredTools = filterKnownTools(toolPolicyBaseline);
+			if (!sameToolSet(currentTools, restoredTools)) pi.setActiveTools(restoredTools);
 			toolPolicyBaseline = undefined;
 		}
+		lastAppliedToolPolicy = undefined;
 		if (ctx) ctx.ui.setStatus("pi-forge-tools", undefined);
+	}
+
+	function toolPolicyBlockReason(toolName: string): string | undefined {
+		const active = state.active;
+		if (!active || !hasResourcePolicy(active.stack.tools)) return undefined;
+		if (applyResourcePolicy([toolName], active.stack.tools).includes(toolName)) return undefined;
+		return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
 	}
 
 	function filterKnownTools(names: string[]): string[] {
@@ -430,6 +477,7 @@ export default function piForge(pi: ExtensionAPI) {
 		notifyActivePreset,
 		syncActiveToolPolicy,
 		restoreActiveToolPolicy: () => restoreToolPolicy(),
+		toolPolicyBlockReason,
 		activeId,
 		persistActiveSelection,
 		recordCompileDiagnostics,

@@ -2,16 +2,31 @@ import { compileMessages, compileSystemPrompt, createPromptVariableStore, getLat
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
+    let startupToolPolicyPending = false;
     pi.on("session_shutdown", async () => {
         // Pi carries the old runtime's active built-in tool names into a replacement
         // runtime. Restore the pre-policy set before reload/session replacement so the
         // replacement pi-forge instance can capture a complete baseline.
+        startupToolPolicyPending = false;
         deps.restoreActiveToolPolicy();
     });
     pi.on("session_start", async (event, ctx) => {
-        await restoreBranchScopedRuntime(ctx, state, deps);
+        startupToolPolicyPending = true;
+        try {
+            await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true });
+        }
+        catch (error) {
+            startupToolPolicyPending = false;
+            throw error;
+        }
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after session " + event.reason);
+    });
+    pi.on("resources_discover", async (_event, ctx) => {
+        if (!startupToolPolicyPending)
+            return;
+        startupToolPolicyPending = false;
+        deps.syncActiveToolPolicy(ctx);
     });
     pi.on("session_tree", async (_event, ctx) => {
         await restoreBranchScopedRuntime(ctx, state, deps);
@@ -28,6 +43,13 @@ export function registerLifecycleHandlers(pi, state, deps) {
         const id = deps.activeId();
         if (id)
             deps.persistActiveSelection(id);
+    });
+    pi.on("input", async () => {
+        deps.syncActiveToolPolicy();
+    });
+    pi.on("tool_call", async (event) => {
+        const reason = deps.toolPolicyBlockReason(event.toolName);
+        return reason ? { block: true, reason } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
         state.currentSystemPromptOptions = event.systemPromptOptions;
@@ -77,12 +99,12 @@ export function registerLifecycleHandlers(pi, state, deps) {
         state.contextRewritePending = false;
     });
 }
-async function restoreBranchScopedRuntime(ctx, state, deps) {
+async function restoreBranchScopedRuntime(ctx, state, deps, options) {
     state.sessionVariables = getRestoredVariables(ctx);
     state.currentVariableStore = undefined;
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;
-    await deps.reloadStacks(ctx, restoredActiveId);
+    await deps.reloadStacks(ctx, restoredActiveId, options);
 }
 function getCurrentBranchEntries(ctx) {
     const leafId = ctx.sessionManager.getLeafId();

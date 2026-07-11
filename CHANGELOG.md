@@ -14,7 +14,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
-- **Tool policy restoration across Pi reload.** pi-forge now restores the pre-policy active tool set during extension shutdown, before Pi snapshots built-in tools for a replacement runtime. This prevents restrictive stacks from leaving built-in tools such as `bash`, `edit`, and `write` inactive after `/reload` followed by `/preset use none`.
+- **Tool policy restoration and enforcement across Pi reload.** pi-forge now restores the pre-policy active tool set during extension shutdown, waits for other extensions to finish their startup tool configuration before recapturing it, and reapplies restrictive policy before input and turns. A tool-call guard blocks disallowed execution even if another extension later calls `setActiveTools()`. This prevents both missing built-ins after `/preset use none` and late-added extension tools bypassing an active stack policy.
 - **Skill-policy semantics.** Validation, documentation, and editor guidance now state that skill policy filters model-visible pi-forge skill listings; it does not disable explicit skill invocation and is not a security boundary.
 
 ### Changed

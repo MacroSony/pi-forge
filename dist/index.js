@@ -17,6 +17,29 @@ function getSharedWebEditorRegistry() {
     globalScope[WEB_EDITOR_GLOBAL_KEY] ??= { byCwd: {} };
     return globalScope[WEB_EDITOR_GLOBAL_KEY];
 }
+function sameToolSet(left, right) {
+    if (left.length !== right.length)
+        return false;
+    const rightSet = new Set(right);
+    return left.every((name) => rightSet.has(name));
+}
+function reconcileToolPolicyBaseline(baseline, lastApplied, current) {
+    const baselineSet = new Set(baseline);
+    const lastAppliedSet = new Set(lastApplied);
+    const currentSet = new Set(current);
+    for (const name of current) {
+        if (!lastAppliedSet.has(name))
+            baselineSet.add(name);
+    }
+    for (const name of lastApplied) {
+        if (!currentSet.has(name))
+            baselineSet.delete(name);
+    }
+    return [
+        ...baseline.filter((name) => baselineSet.has(name)),
+        ...current.filter((name) => baselineSet.has(name) && !baseline.includes(name)),
+    ];
+}
 export default function piForge(pi) {
     const sharedWebEditors = getSharedWebEditorRegistry();
     const state = createRuntimeState();
@@ -24,6 +47,7 @@ export default function piForge(pi) {
     let webEditorCwd;
     let webEditorPreferredPort;
     let toolPolicyBaseline;
+    let lastAppliedToolPolicy;
     const forgeExtensionState = createForgeExtensionState();
     function activeId() {
         return state.active?.stack.id;
@@ -57,14 +81,15 @@ export default function piForge(pi) {
         syncActiveToolPolicy(ctx);
         return true;
     }
-    async function reloadStacks(ctx, preferredId) {
+    async function reloadStacks(ctx, preferredId, options = {}) {
         if (!ctx.isProjectTrusted()) {
             const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
             state.forgeExtensionDiagnostics = unloadDiagnostics;
             state.forgeExtensionPaths = [];
             state.stacks = [];
             state.active = undefined;
-            syncActiveToolPolicy(ctx);
+            if (!options.deferToolPolicy)
+                syncActiveToolPolicy(ctx);
             ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
             updateStatus(ctx);
             return;
@@ -79,7 +104,8 @@ export default function piForge(pi) {
         }
         state.active = chooseDefaultStack(state.stacks, preferredId);
         updateStatus(ctx);
-        syncActiveToolPolicy(ctx);
+        if (!options.deferToolPolicy)
+            syncActiveToolPolicy(ctx);
     }
     function updateStatus(ctx) {
         if (state.active) {
@@ -97,10 +123,16 @@ export default function piForge(pi) {
             restoreToolPolicy(ctx);
             return;
         }
-        const baseline = toolPolicyBaseline ?? pi.getActiveTools();
+        const currentTools = filterKnownTools(pi.getActiveTools());
+        if (toolPolicyBaseline && lastAppliedToolPolicy) {
+            toolPolicyBaseline = reconcileToolPolicyBaseline(toolPolicyBaseline, lastAppliedToolPolicy, currentTools);
+        }
+        const baseline = toolPolicyBaseline ?? currentTools;
         toolPolicyBaseline ??= [...baseline];
         const nextTools = applyResourcePolicy(filterKnownTools(baseline), policy);
-        pi.setActiveTools(nextTools);
+        if (!sameToolSet(currentTools, nextTools))
+            pi.setActiveTools(nextTools);
+        lastAppliedToolPolicy = [...nextTools];
         if (ctx) {
             const label = nextTools.length > 0 ? `tools:${nextTools.length}` : "tools:none";
             ctx.ui.setStatus("pi-forge-tools", ctx.ui.theme.fg(nextTools.length > 0 ? "accent" : "warning", label));
@@ -108,11 +140,26 @@ export default function piForge(pi) {
     }
     function restoreToolPolicy(ctx) {
         if (toolPolicyBaseline) {
-            pi.setActiveTools(filterKnownTools(toolPolicyBaseline));
+            const currentTools = filterKnownTools(pi.getActiveTools());
+            if (lastAppliedToolPolicy) {
+                toolPolicyBaseline = reconcileToolPolicyBaseline(toolPolicyBaseline, lastAppliedToolPolicy, currentTools);
+            }
+            const restoredTools = filterKnownTools(toolPolicyBaseline);
+            if (!sameToolSet(currentTools, restoredTools))
+                pi.setActiveTools(restoredTools);
             toolPolicyBaseline = undefined;
         }
+        lastAppliedToolPolicy = undefined;
         if (ctx)
             ctx.ui.setStatus("pi-forge-tools", undefined);
+    }
+    function toolPolicyBlockReason(toolName) {
+        const active = state.active;
+        if (!active || !hasResourcePolicy(active.stack.tools))
+            return undefined;
+        if (applyResourcePolicy([toolName], active.stack.tools).includes(toolName))
+            return undefined;
+        return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
     }
     function filterKnownTools(names) {
         const known = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -360,6 +407,7 @@ export default function piForge(pi) {
         notifyActivePreset,
         syncActiveToolPolicy,
         restoreActiveToolPolicy: () => restoreToolPolicy(),
+        toolPolicyBlockReason,
         activeId,
         persistActiveSelection,
         recordCompileDiagnostics,

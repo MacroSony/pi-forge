@@ -422,7 +422,7 @@ Prompt stack 可以用栈级 `allow` 或 `deny` 列表限制 active tools，并�
 
 对于工具，`allow` 只保留匹配的 active tools，`deny` 移除匹配的 active tools。对于技能，同样的 pattern 控制哪些技能保留在 pi-forge 渲染的 `skills` slot 中。同一个资源策略不能同时包含非空 `allow` 和 `deny` 列表；混用会产生 validation error。
 
-工具策略会在栈激活期间通过 Pi 的 active tool list 强制执行。pi-forge 会记住之前的 active tools，并在禁用 prompt stack 或切换到没有工具策略的 stack 时恢复。
+工具策略会在栈激活期间通过 Pi 的 active tool list 强制执行。启动和 reload 时，pi-forge 会等其它扩展完成 `session_start` 工具配置，再记录 baseline 并应用 stack 策略；之后还会在用户输入和 turn 开始前重新应用策略。即使其它扩展稍后调用 `setActiveTools()`，tool-call guard 也会阻止模型执行策略之外的工具。外部扩展新增的工具会保留在可恢复 baseline 中，并在禁用 prompt stack 或切换到没有工具策略的 stack 时恢复。
 
 技能策略会过滤 pi-forge `skills` slot 渲染出的技能。它不会禁用显式技能调用，也不是 capability 或安全边界。如果 stack 使用 `mode: "append"` 或 `"prepend"`，Pi base prompt 里可能已经包含未过滤的技能；需要控制模型可见的技能列表时请使用 `mode: "replace"`。
 

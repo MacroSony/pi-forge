@@ -160,10 +160,103 @@ test("session_shutdown restores tool policy baseline before reload", async () =>
 	assert.deepEqual(harness.getActiveTools(), baselineTools);
 
 	await harness.events.session_start({ type: "session_start", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+
+	await harness.events.resources_discover({ type: "resources_discover", cwd, reason: "reload" }, ctx);
 	assert.deepEqual(harness.getActiveTools(), ["read"]);
 
 	await harness.commands.preset.handler("use none", ctx);
 	assert.deepEqual(harness.getActiveTools(), baselineTools);
+});
+
+test("late extension tool configuration is filtered after reload and preserved as the baseline", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const configuredTools = ["read", "bash", "edit", "write", "web_search", "web_image"];
+	const registryTools = [...configuredTools, "web_fetch"];
+	const harness = createHarness({ activeTools: configuredTools, allTools: registryTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), configuredTools);
+
+	// Pi rebuilds with all extension tools active before session_start. A later
+	// extension then applies its config, enabling search/image and disabling fetch.
+	harness.setActiveTools(registryTools);
+	await harness.events.session_start({ type: "session_start", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), registryTools);
+
+	harness.setActiveTools(configuredTools);
+	await harness.events.resources_discover({ type: "resources_discover", cwd, reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), configuredTools);
+});
+
+test("tool policy reasserts before input and blocks disallowed tool calls", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const baselineTools = ["read", "bash", "edit", "write", "web_search"];
+	const harness = createHarness({ activeTools: baselineTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	const callsAfterStartup = harness.setActiveToolsCalls.length;
+	await harness.events.input({ type: "input", text: "hello", source: "interactive" }, ctx);
+	assert.equal(harness.setActiveToolsCalls.length, callsAfterStartup);
+	await harness.events.turn_start({ type: "turn_start", turnIndex: 0, timestamp: 1 }, ctx);
+	assert.equal(harness.setActiveToolsCalls.length, callsAfterStartup);
+
+	harness.registerTool({ name: "late_extension_tool" });
+	harness.setActiveTools(["read", "web_search", "late_extension_tool"]);
+	const blocked = await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "web_search",
+		toolCallId: "call-web",
+		input: {},
+	}, ctx);
+	assert.deepEqual(blocked, {
+		block: true,
+		reason: 'Tool "web_search" is blocked by prompt stack "default".',
+	});
+	assert.equal(await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "read",
+		toolCallId: "call-read",
+		input: {},
+	}, ctx), undefined);
+
+	await harness.events.input({ type: "input", text: "hello", source: "interactive" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), [...baselineTools, "late_extension_tool"]);
+	assert.equal(await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "web_search",
+		toolCallId: "call-web-unrestricted",
+		input: {},
+	}, ctx), undefined);
 });
 
 test("trusted pi-forge extension modules register custom macros and slots before validation", async () => {
