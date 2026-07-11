@@ -3,6 +3,7 @@ export { getRegisteredMacros, registerMacro, type PromptMacroDefinition, type Pr
 export { getRegisteredSlots, registerSlot, type PromptSlotDefinition, type PromptSlotRenderContext, type PromptSlotRenderer, } from "./slot-renderers.ts";
 export { type PromptExtensionArgumentDefinition, type PromptExtensionOptionDefinition, type PromptExtensionOptionsSchema, type PromptExtensionOptionType, type PromptRegistryEntry, } from "./extension-registry.ts";
 export { type ForgeExtensionApi, type ForgeExtensionRegister, } from "./forge-extensions.ts";
+export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, type AgentProfile, type AgentProfileDiagnostic, type AgentProfileDiagnosticLevel, type AgentProfileModelReference, type AgentProfileResolutionResources, type LoadedAgentProfile, type ResolvedAgentProfile, } from "./agent-profile.ts";
 export { createVariableAccess, promptRenderHelpers, type PromptRenderHelpers, type PromptVariableAccess, type PromptVariableScope, type PromptWritableVariableScope, } from "./render-helpers.ts";
 export default function piForge(pi: ExtensionAPI): void;
 //# sourceMappingURL=index.d.ts.map

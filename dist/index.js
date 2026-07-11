@@ -10,6 +10,7 @@ import { createWebEditorHost, loadWebEditorSettings } from "./web-host.js";
 import { startWebEditorServer } from "./web-editor/index.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
+export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, } from "./agent-profile.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 function getSharedWebEditorRegistry() {

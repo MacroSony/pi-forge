@@ -5,6 +5,14 @@ export function promptStacksDir(cwd: string): string {
 	return join(cwd, ".pi", "forge", "prompt-stacks");
 }
 
+export function agentProfilesDir(cwd: string): string {
+	return join(cwd, ".pi", "forge", "agent-profiles");
+}
+
+export function agentProfilePath(cwd: string, id: string): string {
+	return join(agentProfilesDir(cwd), `${id}.json`);
+}
+
 export function forgeDir(cwd: string): string {
 	return join(cwd, ".pi", "forge");
 }

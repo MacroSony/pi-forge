@@ -3,6 +3,12 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 export function promptStacksDir(cwd) {
     return join(cwd, ".pi", "forge", "prompt-stacks");
 }
+export function agentProfilesDir(cwd) {
+    return join(cwd, ".pi", "forge", "agent-profiles");
+}
+export function agentProfilePath(cwd, id) {
+    return join(agentProfilesDir(cwd), `${id}.json`);
+}
 export function forgeDir(cwd) {
     return join(cwd, ".pi", "forge");
 }
