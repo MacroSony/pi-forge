@@ -1,4 +1,4 @@
-import { loadAgentProfiles, resolveAgentProfile } from "./agent-profile.js";
+import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, } from "./agent-profile.js";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.js";
 import { registerLifecycleHandlers } from "./lifecycle.js";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.js";
@@ -6,13 +6,13 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.js";
 import { buildPreview, showText } from "./preview.js";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.js";
-import { registerProfileCommand } from "./profile-command.js";
+import { applyResolvedAgentProfile, registerProfileCommand } from "./profile-command.js";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.js";
 import { createWebEditorHost, loadWebEditorSettings } from "./web-host.js";
 import { startWebEditorServer } from "./web-editor/index.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
-export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, isAgentProfileProvenance, } from "./agent-profile.js";
+export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, isAgentProfileProvenance, } from "./agent-profile.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 function getSharedWebEditorRegistry() {
@@ -118,10 +118,41 @@ export default function piForge(pi) {
             for (const loaded of state.stacks)
                 loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
         }
-        state.active = chooseDefaultStack(state.stacks, preferredId);
+        state.active = options.suppressAutoActivate && preferredId === undefined
+            ? undefined
+            : chooseDefaultStack(state.stacks, preferredId);
         updateStatus(ctx);
         if (!options.deferToolPolicy)
             syncActiveToolPolicy(ctx);
+    }
+    async function activateFreshSessionDefaults(ctx) {
+        const target = chooseAutoActivateAgentProfile(state.profiles);
+        if (!target) {
+            if (hasAutoActivateAgentProfile(state.profiles)) {
+                state.active = undefined;
+                updateStatus(ctx);
+                ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback prompt stack was applied.", "error");
+                return;
+            }
+            state.active = chooseDefaultStack(state.stacks);
+            updateStatus(ctx);
+            return;
+        }
+        const resolved = resolveProfile(target, ctx);
+        if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
+            state.active = undefined;
+            updateStatus(ctx);
+            ctx.ui.notify(`pi-forge: auto-activation profile ${target.profile.id} failed preflight; no profile or fallback prompt stack was applied. ${renderAgentProfileDiagnostics(resolved.diagnostics)}`, "error");
+            return;
+        }
+        const result = await applyResolvedAgentProfile(pi, state, { setActive }, resolved, ctx);
+        if (!result.ok) {
+            const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}.` : "";
+            const detail = result.detail.endsWith(".") ? result.detail : `${result.detail}.`;
+            ctx.ui.notify(`pi-forge: failed to auto-activate profile ${target.profile.id}: ${detail}${rollbackSuffix}`, "error");
+            return;
+        }
+        ctx.ui.notify(`pi-forge: auto-activated profile ${target.profile.id} once for this fresh session${result.warningCount ? ` with ${result.warningCount} warning(s)` : ""}; later manual changes will be preserved.`, result.warningCount ? "warning" : "info");
     }
     function updateStatus(ctx) {
         if (state.active) {
@@ -423,6 +454,7 @@ export default function piForge(pi) {
     }
     registerLifecycleHandlers(pi, state, {
         reloadStacks,
+        activateFreshSessionDefaults,
         refreshWebEditorHost,
         notifyActivePreset,
         syncActiveToolPolicy,

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
 	compileMessages,
 	compileSystemPrompt,
@@ -13,7 +13,8 @@ import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForge
 import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
 
 export interface LifecycleDeps {
-	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean }): Promise<void>;
+	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
+	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
@@ -38,7 +39,9 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	pi.on("session_start", async (event, ctx) => {
 		startupToolPolicyPending = true;
 		try {
-			await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true });
+			const freshSession = shouldAutoActivateForSessionStart(event, ctx);
+			await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
+			if (freshSession) await deps.activateFreshSessionDefaults(ctx);
 		} catch (error) {
 			startupToolPolicyPending = false;
 			throw error;
@@ -143,7 +146,7 @@ async function restoreBranchScopedRuntime(
 	ctx: ExtensionContext,
 	state: PiForgeRuntimeState,
 	deps: LifecycleDeps,
-	options?: { deferToolPolicy?: boolean },
+	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
 	state.sessionVariables = getRestoredVariables(ctx);
 	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
@@ -151,6 +154,12 @@ async function restoreBranchScopedRuntime(
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
 	await deps.reloadStacks(ctx, restoredActiveId, options);
+}
+
+function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {
+	if (event.reason === "new") return true;
+	if (event.reason !== "startup") return false;
+	return getCurrentBranchEntries(ctx).length === 0;
 }
 
 function getRestoredProfileProvenance(ctx: ExtensionContext) {

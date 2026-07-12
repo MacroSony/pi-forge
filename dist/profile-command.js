@@ -93,6 +93,20 @@ async function useProfile(pi, state, deps, id, ctx) {
         await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(resolved.diagnostics));
         return;
     }
+    const result = await applyResolvedAgentProfile(pi, state, deps, resolved, ctx);
+    if (!result.ok) {
+        const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
+        const detail = result.detail;
+        ctx.ui.notify(`pi-forge: failed to apply profile ${id}: ${detail}${detail.endsWith(".") ? "" : "."}${rollbackSuffix}`, "error");
+        return;
+    }
+    const warningCount = result.warningCount;
+    ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+}
+export async function applyResolvedAgentProfile(pi, state, deps, resolved, ctx) {
+    if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
+        return { ok: false, detail: "Profile failed preflight; runtime state was not changed", rollbackErrors: [] };
+    }
     const previousModel = ctx.model;
     const previousThinkingLevel = pi.getThinkingLevel();
     const previousPromptStack = state.active?.stack.id ?? null;
@@ -117,10 +131,7 @@ async function useProfile(pi, state, deps, id, ctx) {
             promptStack: previousPromptStack,
             modelChanged,
         });
-        const detail = error instanceof Error ? error.message : String(error);
-        const rollbackSuffix = rollbackErrors.length > 0 ? ` Rollback problems: ${rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
-        ctx.ui.notify(`pi-forge: failed to apply profile ${id}: ${detail}${detail.endsWith(".") ? "" : "."}${rollbackSuffix}`, "error");
-        return;
+        return { ok: false, detail: error instanceof Error ? error.message : String(error), rollbackErrors };
     }
     const provenance = {
         profileId: resolved.loaded.profile.id,
@@ -135,8 +146,10 @@ async function useProfile(pi, state, deps, id, ctx) {
     };
     state.lastAppliedProfile = provenance;
     pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
-    const warningCount = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length;
-    ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+    return {
+        ok: true,
+        warningCount: resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
+    };
 }
 async function rollbackProfileApplication(pi, deps, ctx, previous) {
     const errors = [];
@@ -215,6 +228,7 @@ async function saveProfile(pi, state, deps, rest, ctx) {
         id,
         name: existing?.profile.name ?? id,
         description: existing?.profile.description,
+        autoActivate: existing?.profile.autoActivate,
         model: { provider: ctx.model.provider, id: ctx.model.id },
         thinkingLevel: pi.getThinkingLevel(),
         promptStack: state.active?.stack.id ?? null,
@@ -284,9 +298,12 @@ function renderProfileList(state, deps, ctx) {
         const resolved = deps.resolveProfile(loaded, ctx);
         const errors = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "error").length;
         const warnings = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length;
-        const marker = state.lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile";
+        const markers = [
+            loaded.profile.autoActivate === true ? "auto" : undefined,
+            state.lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile",
+        ].filter((marker) => !!marker);
         const suffix = errors || warnings ? ` (${errors} errors, ${warnings} warnings)` : "";
-        lines.push(`${loaded.profile.id}${loaded.profile.name ? ` — ${loaded.profile.name}` : ""} [${marker}]${suffix}`);
+        lines.push(`${loaded.profile.id}${loaded.profile.name ? ` — ${loaded.profile.name}` : ""} [${markers.join(", ")}]${suffix}`);
         lines.push(`  ${loaded.filePath}`);
     }
     lines.push("", "Commands:", "  /profile use <id>", "  /profile save <id> [--overwrite]", "  /profile status", "  /profile preview <id>", "  /profile validate [id]", "  /profile reload", "  /profile forget");
@@ -306,6 +323,7 @@ function renderProfilePreview(pi, state, deps, resolved, ctx) {
         `Profile: ${profile.id}${profile.name ? ` — ${profile.name}` : ""}`,
         `Source: ${resolved.loaded.filePath}`,
         profile.description ? `Description: ${profile.description}` : undefined,
+        `Auto-activate for fresh sessions: ${profile.autoActivate === true ? "yes" : "no"}`,
         "",
         `Model: ${currentModel} → ${targetModel}`,
         `Thinking level: ${pi.getThinkingLevel()} → ${resolved.effectiveThinkingLevel}`,

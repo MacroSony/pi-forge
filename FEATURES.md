@@ -14,16 +14,18 @@ This file tracks the currently implemented feature surface for agent profiles, t
 ## Agent Profiles
 
 - Strict schema-versioned project profiles from `.pi/forge/agent-profiles/*.json`.
-- Profile v1 stores an exact provider/model reference, thinking level, and prompt-stack ID or `null`, with optional name and description metadata.
+- Profile v1 stores an exact provider/model reference, thinking level, and prompt-stack ID or `null`, with optional name, description, and fresh-session auto-activation metadata.
 - Unsupported fields are errors so unimplemented generation, tool, skill, or runner settings cannot become inert configuration.
 - Tool policy and model-visible skill filtering remain owned by the referenced prompt stack rather than duplicated in profiles.
 - Pure profile resolution checks model existence, configured authentication, thinking-level clamping, prompt-stack validity, and unmatched tool allow patterns before application.
 - `/profile use <id>` applies model, thinking level, and prompt stack once after complete preflight; later manual runtime changes are preserved.
+- At most one profile may set `autoActivate: true`; it applies once for a fresh session and takes precedence over standalone prompt-stack autoload, while restored branch state takes precedence over both.
+- Invalid or ambiguous profile auto-activation fails closed without applying a fallback stack or a partial profile. With no auto-activation profile, existing prompt-stack autoload remains the compatibility fallback.
 - Failed application performs best-effort rollback and never records successful provenance.
 - `/profile save <id> [--overwrite]` captures current runtime fields without tools, secrets, history, or provenance, preserving existing name/description metadata.
 - `/profile preview <id>` reports resolved changes, prompt-stack tool policy, effective tools, and diagnostics without mutation.
 - `/profile status` compares the current runtime with the last-applied resolved snapshot and reports source-definition changes separately.
-- Last-applied provenance is branch-scoped session metadata used only for drift reporting; reload and tree navigation never reapply a profile.
+- Last-applied provenance is branch-scoped session metadata used only for drift reporting; reload, resume, tree navigation, and compaction never reapply a profile.
 - `/profile reload` reloads definitions without applying them, and `/profile forget` clears provenance without changing runtime state.
 - Project trust gates profile loading, application, and writes.
 

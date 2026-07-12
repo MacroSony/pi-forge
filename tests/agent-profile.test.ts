@@ -8,6 +8,8 @@ import {
 	AGENT_PROFILE_TYPE,
 	agentProfileFingerprint,
 	agentProfilesDir,
+	chooseAutoActivateAgentProfile,
+	hasAutoActivateAgentProfile,
 	isResolvedAgentProfileUsable,
 	isUsableAgentProfile,
 	loadAgentProfiles,
@@ -53,6 +55,7 @@ test("loadAgentProfiles reads a valid project profile", () => {
 		id: "reviewer",
 		name: "Reviewer",
 		description: "Reviews code.",
+		autoActivate: true,
 		model: { provider: "test-provider", id: "test-model" },
 		thinkingLevel: "high",
 		promptStack: "reviewer",
@@ -63,8 +66,34 @@ test("loadAgentProfiles reads a valid project profile", () => {
 	assert.equal(profiles.length, 1);
 	assert.equal(profiles[0]?.profile.id, "reviewer");
 	assert.equal(profiles[0]?.profile.promptStack, "reviewer");
+	assert.equal(profiles[0]?.profile.autoActivate, true);
+	assert.equal(chooseAutoActivateAgentProfile(profiles)?.profile.id, "reviewer");
+	assert.equal(hasAutoActivateAgentProfile(profiles), true);
 	assert.equal(isUsableAgentProfile(profiles[0]!), true);
 	assert.equal(profiles[0]?.diagnostics.length, 0);
+});
+
+test("loadAgentProfiles rejects ambiguous auto-activation", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-"));
+	for (const name of ["reviewer", "writer"]) {
+		writeProfile(cwd, `${name}.json`, {
+			schemaVersion: 1,
+			type: AGENT_PROFILE_TYPE,
+			id: name,
+			autoActivate: true,
+			model: { provider: "test-provider", id: "test-model" },
+			thinkingLevel: "high",
+			promptStack: null,
+		});
+	}
+
+	const profiles = loadAgentProfiles(cwd);
+	assert.equal(chooseAutoActivateAgentProfile(profiles), undefined);
+	assert.equal(hasAutoActivateAgentProfile(profiles), true);
+	for (const loaded of profiles) {
+		assert.match(loaded.diagnostics.find((diagnostic) => diagnostic.field === "autoActivate")?.message ?? "", /exactly one is allowed/);
+		assert.equal(isUsableAgentProfile(loaded), false);
+	}
 });
 
 test("loadAgentProfiles rejects inert and malformed fields", () => {
@@ -75,6 +104,7 @@ test("loadAgentProfiles rejects inert and malformed fields", () => {
 		id: "../bad",
 		model: { provider: "", id: "model", topP: 0.9 },
 		thinkingLevel: "turbo",
+		autoActivate: "yes",
 		tools: ["read"],
 	});
 
@@ -88,6 +118,7 @@ test("loadAgentProfiles rejects inert and malformed fields", () => {
 	assert.match(messages, /type must be "pi-forge\.agent-profile"/);
 	assert.match(messages, /Profile id must start/);
 	assert.match(messages, /thinkingLevel must be one of/);
+	assert.match(messages, /autoActivate must be a boolean/);
 	assert.match(messages, /promptStack is required/);
 });
 

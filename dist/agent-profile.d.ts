@@ -13,6 +13,7 @@ export interface AgentProfile {
     id: string;
     name?: string;
     description?: string;
+    autoActivate?: boolean;
     model: AgentProfileModelReference;
     thinkingLevel: ThinkingLevel;
     promptStack: string | null;
@@ -56,6 +57,8 @@ export interface AgentProfileProvenance {
 export { agentProfilePath, agentProfilesDir } from "./storage.ts";
 export declare function isValidAgentProfileId(id: string): boolean;
 export declare function loadAgentProfiles(cwd: string): LoadedAgentProfile[];
+export declare function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined;
+export declare function hasAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): boolean;
 export declare function loadAgentProfileFile(filePath: string): LoadedAgentProfile;
 export declare function validateAgentProfile(profile: AgentProfile): AgentProfileDiagnostic[];
 export declare function resolveAgentProfile(loaded: LoadedAgentProfile, resources: AgentProfileResolutionResources): ResolvedAgentProfile;

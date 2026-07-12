@@ -104,6 +104,76 @@ test("/profile use applies once, previews effective tools, and reports runtime d
 	assert.match(status, /reviewer-stack → \(none\)/);
 });
 
+test("fresh sessions auto-activate one profile instead of the standalone default stack", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+	const currentModel = model("test", "current");
+	const targetModel = model("test", "target");
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "standalone-default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeStack(cwd, "worker.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "worker-stack",
+		autoActivate: false,
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeProfile(cwd, "worker.json", { ...profile("worker", targetModel, "worker-stack"), autoActivate: true });
+	const { harness, context } = runtime(cwd, currentModel, [currentModel, targetModel]);
+
+	await startSession(harness, context.ctx);
+
+	assert.equal(harness.getCurrentModel(), targetModel);
+	assert.equal(harness.getThinkingLevel(), "high");
+	assert.equal(context.statuses["pi-forge"], "stack:worker-stack");
+	assert.ok(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE));
+	assert.match(context.notifications.find((entry) => /auto-activated profile/.test(entry.message))?.message ?? "", /worker/);
+});
+
+test("an auto-activated profile with a null prompt stack suppresses standalone stack autoload", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+	const currentModel = model("test", "current");
+	const targetModel = model("test", "target");
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "standalone-default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	writeProfile(cwd, "worker.json", { ...profile("worker", targetModel, null), autoActivate: true });
+	const { harness, context } = runtime(cwd, currentModel, [currentModel, targetModel]);
+
+	await startSession(harness, context.ctx);
+
+	assert.equal(harness.getCurrentModel(), targetModel);
+	assert.equal(context.statuses["pi-forge"], undefined);
+	assert.ok(harness.appended.some((entry) => entry.type === "pi-forge-prompt-stack-state" && (entry.data as { activeStackId?: string }).activeStackId === "none"));
+});
+
+test("ambiguous profile autoload fails closed instead of selecting a fallback stack", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+	const currentModel = model("test", "current");
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "standalone-default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	for (const id of ["one", "two"]) {
+		writeProfile(cwd, `${id}.json`, { ...profile(id, currentModel, null), autoActivate: true });
+	}
+	const { harness, context } = runtime(cwd, currentModel, [currentModel]);
+
+	await startSession(harness, context.ctx);
+
+	assert.equal(context.statuses["pi-forge"], undefined);
+	assert.equal(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE), false);
+	assert.match(context.notifications.find((entry) => /multiple agent profiles/.test(entry.message))?.message ?? "", /no profile or fallback prompt stack/);
+});
+
 test("/profile use fails preflight without mutating runtime", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
 	const currentModel = model("test", "available");
@@ -176,6 +246,7 @@ test("/profile save captures current state, preserves metadata, and does not cre
 
 	saved.name = "Captured Writer";
 	saved.description = "Writes project prose.";
+	saved.autoActivate = true;
 	writeFileSync(path, JSON.stringify(saved, null, 2));
 	await harness.commands.profile.handler("reload", context.ctx);
 	harness.setThinkingLevel("low");
@@ -183,6 +254,7 @@ test("/profile save captures current state, preserves metadata, and does not cre
 	const overwritten = JSON.parse(readFileSync(path, "utf8"));
 	assert.equal(overwritten.name, "Captured Writer");
 	assert.equal(overwritten.description, "Writes project prose.");
+	assert.equal(overwritten.autoActivate, true);
 	assert.equal(overwritten.thinkingLevel, "low");
 
 	await harness.commands.profile.handler("status", context.ctx);
@@ -219,7 +291,7 @@ test("session restoration restores profile provenance without applying its runti
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
 	const currentModel = model("test", "current");
 	const targetModel = model("test", "target");
-	const storedProfile = profile("worker", targetModel, null);
+	const storedProfile = { ...profile("worker", targetModel, null), autoActivate: true };
 	writeProfile(cwd, "worker.json", storedProfile);
 	const provenance: AgentProfileProvenance = {
 		profileId: "worker",

@@ -14,7 +14,10 @@ export function registerLifecycleHandlers(pi, state, deps) {
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;
         try {
-            await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true });
+            const freshSession = shouldAutoActivateForSessionStart(event, ctx);
+            await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
+            if (freshSession)
+                await deps.activateFreshSessionDefaults(ctx);
         }
         catch (error) {
             startupToolPolicyPending = false;
@@ -107,6 +110,13 @@ async function restoreBranchScopedRuntime(ctx, state, deps, options) {
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;
     await deps.reloadStacks(ctx, restoredActiveId, options);
+}
+function shouldAutoActivateForSessionStart(event, ctx) {
+    if (event.reason === "new")
+        return true;
+    if (event.reason !== "startup")
+        return false;
+    return getCurrentBranchEntries(ctx).length === 0;
 }
 function getRestoredProfileProvenance(ctx) {
     const entries = getCurrentBranchEntries(ctx);

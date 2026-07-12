@@ -5,7 +5,7 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 ## Current Read
 
 - `0.3.2` is the current released baseline. Prompt stacks, storage migration, tool policy, model-visible skill filtering, regex MVP, SillyTavern import, web editor, payload inspection, trusted macro/slot extensions, and command/lifecycle coverage are shipped.
-- The current 0.4 branch implements strict project-local agent profiles with exact model, thinking-level, and prompt-stack references; one-shot save/use; preflight and preview; branch-scoped last-applied provenance; and runtime drift reporting.
+- The current 0.4 branch implements strict project-local agent profiles with exact model, thinking-level, and prompt-stack references; one-shot save/use and fresh-session auto-activation; preflight and preview; branch-scoped last-applied provenance; and runtime drift reporting.
 - The web editor page shell, static styles, and browser client are split. Browser smoke verification now gates larger UI work.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
 - Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
@@ -24,7 +24,7 @@ Recommended ordering:
 Risk calls:
 
 - Keep prompt-stack JSON declarative. Trusted executable customization belongs in `~/.pi/forge/extensions`, `.pi/forge/extensions`, or reusable packages.
-- Treat an agent profile as a one-shot preset. Applying it configures Pi once; subsequent user changes must not be continuously overwritten.
+- Treat an agent profile as a one-shot preset. Manual use or fresh-session auto-activation configures Pi once; subsequent user changes must not be continuously overwritten.
 - Keep tool names out of agent profiles. The referenced prompt stack is the single source of truth for strict tool policy while active.
 - Treat skill policy as model-visible prompt filtering only. It does not disable explicit skill invocation or provide a security boundary.
 - Keep generation parameters, model fallbacks, global storage, and runner limits out of profile v1 until a concrete consumer can enforce their semantics consistently.

@@ -91,6 +91,7 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
   "id": "reviewer",
   "name": "Reviewer",
   "description": "只审查代码，不做修改。",
+  "autoActivate": true,
   "model": {
     "provider": "provider-id",
     "id": "model-id"
@@ -100,9 +101,11 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 }
 ```
 
+`autoActivate: true` 会在 Pi 启动全新 session 时一次性应用整个 profile。最多只能有一个 profile 请求自动应用。自动应用的 profile 优先于独立 prompt stack 的自动加载，即使它的 `promptStack` 为 `null` 也不会回退；如果没有 profile 请求自动应用，则继续使用现有的 `default.json`/`autoActivate` stack 规则。已恢复的 session branch 选择优先于这两种自动加载机制。
+
 `promptStack` 可以为 `null`。Profile v1 不保存工具名或 skill 列表；引用的 prompt stack 是工具策略和模型可见 skill 过滤的唯一来源。校验会拒绝不支持的字段，避免悄悄保留无效的生成参数或 runner 配置。
 
-`/profile preview <id>` 会解析模型、认证、思考等级支持、prompt stack 和最终工具集，但不会改变运行时。`/profile status` 显示上次应用的 profile 和当前 drift；profile provenance 会跟随 session branch 恢复用于状态显示，但 reload 或 tree navigation 绝不会自动重新应用 profile。
+`/profile preview <id>` 会解析模型、认证、思考等级支持、prompt stack 和最终工具集，但不会改变运行时。`/profile status` 显示上次应用的 profile 和当前 drift；profile provenance 会跟随 session branch 恢复用于状态显示，但 reload、resume、tree navigation 或 compaction 绝不会自动重新应用 profile。全新 session 的自动应用仍然是一次性的，因此之后的手动修改会被保留。
 
 ## 使用场景
 

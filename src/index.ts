@@ -1,5 +1,14 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadAgentProfiles, resolveAgentProfile, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
+import {
+	chooseAutoActivateAgentProfile,
+	hasAutoActivateAgentProfile,
+	isResolvedAgentProfileUsable,
+	loadAgentProfiles,
+	renderAgentProfileDiagnostics,
+	resolveAgentProfile,
+	type LoadedAgentProfile,
+	type ResolvedAgentProfile,
+} from "./agent-profile.ts";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.ts";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "./loader.ts";
@@ -7,7 +16,7 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { buildPreview, showText } from "./preview.ts";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.ts";
-import { registerProfileCommand } from "./profile-command.ts";
+import { applyResolvedAgentProfile, registerProfileCommand } from "./profile-command.ts";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
@@ -44,6 +53,8 @@ export {
 	agentProfileFingerprint,
 	agentProfilePath,
 	agentProfilesDir,
+	chooseAutoActivateAgentProfile,
+	hasAutoActivateAgentProfile,
 	hasAgentProfileErrors,
 	isResolvedAgentProfileUsable,
 	isUsableAgentProfile,
@@ -177,7 +188,7 @@ export default function piForge(pi: ExtensionAPI) {
 	async function reloadStacks(
 		ctx: ExtensionContext,
 		preferredId?: string,
-		options: { deferToolPolicy?: boolean } = {},
+		options: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean } = {},
 	): Promise<void> {
 		if (!ctx.isProjectTrusted()) {
 			const unloadDiagnostics = unloadForgeExtensions(forgeExtensionState);
@@ -200,9 +211,50 @@ export default function piForge(pi: ExtensionAPI) {
 		if (state.forgeExtensionDiagnostics.length > 0) {
 			for (const loaded of state.stacks) loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);
 		}
-		state.active = chooseDefaultStack(state.stacks, preferredId);
+		state.active = options.suppressAutoActivate && preferredId === undefined
+			? undefined
+			: chooseDefaultStack(state.stacks, preferredId);
 		updateStatus(ctx);
 		if (!options.deferToolPolicy) syncActiveToolPolicy(ctx);
+	}
+
+	async function activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void> {
+		const target = chooseAutoActivateAgentProfile(state.profiles);
+		if (!target) {
+			if (hasAutoActivateAgentProfile(state.profiles)) {
+				state.active = undefined;
+				updateStatus(ctx);
+				ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback prompt stack was applied.", "error");
+				return;
+			}
+			state.active = chooseDefaultStack(state.stacks);
+			updateStatus(ctx);
+			return;
+		}
+
+		const resolved = resolveProfile(target, ctx);
+		if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
+			state.active = undefined;
+			updateStatus(ctx);
+			ctx.ui.notify(
+				`pi-forge: auto-activation profile ${target.profile.id} failed preflight; no profile or fallback prompt stack was applied. ${renderAgentProfileDiagnostics(resolved.diagnostics)}`,
+				"error",
+			);
+			return;
+		}
+
+		const result = await applyResolvedAgentProfile(pi, state, { setActive }, resolved, ctx);
+		if (!result.ok) {
+			const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}.` : "";
+			const detail = result.detail.endsWith(".") ? result.detail : `${result.detail}.`;
+			ctx.ui.notify(`pi-forge: failed to auto-activate profile ${target.profile.id}: ${detail}${rollbackSuffix}`, "error");
+			return;
+		}
+
+		ctx.ui.notify(
+			`pi-forge: auto-activated profile ${target.profile.id} once for this fresh session${result.warningCount ? ` with ${result.warningCount} warning(s)` : ""}; later manual changes will be preserved.`,
+			result.warningCount ? "warning" : "info",
+		);
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
@@ -521,6 +573,7 @@ export default function piForge(pi: ExtensionAPI) {
 
 	registerLifecycleHandlers(pi, state, {
 		reloadStacks,
+		activateFreshSessionDefaults,
 		refreshWebEditorHost,
 		notifyActivePreset,
 		syncActiveToolPolicy,

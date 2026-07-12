@@ -27,6 +27,10 @@ export interface ProfileCommandDeps {
 	previewToolNames(stack: PromptStack | undefined): string[];
 }
 
+export type ProfileApplicationResult =
+	| { ok: true; warningCount: number }
+	| { ok: false; detail: string; rollbackErrors: string[] };
+
 export function registerProfileCommand(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: ProfileCommandDeps): void {
 	pi.registerCommand("profile", {
 		description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget",
@@ -145,6 +149,29 @@ async function useProfile(
 		return;
 	}
 
+	const result = await applyResolvedAgentProfile(pi, state, deps, resolved, ctx);
+	if (!result.ok) {
+		const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
+		const detail = result.detail;
+		ctx.ui.notify(`pi-forge: failed to apply profile ${id}: ${detail}${detail.endsWith(".") ? "" : "."}${rollbackSuffix}`, "error");
+		return;
+	}
+
+	const warningCount = result.warningCount;
+	ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+}
+
+export async function applyResolvedAgentProfile(
+	pi: ExtensionAPI,
+	state: PiForgeRuntimeState,
+	deps: Pick<ProfileCommandDeps, "setActive">,
+	resolved: ResolvedAgentProfile,
+	ctx: ExtensionContext,
+): Promise<ProfileApplicationResult> {
+	if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
+		return { ok: false, detail: "Profile failed preflight; runtime state was not changed", rollbackErrors: [] };
+	}
+
 	const previousModel = ctx.model;
 	const previousThinkingLevel = pi.getThinkingLevel();
 	const previousPromptStack = state.active?.stack.id ?? null;
@@ -171,10 +198,7 @@ async function useProfile(
 			promptStack: previousPromptStack,
 			modelChanged,
 		});
-		const detail = error instanceof Error ? error.message : String(error);
-		const rollbackSuffix = rollbackErrors.length > 0 ? ` Rollback problems: ${rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
-		ctx.ui.notify(`pi-forge: failed to apply profile ${id}: ${detail}${detail.endsWith(".") ? "" : "."}${rollbackSuffix}`, "error");
-		return;
+		return { ok: false, detail: error instanceof Error ? error.message : String(error), rollbackErrors };
 	}
 
 	const provenance: AgentProfileProvenance = {
@@ -191,14 +215,16 @@ async function useProfile(
 	state.lastAppliedProfile = provenance;
 	pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
 
-	const warningCount = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length;
-	ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+	return {
+		ok: true,
+		warningCount: resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
+	};
 }
 
 async function rollbackProfileApplication(
 	pi: ExtensionAPI,
-	deps: ProfileCommandDeps,
-	ctx: ExtensionCommandContext,
+	deps: Pick<ProfileCommandDeps, "setActive">,
+	ctx: ExtensionContext,
 	previous: { model: ExtensionContext["model"]; thinkingLevel: ReturnType<ExtensionAPI["getThinkingLevel"]>; promptStack: string | null; modelChanged: boolean },
 ): Promise<string[]> {
 	const errors: string[] = [];
@@ -281,6 +307,7 @@ async function saveProfile(
 		id,
 		name: existing?.profile.name ?? id,
 		description: existing?.profile.description,
+		autoActivate: existing?.profile.autoActivate,
 		model: { provider: ctx.model.provider, id: ctx.model.id },
 		thinkingLevel: pi.getThinkingLevel(),
 		promptStack: state.active?.stack.id ?? null,
@@ -367,9 +394,12 @@ function renderProfileList(state: PiForgeRuntimeState, deps: ProfileCommandDeps,
 		const resolved = deps.resolveProfile(loaded, ctx);
 		const errors = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "error").length;
 		const warnings = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length;
-		const marker = state.lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile";
+		const markers = [
+			loaded.profile.autoActivate === true ? "auto" : undefined,
+			state.lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile",
+		].filter((marker): marker is string => !!marker);
 		const suffix = errors || warnings ? ` (${errors} errors, ${warnings} warnings)` : "";
-		lines.push(`${loaded.profile.id}${loaded.profile.name ? ` — ${loaded.profile.name}` : ""} [${marker}]${suffix}`);
+		lines.push(`${loaded.profile.id}${loaded.profile.name ? ` — ${loaded.profile.name}` : ""} [${markers.join(", ")}]${suffix}`);
 		lines.push(`  ${loaded.filePath}`);
 	}
 
@@ -408,6 +438,7 @@ function renderProfilePreview(
 		`Profile: ${profile.id}${profile.name ? ` — ${profile.name}` : ""}`,
 		`Source: ${resolved.loaded.filePath}`,
 		profile.description ? `Description: ${profile.description}` : undefined,
+		`Auto-activate for fresh sessions: ${profile.autoActivate === true ? "yes" : "no"}`,
 		"",
 		`Model: ${currentModel} → ${targetModel}`,
 		`Thinking level: ${pi.getThinkingLevel()} → ${resolved.effectiveThinkingLevel}`,

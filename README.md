@@ -91,6 +91,7 @@ A profile can also be written directly:
   "id": "reviewer",
   "name": "Reviewer",
   "description": "Reviews code without making changes.",
+  "autoActivate": true,
   "model": {
     "provider": "provider-id",
     "id": "model-id"
@@ -100,9 +101,11 @@ A profile can also be written directly:
 }
 ```
 
+`autoActivate: true` applies the complete profile once when Pi starts a fresh session. At most one profile may request auto-activation. An auto-activated profile takes precedence over standalone prompt-stack autoload, including when its `promptStack` is `null`; if no profile requests auto-activation, the existing `default.json`/`autoActivate` stack behavior remains the fallback. Restored branch selections take precedence over both mechanisms.
+
 `promptStack` may be `null`. Tool names and skill lists do not belong in profile v1: the referenced prompt stack is the single source of truth for tool policy and model-visible skill filtering. Profile validation rejects unsupported fields rather than silently retaining inert generation or runner settings.
 
-`/profile preview <id>` resolves the model, authentication, thinking-level support, prompt stack, and effective tools without changing runtime state. `/profile status` reports the last-applied profile and current drift; it deliberately does not describe a profile as active. Provenance follows the session branch for status purposes but never causes automatic reapplication during reload or tree navigation.
+`/profile preview <id>` resolves the model, authentication, thinking-level support, prompt stack, and effective tools without changing runtime state. `/profile status` reports the last-applied profile and current drift; it deliberately does not describe a profile as active. Provenance follows the session branch for status purposes but never causes automatic reapplication during reload, resume, tree navigation, or compaction. Fresh-session auto-activation is still one-shot, so later manual changes are preserved.
 
 ## Use cases
 

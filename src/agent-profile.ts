@@ -12,7 +12,7 @@ export const AGENT_PROFILE_THINKING_LEVELS = ["off", "minimal", "low", "medium",
 
 const VALID_THINKING_LEVELS = new Set<ThinkingLevel>(AGENT_PROFILE_THINKING_LEVELS);
 const PROFILE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const PROFILE_FIELDS = new Set(["schemaVersion", "type", "id", "name", "description", "model", "thinkingLevel", "promptStack"]);
+const PROFILE_FIELDS = new Set(["schemaVersion", "type", "id", "name", "description", "model", "thinkingLevel", "promptStack", "autoActivate"]);
 const MODEL_FIELDS = new Set(["provider", "id"]);
 
 export interface AgentProfileModelReference {
@@ -26,6 +26,7 @@ export interface AgentProfile {
 	id: string;
 	name?: string;
 	description?: string;
+	autoActivate?: boolean;
 	model: AgentProfileModelReference;
 	thinkingLevel: ThinkingLevel;
 	promptStack: string | null;
@@ -93,7 +94,17 @@ export function loadAgentProfiles(cwd: string): LoadedAgentProfile[] {
 
 	const profiles = entries.map((name) => loadAgentProfileFile(join(dir, name)));
 	annotateDuplicateProfileIds(profiles);
+	annotateAutoActivateConflicts(profiles);
 	return profiles;
+}
+
+export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined {
+	const candidates = profiles.filter((loaded) => loaded.profile.autoActivate === true);
+	return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+export function hasAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): boolean {
+	return profiles.some((loaded) => loaded.profile.autoActivate === true);
 }
 
 export function loadAgentProfileFile(filePath: string): LoadedAgentProfile {
@@ -268,6 +279,19 @@ function annotateDuplicateProfileIds(profiles: LoadedAgentProfile[]): void {
 	}
 }
 
+function annotateAutoActivateConflicts(profiles: LoadedAgentProfile[]): void {
+	const candidates = profiles.filter((loaded) => loaded.profile.autoActivate === true);
+	if (candidates.length <= 1) return;
+	const files = candidates.map((loaded) => basename(loaded.filePath)).join(", ");
+	for (const loaded of candidates) {
+		loaded.diagnostics.push({
+			level: "error",
+			field: "autoActivate",
+			message: `Multiple profiles request auto-activation (${files}); exactly one is allowed.`,
+		});
+	}
+}
+
 function normalizeAgentProfile(raw: unknown, filePath: string, diagnostics: AgentProfileDiagnostic[]): AgentProfile {
 	if (!isPlainObject(raw)) {
 		diagnostics.push({ level: "error", message: "Agent profile root must be a JSON object." });
@@ -292,6 +316,9 @@ function normalizeAgentProfile(raw: unknown, filePath: string, diagnostics: Agen
 	if (raw.description !== undefined && typeof raw.description !== "string") {
 		diagnostics.push({ level: "error", field: "description", message: "description must be a string when provided." });
 	}
+	if (raw.autoActivate !== undefined && typeof raw.autoActivate !== "boolean") {
+		diagnostics.push({ level: "error", field: "autoActivate", message: "autoActivate must be a boolean when provided." });
+	}
 
 	return {
 		schemaVersion: 1,
@@ -299,6 +326,7 @@ function normalizeAgentProfile(raw: unknown, filePath: string, diagnostics: Agen
 		id: id ?? basename(filePath, ".json"),
 		name: typeof raw.name === "string" ? raw.name : undefined,
 		description: typeof raw.description === "string" ? raw.description : undefined,
+		autoActivate: typeof raw.autoActivate === "boolean" ? raw.autoActivate : undefined,
 		model,
 		thinkingLevel,
 		promptStack,
