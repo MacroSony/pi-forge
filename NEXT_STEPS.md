@@ -16,10 +16,12 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 Recommended ordering:
 
 1. Exercise the profile CLI against real installed providers and extension toolsets, then fix any compatibility findings without expanding the schema.
-2. Add profile UI on top of the stable loader/resolver/application core, extending browser smoke coverage with each workflow.
-3. Add a narrow subagent adapter boundary without requiring a subagent package.
-4. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
-5. Defer provider-payload rewriting, true display regex, and an owned subagent runner until stable hooks and concrete use cases exist.
+2. Extract a shared typed profile repository/application/status service, then make commands consume it without behavior changes.
+3. Run an internal real Pi SDK backend spike before exporting any subagent contract.
+4. Build profile UI on the shared service while revising the subagent boundary around backend preflight and a host-prepared execution plan.
+5. Stabilize and export only the request/response pieces demonstrated by the real spike, then add fake-backend conformance coverage and optional registration.
+6. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
+7. Defer provider-payload rewriting, true display regex, parent run tools, and an owned subagent runner until enforcement and task-preservation semantics are demonstrated.
 
 Risk calls:
 
@@ -37,6 +39,8 @@ Goal: expose profile management only after profile core and CLI semantics are st
 
 Potential work:
 
+- Extract shared typed load/capture/save/update/delete, application/rollback, preview, provenance, and runtime-drift operations before adding UI handlers.
+- Refactor `/profile` commands to render shared typed results rather than owning storage and application behavior.
 - Add a profile list/detail view beside prompt stacks.
 - Reuse resource pickers where their semantics actually match the decided profile fields.
 - Add model/thinking controls from available model registry data.
@@ -53,17 +57,27 @@ Done criteria:
 
 Goal: make stored profiles useful to subagent systems without committing to one runner.
 
+The accepted high-level decisions and draft executable contract are recorded in [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md). The backend-facing types remain internal until a real Pi SDK or subprocess spike validates them.
+
 Boundaries:
 
 - Do not hard-depend on `pi-subagents`, `@gotgenes/pi-subagents`, Archimedes, or another runner in 0.4.
 - Keep profile definition, validation, resolution, preview, and export as pi-forge's responsibility.
-- Resolve provider plus model ID, thinking level, loaded prompt-stack/tool policy, and diagnostics into a stable adapter-facing object. The runner supplies its available tool baseline; the stack policy filters it.
-- Do not export parent chat history or dynamic compiled context by default.
+- Split host profile/stack/dependency resolution from backend model/auth/tool/access preflight.
+- Prepare compiled prompts/messages, effective tools, materialized access, enforced limits, diagnostics, and stable execution provenance in an immutable execution plan before backend execution.
+- Start subagents with a clean context. Do not export parent chat history or dynamic compiled context by default; allow only explicit bounded summaries, excerpts, tool results, and resource references with provenance.
+- Preserve the delegated task as a protected final user message after unrestricted stack message compilation.
+- Keep access policy and per-run limits in the request rather than the reusable profile; use opaque workspace handles and require granular backend enforcement receipts.
+- Return compact output/status/artifact data to the parent as a tool result; retain normalized history behind an inspectable trace reference.
 - Verify any optional event-bus adapter against the supported Pi version range before adopting it.
 
 Done criteria:
 
-- The resolved profile object is independent of the web editor and command handlers.
+- Shared profile operations are independent of the web editor and command handlers.
+- A real internal adapter spike validates model/auth preflight, prompt preparation, tools, access, cancellation, and media before public contract export.
+- Serializable request, execution-plan, response, and enforcement-receipt contracts have pure validation, stable canonical fingerprints, and fake-backend conformance coverage.
+- Parent context selection is explicit, bounded, provenance-preserving, and excludes hidden reasoning.
+- The final task and required media survive all supported prompt-stack layouts.
 - No subagent package is required to install or use pi-forge.
 - Documentation explains which fields an external runner must enforce itself.
 

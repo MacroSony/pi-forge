@@ -1,8 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, hasAgentProfileErrors, isResolvedAgentProfileUsable, isValidAgentProfileId, renderAgentProfileDiagnostics, validateAgentProfile, } from "./agent-profile.js";
+import { existsSync } from "node:fs";
+import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, isValidAgentProfileId, renderAgentProfileDiagnostics, } from "./agent-profile.js";
+import { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 import { showText } from "./preview.js";
-import { PROFILE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerProfileCommand(pi, state, deps) {
     pi.registerCommand("profile", {
         description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget",
@@ -103,87 +102,6 @@ async function useProfile(pi, state, deps, id, ctx) {
     const warningCount = result.warningCount;
     ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
 }
-export async function applyResolvedAgentProfile(pi, state, deps, resolved, ctx) {
-    if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
-        return { ok: false, detail: "Profile failed preflight; runtime state was not changed", rollbackErrors: [] };
-    }
-    const previousModel = ctx.model;
-    const previousThinkingLevel = pi.getThinkingLevel();
-    const previousPromptStack = state.active?.stack.id ?? null;
-    const modelChanged = !sameModelReference(previousModel, resolved.model);
-    try {
-        if (modelChanged && !(await pi.setModel(resolved.model))) {
-            throw new Error(`Pi could not activate model ${resolved.model.provider}/${resolved.model.id}; authentication may have changed after preflight.`);
-        }
-        pi.setThinkingLevel(resolved.effectiveThinkingLevel);
-        const actualThinkingLevel = pi.getThinkingLevel();
-        if (actualThinkingLevel !== resolved.effectiveThinkingLevel) {
-            throw new Error(`Pi applied thinking level ${actualThinkingLevel} instead of ${resolved.effectiveThinkingLevel}.`);
-        }
-        if (!deps.setActive(resolved.loaded.profile.promptStack ?? "none", ctx)) {
-            throw new Error(`Prompt stack ${String(resolved.loaded.profile.promptStack)} disappeared after preflight.`);
-        }
-    }
-    catch (error) {
-        const rollbackErrors = await rollbackProfileApplication(pi, deps, ctx, {
-            model: previousModel,
-            thinkingLevel: previousThinkingLevel,
-            promptStack: previousPromptStack,
-            modelChanged,
-        });
-        return { ok: false, detail: error instanceof Error ? error.message : String(error), rollbackErrors };
-    }
-    const provenance = {
-        profileId: resolved.loaded.profile.id,
-        sourcePath: resolved.loaded.filePath,
-        sourceFingerprint: agentProfileFingerprint(resolved.loaded.profile),
-        appliedAt: new Date().toISOString(),
-        snapshot: {
-            model: { provider: resolved.model.provider, id: resolved.model.id },
-            thinkingLevel: resolved.effectiveThinkingLevel,
-            promptStack: resolved.loaded.profile.promptStack,
-        },
-    };
-    state.lastAppliedProfile = provenance;
-    pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
-    return {
-        ok: true,
-        warningCount: resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
-    };
-}
-async function rollbackProfileApplication(pi, deps, ctx, previous) {
-    const errors = [];
-    try {
-        if (!deps.setActive(previous.promptStack ?? "none", ctx))
-            errors.push(`could not restore prompt stack ${String(previous.promptStack)}`);
-    }
-    catch (error) {
-        errors.push(`prompt stack restore failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    if (previous.modelChanged) {
-        if (!previous.model) {
-            errors.push("Pi has no API for restoring an unset model");
-        }
-        else {
-            try {
-                if (!(await pi.setModel(previous.model)))
-                    errors.push(`could not restore model ${previous.model.provider}/${previous.model.id}`);
-            }
-            catch (error) {
-                errors.push(`model restore failed: ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
-    }
-    try {
-        pi.setThinkingLevel(previous.thinkingLevel);
-        if (pi.getThinkingLevel() !== previous.thinkingLevel)
-            errors.push(`could not restore thinking level ${previous.thinkingLevel}`);
-    }
-    catch (error) {
-        errors.push(`thinking-level restore failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    return errors;
-}
 async function saveProfile(pi, state, deps, rest, ctx) {
     const id = rest[0];
     const flags = new Set(rest.slice(1));
@@ -222,29 +140,28 @@ async function saveProfile(pi, state, deps, rest, ctx) {
             return;
         }
     }
-    const profile = {
-        schemaVersion: 1,
-        type: AGENT_PROFILE_TYPE,
-        id,
-        name: existing?.profile.name ?? id,
-        description: existing?.profile.description,
-        autoActivate: existing?.profile.autoActivate,
+    const capture = captureAgentProfile(id, {
         model: { provider: ctx.model.provider, id: ctx.model.id },
         thinkingLevel: pi.getThinkingLevel(),
         promptStack: state.active?.stack.id ?? null,
-    };
-    const diagnostics = validateAgentProfile(profile);
-    if (hasAgentProfileErrors(diagnostics)) {
+    }, existing);
+    if (!capture.ok) {
         ctx.ui.notify(`pi-forge: current runtime could not be saved as profile ${id}.`, "error");
-        await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(diagnostics));
+        await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(capture.diagnostics));
         return;
     }
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, JSON.stringify(profile, null, 2) + "\n", "utf8");
-    }
-    catch (error) {
-        ctx.ui.notify(`pi-forge: failed to save profile ${id}: ${error instanceof Error ? error.message : String(error)}`, "error");
+    const write = writeAgentProfile(ctx.cwd, capture.profile, { filePath, overwrite });
+    if (!write.ok) {
+        if (write.reason === "exists") {
+            ctx.ui.notify(`pi-forge: profile ${id} already exists; re-run with --overwrite.`, "error");
+        }
+        else if (write.reason === "validation") {
+            ctx.ui.notify(`pi-forge: current runtime could not be saved as profile ${id}.`, "error");
+            await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(write.diagnostics));
+        }
+        else {
+            ctx.ui.notify(`pi-forge: failed to save profile ${id}: ${write.error ?? write.reason}`, "error");
+        }
         return;
     }
     await deps.reloadProfiles(ctx);
@@ -261,7 +178,11 @@ async function previewProfile(pi, state, deps, id, ctx) {
         return;
     }
     const resolved = deps.resolveProfile(target, ctx);
-    await showText(ctx, `pi-forge profile preview: ${id}`, renderProfilePreview(pi, state, deps, resolved, ctx));
+    const targetEffectiveTools = resolved.promptStack || resolved.loaded.profile.promptStack === null
+        ? deps.previewToolNames(resolved.promptStack?.stack)
+        : [];
+    const preview = createAgentProfilePreview(resolved, currentRuntime(pi, state, ctx), targetEffectiveTools);
+    await showText(ctx, `pi-forge profile preview: ${id}`, renderProfilePreview(preview));
 }
 async function validateProfiles(state, deps, id, ctx) {
     const targets = id ? state.profiles.filter((loaded) => loaded.profile.id === id) : state.profiles;
@@ -276,12 +197,10 @@ async function validateProfiles(state, deps, id, ctx) {
     await showText(ctx, id ? `pi-forge profile validation: ${id}` : "pi-forge profile validation", text);
 }
 function forgetProfileProvenance(pi, state, ctx) {
-    if (!state.lastAppliedProfile) {
+    if (!forgetAgentProfileProvenance(pi, state)) {
         ctx.ui.notify("pi-forge: there is no last-applied profile provenance to forget.", "info");
         return;
     }
-    state.lastAppliedProfile = undefined;
-    pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance: null });
     ctx.ui.notify("pi-forge: forgot last-applied profile provenance; model, thinking level, and prompt stack were not changed.", "info");
 }
 function renderProfileList(state, deps, ctx) {
@@ -309,76 +228,58 @@ function renderProfileList(state, deps, ctx) {
     lines.push("", "Commands:", "  /profile use <id>", "  /profile save <id> [--overwrite]", "  /profile status", "  /profile preview <id>", "  /profile validate [id]", "  /profile reload", "  /profile forget");
     return lines.join("\n");
 }
-function renderProfilePreview(pi, state, deps, resolved, ctx) {
-    const profile = resolved.loaded.profile;
-    const currentModel = modelLabel(ctx.model);
-    const targetModel = `${profile.model.provider}/${profile.model.id}`;
-    const currentStack = state.active?.stack.id ?? "(none)";
-    const targetStack = profile.promptStack ?? "(none)";
-    const effectiveTools = resolved.promptStack || profile.promptStack === null
-        ? deps.previewToolNames(resolved.promptStack?.stack)
-        : [];
-    const policy = resolved.promptStack?.stack.tools;
+function renderProfilePreview(preview) {
     return [
-        `Profile: ${profile.id}${profile.name ? ` — ${profile.name}` : ""}`,
-        `Source: ${resolved.loaded.filePath}`,
-        profile.description ? `Description: ${profile.description}` : undefined,
-        `Auto-activate for fresh sessions: ${profile.autoActivate === true ? "yes" : "no"}`,
+        `Profile: ${preview.profileId}${preview.name ? ` — ${preview.name}` : ""}`,
+        `Source: ${preview.sourcePath}`,
+        preview.description ? `Description: ${preview.description}` : undefined,
+        `Auto-activate for fresh sessions: ${preview.autoActivate ? "yes" : "no"}`,
         "",
-        `Model: ${currentModel} → ${targetModel}`,
-        `Thinking level: ${pi.getThinkingLevel()} → ${resolved.effectiveThinkingLevel}`,
-        `Prompt stack: ${currentStack} → ${targetStack}`,
-        `Tool policy: ${formatToolPolicy(policy)}`,
-        `Effective tools after stack policy: ${effectiveTools.length > 0 ? effectiveTools.join(", ") : "(none)"}`,
-        `Applicable: ${isResolvedAgentProfileUsable(resolved) ? "yes" : "no"}`,
+        `Model: ${modelReferenceLabel(preview.current.model)} → ${modelReferenceLabel(preview.target.model)}`,
+        `Thinking level: ${preview.current.thinkingLevel} → ${preview.target.thinkingLevel}`,
+        `Prompt stack: ${preview.current.promptStack ?? "(none)"} → ${preview.target.promptStack ?? "(none)"}`,
+        `Tool policy: ${formatToolPolicy(preview.target.toolPolicy)}`,
+        `Effective tools after stack policy: ${preview.target.effectiveTools.length > 0 ? preview.target.effectiveTools.join(", ") : "(none)"}`,
+        `Applicable: ${preview.applicable ? "yes" : "no"}`,
         "",
         "Diagnostics:",
-        renderAgentProfileDiagnostics(resolved.diagnostics),
+        renderAgentProfileDiagnostics(preview.diagnostics),
     ].filter((line) => line !== undefined).join("\n");
 }
 function renderProfileStatus(pi, state, ctx) {
-    const provenance = state.lastAppliedProfile;
-    const currentModel = modelLabel(ctx.model);
-    const currentThinking = pi.getThinkingLevel();
-    const currentStack = state.active?.stack.id ?? null;
+    const status = getAgentProfileRuntimeStatus(state.profiles, state.lastAppliedProfile, currentRuntime(pi, state, ctx));
     const lines = [
-        `Current model: ${currentModel}`,
-        `Current thinking level: ${currentThinking}`,
-        `Current prompt stack: ${currentStack ?? "(none)"}`,
-        `Current effective tools: ${pi.getActiveTools().join(", ") || "(none)"}`,
+        `Current model: ${modelReferenceLabel(status.current.model)}`,
+        `Current thinking level: ${status.current.thinkingLevel}`,
+        `Current prompt stack: ${status.current.promptStack ?? "(none)"}`,
+        `Current effective tools: ${status.current.effectiveTools.join(", ") || "(none)"}`,
         "",
     ];
-    if (!provenance) {
+    if (!status.lastApplied) {
         lines.push("Last applied profile: (none)");
         return lines.join("\n");
     }
-    const currentSource = state.profiles.find((loaded) => loaded.filePath === provenance.sourcePath);
-    const sourceState = !currentSource
-        ? "missing"
-        : agentProfileFingerprint(currentSource.profile) === provenance.sourceFingerprint ? "unchanged" : "changed since application";
-    const modelDrift = currentModel === modelReferenceLabel(provenance.snapshot.model)
-        ? "unchanged"
-        : `${modelReferenceLabel(provenance.snapshot.model)} → ${currentModel}`;
-    const thinkingDrift = currentThinking === provenance.snapshot.thinkingLevel
-        ? "unchanged"
-        : `${provenance.snapshot.thinkingLevel} → ${currentThinking}`;
-    const stackDrift = currentStack === provenance.snapshot.promptStack
-        ? "unchanged"
-        : `${provenance.snapshot.promptStack ?? "(none)"} → ${currentStack ?? "(none)"}`;
-    lines.push(`Last applied profile: ${provenance.profileId}`, `Applied at: ${provenance.appliedAt}`, `Source: ${provenance.sourcePath}`, `Profile source: ${sourceState}`, "", "Runtime drift:", `  model: ${modelDrift}`, `  thinking level: ${thinkingDrift}`, `  prompt stack: ${stackDrift}`);
+    const { provenance, drift } = status.lastApplied;
+    const sourceState = status.lastApplied.sourceState === "changed" ? "changed since application" : status.lastApplied.sourceState;
+    lines.push(`Last applied profile: ${provenance.profileId}`, `Applied at: ${provenance.appliedAt}`, `Source: ${provenance.sourcePath}`, `Profile source: ${sourceState}`, "", "Runtime drift:", `  model: ${formatDrift(drift.model, modelReferenceLabel)}`, `  thinking level: ${formatDrift(drift.thinkingLevel, String)}`, `  prompt stack: ${formatDrift(drift.promptStack, (value) => value ?? "(none)")}`);
     return lines.join("\n");
 }
 function findProfile(state, id) {
     return state.profiles.find((loaded) => loaded.profile.id === id);
 }
-function sameModelReference(left, right) {
-    return !!left && !!right && left.provider === right.provider && left.id === right.id;
-}
-function modelLabel(model) {
-    return model ? `${model.provider}/${model.id}` : "(none)";
+function currentRuntime(pi, state, ctx) {
+    return {
+        model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
+        thinkingLevel: pi.getThinkingLevel(),
+        promptStack: state.active?.stack.id ?? null,
+        effectiveTools: pi.getActiveTools(),
+    };
 }
 function modelReferenceLabel(model) {
-    return `${model.provider}/${model.id}`;
+    return model ? `${model.provider}/${model.id}` : "(none)";
+}
+function formatDrift(field, render) {
+    return field.changed ? `${render(field.expected)} → ${render(field.actual)}` : "unchanged";
 }
 function formatToolPolicy(policy) {
     if (policy?.allow?.length)

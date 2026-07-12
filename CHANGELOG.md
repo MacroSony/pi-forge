@@ -23,6 +23,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Changed
 
 - The web editor shell, styles, and browser script are maintained as separate source modules.
+- Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
 - Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
 - The roadmap now records the implemented profile v1 contract and moves forward to profile UI and a narrow runner-independent subagent adapter.
 

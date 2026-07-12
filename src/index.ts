@@ -16,7 +16,8 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.ts";
 import { buildPreview, showText } from "./preview.ts";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.ts";
-import { applyResolvedAgentProfile, registerProfileCommand } from "./profile-command.ts";
+import { registerProfileCommand } from "./profile-command.ts";
+import { applyResolvedAgentProfile } from "./profile-service.ts";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "./types.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "./web-host.ts";
@@ -75,6 +76,26 @@ export {
 	type ResolvedAgentProfile,
 	isAgentProfileProvenance,
 } from "./agent-profile.ts";
+export {
+	applyResolvedAgentProfile,
+	captureAgentProfile,
+	createAgentProfilePreview,
+	deleteAgentProfile,
+	forgetAgentProfileProvenance,
+	getAgentProfileRuntimeStatus,
+	writeAgentProfile,
+	type AgentProfileApplicationDeps,
+	type AgentProfileApplicationResult,
+	type AgentProfileApplicationState,
+	type AgentProfileCaptureInput,
+	type AgentProfileCaptureResult,
+	type AgentProfileCurrentRuntime,
+	type AgentProfileDeleteResult,
+	type AgentProfileDriftField,
+	type AgentProfilePreview,
+	type AgentProfileRuntimeStatus,
+	type AgentProfileWriteResult,
+} from "./profile-service.ts";
 export {
 	createVariableAccess,
 	promptRenderHelpers,

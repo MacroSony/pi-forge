@@ -6,13 +6,15 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { applyResourcePolicy, hasResourcePolicy } from "./policy.js";
 import { buildPreview, showText } from "./preview.js";
 import { registerPresetCommand, selectedActiveId as selectedActiveIdForState } from "./preset-command.js";
-import { applyResolvedAgentProfile, registerProfileCommand } from "./profile-command.js";
+import { registerProfileCommand } from "./profile-command.js";
+import { applyResolvedAgentProfile } from "./profile-service.js";
 import { createRuntimeState, STATE_ENTRY_TYPE } from "./runtime-state.js";
 import { createWebEditorHost, loadWebEditorSettings } from "./web-host.js";
 import { startWebEditorServer } from "./web-editor/index.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
 export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, isAgentProfileProvenance, } from "./agent-profile.js";
+export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, deleteAgentProfile, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 function getSharedWebEditorRegistry() {

@@ -9,6 +9,9 @@ export function agentProfilesDir(cwd) {
 export function agentProfilePath(cwd, id) {
     return join(agentProfilesDir(cwd), `${id}.json`);
 }
+export function isInsideAgentProfileStorage(cwd, filePath) {
+    return isInsideDir(agentProfilesDir(cwd), filePath);
+}
 export function forgeDir(cwd) {
     return join(cwd, ".pi", "forge");
 }

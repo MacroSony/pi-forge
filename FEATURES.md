@@ -28,6 +28,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Last-applied provenance is branch-scoped session metadata used only for drift reporting; reload, resume, tree navigation, and compaction never reapply a profile.
 - `/profile reload` reloads definitions without applying them, and `/profile forget` clears provenance without changing runtime state.
 - Project trust gates profile loading, application, and writes.
+- Shared typed profile services own capture, protected write/update/delete, application/rollback, immutable preview data, provenance changes, and runtime-drift calculation so command and future UI/adapter consumers do not duplicate behavior.
 
 ## Prompt Stack Loading and Storage
 
