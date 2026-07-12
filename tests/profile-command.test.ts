@@ -122,7 +122,23 @@ test("fresh sessions auto-activate one profile instead of the standalone default
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
 	});
 	writeProfile(cwd, "worker.json", { ...profile("worker", targetModel, "worker-stack"), autoActivate: true });
-	const { harness, context } = runtime(cwd, currentModel, [currentModel, targetModel]);
+	const harness = createHarness({ currentModel, models: [currentModel, targetModel], availableModels: [currentModel, targetModel], thinkingLevel: "low" });
+	const bootstrapEntries = [
+		{
+			id: "initial-model",
+			parentId: null,
+			type: "model_change",
+			provider: currentModel.provider,
+			modelId: currentModel.id,
+		},
+		{
+			id: "initial-thinking",
+			parentId: "initial-model",
+			type: "thinking_level_change",
+			thinkingLevel: "low",
+		},
+	];
+	const context = createContext(cwd, bootstrapEntries, { leafId: "initial-thinking", modelRuntime: harness });
 
 	await startSession(harness, context.ctx);
 
@@ -131,6 +147,47 @@ test("fresh sessions auto-activate one profile instead of the standalone default
 	assert.equal(context.statuses["pi-forge"], "stack:worker-stack");
 	assert.ok(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE));
 	assert.match(context.notifications.find((entry) => /auto-activated profile/.test(entry.message))?.message ?? "", /worker/);
+});
+
+test("startup with existing conversation content does not auto-activate a profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+	const currentModel = model("test", "current");
+	const targetModel = model("test", "target");
+	writeProfile(cwd, "worker.json", { ...profile("worker", targetModel, null), autoActivate: true });
+	const harness = createHarness({ currentModel, models: [currentModel, targetModel], availableModels: [currentModel, targetModel], thinkingLevel: "low" });
+	const entries = [{
+		id: "existing-message",
+		parentId: null,
+		type: "message",
+		message: { role: "user", content: "Existing work" },
+	}];
+	const context = createContext(cwd, entries, { leafId: "existing-message", modelRuntime: harness });
+
+	await startSession(harness, context.ctx);
+
+	assert.equal(harness.setModelCalls.length, 0);
+	assert.equal(harness.getCurrentModel(), currentModel);
+	assert.equal(harness.getThinkingLevel(), "low");
+	assert.equal(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE), false);
+});
+
+test("reload, resume, and fork session starts never auto-activate a profile", async () => {
+	for (const reason of ["reload", "resume", "fork"] as const) {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+		const currentModel = model("test", `current-${reason}`);
+		const targetModel = model("test", `target-${reason}`);
+		writeProfile(cwd, "worker.json", { ...profile("worker", targetModel, null), autoActivate: true });
+		const harness = createHarness({ currentModel, models: [currentModel, targetModel], availableModels: [currentModel, targetModel], thinkingLevel: "low" });
+		const context = createContext(cwd, [], { modelRuntime: harness });
+
+		await harness.events.session_start?.({ type: "session_start", reason }, context.ctx);
+		await harness.events.resources_discover?.({ type: "resources_discover", cwd, reason: reason === "reload" ? "reload" : "startup" }, context.ctx);
+
+		assert.equal(harness.setModelCalls.length, 0, reason);
+		assert.equal(harness.getCurrentModel(), currentModel, reason);
+		assert.equal(harness.getThinkingLevel(), "low", reason);
+		assert.equal(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE), false, reason);
+	}
 });
 
 test("an auto-activated profile with a null prompt stack suppresses standalone stack autoload", async () => {

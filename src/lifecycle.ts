@@ -159,7 +159,36 @@ async function restoreBranchScopedRuntime(
 function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {
 	if (event.reason === "new") return true;
 	if (event.reason !== "startup") return false;
-	return getCurrentBranchEntries(ctx).length === 0;
+	return isFreshStartupBranch(getCurrentBranchEntries(ctx));
+}
+
+function isFreshStartupBranch(entries: unknown[]): boolean {
+	if (entries.length === 0) return true;
+
+	let modelChanges = 0;
+	let thinkingLevelChanges = 0;
+	for (const entry of entries) {
+		if (!entry || typeof entry !== "object") return false;
+		const type = (entry as { type?: unknown }).type;
+		if (type === "model_change") {
+			modelChanges += 1;
+			if (modelChanges > 1) return false;
+			continue;
+		}
+		if (type === "thinking_level_change") {
+			thinkingLevelChanges += 1;
+			if (thinkingLevelChanges > 1) return false;
+			continue;
+		}
+		if (type === "session_info") continue;
+		return false;
+	}
+
+	// Pi 0.80 writes the initial thinking level, and the model when one is
+	// selected, before extensions receive the first startup event. A previously
+	// opened empty session receives another bootstrap pair, so the count limits
+	// above keep it from being mistaken for a newly created session.
+	return thinkingLevelChanges === 1;
 }
 
 function getRestoredProfileProvenance(ctx: ExtensionContext) {
