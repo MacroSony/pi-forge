@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: draft architecture for the 0.4 subagent adapter boundary. The high-level request, clean-context, access, compact-response, and trace decisions are accepted. The executable backend contract remains internal until a real Pi SDK or subprocess spike validates it.
+Status: revised draft architecture for the 0.4 subagent adapter boundary. The high-level request, clean-context, access, compact-response, and trace decisions are accepted. The Pi SDK spike is complete and recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md); executable types remain internal until the revised preparation boundary and enforcement receipts have conformance coverage.
 
 ## Goals
 
@@ -9,7 +9,7 @@ Status: draft architecture for the 0.4 subagent adapter boundary. The high-level
 - Keep prompt stacks as the profile-level source of prompt layout, visible-tool policy, and model-visible skills.
 - Keep access, limits, cancellation, trace storage, and result reporting outside reusable profiles.
 - Return a compact parent-visible tool result while retaining normalized execution history for authorized inspection.
-- Keep experimental backend types internal until one real adapter validates the boundary.
+- Keep experimental backend types internal until the real-spike revisions have pure validation and backend conformance coverage.
 
 ## Execution Flow
 
@@ -19,7 +19,7 @@ The portable caller request is not itself executable. Execution has five stages:
 AgentRequest
     -> host profile/stack/dependency resolution
     -> backend discovery and preflight
-    -> host-prepared AgentExecutionPlan
+    -> backend-assisted host plan preparation
     -> backend execution
     -> AgentResponse
 ```
@@ -47,9 +47,11 @@ Before prompt compilation, the selected backend reports:
 
 The host applies the prompt stack's tool policy to the backend catalog. An allow pattern that matches nothing remains a warning unless separate dependency metadata marks that tool or capability as required.
 
-### 4. AgentExecutionPlan
+### 4. Backend-assisted plan preparation and AgentExecutionPlan
 
 The host combines the resolved profile, backend preflight receipt, selected context, and prompt-stack compiler into an immutable execution plan. The plan contains prepared system text/messages, exact model and thinking level, effective backend tool IDs, materialized workspace handles, enforced limits, diagnostics, provenance, and a stable execution fingerprint.
+
+Some backends cannot expose exact prompt-runtime inputs during passive preflight. Pi SDK 0.80.6, for example, exposes its exact base prompt, tool snippets, skills, and context options through `before_agent_start`, immediately before provider execution. Such an adapter may supply those inputs to a trusted host preparation callback after accepting the prompt, provided it blocks provider transport until host compilation, protected-task validation, limit checks, and plan finalization succeed. A partial dry preflight must declare its prompt-runtime fidelity and cannot masquerade as the exact execution plan.
 
 Custom macros and slots execute during plan preparation in the trusted host. Backends receive their rendered result and dependency receipt, not executable registration code. A raw `PromptStack` remains snapshot provenance and is not treated as an executable backend artifact.
 
@@ -89,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The exact TypeScript shapes remain internal until the real adapter spike, but the following semantic artifacts are required.
+The exact TypeScript shapes remain internal while the spike-driven preparation and enforcement revisions are implemented, but the following semantic artifacts are required.
 
 ### AgentRequest
 
@@ -191,17 +193,19 @@ Usage details, raw diagnostics, enforcement receipts, and trace history remain o
 - Refactor commands to use the service without changing current CLI behavior.
 - Add service-level tests so profile UI and subagent preparation share one implementation.
 
-### Iteration 2: Internal real-backend spike
+### Iteration 2: Internal real-backend spike (completed)
 
 - Prototype one in-memory Pi SDK backend using a fresh `SessionManager`, explicit model/thinking, a controlled tool baseline, cancellation, and compact output.
 - Exercise a real profile, restrictive prompt stack, custom macro/slot dependency, media input, and current local provider.
 - Record actual SDK/runtime requirements and failure points.
 - Keep all spike types internal and expose no run tool.
 
-### Iteration 3: Resolve/preflight/plan boundary
+Implemented as the opt-in `scripts/subagent-sdk-spike.ts`; results and limitations are recorded in `SUBAGENT_SDK_SPIKE_FINDINGS.md`.
+
+### Iteration 3: Resolve/preflight/plan boundary (next)
 
 - Split parent application resolution from backend-independent host resolution.
-- Define internal request, backend descriptor/preflight, execution-plan, response, enforcement-receipt, and diagnostic types based on the spike.
+- Define internal request, backend descriptor/preflight, backend-assisted preparation callback, execution-plan, response, enforcement-receipt, and diagnostic types based on the spike.
 - Implement protected task/context preparation and tool negotiation.
 - Validate null/replace/append/prepend stacks and missing custom dependencies.
 
@@ -231,7 +235,7 @@ Usage details, raw diagnostics, enforcement receipts, and trace history remain o
 - Decide whether the validated adapter remains internal, ships optionally, or just informs integrations.
 - Continue deferring a full owned runner, resumable agents, retries, queues, chains, pipelines, and concurrency orchestration until concrete demand exists.
 
-Profile UI can proceed once Iteration 1 lands; it does not need to block the internal backend spike. Each iteration remains independently reviewable and revertible.
+Profile UI can now proceed on the completed Iteration 1 service; it does not need to block Iteration 3. Each iteration remains independently reviewable and revertible.
 
 ## Deferred Decisions
 

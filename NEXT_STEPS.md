@@ -6,6 +6,8 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 
 - `0.3.2` is the current released baseline. Prompt stacks, storage migration, tool policy, model-visible skill filtering, regex MVP, SillyTavern import, web editor, payload inspection, trusted macro/slot extensions, and command/lifecycle coverage are shipped.
 - The current 0.4 branch implements strict project-local agent profiles with exact model, thinking-level, and prompt-stack references; one-shot save/use and fresh-session auto-activation; preflight and preview; branch-scoped last-applied provenance; and runtime drift reporting.
+- Shared typed profile repository, application, preview, provenance, and drift services are implemented and consumed by the profile commands.
+- The internal Pi SDK spike now validates real profile/model/auth resolution, exact lifecycle prompt preparation, protected task/media handling, dynamic tool discovery, no-access execution, host timeout/abort, in-memory cleanup, and trusted custom macro/slot loading. Its findings are in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md).
 - The web editor page shell, static styles, and browser client are split. Browser smoke verification now gates larger UI work.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
 - Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
@@ -15,11 +17,11 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 
 Recommended ordering:
 
-1. Exercise the profile CLI against real installed providers and extension toolsets, then fix any compatibility findings without expanding the schema.
-2. Extract a shared typed profile repository/application/status service, then make commands consume it without behavior changes.
-3. Run an internal real Pi SDK backend spike before exporting any subagent contract.
-4. Build profile UI on the shared service while revising the subagent boundary around backend preflight and a host-prepared execution plan.
-5. Stabilize and export only the request/response pieces demonstrated by the real spike, then add fake-backend conformance coverage and optional registration.
+1. Completed: exercise the profile CLI against real installed providers and extension toolsets, then fix compatibility findings without expanding the schema.
+2. Completed: extract a shared typed profile repository/application/status service and make commands consume it without behavior changes.
+3. Revise the internal subagent types around discovery/preflight plus backend-assisted host plan preparation, then add pure validation and fake-backend conformance coverage.
+4. Build profile UI on the shared service while the internal subagent boundary stabilizes.
+5. Stabilize and export only the request/response pieces demonstrated by the real spike, then consider optional backend registration.
 6. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
 7. Defer provider-payload rewriting, true display regex, parent run tools, and an owned subagent runner until enforcement and task-preservation semantics are demonstrated.
 
@@ -31,16 +33,14 @@ Risk calls:
 - Treat skill policy as model-visible prompt filtering only. It does not disable explicit skill invocation or provide a security boundary.
 - Keep generation parameters, model fallbacks, global storage, and runner limits out of profile v1 until a concrete consumer can enforce their semantics consistently.
 - Avoid expanding the browser editor without browser-level workflow coverage.
-- Do not add delegation until real-world profile CLI testing confirms resolution, application diagnostics, and runtime drift reporting are coherent.
+- Do not add user-facing delegation until backend-assisted plan preparation, enforcement receipts, task preservation, and cancellation semantics have conformance coverage.
 
 ## Priority 1: Profile UI
 
-Goal: expose profile management only after profile core and CLI semantics are stable.
+Goal: expose profile management on the completed shared service now that profile core and CLI semantics are stable.
 
 Potential work:
 
-- Extract shared typed load/capture/save/update/delete, application/rollback, preview, provenance, and runtime-drift operations before adding UI handlers.
-- Refactor `/profile` commands to render shared typed results rather than owning storage and application behavior.
 - Add a profile list/detail view beside prompt stacks.
 - Reuse resource pickers where their semantics actually match the decided profile fields.
 - Add model/thinking controls from available model registry data.
@@ -57,14 +57,15 @@ Done criteria:
 
 Goal: make stored profiles useful to subagent systems without committing to one runner.
 
-The accepted high-level decisions and draft executable contract are recorded in [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md). The backend-facing types remain internal until a real Pi SDK or subprocess spike validates them.
+The accepted high-level decisions and revised draft executable contract are recorded in [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md). The Pi SDK spike is complete; backend-facing types remain internal until its preparation and enforcement findings are represented in conformance-tested code.
 
 Boundaries:
 
 - Do not hard-depend on `pi-subagents`, `@gotgenes/pi-subagents`, Archimedes, or another runner in 0.4.
 - Keep profile definition, validation, resolution, preview, and export as pi-forge's responsibility.
 - Split host profile/stack/dependency resolution from backend model/auth/tool/access preflight.
-- Prepare compiled prompts/messages, effective tools, materialized access, enforced limits, diagnostics, and stable execution provenance in an immutable execution plan before backend execution.
+- Prepare compiled prompts/messages, effective tools, materialized access, enforced limits, diagnostics, and stable execution provenance in an immutable execution plan before provider transport.
+- Allow backend-assisted host preparation when exact prompt-runtime inputs are available only in a pre-provider lifecycle hook; provider transport must remain blocked until plan validation succeeds.
 - Start subagents with a clean context. Do not export parent chat history or dynamic compiled context by default; allow only explicit bounded summaries, excerpts, tool results, and resource references with provenance.
 - Preserve the delegated task as a protected final user message after unrestricted stack message compilation.
 - Keep access policy and per-run limits in the request rather than the reusable profile; use opaque workspace handles and require granular backend enforcement receipts.
@@ -74,7 +75,7 @@ Boundaries:
 Done criteria:
 
 - Shared profile operations are independent of the web editor and command handlers.
-- A real internal adapter spike validates model/auth preflight, prompt preparation, tools, access, cancellation, and media before public contract export.
+- The completed real internal adapter spike validates model/auth preflight, prompt preparation, dynamic built-in tools, no-access enforcement, timeout cancellation, and media before public contract export.
 - Serializable request, execution-plan, response, and enforcement-receipt contracts have pure validation, stable canonical fingerprints, and fake-backend conformance coverage.
 - Parent context selection is explicit, bounded, provenance-preserving, and excludes hidden reasoning.
 - The final task and required media survive all supported prompt-stack layouts.
