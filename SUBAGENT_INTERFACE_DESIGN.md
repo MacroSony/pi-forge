@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: revised draft architecture for the 0.4 subagent adapter boundary. The high-level request, clean-context, access, compact-response, and trace decisions are accepted. The Pi SDK spike is complete and recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md); executable types remain internal until the revised preparation boundary and enforcement receipts have conformance coverage.
+Status: implemented pure adapter contract for the 0.4 development branch. The Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). Backend registration and execution remain deferred.
 
 ## Goals
 
@@ -9,7 +9,7 @@ Status: revised draft architecture for the 0.4 subagent adapter boundary. The hi
 - Keep prompt stacks as the profile-level source of prompt layout, visible-tool policy, and model-visible skills.
 - Keep access, limits, cancellation, trace storage, and result reporting outside reusable profiles.
 - Return a compact parent-visible tool result while retaining normalized execution history for authorized inspection.
-- Keep experimental backend types internal until the real-spike revisions have pure validation and backend conformance coverage.
+- Export the demonstrated pure request/resolution/preflight/plan/response boundary while keeping backend registration and execution out of the package surface.
 
 ## Execution Flow
 
@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The exact TypeScript shapes remain internal while the spike-driven preparation and enforcement revisions are implemented, but the following semantic artifacts are required.
+The TypeScript shapes and pure validators for the following artifacts are now exported. Concrete backend implementations and registration remain deferred.
 
 ### AgentRequest
 
@@ -202,21 +202,25 @@ Usage details, raw diagnostics, enforcement receipts, and trace history remain o
 
 Implemented as the opt-in `scripts/subagent-sdk-spike.ts`; results and limitations are recorded in `SUBAGENT_SDK_SPIKE_FINDINGS.md`.
 
-### Iteration 3: Resolve/preflight/plan boundary (next)
+### Iteration 3: Resolve/preflight/plan boundary (completed)
 
 - Split parent application resolution from backend-independent host resolution.
 - Define internal request, backend descriptor/preflight, backend-assisted preparation callback, execution-plan, response, enforcement-receipt, and diagnostic types based on the spike.
 - Implement protected task/context preparation and tool negotiation.
 - Validate null/replace/append/prepend stacks and missing custom dependencies.
 
-### Iteration 4: Stable validation and fingerprints
+Implemented in `src/subagent-host.ts` and `src/subagent-contract.ts`. The SDK spike consumes the shared protected-task and host-resolution helpers.
+
+### Iteration 4: Stable validation and fingerprints (completed)
 
 - Add canonical snapshot/stack/execution digests without changing legacy provenance fingerprints.
 - Add pure validators and the full status/error/access/limit matrices.
 - Add deterministic context budgeting and artifact/trace namespace validation.
 - Export only the portions demonstrated by the real spike.
 
-### Iteration 5: Backend registration and conformance
+Implemented with canonical `sha256:v1` fingerprints, deterministic UTF-8 context budgeting, access/limit/status matrices, artifact/trace validation, and package-root exports. Legacy profile provenance fingerprints are unchanged.
+
+### Iteration 5: Backend registration and conformance (next)
 
 - Add an optional backend registry/dispatcher with granular capability negotiation.
 - Add fake-backend conformance tests after the real spike has shaped the contract.
@@ -235,7 +239,7 @@ Implemented as the opt-in `scripts/subagent-sdk-spike.ts`; results and limitatio
 - Decide whether the validated adapter remains internal, ships optionally, or just informs integrations.
 - Continue deferring a full owned runner, resumable agents, retries, queues, chains, pipelines, and concurrency orchestration until concrete demand exists.
 
-Profile UI can now proceed on the completed Iteration 1 service; it does not need to block Iteration 3. Each iteration remains independently reviewable and revertible.
+Profile UI can proceed independently on the completed Iteration 1 service; it does not need to block Iteration 5. Each iteration remains independently reviewable and revertible.
 
 ## Deferred Decisions
 

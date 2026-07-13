@@ -8,6 +8,7 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 - The current 0.4 branch implements strict project-local agent profiles with exact model, thinking-level, and prompt-stack references; one-shot save/use and fresh-session auto-activation; preflight and preview; branch-scoped last-applied provenance; and runtime drift reporting.
 - Shared typed profile repository, application, preview, provenance, and drift services are implemented and consumed by the profile commands.
 - The internal Pi SDK spike now validates real profile/model/auth resolution, exact lifecycle prompt preparation, protected task/media handling, dynamic tool discovery, no-access execution, host timeout/abort, in-memory cleanup, and trusted custom macro/slot loading. Its findings are in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md).
+- Iterations 3 and 4 export the pure subagent request/resolution/preflight/plan/response boundary, dependency receipts, deterministic context budgeting, granular validators, and canonical fingerprints. Adapter obligations are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
 - The web editor page shell, static styles, and browser client are split. Browser smoke verification now gates larger UI work.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
 - Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
@@ -19,9 +20,9 @@ Recommended ordering:
 
 1. Completed: exercise the profile CLI against real installed providers and extension toolsets, then fix compatibility findings without expanding the schema.
 2. Completed: extract a shared typed profile repository/application/status service and make commands consume it without behavior changes.
-3. Revise the internal subagent types around discovery/preflight plus backend-assisted host plan preparation, then add pure validation and fake-backend conformance coverage.
-4. Build profile UI on the shared service while the internal subagent boundary stabilizes.
-5. Stabilize and export only the request/response pieces demonstrated by the real spike, then consider optional backend registration.
+3. Completed: implement discovery/preflight plus backend-assisted host plan preparation, pure validation, deterministic budgeting, and stable fingerprints.
+4. Build profile UI on the completed shared service as an independent product lane.
+5. Build an optional backend registry and fake-backend conformance harness without registering a backend by default.
 6. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
 7. Defer provider-payload rewriting, true display regex, parent run tools, and an owned subagent runner until enforcement and task-preservation semantics are demonstrated.
 
@@ -57,7 +58,7 @@ Done criteria:
 
 Goal: make stored profiles useful to subagent systems without committing to one runner.
 
-The accepted high-level decisions and revised draft executable contract are recorded in [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md). The Pi SDK spike is complete; backend-facing types remain internal until its preparation and enforcement findings are represented in conformance-tested code.
+The accepted architecture is recorded in [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md), and the implemented exported semantics are in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). The Pi SDK spike and pure contract are complete; no backend is registered or shipped yet.
 
 Boundaries:
 
@@ -76,7 +77,7 @@ Done criteria:
 
 - Shared profile operations are independent of the web editor and command handlers.
 - The completed real internal adapter spike validates model/auth preflight, prompt preparation, dynamic built-in tools, no-access enforcement, timeout cancellation, and media before public contract export.
-- Serializable request, execution-plan, response, and enforcement-receipt contracts have pure validation, stable canonical fingerprints, and fake-backend conformance coverage.
+- Serializable request, execution-plan, response, and enforcement-receipt contracts have pure validation and stable canonical fingerprints. Fake-backend conformance coverage is the next iteration.
 - Parent context selection is explicit, bounded, provenance-preserving, and excludes hidden reasoning.
 - The final task and required media survive all supported prompt-stack layouts.
 - No subagent package is required to install or use pi-forge.
@@ -191,7 +192,9 @@ Decision rule:
 
 ## Next Design Session
 
-1. Run `/profile save`, `preview`, `use`, `status`, `reload`, and `forget` against real providers, model switches, restrictive stacks, and extension tools.
-2. Decide the smallest profile editor workflow and add its browser-test cases before implementation.
-3. Define the adapter-facing resolved-profile contract and which side owns tool registration, cancellation, and result formatting.
-4. Keep generation parameters and enforceable limits deferred until the adapter or a chosen runner exposes a stable consumer.
+1. Design the smallest optional backend registry: register/unregister, descriptor discovery, preflight, backend-assisted preparation, execute, cancel, and trace inspection. No backend is registered by default.
+2. Build a deterministic fake backend and reusable conformance harness around the exported validators.
+3. Cover accepted/rejected preflight, tool-effect filtering, access/limit refusal, exact preparation, success, provider failure, user cancellation, timeout, limit reached, media, artifact, and trace routing.
+4. Decide whether to wrap the Pi SDK spike as an optional adapter only after the conformance harness proves cleanup and cancellation races; do not add parent run tools yet.
+5. Continue profile UI as an independent lane on the shared profile service, with browser cases defined before handlers.
+6. Keep generation parameters, fallbacks, retries, resumable sessions, chains, and pipelines deferred until a concrete backend can enforce them consistently.

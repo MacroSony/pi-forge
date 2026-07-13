@@ -104,6 +104,19 @@ export {
 	type PromptVariableScope,
 	type PromptWritableVariableScope,
 } from "./render-helpers.ts";
+export * from "./subagent-contract.ts";
+export {
+	appendProtectedAgentTask,
+	collectMacroCommandNames,
+	collectSubagentPromptDependencies,
+	compileProtectedAgentTaskMessages,
+	currentSubagentPromptRegistrationCatalog,
+	isProtectedAgentTaskPreserved,
+	resolveSubagentHostProfile,
+	type SubagentHostResolution,
+	type SubagentPromptRegistration,
+	type SubagentPromptRegistrationCatalog,
+} from "./subagent-host.ts";
 
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
 

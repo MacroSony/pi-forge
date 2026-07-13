@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
-	appendProtectedTask,
-	compileProtectedTaskMessages,
 	computeSpikeToolPolicy,
 	parseSpikeArgs,
-	protectedTaskPreserved,
 } from "../scripts/subagent-sdk-spike-lib.ts";
 import { createPromptVariableStore } from "../src/compiler.ts";
+import {
+	appendProtectedAgentTask,
+	compileProtectedAgentTaskMessages,
+	isProtectedAgentTaskPreserved,
+} from "../src/subagent-host.ts";
 import type { LoadedPromptStack } from "../src/types.ts";
 
 function stack(overrides: Partial<LoadedPromptStack["stack"]> = {}): LoadedPromptStack {
@@ -86,22 +88,22 @@ test("protected delegated task remains the final structured user message", () =>
 		],
 		timestamp: 2,
 	};
-	const result = appendProtectedTask([user("background", 1)], task);
-	assert.equal(protectedTaskPreserved(result, task), true);
-	assert.equal(protectedTaskPreserved(result, { ...task, timestamp: 999 }), true);
-	assert.equal(protectedTaskPreserved([user("plain")], {
+	const result = appendProtectedAgentTask([user("background", 1)], task);
+	assert.equal(isProtectedAgentTaskPreserved(result, task), true);
+	assert.equal(isProtectedAgentTaskPreserved(result, { ...task, timestamp: 999 }), true);
+	assert.equal(isProtectedAgentTaskPreserved([user("plain")], {
 		role: "user",
 		content: [{ type: "text", text: "plain" }],
 		timestamp: 1,
 	}), true);
 	assert.notEqual(result.at(-1), task);
-	assert.throws(() => appendProtectedTask([], { role: "assistant" } as AgentMessage), /user message/);
+	assert.throws(() => appendProtectedAgentTask([], { role: "assistant" } as AgentMessage), /user message/);
 });
 
 test("stack history filters cannot remove the protected delegated task", () => {
 	const background = user("optional background", 1);
 	const task = user("required task", 2);
-	const result = compileProtectedTaskMessages(stack(), {
+	const result = compileProtectedAgentTaskMessages(stack(), {
 		options: { cwd: "/workspace", selectedTools: [] },
 		latestUserMessage: "required task",
 		now: new Date("2026-07-12T00:00:00Z"),
@@ -110,5 +112,5 @@ test("stack history filters cannot remove the protected delegated task", () => {
 
 	assert.equal(result.messages.at(-1)?.role, "user");
 	assert.equal((result.messages.at(-1) as { content?: unknown }).content, "required task");
-	assert.equal(protectedTaskPreserved(result.messages, task), true);
+	assert.equal(isProtectedAgentTaskPreserved(result.messages, task), true);
 });

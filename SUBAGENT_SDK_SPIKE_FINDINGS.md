@@ -1,6 +1,6 @@
 # Pi SDK Subagent Spike Findings
 
-Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. This validates the next internal contract iteration; it does not add a user-facing subagent runner or public backend API.
+Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its Iteration 3/4 contract findings are now implemented in the exported pure adapter boundary; it still does not add a user-facing subagent runner or backend registry.
 
 ## Deliverable
 
@@ -86,7 +86,7 @@ The SDK does not enforce hard turn, token, or output limits through `createAgent
 
 The spike trace includes lifecycle and tool start/end metadata only. It excludes streaming content, provider payloads, credentials, and hidden reasoning.
 
-## Contract Revisions Required
+## Contract Revisions Implemented
 
 1. Split backend work into discovery/preflight, backend-assisted plan preparation, and execution. Preparation may occur inside an adapter-controlled pre-provider hook when the backend cannot expose exact prompt-runtime inputs earlier.
 2. Keep the host responsible for profile/stack resolution, trusted compiler execution, protected-task assembly, diagnostics, and plan validation, even when the adapter supplies runtime inputs through a callback.
@@ -102,17 +102,15 @@ The spike trace includes lifecycle and tool start/end metadata only. It excludes
 - No allowed-root filesystem, subprocess, or agent-network isolation.
 - No hard turn, token, or output-byte enforcement.
 - No extension-tool execution: the spike intentionally isolates third-party Pi extensions and validates only the built-in catalog plus prompt-stack filtering.
-- No selected parent-context budgeting or provenance rendering yet.
-- No stable canonical profile/stack/execution fingerprints yet.
 - No backend registry, artifact store, trace registry, run/inspect tool, or parent-visible result projection.
-- No automatic custom registration dependency detection.
+- Custom dependency scanning records macro/slot names and registration sources, but it cannot fingerprint executable registration code.
 - Cancellation was validated through a deadline; user-initiated cancellation and cancellation races still need conformance cases.
 
-These gaps block a public backend contract and user-facing delegation, but they do not block the next internal resolve/preflight/plan iteration.
+These gaps block user-facing delegation and a concrete backend registration, but the pure adapter contract is now available for Iteration 5 conformance work.
 
 ## Verification Evidence
 
-- Offline suite: 134 tests passed, including four spike policy/context tests.
+- Offline suite: 146 tests passed, including twelve contract matrix tests and four SDK-spike policy/context tests.
 - TypeScript typecheck: passed.
 - Real profile dry preflight: passed.
 - Real `glm-5.2` no-tool completion: passed.

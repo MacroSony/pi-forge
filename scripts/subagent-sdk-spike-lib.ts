@@ -19,7 +19,6 @@ import {
 	type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import {
-	compileMessages,
 	compileSystemPrompt,
 	createPromptVariableStore,
 } from "../src/compiler.ts";
@@ -36,6 +35,12 @@ import {
 } from "../src/forge-extensions.ts";
 import { loadPromptStacks } from "../src/loader.ts";
 import { applyResourcePolicy } from "../src/policy.ts";
+import {
+	compileProtectedAgentTaskMessages,
+	isProtectedAgentTaskPreserved,
+	resolveSubagentHostProfile,
+} from "../src/subagent-host.ts";
+import type { AgentProfileSnapshot } from "../src/subagent-contract.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStackDiagnostic } from "../src/types.ts";
 
 export const SPIKE_ACCESS_LEVELS = ["none", "read-only", "workspace-write"] as const;
@@ -96,6 +101,9 @@ export interface SubagentSdkSpikeReport {
 	};
 	profile: {
 		filePath: string;
+		profileFingerprint: string;
+		promptStackFingerprint: string | null;
+		dependencies: AgentProfileSnapshot["dependencies"];
 		model: { provider: string; id: string; supportsImages: boolean };
 		thinkingLevel: string;
 		promptStack: { id: string; filePath: string } | null;
@@ -204,35 +212,6 @@ export function computeSpikeToolPolicy(
 	};
 }
 
-export function appendProtectedTask(
-	compiledMessages: readonly AgentMessage[],
-	protectedTask: AgentMessage,
-): AgentMessage[] {
-	if (protectedTask.role !== "user") throw new Error("Protected delegated task must be a user message.");
-	return [...compiledMessages, structuredClone(protectedTask)];
-}
-
-export function compileProtectedTaskMessages(
-	stack: LoadedPromptStack,
-	runtime: PromptRuntime,
-	originalMessages: readonly AgentMessage[],
-): { messages: AgentMessage[]; diagnostics: PromptStackDiagnostic[] } {
-	const taskIndex = findLastUserMessageIndex(originalMessages);
-	if (taskIndex === -1) throw new Error("Delegated context contains no final user task.");
-	const protectedTask = structuredClone(originalMessages[taskIndex]!);
-	const history = originalMessages.filter((_message, index) => index !== taskIndex);
-	const compiled = compileMessages(stack.stack, runtime, history);
-	return { messages: appendProtectedTask(compiled.messages, protectedTask), diagnostics: compiled.diagnostics };
-}
-
-export function protectedTaskPreserved(messages: readonly AgentMessage[], task: AgentMessage): boolean {
-	if (!messages.length || task.role !== "user") return false;
-	const finalMessage = messages.at(-1);
-	if (finalMessage?.role !== "user") return false;
-	return JSON.stringify(normalizeUserContent((finalMessage as { content?: unknown }).content))
-		=== JSON.stringify(normalizeUserContent((task as { content?: unknown }).content));
-}
-
 export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<SubagentSdkSpikeReport> {
 	const startedAt = Date.now();
 	const requestId = randomUUID();
@@ -284,6 +263,12 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 			throw new Error(`Profile preflight failed after loading forge extensions:\n${formatProfileDiagnostics(prelim.diagnostics)}`);
 		}
 	}
+	const hostResolution = resolveSubagentHostProfile(prelim.loaded, { promptStacks: stacks });
+	if (!hostResolution.snapshot) {
+		unloadForgeExtensions(forgeState);
+		throw new Error(`Host profile resolution failed:\n${hostResolution.diagnostics.map((diagnostic) => `${diagnostic.level.toUpperCase()}: ${diagnostic.message}`).join("\n")}`);
+	}
+	const profileSnapshot = hostResolution.snapshot;
 	const observation: SpikeCompilationObservation = {
 		systemDiagnostics: [],
 		messageDiagnostics: [],
@@ -339,7 +324,7 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 				observation.compiledSystemPrompt = system.systemPrompt;
 				observation.systemDiagnostics = system.diagnostics;
 				const task = createTaskMessage(options.task, images.map((image) => image.content));
-				const prepared = compileProtectedTaskMessages(prelim.promptStack, dryRuntime, [task]);
+				const prepared = compileProtectedAgentTaskMessages(prelim.promptStack, dryRuntime, [task]);
 				observation.preparedMessages = prepared.messages;
 				observation.messageDiagnostics = prepared.diagnostics;
 			} else {
@@ -347,7 +332,7 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 				observation.preparedMessages = [createTaskMessage(options.task, images.map((image) => image.content))];
 			}
 			return createReport({
-				options, requestId, runId, prelim, session, images, forgeResult, toolPolicy, observation,
+				options, requestId, runId, prelim, profileSnapshot, session, images, forgeResult, toolPolicy, observation,
 				terminalStatus, trace, startedAt,
 			});
 		}
@@ -377,7 +362,7 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 		output = session.getLastAssistantText();
 		stats = session.getSessionStats();
 		return createReport({
-			options, requestId, runId, prelim, session, images, forgeResult, toolPolicy, observation,
+			options, requestId, runId, prelim, profileSnapshot, session, images, forgeResult, toolPolicy, observation,
 			terminalStatus, executionError, output, stats, trace, startedAt,
 		});
 	} finally {
@@ -423,7 +408,7 @@ function createSpikeCompilerExtension(
 				observation.preparedMessages = structuredClone(event.messages);
 				return;
 			}
-			const result = compileProtectedTaskMessages(stack, runtime, event.messages);
+			const result = compileProtectedAgentTaskMessages(stack, runtime, event.messages);
 			observation.preparedMessages = structuredClone(result.messages);
 			observation.messageDiagnostics = result.diagnostics;
 			return { messages: result.messages };
@@ -436,6 +421,7 @@ function createReport(input: {
 	requestId: string;
 	runId: string;
 	prelim: ReturnType<typeof resolveAgentProfile>;
+	profileSnapshot: AgentProfileSnapshot;
 	session: AgentSession;
 	images: LoadedSpikeImage[];
 	forgeResult: { diagnostics: PromptStackDiagnostic[]; loadedPaths: string[] };
@@ -465,6 +451,9 @@ function createReport(input: {
 		},
 		profile: {
 			filePath: input.prelim.loaded.filePath,
+			profileFingerprint: input.profileSnapshot.profileFingerprint,
+			promptStackFingerprint: input.profileSnapshot.promptStackFingerprint,
+			dependencies: input.profileSnapshot.dependencies,
 			model: {
 				provider: input.prelim.model!.provider,
 				id: input.prelim.model!.id,
@@ -503,7 +492,7 @@ function createReport(input: {
 			baseSystemPromptChars: input.observation.baseSystemPrompt?.length ?? 0,
 			compiledSystemPromptChars: input.observation.compiledSystemPrompt?.length ?? 0,
 			preparedMessageRoles: input.observation.preparedMessages?.map((message) => message.role) ?? [],
-			protectedTaskPreserved: protectedTaskPreserved(input.observation.preparedMessages ?? [], task),
+			protectedTaskPreserved: isProtectedAgentTaskPreserved(input.observation.preparedMessages ?? [], task),
 			diagnostics: [...input.observation.systemDiagnostics, ...input.observation.messageDiagnostics],
 		},
 		execution: {
@@ -588,11 +577,6 @@ function normalizeTraceEvent(event: AgentSessionEvent): SpikeTraceEvent | undefi
 	return trace;
 }
 
-function normalizeUserContent(content: unknown): unknown[] {
-	if (typeof content === "string") return [{ type: "text", text: content }];
-	return Array.isArray(content) ? content : [content];
-}
-
 function assistantTerminalStatus(messages: readonly AgentMessage[]): SpikeTerminalStatus {
 	const assistant = [...messages].reverse().find((message) => message.role === "assistant") as
 		| { stopReason?: string; errorMessage?: string }
@@ -600,13 +584,6 @@ function assistantTerminalStatus(messages: readonly AgentMessage[]): SpikeTermin
 	if (assistant?.stopReason === "aborted") return "cancelled";
 	if (assistant?.stopReason === "error" || assistant?.errorMessage) return "failed";
 	return "completed";
-}
-
-function findLastUserMessageIndex(messages: readonly AgentMessage[]): number {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i]?.role === "user") return i;
-	}
-	return -1;
 }
 
 function requiredValue(args: string[], index: number, flag: string): string {

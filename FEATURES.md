@@ -30,6 +30,18 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Project trust gates profile loading, application, and writes.
 - Shared typed profile services own capture, protected write/update/delete, application/rollback, immutable preview data, provenance changes, and runtime-drift calculation so command and future UI/adapter consumers do not duplicate behavior.
 
+## Subagent Adapter Contract
+
+- Exported pure v1 `AgentRequest`, profile snapshot, backend preflight, execution-plan, enforcement-receipt, and discriminated response types without registering or shipping a runner.
+- Backend-independent host profile resolution produces path-free declarative snapshots and does not consult the parent model registry or authentication state.
+- Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.
+- Backend tool negotiation intersects prompt-stack name policy with declared filesystem/process/network effects and per-request access.
+- Selected parent context uses explicit provenance and deterministic exact UTF-8 budgeting; required items survive, optional items are selected newest-first, and the complete delegated text/media task remains the protected final user message.
+- Granular validators cover request access/depth/media/limits, backend capabilities and enforcement, prompt-runtime fidelity, plan correlation, all response terminal statuses, usage units, artifact namespaces/paths, and authorized trace handles.
+- Portable profile, prompt-stack, and complete execution fingerprints use canonical `sha256:v1` serialization without changing legacy branch-provenance fingerprints.
+- The opt-in internal Pi SDK spike validates real profile/model/auth application, exact lifecycle prompt preparation, no-access tool filtering, timeout abort, media, and trusted custom registrations. It is not a user-facing subagent command.
+- Adapter responsibilities and unsupported runner behavior are documented in `SUBAGENT_ADAPTER_CONTRACT.md`.
+
 ## Prompt Stack Loading and Storage
 
 - File-backed prompt stacks from `.pi/forge/prompt-stacks/*.json`.
@@ -191,6 +203,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Node built-in tests cover agent-profile resolution/application/provenance, compiler, loader, SillyTavern importer, and the command/event harness.
 - Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
+- Tests cover subagent host resolution, custom dependency detection, all access/required-limit/terminal-status matrices, effect-aware tool negotiation, context budgeting, protected media tasks, canonical fingerprint tamper detection, and malformed external contract values.
 - A real headless-Chrome smoke test covers editor load, metadata editing, validation, policy guidance, save, disk persistence, and browser-console errors.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.

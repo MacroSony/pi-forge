@@ -78,9 +78,12 @@
   "files": [
     "dist/",
     "src/",
+    "scripts/subagent-sdk-spike.ts",
+    "scripts/subagent-sdk-spike-lib.ts",
     "examples/",
     "README.md",
     "README.zh-CN.md",
+    "SUBAGENT_ADAPTER_CONTRACT.md",
     "LICENSE*"
   ],
   "publishConfig": {
