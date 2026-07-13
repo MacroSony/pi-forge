@@ -9,7 +9,7 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 - Shared typed profile repository, application, preview, provenance, and drift services are implemented and consumed by the profile commands.
 - The internal Pi SDK spike now validates real profile/model/auth resolution, exact lifecycle prompt preparation, protected task/media handling, dynamic tool discovery, no-access execution, host timeout/abort, in-memory cleanup, and trusted custom macro/slot loading. Its findings are in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md).
 - Iterations 3 and 4 export the pure subagent request/resolution/preflight/plan/response boundary, dependency receipts, deterministic context budgeting, granular validators, and canonical fingerprints. Adapter obligations are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
-- The web editor page shell, static styles, and browser client are split. Browser smoke verification now gates larger UI work.
+- The web editor page shell and static styles are separate, and its browser client is now authored as strict typed modules with a reproducible self-contained bundle. Browser smoke verification covers dirty state, policy and regex editing, validation, save, export, and import before profile UI work.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
 - Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
 - New prompt-stack behavior should be driven by real prompt-authoring pain, not by aiming for complete SillyTavern compatibility.
@@ -188,7 +188,7 @@ Decision rule:
 - Extend the command/event harness when command or lifecycle behavior changes.
 - Keep compiler, loader, importer, regex, and policy tests separate from integration-style command tests.
 - Run browser smoke tests for material editor workflows.
-- Run `npm run verify` before commits and releases; it covers tests, typecheck, and tracked `dist/` consistency.
+- Run `npm run verify` before commits and releases; it covers tests, typecheck, generated browser-client consistency, and tracked `dist/` consistency.
 
 ## Next Design Session
 

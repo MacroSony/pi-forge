@@ -67,18 +67,21 @@
     "@earendil-works/pi-ai": "0.80.6",
     "@earendil-works/pi-coding-agent": "0.80.6",
     "@types/node": "22.20.1",
+    "esbuild": "^0.28.1",
     "playwright-core": "1.61.1",
     "typescript": "6.0.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run build:client && tsc -p tsconfig.build.json",
+    "build:client": "node scripts/build-web-client.mjs",
+    "check:client": "node scripts/build-web-client.mjs --check",
     "check:dist": "node scripts/check-dist.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:browser": "node --test tests-browser/*.test.ts",
     "spike:subagent": "node scripts/subagent-sdk-spike.ts",
-    "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:dist"
+    "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:client && npm run check:dist"
   },
   "files": [
     "dist/",
