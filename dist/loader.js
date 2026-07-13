@@ -94,6 +94,7 @@ function loadPromptStackFile(filePath) {
             ],
         };
     }
+    diagnostics.push(...validateRawPromptStackShape(raw));
     const stack = normalizeStack(raw, filePath, diagnostics);
     diagnostics.push(...validatePromptStack(stack));
     return { filePath, stack, diagnostics };
@@ -179,7 +180,7 @@ function normalizeItem(raw, index, diagnostics) {
     };
 }
 export function validatePromptStack(stack) {
-    const diagnostics = [];
+    const diagnostics = validateRawPromptStackShape(stack);
     const ids = new Set();
     let chatHistoryCount = 0;
     if (!stack.id.trim())
@@ -233,6 +234,111 @@ export function validatePromptStack(stack) {
     }
     diagnostics.push(...validateRegexConfig(stack.regex));
     return diagnostics;
+}
+function validateRawPromptStackShape(raw) {
+    const diagnostics = [];
+    if (!isPlainObject(raw))
+        return diagnostics;
+    if (typeof raw.id !== "string" || !raw.id.trim()) {
+        diagnostics.push({ level: "error", message: "Stack id must be a non-empty string." });
+    }
+    if (raw.type !== undefined && raw.type !== "pi-forge.prompt-stack") {
+        diagnostics.push({ level: "error", message: 'Stack type must be "pi-forge.prompt-stack" when provided.' });
+    }
+    validateOptionalString(raw, "name", "Stack name", diagnostics);
+    validateOptionalString(raw, "description", "Stack description", diagnostics);
+    validateOptionalBoolean(raw, "autoActivate", "Stack autoActivate", diagnostics);
+    if (raw.mode !== undefined && raw.mode !== "append" && raw.mode !== "prepend" && raw.mode !== "replace") {
+        diagnostics.push({ level: "error", message: 'Stack mode must be "append", "prepend", or "replace" when provided.' });
+    }
+    validateRawDefaults(raw.defaults, diagnostics);
+    validateRawContext(raw.context, diagnostics);
+    validateRawVariables(raw.variables, diagnostics);
+    if (!Array.isArray(raw.items))
+        return diagnostics;
+    for (const [index, item] of raw.items.entries()) {
+        if (!isPlainObject(item))
+            continue;
+        const fallbackId = `item-${index + 1}`;
+        const itemId = typeof item.id === "string" && item.id.trim() ? item.id.trim() : fallbackId;
+        if (item.kind !== "block" && item.kind !== "slot") {
+            diagnostics.push({ level: "error", message: `Item ${index + 1} kind must be "block" or "slot".`, itemId });
+        }
+        if (typeof item.id !== "string" || !item.id.trim()) {
+            diagnostics.push({ level: "error", message: `Item ${index + 1} id must be a non-empty string.`, itemId });
+        }
+        if (item.name !== undefined && typeof item.name !== "string") {
+            diagnostics.push({ level: "error", message: "Item name must be a string when provided.", itemId });
+        }
+        if (item.enabled !== undefined && typeof item.enabled !== "boolean") {
+            diagnostics.push({ level: "error", message: "Item enabled must be a boolean when provided.", itemId });
+        }
+        if (item.role !== undefined && !VALID_ROLES.has(item.role)) {
+            diagnostics.push({ level: "error", message: `Invalid role: ${String(item.role)}`, itemId });
+        }
+        if (item.tags !== undefined && (!Array.isArray(item.tags) || item.tags.some((tag) => typeof tag !== "string"))) {
+            diagnostics.push({ level: "error", message: "Item tags must be an array of strings when provided.", itemId });
+        }
+        if (item.source !== undefined && !isPlainObject(item.source)) {
+            diagnostics.push({ level: "error", message: "Item source must be an object when provided.", itemId });
+        }
+        if (item.kind === "block" && typeof item.content !== "string") {
+            diagnostics.push({ level: "error", message: "Block content must be a string.", itemId });
+        }
+        if (item.kind === "slot") {
+            if (typeof item.slot !== "string" || !item.slot.trim()) {
+                diagnostics.push({ level: "error", message: "Slot name must be a non-empty string.", itemId });
+            }
+            if (item.options !== undefined && !isPlainObject(item.options)) {
+                diagnostics.push({ level: "error", message: "Slot options must be an object when provided.", itemId });
+            }
+        }
+    }
+    return diagnostics;
+}
+function validateRawDefaults(value, diagnostics) {
+    if (value === undefined)
+        return;
+    if (!isPlainObject(value)) {
+        diagnostics.push({ level: "error", message: "Stack defaults must be an object when provided." });
+        return;
+    }
+    validateOptionalBoolean(value, "syntheticMessagesVisible", "defaults.syntheticMessagesVisible", diagnostics);
+    if (value.unresolvedMacroPolicy !== undefined && !["warn", "keep", "error"].includes(String(value.unresolvedMacroPolicy))) {
+        diagnostics.push({ level: "error", message: 'defaults.unresolvedMacroPolicy must be "warn", "keep", or "error" when provided.' });
+    }
+}
+function validateRawContext(value, diagnostics) {
+    if (value === undefined)
+        return;
+    if (!isPlainObject(value)) {
+        diagnostics.push({ level: "error", message: "Stack context must be an object when provided." });
+        return;
+    }
+    validateOptionalBoolean(value, "allowDuplicateChatHistory", "context.allowDuplicateChatHistory", diagnostics);
+}
+function validateRawVariables(value, diagnostics) {
+    if (value === undefined)
+        return;
+    if (!isPlainObject(value)) {
+        diagnostics.push({ level: "error", message: "Stack variables must be an object when provided." });
+        return;
+    }
+    for (const [name, variable] of Object.entries(value)) {
+        if (typeof variable !== "string") {
+            diagnostics.push({ level: "error", message: `Stack variable ${name} must be a string.` });
+        }
+    }
+}
+function validateOptionalString(value, key, label, diagnostics) {
+    if (value[key] !== undefined && typeof value[key] !== "string") {
+        diagnostics.push({ level: "error", message: `${label} must be a string when provided.` });
+    }
+}
+function validateOptionalBoolean(value, key, label, diagnostics) {
+    if (value[key] !== undefined && typeof value[key] !== "boolean") {
+        diagnostics.push({ level: "error", message: `${label} must be a boolean when provided.` });
+    }
 }
 function validateChatHistoryOptions(item, diagnostics) {
     const options = item.options;

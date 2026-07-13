@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type PiForgeRuntimeState } from "./runtime-state.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
 export interface LifecycleDeps {
@@ -6,8 +6,9 @@ export interface LifecycleDeps {
         deferToolPolicy?: boolean;
         suppressAutoActivate?: boolean;
     }): Promise<void>;
+    disposePromptStackRuntime(): PromptStackDiagnostic[];
     activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
-    refreshWebEditorHost(ctx: ExtensionContext): void;
+    refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
     notifyActivePreset(ctx: ExtensionContext, detail: string): void;
     syncActiveToolPolicy(ctx?: ExtensionContext): void;
     restoreActiveToolPolicy(): void;

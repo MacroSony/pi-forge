@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
 export interface WebHostRuntime {
@@ -18,10 +18,10 @@ export interface WebHostRuntime {
     armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 }
-export declare function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHostRuntime): WebEditorHost;
+export declare function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost;
 export declare function stackSummary(loaded: LoadedPromptStack, active: LoadedPromptStack | undefined): WebEditorStackSummary;
 export declare function stackSummaries(stacks: LoadedPromptStack[], active: LoadedPromptStack | undefined): WebEditorStackSummary[];
-export declare function loadWebEditorSettings(ctx: ExtensionCommandContext): {
+export declare function loadWebEditorSettings(ctx: ExtensionContext): {
     preferredPort?: number;
     configPath: string;
     warnings: string[];

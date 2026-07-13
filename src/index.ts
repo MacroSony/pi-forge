@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.ts";
 import { buildPreview } from "./preview.ts";
@@ -131,15 +131,15 @@ export default function piForge(pi: ExtensionAPI) {
 		setActive: stackRuntime.setActive,
 		updateStatus: stackRuntime.updateStatus,
 	});
-	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionCommandContext) => ({
+	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
 		getStacks: () => state.stacks,
 		getActive: () => state.active,
 		getActiveId: stackRuntime.activeId,
 		getSelectedActiveId: stackRuntime.selectedActiveId,
 		setActive: (id) => stackRuntime.setActive(id, ctx),
 		reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
-		buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(ctx, target.stack)),
-		getPolicyResources: () => toolPolicy.policyResources(ctx),
+		buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(promptOptions, target.stack)),
+		getPolicyResources: () => toolPolicy.policyResources(promptOptions),
 		getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
 		armPayload: (savePath) => {
 			armPayloadIntercept(state, ctx, savePath, "web");
@@ -153,6 +153,7 @@ export default function piForge(pi: ExtensionAPI) {
 
 	registerLifecycleHandlers(pi, state, {
 		reloadStacks: stackRuntime.reloadStacks,
+		disposePromptStackRuntime: stackRuntime.dispose,
 		activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
 		refreshWebEditorHost: webEditorRuntime.refreshHost,
 		notifyActivePreset: stackRuntime.notifyActivePreset,

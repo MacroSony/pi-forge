@@ -83,7 +83,7 @@ export function registerPayloadRequestHandler(
 
 export function armPayloadIntercept(
 	state: PiForgeRuntimeState,
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	savePath?: string,
 	displayTarget: PayloadDisplayTarget = "editor",
 ): void {
@@ -100,7 +100,7 @@ export function armPayloadIntercept(
 	ctx.ui.notify(savePath ? `pi-forge: next provider payload will be displayed and saved to ${savePath}.` : "pi-forge: next provider payload will be displayed before sending.", "info");
 }
 
-export function clearPayloadCapture(state: PiForgeRuntimeState, ctx: ExtensionCommandContext): void {
+export function clearPayloadCapture(state: PiForgeRuntimeState, ctx: ExtensionContext): void {
 	state.interceptNextProviderPayload = false;
 	state.interceptPayloadSavePath = undefined;
 	state.interceptPayloadDisplayTarget = "editor";

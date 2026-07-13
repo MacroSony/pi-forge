@@ -1,4 +1,4 @@
-import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { applyResourcePolicy, hasResourcePolicy } from "../policy.ts";
 import type { PiForgeRuntimeState } from "../runtime-state.ts";
 import type { PromptStack } from "../types.ts";
@@ -9,8 +9,8 @@ export interface ToolPolicyRuntime {
 	restore(ctx?: ExtensionContext): void;
 	blockReason(toolName: string): string | undefined;
 	previewToolNames(stack: PromptStack | undefined): string[];
-	previewOptions(ctx: ExtensionCommandContext, stack: PromptStack): BuildSystemPromptOptions;
-	policyResources(ctx: ExtensionCommandContext): WebEditorPolicyResources;
+	previewOptions(base: BuildSystemPromptOptions, stack: PromptStack): BuildSystemPromptOptions;
+	policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources;
 }
 
 export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeState): ToolPolicyRuntime {
@@ -67,8 +67,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeS
 		return stack && hasResourcePolicy(stack.tools) ? applyResourcePolicy(sourceTools, stack.tools) : sourceTools;
 	}
 
-	function previewOptions(ctx: ExtensionCommandContext, stack: PromptStack): BuildSystemPromptOptions {
-		const base = ctx.getSystemPromptOptions();
+	function previewOptions(base: BuildSystemPromptOptions, stack: PromptStack): BuildSystemPromptOptions {
 		const baseSelectedTools = Array.isArray(base.selectedTools) ? base.selectedTools : pi.getActiveTools();
 		const policyActive = hasResourcePolicy(stack.tools);
 		const baselineTools = policyActive ? (baseline ?? pi.getActiveTools()) : baseSelectedTools;
@@ -98,8 +97,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeS
 		return { ...base, selectedTools, toolSnippets, promptGuidelines };
 	}
 
-	function policyResources(ctx: ExtensionCommandContext): WebEditorPolicyResources {
-		const options = ctx.getSystemPromptOptions();
+	function policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources {
 		const activeTools = new Set(pi.getActiveTools());
 		const snippets = options.toolSnippets ?? {};
 		const tools = pi.getAllTools()

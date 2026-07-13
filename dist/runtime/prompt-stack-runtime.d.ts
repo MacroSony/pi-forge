@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { type PiForgeRuntimeState } from "../runtime-state.ts";
 import type { PromptStackDiagnostic } from "../types.ts";
 export interface PromptStackRuntime {
+    dispose(): PromptStackDiagnostic[];
     activeId(): string | undefined;
     selectedActiveId(): string | undefined;
     persistActiveSelection(id: string): void;

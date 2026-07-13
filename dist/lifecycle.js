@@ -10,6 +10,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         // replacement pi-forge instance can capture a complete baseline.
         startupToolPolicyPending = false;
         deps.restoreActiveToolPolicy();
+        deps.disposePromptStackRuntime();
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;
@@ -57,6 +58,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
     });
     pi.on("before_agent_start", async (event, ctx) => {
         state.currentSystemPromptOptions = event.systemPromptOptions;
+        deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         state.currentLatestUserMessage = event.prompt;
         state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
         resetTurnVariables(state.currentVariableStore);

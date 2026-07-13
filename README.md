@@ -53,11 +53,11 @@ Prefer clicking over typing JSON? pi-forge has a built-in web editor:
 /preset ui
 ```
 
-Drag, drop, create, edit, validate, inspect full previews and captured payloads, manage variables/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. New stacks start from the default Pi prompt mirror layout. Stack metadata is collapsible so the active editor stays in view. The policy tab shows registered tools and loaded skills with selected-pattern chips and filtering, so allow/deny rules can be built from exact names while still supporting wildcards.
+Drag, drop, create, edit, validate, inspect full previews and captured payloads, manage variables/context/regex rules in tabs, switch dark mode, recover through raw stack JSON, import, export, fork, and delete stacks — all in your browser. New stacks start from the default Pi prompt mirror layout. Existing stack IDs are immutable; use Fork to create a new ID without risking profile references or active selection. Stack metadata is collapsible so the active editor stays in view. The policy tab shows registered tools and loaded skills with selected-pattern chips and filtering, so allow/deny rules can be built from exact names while still supporting wildcards.
 
 Import accepts native pi-forge stack JSON and SillyTavern preset JSON. SillyTavern presets are converted to prompt stacks automatically; if a preset contains multiple `character_id` configs, the editor asks which one to use.
 
-The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. If Pi reinitializes the extension after session navigation or a new session, `/preset ui` reuses the existing editor URL for the same project instead of orphaning the old server. Writes require a trusted project and stay inside prompt-stack storage. New stacks are written to `.pi/forge/prompt-stacks`; existing legacy stacks under `.pi/prompt-stacks` remain readable and editable. Successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
+The editor runs on an available `127.0.0.1` port with a session token, so multiple Pi instances can run editors at the same time. If Pi reinitializes the extension after session navigation or a new session, `/preset ui` reuses the existing editor URL for the same project instead of orphaning the old server; resources and preview remain available across lifecycle refreshes. Writes require a trusted project and stay inside prompt-stack storage. New stacks are written to `.pi/forge/prompt-stacks`; existing legacy stacks under `.pi/prompt-stacks` remain readable and editable. Successful save, import, fork, and delete actions reload into the current Pi session. Use `/preset ui restart` or `/preset ui stop` when needed.
 
 To copy old stacks into the new location, run `/preset migrate-stacks`. Add `--dry-run` to preview, `--overwrite` to replace existing target files, and `--delete-legacy` to remove old files after successful copy.
 
@@ -195,7 +195,7 @@ See exactly what gets sent to the model:
 /payload next save=.pi/forge/payloads/last.json
 ```
 
-Or open `/preset ui`, click **Arm payload**, send the next Pi prompt, and inspect the redacted provider payload in the browser.
+Or open `/preset ui`, click **Arm payload**, send the next Pi prompt, and inspect the redacted provider payload in the browser. Credential-shaped token fields remain hidden, while normal limits and accounting fields such as `max_tokens`, `input_tokens`, and `output_tokens` remain visible.
 
 Or preview your compiled prompt without sending anything:
 

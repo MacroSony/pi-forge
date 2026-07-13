@@ -54,8 +54,7 @@ export function createToolPolicyRuntime(pi, state) {
         const sourceTools = filterKnownTools(baseline ?? pi.getActiveTools());
         return stack && hasResourcePolicy(stack.tools) ? applyResourcePolicy(sourceTools, stack.tools) : sourceTools;
     }
-    function previewOptions(ctx, stack) {
-        const base = ctx.getSystemPromptOptions();
+    function previewOptions(base, stack) {
         const baseSelectedTools = Array.isArray(base.selectedTools) ? base.selectedTools : pi.getActiveTools();
         const policyActive = hasResourcePolicy(stack.tools);
         const baselineTools = policyActive ? (baseline ?? pi.getActiveTools()) : baseSelectedTools;
@@ -84,8 +83,7 @@ export function createToolPolicyRuntime(pi, state) {
             : (base.promptGuidelines ?? mappedGuidelines);
         return { ...base, selectedTools, toolSnippets, promptGuidelines };
     }
-    function policyResources(ctx) {
-        const options = ctx.getSystemPromptOptions();
+    function policyResources(options) {
         const activeTools = new Set(pi.getActiveTools());
         const snippets = options.toolSnippets ?? {};
         const tools = pi.getAllTools()

@@ -1,10 +1,9 @@
 import { agentMessageToPreviewText, compileMessages, compileSystemPrompt, createPromptVariableStore, getLatestUserMessage, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
 export function renderPreview(ctx, target, sessionVariables) {
-    return buildPreview(ctx, target, sessionVariables).text;
+    return buildPreview(ctx, target, sessionVariables, ctx.getSystemPromptOptions()).text;
 }
-export function buildPreview(ctx, target, sessionVariables, optionsOverride) {
-    const options = optionsOverride ?? ctx.getSystemPromptOptions();
+export function buildPreview(ctx, target, sessionVariables, options) {
     const sessionMessages = getPreviewSessionMessages(ctx);
     const latestUserMessage = getLatestUserMessage(sessionMessages);
     const previewVariables = createPromptVariableStore(sessionVariables);

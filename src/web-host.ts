@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	isInsidePromptStackStorage,
 	promptStackPath,
@@ -35,7 +35,7 @@ export interface WebHostRuntime {
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 }
 
-export function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHostRuntime): WebEditorHost {
+export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost {
 	return {
 		cwd: ctx.cwd,
 		listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
@@ -94,7 +94,7 @@ export function stackSummaries(stacks: LoadedPromptStack[], active: LoadedPrompt
 	return stacks.map((loaded) => stackSummary(loaded, active));
 }
 
-export function loadWebEditorSettings(ctx: ExtensionCommandContext): { preferredPort?: number; configPath: string; warnings: string[] } {
+export function loadWebEditorSettings(ctx: ExtensionContext): { preferredPort?: number; configPath: string; warnings: string[] } {
 	const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
 	if (!ctx.isProjectTrusted() || !existsSync(configPath)) {
 		return { configPath, warnings: [] };
@@ -132,7 +132,7 @@ export function loadWebEditorSettings(ctx: ExtensionCommandContext): { preferred
 }
 
 async function saveStackFile(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	runtime: WebHostRuntime,
 	id: string,
 	stack: PromptStack,
@@ -143,6 +143,11 @@ async function saveStackFile(
 
 	const target = runtime.getStacks().find((candidate) => candidate.stack.id === id);
 	if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+	const idError = validateWebStackId(stack.id);
+	if (idError) return { ok: false, status: 400, error: idError };
+	if (stack.id !== id) {
+		return { ok: false, status: 400, error: "Stack id is immutable during save; fork the stack to create a new id." };
+	}
 	if (!isInsidePromptStackStorage(ctx.cwd, target.filePath)) {
 		return { ok: false, status: 403, error: "Refusing to save outside prompt-stack storage." };
 	}
@@ -156,7 +161,7 @@ async function saveStackFile(
 }
 
 async function createStackFile(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	runtime: WebHostRuntime,
 	stack: PromptStack,
 	options: WebEditorCreateStackOptions,
@@ -194,7 +199,7 @@ async function createStackFile(
 }
 
 async function deleteStackFile(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	runtime: WebHostRuntime,
 	id: string,
 ): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>> {

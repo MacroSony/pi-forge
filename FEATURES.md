@@ -55,12 +55,14 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Same-named files in `.pi/forge/prompt-stacks` shadow legacy stack files.
 - New stacks, imports, and forks write to `.pi/forge/prompt-stacks`.
 - Trusted global and project-local macro/slot registration modules load from `~/.pi/forge/extensions` and `.pi/forge/extensions` before stack validation and reload on `/preset reload`.
+- Trusted registration ownership is disposed during runtime shutdown, and supported ESM/CommonJS extension entry formats reload with fresh module code.
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
 - Branch-aware macro session variable restore when navigating the session tree.
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
+- Raw stack fields are shape-checked before recovery normalization, including behavior-changing booleans/enums, defaults, context, variables, and item fields.
 - Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
 - Stack validation for tool and skill policy shape.
 
@@ -203,6 +205,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 
 - `/intercept` displays the next provider payload with redaction/truncation for secrets and large data.
 - `/payload next save=<path>` displays and saves the next redacted/truncated provider payload with char/token-ish size estimates.
+- Payload redaction preserves known token limits, accounting counters, budgets, and tokenizer names while retaining credential-shaped token redaction.
 - The web editor can arm, poll, clear, and inspect the next redacted provider payload in a full-screen collapsible JSON inspector.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - `/preset ui` starts a token-protected localhost web editor for stack management.
@@ -220,13 +223,14 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Local editor server bound to an available `127.0.0.1` port by default with a random URL token.
 - Preferred editor port can be configured through `.pi/forge/config.json` using `webEditor.port`; if it is unavailable, pi-forge falls back to an available port.
 - Existing same-project editor servers are reclaimed after extension reinitialization from session navigation/new-session flows, so `/preset ui` reuses the current URL instead of opening a second port.
+- Resource inventory and preview remain usable when a reclaimed editor host is refreshed from lifecycle contexts that do not expose command-only prompt APIs.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
 - Collapsible stack metadata panel and main-area tabs for Items, Regex, Policy, and Stack JSON/context/variables work.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
 - Unsaved-change badge in the top bar.
 - Create a new prompt stack from the browser, including when no stack files exist yet; new stacks start from the default Pi prompt mirror layout.
-- Edit stack id, name, mode, `autoActivate`, description, and existing stack file content.
+- View immutable stack ID and edit name, mode, `autoActivate`, description, and existing stack file content; use Fork to create a new ID.
 - Edit stack `context` options from a structured dialog.
 - Edit stack static `variables` from a structured table.
 - Edit stack `regex.rules`, including order, stage, effect, targets, roles, limits, depth, trim strings, pattern, flags, replacement, and runtime warnings.
@@ -245,6 +249,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Arm and inspect the next provider payload from the web editor; captures triggered by `/payload next` are also available to the browser while the editor is open.
 - Provider payload inspector shows top-level JSON sections, redacted full text, char/token estimates, and copy controls.
 - Save existing stack JSON and immediately reload pi-forge stack data.
+- Save rejects attempts to change an existing stack ID before writing or changing active selection.
 - Keyboard shortcuts for new stack, save, validate, preview, and closing dialogs/inspectors.
 - Import native stack JSON or SillyTavern preset JSON into `.pi/forge/prompt-stacks`; SillyTavern uploads are converted automatically.
 - Show the SillyTavern import report in the web editor after import, with copy support.

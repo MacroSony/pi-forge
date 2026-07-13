@@ -4,6 +4,12 @@ import { selectedActiveId as selectedActiveIdForState } from "../preset-command.
 import { STATE_ENTRY_TYPE } from "../runtime-state.js";
 export function createPromptStackRuntime(pi, state, deps) {
     const forgeExtensionState = createForgeExtensionState();
+    function dispose() {
+        const diagnostics = unloadForgeExtensions(forgeExtensionState);
+        state.forgeExtensionDiagnostics = diagnostics;
+        state.forgeExtensionPaths = [];
+        return diagnostics;
+    }
     function activeId() {
         return state.active?.stack.id;
     }
@@ -93,6 +99,6 @@ export function createPromptStackRuntime(pi, state, deps) {
         }
         ctx.ui.setStatus("pi-forge-diagnostics", undefined);
     }
-    return { activeId, selectedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
+    return { dispose, activeId, selectedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
 }
 //# sourceMappingURL=prompt-stack-runtime.js.map

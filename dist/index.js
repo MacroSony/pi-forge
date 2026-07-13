@@ -28,15 +28,15 @@ export default function piForge(pi) {
         setActive: stackRuntime.setActive,
         updateStatus: stackRuntime.updateStatus,
     });
-    const webEditorRuntime = createWebEditorRuntime((ctx) => ({
+    const webEditorRuntime = createWebEditorRuntime((ctx, promptOptions) => ({
         getStacks: () => state.stacks,
         getActive: () => state.active,
         getActiveId: stackRuntime.activeId,
         getSelectedActiveId: stackRuntime.selectedActiveId,
         setActive: (id) => stackRuntime.setActive(id, ctx),
         reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
-        buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(ctx, target.stack)),
-        getPolicyResources: () => toolPolicy.policyResources(ctx),
+        buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(promptOptions, target.stack)),
+        getPolicyResources: () => toolPolicy.policyResources(promptOptions),
         getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
         armPayload: (savePath) => {
             armPayloadIntercept(state, ctx, savePath, "web");
@@ -49,6 +49,7 @@ export default function piForge(pi) {
     }));
     registerLifecycleHandlers(pi, state, {
         reloadStacks: stackRuntime.reloadStacks,
+        disposePromptStackRuntime: stackRuntime.dispose,
         activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
         refreshWebEditorHost: webEditorRuntime.refreshHost,
         notifyActivePreset: stackRuntime.notifyActivePreset,

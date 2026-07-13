@@ -53,11 +53,11 @@ $EDITOR .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-拖拽、新建、编辑、校验、查看完整预览和捕获的 payload、用 tabs 管理变量/context/regex 规则、切换深色模式、通过原始 stack JSON 修复高级字段、导入、导出、fork、删除栈 —— 全在浏览器里完成。新栈会从默认 Pi prompt mirror 布局开始。Stack metadata 可以折叠，方便把当前编辑区留在屏幕内。Policy tab 会显示已注册工具和已加载 skills，并提供已选 pattern chips 和过滤输入，方便用精确名称编写 allow/deny 规则，同时保留通配符写法。
+拖拽、新建、编辑、校验、查看完整预览和捕获的 payload、用 tabs 管理变量/context/regex 规则、切换深色模式、通过原始 stack JSON 修复高级字段、导入、导出、fork、删除栈 —— 全在浏览器里完成。新栈会从默认 Pi prompt mirror 布局开始。已有 stack ID 不可在保存时修改；需要新 ID 时请使用 Fork，避免破坏 profile 引用或当前选择。Stack metadata 可以折叠，方便把当前编辑区留在屏幕内。Policy tab 会显示已注册工具和已加载 skills，并提供已选 pattern chips 和过滤输入，方便用精确名称编写 allow/deny 规则，同时保留通配符写法。
 
 导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
 
-编辑器默认运行在一个可用的 `127.0.0.1` 端口，并带有会话 token，所以多个 Pi 实例可以同时打开各自的编辑器。如果 Pi 在 session navigation 或新会话后重新初始化扩展，同一项目中的 `/preset ui` 会复用已有编辑器 URL，不会遗留旧 server 后再开一个新端口。写入需要项目被信任，且只会写入 prompt-stack 存储目录。新建的栈会写入 `.pi/forge/prompt-stacks`；旧的 `.pi/prompt-stacks` 栈仍然可读取和编辑。保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
+编辑器默认运行在一个可用的 `127.0.0.1` 端口，并带有会话 token，所以多个 Pi 实例可以同时打开各自的编辑器。如果 Pi 在 session navigation 或新会话后重新初始化扩展，同一项目中的 `/preset ui` 会复用已有编辑器 URL，不会遗留旧 server 后再开一个新端口；resources 和 preview 在生命周期刷新后仍可使用。写入需要项目被信任，且只会写入 prompt-stack 存储目录。新建的栈会写入 `.pi/forge/prompt-stacks`；旧的 `.pi/prompt-stacks` 栈仍然可读取和编辑。保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
 
 要把旧栈复制到新位置，执行 `/preset migrate-stacks`。加 `--dry-run` 可先预览，加 `--overwrite` 可覆盖目标文件，加 `--delete-legacy` 会在复制成功后删除旧文件。
 
@@ -193,7 +193,7 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 /payload next save=.pi/forge/payloads/last.json
 ```
 
-或者打开 `/preset ui`，点击 **Arm payload**，发送下一条 Pi prompt，然后在浏览器里查看脱敏后的 provider payload。
+或者打开 `/preset ui`，点击 **Arm payload**，发送下一条 Pi prompt，然后在浏览器里查看脱敏后的 provider payload。凭据形式的 token 字段仍会隐藏，而 `max_tokens`、`input_tokens`、`output_tokens` 等正常限制和计数字段会保留显示。
 
 或者不发送只预览编译结果：
 

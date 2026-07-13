@@ -6,6 +6,7 @@ import { STATE_ENTRY_TYPE, type PiForgeRuntimeState } from "../runtime-state.ts"
 import type { PromptStackDiagnostic } from "../types.ts";
 
 export interface PromptStackRuntime {
+	dispose(): PromptStackDiagnostic[];
 	activeId(): string | undefined;
 	selectedActiveId(): string | undefined;
 	persistActiveSelection(id: string): void;
@@ -25,6 +26,13 @@ export function createPromptStackRuntime(
 	},
 ): PromptStackRuntime {
 	const forgeExtensionState = createForgeExtensionState();
+
+	function dispose(): PromptStackDiagnostic[] {
+		const diagnostics = unloadForgeExtensions(forgeExtensionState);
+		state.forgeExtensionDiagnostics = diagnostics;
+		state.forgeExtensionPaths = [];
+		return diagnostics;
+	}
 
 	function activeId(): string | undefined {
 		return state.active?.stack.id;
@@ -119,5 +127,5 @@ export function createPromptStackRuntime(
 		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 	}
 
-	return { activeId, selectedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
+	return { dispose, activeId, selectedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
 }

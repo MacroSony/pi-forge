@@ -99,6 +99,12 @@ async function saveStackFile(ctx, runtime, id, stack) {
     const target = runtime.getStacks().find((candidate) => candidate.stack.id === id);
     if (!target)
         return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+    const idError = validateWebStackId(stack.id);
+    if (idError)
+        return { ok: false, status: 400, error: idError };
+    if (stack.id !== id) {
+        return { ok: false, status: 400, error: "Stack id is immutable during save; fork the stack to create a new id." };
+    }
     if (!isInsidePromptStackStorage(ctx.cwd, target.filePath)) {
         return { ok: false, status: 403, error: "Refusing to save outside prompt-stack storage." };
     }

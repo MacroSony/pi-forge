@@ -22,6 +22,11 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- **Web editor lifecycle refresh.** Reused editor servers now bind ordinary lifecycle contexts separately from snapshotted system-prompt options, so resource inventory and preview remain available after startup reload, tree navigation, compaction, and extension reinitialization.
+- **Trusted extension disposal and reload.** Runtime shutdown unregisters owned custom macros and slots before replacement. Every ESM load receives a process-unique cache token, while CommonJS entry caches are cleared, so `.ts`, `.mjs`, CommonJS `.js`, and `.cjs` extension edits reload without duplicate registrations or stale entry code.
+- **Strict prompt-stack input validation.** Behavior-changing booleans, enums, defaults, context fields, variables, and item shapes are diagnosed before recovery normalization. Malformed values can still be displayed for repair but can no longer become an automatically usable stack.
+- **Immutable stack identity on save.** Existing stack IDs are read-only in the web editor, and the save API rejects body/URL ID mismatches without writing files or changing active selection. Fork remains the supported way to create a new ID.
+- **Token-accounting payload visibility.** Provider payload redaction preserves known token limits, usage counters, budgets, and tokenizer metadata while continuing to hide generic and credential-shaped token fields.
 - **Tool policy restoration and enforcement across Pi reload.** pi-forge now restores the pre-policy active tool set during extension shutdown, waits for other extensions to finish their startup tool configuration before recapturing it, and reapplies restrictive policy before input and turns. A tool-call guard blocks disallowed execution even if another extension later calls `setActiveTools()`. This prevents both missing built-ins after `/preset use none` and late-added extension tools bypassing an active stack policy.
 - **Skill-policy semantics.** Validation, documentation, and editor guidance now state that skill policy filters model-visible pi-forge skill listings; it does not disable explicit skill invocation and is not a security boundary.
 

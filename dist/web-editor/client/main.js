@@ -240,7 +240,7 @@ function renderSettings() {
     el("metadataToggleBtn").textContent = metadataCollapsed ? "Show metadata" : "Hide metadata";
     el("metadataToggleBtn").dataset.icon = metadataCollapsed ? "▸" : "▾";
     settings.innerHTML = [
-        field("Stack ID", '<input id="stackId" value="' + attr(stack.id) + '">'),
+        field("Stack ID", '<input id="stackId" value="' + attr(stack.id) + '" readonly title="Stack IDs are immutable; use Fork to create a new ID.">'),
         field("Name", '<input id="stackName" value="' + attr(stack.name || "") + '">'),
         field("Mode", '<select id="stackMode"><option value="replace">replace</option><option value="append">append</option><option value="prepend">prepend</option></select>'),
         field("Auto activate", '<label class="checkline"><input id="stackAuto" type="checkbox"> enabled</label>'),
@@ -249,7 +249,6 @@ function renderSettings() {
     ].join("");
     el("stackMode").value = stack.mode || "replace";
     el("stackAuto").checked = stack.autoActivate === true;
-    el("stackId").oninput = (event) => { stack.id = event.target.value; markDirty(); };
     el("stackName").oninput = (event) => { setOptionalString(stack, "name", event.target.value); markDirty(); };
     el("stackMode").onchange = (event) => { stack.mode = event.target.value; markDirty(); };
     el("stackAuto").onchange = (event) => { stack.autoActivate = event.target.checked; markDirty(); };

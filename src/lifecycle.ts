@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
 	compileMessages,
 	compileSystemPrompt,
@@ -14,8 +14,9 @@ import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } 
 
 export interface LifecycleDeps {
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
+	disposePromptStackRuntime(): PromptStackDiagnostic[];
 	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
-	refreshWebEditorHost(ctx: ExtensionContext): void;
+	refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
 	restoreActiveToolPolicy(): void;
@@ -34,6 +35,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		// replacement pi-forge instance can capture a complete baseline.
 		startupToolPolicyPending = false;
 		deps.restoreActiveToolPolicy();
+		deps.disposePromptStackRuntime();
 	});
 
 	pi.on("session_start", async (event, ctx) => {
@@ -85,6 +87,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.currentSystemPromptOptions = event.systemPromptOptions;
+		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		state.currentLatestUserMessage = event.prompt;
 		state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
 		resetTurnVariables(state.currentVariableStore);

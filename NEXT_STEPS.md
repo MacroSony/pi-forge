@@ -11,6 +11,7 @@ This file is forward-looking only. Shipped capability belongs in `FEATURES.md`; 
 - Iterations 3 through 5 export the pure subagent request/resolution/preflight/plan/response boundary, dependency receipts, deterministic context budgeting, granular validators, canonical fingerprints, and an empty-by-default backend registry. A deterministic fake backend now covers the adapter status, enforcement, cancellation, artifact, and trace matrices documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
 - The extension composition root, typed browser client, and subagent contract have been split into focused modules. Legacy package-root and `subagent-contract` exports remain compatibility barrels rather than separate implementations.
 - The web editor page shell and static styles are separate, and its browser client is now authored as strict typed modules with a reproducible self-contained bundle. Browser smoke verification covers dirty state, policy and regex editing, validation, save, export, and import before profile UI work.
+- The stabilization pass now separates lifecycle contexts from web-editor prompt snapshots, disposes and freshly reloads trusted extension registrations, validates raw stack behavior fields before normalization, keeps stack IDs immutable on save, and preserves non-secret token accounting in payload captures.
 - Prompt stacks remain scoped to prompt/message layout and strict active-tool constraints. Skill policy filters model-visible pi-forge skill listings; it is not a security boundary.
 - Profile v1 deliberately omits tool/skill lists, generation parameters, fallbacks, and runner limits. Prompt stacks own tool policy; unsupported profile fields fail validation instead of becoming inert configuration.
 - New prompt-stack behavior should be driven by real prompt-authoring pain, not by aiming for complete SillyTavern compatibility.
@@ -23,10 +24,11 @@ Recommended ordering:
 2. Completed: extract a shared typed profile repository/application/status service and make commands consume it without behavior changes.
 3. Completed: implement discovery/preflight plus backend-assisted host plan preparation, pure validation, deterministic budgeting, and stable fingerprints.
 4. Completed: add an optional backend registry and fake-backend conformance harness without registering a backend by default.
-5. Build profile UI on the completed shared service as an independent product lane.
-6. Design parent integration and choose whether the Pi SDK spike should become an optional concrete adapter; keep the registry useful with zero adapters installed.
-7. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
-8. Defer provider-payload rewriting, true display regex, and an owned full runner until a concrete adapter demonstrates the remaining enforcement semantics end to end.
+5. Completed: stabilize lifecycle/editor context ownership, trusted extension disposal and module reload, strict raw stack validation, immutable stack identity, and payload token-accounting visibility.
+6. Convert the validated Pi SDK spike into an opt-in concrete adapter with honest `access: none` capabilities, then add the smallest parent request/result integration.
+7. Build profile UI on the completed shared service as an independent product lane.
+8. Revisit custom macro/slot portability metadata and importer fidelity only when real sharing or preset drift demonstrates the need.
+9. Defer provider-payload rewriting, true display regex, and an owned full runner until a concrete adapter demonstrates the remaining enforcement semantics end to end.
 
 Risk calls:
 
@@ -38,7 +40,27 @@ Risk calls:
 - Avoid expanding the browser editor without browser-level workflow coverage.
 - Do not add user-facing delegation merely because the dispatcher exists. First choose a concrete adapter whose real isolation limits are explicit, then prove request construction, response projection, cleanup, and authorization end to end.
 
-## Priority 1: Profile UI
+## Priority 1: Optional Pi SDK Backend and Parent Integration
+
+Goal: turn the completed internal SDK spike and empty-by-default registry into the smallest honest user-visible delegation path without owning a general runner.
+
+Initial scope:
+
+- Implement a thin pi-forge adapter over Pi's existing `AgentSession`, model registry, authentication, streaming, and in-memory session primitives.
+- Support one-shot foreground execution with existing agent profiles, clean context, explicit selected context, text/media tasks, cancellation, best-effort host timeout, compact output, and authorized normalized traces.
+- Advertise and accept only `access: none` until a backend can produce real allowed-root filesystem/process/network enforcement receipts.
+- Keep provider execution opt-in while the adapter is experimental, and keep automated conformance on deterministic fake backends unless a live test is explicitly requested.
+- Add parent request construction and compact response projection only after end-to-end preflight, protected-task preparation, provider failure, cancellation cleanup, and trace authorization pass through the concrete adapter.
+
+Done criteria:
+
+- A stored profile can run one foreground text or image task through an explicitly selected Pi SDK backend.
+- Exact prompt preparation finishes before provider transport and produces a validated immutable execution plan.
+- Unsupported access and required limits fail during preflight rather than degrading silently.
+- Parent context receives only the compact normalized response; detailed history remains behind an authorized trace handle.
+- No retries, queues, resumable sessions, chains, pipelines, or default background execution are introduced.
+
+## Priority 2: Profile UI
 
 Goal: expose profile management on the completed shared service now that profile core and CLI semantics are stable.
 
@@ -56,7 +78,7 @@ Done criteria:
 - Profile UI does not duplicate prompt-stack item editing logic.
 - Browser smoke tests cover token checks, validation, save, application, drift display, and deletion.
 
-## Priority 2: Subagent Adapter Boundary
+## Completed Foundation: Subagent Adapter Boundary
 
 Goal: make stored profiles useful to subagent systems without committing to one runner.
 
@@ -194,9 +216,9 @@ Decision rule:
 
 ## Next Design Session
 
-1. Choose the next product lane: profile UI, or the smallest parent integration around one optional concrete adapter. Neither should block the other architecturally.
-2. If parent integration comes first, decide whether the Pi SDK spike can honestly advertise only a narrow capability subset or whether a more isolated subprocess adapter is required.
+1. Define the thin Pi SDK backend descriptor and its honest `access: none`, media, timeout, cancellation, prompt-runtime, artifact, and trace capability receipts.
+2. Extract the completed spike's in-memory session path behind the existing `SubagentBackend` interface without copying profile or prompt-stack semantics.
 3. Define the parent request builder, explicit context-selection UX, compact response projection, cancellation handle, and authorized trace inspection before registering a run tool.
-4. Add end-to-end cases for request/profile resolution, backend refusal, provider success/failure, cancellation cleanup, artifacts, and trace authorization using the chosen real adapter.
-5. Continue profile UI on the shared profile service with browser cases defined before handlers.
+4. Add end-to-end cases for request/profile resolution, backend refusal, provider success/failure, cancellation cleanup, artifacts, and trace authorization using the opt-in adapter; keep ordinary tests provider-free.
+5. Continue profile UI independently on the shared profile service with browser cases defined before handlers.
 6. Keep generation parameters, fallbacks, retries, resumable sessions, chains, and pipelines deferred until a concrete backend can enforce them consistently.

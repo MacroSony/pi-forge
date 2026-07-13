@@ -1,3 +1,21 @@
+const SAFE_TOKEN_METADATA_KEYS = new Set([
+    "accepted_prediction_tokens",
+    "audio_tokens",
+    "cached_tokens",
+    "completion_tokens",
+    "input_tokens",
+    "max_completion_tokens",
+    "max_output_tokens",
+    "max_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "reasoning_tokens",
+    "rejected_prediction_tokens",
+    "token_budget",
+    "token_count",
+    "tokenizer",
+    "total_tokens",
+]);
 export function createProviderPayloadCapture(value, options = {}) {
     const formatted = formatProviderPayload(value);
     return {
@@ -72,7 +90,16 @@ function redactPayload(value, depth = 0) {
     return result;
 }
 function isSecretKey(key) {
+    if (SAFE_TOKEN_METADATA_KEYS.has(normalizeSecretKey(key)))
+        return false;
     return /(api[-_]?key|authorization|bearer|token|secret|password|cookie|credential)/i.test(key);
+}
+function normalizeSecretKey(key) {
+    return key
+        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+        .replace(/[^A-Za-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .toLowerCase();
 }
 function redactLongString(value) {
     if (/^data:image\//.test(value))

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { BuildSystemPromptOptions, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
 	compileMessages,
@@ -16,16 +16,15 @@ export function renderPreview(
 	target: LoadedPromptStack,
 	sessionVariables: Record<string, PromptVariableValue>,
 ): string {
-	return buildPreview(ctx, target, sessionVariables).text;
+	return buildPreview(ctx, target, sessionVariables, ctx.getSystemPromptOptions()).text;
 }
 
 export function buildPreview(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	target: LoadedPromptStack,
 	sessionVariables: Record<string, PromptVariableValue>,
-	optionsOverride?: BuildSystemPromptOptions,
+	options: BuildSystemPromptOptions,
 ): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
-	const options = optionsOverride ?? ctx.getSystemPromptOptions();
 	const sessionMessages = getPreviewSessionMessages(ctx);
 	const latestUserMessage = getLatestUserMessage(sessionMessages);
 	const previewVariables = createPromptVariableStore(sessionVariables);
@@ -84,7 +83,7 @@ interface SessionEntryLike {
 	details?: unknown;
 }
 
-function getPreviewSessionMessages(ctx: ExtensionCommandContext): AgentMessage[] {
+function getPreviewSessionMessages(ctx: ExtensionContext): AgentMessage[] {
 	const entries = getCurrentBranchEntries(ctx).map(asSessionEntry);
 	const compaction = latestCompactionEntry(entries);
 	const messages: AgentMessage[] = [];
@@ -148,7 +147,7 @@ function latestCompactionEntry(entries: SessionEntryLike[]): SessionEntryLike | 
 	return undefined;
 }
 
-function getCurrentBranchEntries(ctx: ExtensionCommandContext): unknown[] {
+function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {
 	const leafId = ctx.sessionManager.getLeafId();
 	if (leafId === null) return [];
 	const sessionManager = ctx.sessionManager as {

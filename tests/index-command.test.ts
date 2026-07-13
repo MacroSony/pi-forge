@@ -309,8 +309,27 @@ export default function register(api: any) {
 	}, context.ctx);
 	assert.equal(second.systemPrompt, "Macro macro-v2\n\nslot-v2");
 
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, context.ctx);
+	writeForgeExtension(cwd, "system-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "forgeCustomMacro", render: () => "macro-v3" });
+  api.registerSlot({ name: "forge-custom-slot", render: () => "slot-v3" });
+}
+`);
+	const replacementHarness = createHarness();
+	const replacementContext = createContext(cwd);
+	await startSession(replacementHarness, replacementContext.ctx);
+	const third = await replacementHarness.events.before_agent_start({
+		type: "before_agent_start",
+		systemPromptOptions: replacementContext.ctx.getSystemPromptOptions(),
+		systemPrompt: "base system",
+		prompt: "hello",
+	}, replacementContext.ctx);
+	assert.equal(third.systemPrompt, "Macro macro-v3\n\nslot-v3");
+	assert.doesNotMatch(replacementContext.notifications.map((notification) => notification.message).join("\n"), /already registered/);
+
 	const untrusted = createContext(cwd, [], { trusted: false });
-	await startSession(harness, untrusted.ctx);
+	await startSession(replacementHarness, untrusted.ctx);
 });
 
 test("global and project pi-forge extension modules load before validation", async () => {
@@ -532,6 +551,8 @@ test("/payload next saves a redacted provider payload", async () => {
 		type: "before_provider_request",
 		payload: {
 			Authorization: "Bearer secret",
+			max_tokens: 4096,
+			input_tokens: 12,
 			messages: [{ content: "hello" }],
 			image: "data:image/png;base64," + "a".repeat(100),
 		},
@@ -539,11 +560,69 @@ test("/payload next saves a redacted provider payload", async () => {
 
 	const saved = readFileSync(join(cwd, ".pi", "forge", "payloads", "last.json"), "utf8");
 	assert.match(saved, /"Authorization": "\[redacted\]"/);
+	assert.match(saved, /"max_tokens": 4096/);
+	assert.match(saved, /"input_tokens": 12/);
 	assert.match(saved, /"image": "\[image data omitted\]"/);
 	assert.match(saved, /"content": "hello"/);
 	assert.equal(statuses["pi-forge-intercept"], undefined);
 	assert.match(notifications.at(-1)?.message ?? "", /saved to/);
 	assert.match(editors.at(-1)?.title ?? "", /pi-forge: provider payload \(\d+ chars, ~\d+ tokens\)/);
+});
+
+test("web editor resources and preview survive lifecycle-only host refreshes", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	harness.tools.read = { name: "read", description: "Read files.", promptSnippet: "Read files." };
+	const context = createContext(cwd);
+	context.ctx.getSystemPromptOptions = () => ({
+		cwd,
+		selectedTools: ["read"],
+		toolSnippets: { read: "Read files." },
+		promptGuidelines: [],
+		contextFiles: [],
+		skills: [{ name: "review", description: "Review code.", filePath: "/skills/review/SKILL.md" }],
+	});
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const lifecycleCtx = lifecycleOnlyContext(context.ctx);
+		const refreshes: Array<[string, Record<string, unknown>]> = [
+			["session_tree", { type: "session_tree" }],
+			["session_compact", { type: "session_compact" }],
+			["session_start", { type: "session_start", reason: "reload" }],
+		];
+
+		for (const [eventName, event] of refreshes) {
+			await harness.events[eventName](event, lifecycleCtx);
+			const resourcesResponse = await fetch(new URL("/api/resources", editorUrl), { headers });
+			assert.equal(resourcesResponse.status, 200, eventName);
+			const resources = await resourcesResponse.json() as { tools: Array<{ name: string }>; skills: Array<{ name: string }> };
+			assert.ok(resources.tools.some((tool) => tool.name === "read"), eventName);
+			assert.ok(resources.skills.some((skill) => skill.name === "review"), eventName);
+
+			const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers });
+			assert.equal(stackResponse.status, 200, eventName);
+			const loaded = await stackResponse.json() as { stack: unknown };
+			const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ stack: loaded.stack }),
+			});
+			assert.equal(previewResponse.status, 200, eventName);
+		}
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
 });
 
 test("/preset ui serves and saves through the local stack editor API", async () => {
@@ -624,6 +703,8 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
 		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
 		assert.match(pageHtml, /metadataToggleBtn/);
+		assert.match(pageHtml, /id="stackId"[^>]*readonly/);
+		assert.doesNotMatch(pageHtml, /stack\.id = event\.target\.value/);
 		assert.match(pageHtml, /itemsTabBtn/);
 		assert.doesNotMatch(pageHtml, /stateTabBtn/);
 		assert.match(pageHtml, /regexTabBtn/);
@@ -687,6 +768,20 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers: { "x-pi-forge-token": token } });
 		assert.equal(stackResponse.status, 200);
 		const loaded = await stackResponse.json() as { stack: any };
+		const renameAttempt = structuredClone(loaded.stack);
+		renameAttempt.id = "renamed";
+		const renameResponse = await fetch(new URL("/api/stacks/default", editorUrl), {
+			method: "PUT",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: renameAttempt }),
+		});
+		assert.equal(renameResponse.status, 400);
+		assert.match(await renameResponse.text(), /immutable during save/);
+		const afterRenameResponse = await fetch(apiUrl, { headers: { "x-pi-forge-token": token } });
+		const afterRename = await afterRenameResponse.json() as { stacks: Array<{ id: string; active: boolean }> };
+		assert.deepEqual(afterRename.stacks.map((stack) => stack.id), ["default"]);
+		assert.equal(afterRename.stacks[0]?.active, true);
+		assert.match(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"), /"id": "default"/);
 		loaded.stack.name = "Edited in UI";
 		loaded.stack.regex = {
 			schemaVersion: 1,
@@ -908,6 +1003,12 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 	}
 	assert.equal(statuses["pi-forge-editor"], undefined);
 });
+
+function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
+	const lifecycle = { ...ctx };
+	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];
+	return lifecycle;
+}
 
 test("/preset ui can create the first stack in an empty project", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
