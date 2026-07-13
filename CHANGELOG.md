@@ -10,6 +10,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Added
 
+- **Public API classification.** Added a dedicated experimental `@zihanw/pi-forge/subagent` entry point and documented stable, experimental, and internal compatibility surfaces while preserving existing package-root exports.
+
 - **Native one-shot agent profiles.** Project profiles under `.pi/forge/agent-profiles` store an exact model, thinking level, and prompt-stack reference. `/profile use` preflights and applies once, `/profile save` captures the current runtime, and list/status/preview/validate/reload/forget commands cover diagnostics, drift, direct file editing, and branch-scoped provenance without automatic reapplication.
 - **Profile resolution API.** Exported strict profile types, loading, validation, exact model/auth/thinking/stack resolution, fingerprints, provenance guards, and diagnostics for future subagent adapters without adding a runner dependency. Prompt stacks remain the single source of truth for tool policy and model-visible skill filtering.
 - **Fresh-session profile auto-activation.** One profile may opt into `autoActivate: true` to apply its model, thinking level, and prompt stack once for each fresh session. Profile selection takes precedence over standalone stack autoload, restored branch state remains authoritative, and invalid or ambiguous startup profiles fail closed without producing a hybrid configuration.

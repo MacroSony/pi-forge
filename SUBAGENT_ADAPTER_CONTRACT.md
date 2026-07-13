@@ -4,6 +4,8 @@ Status: exported pure contract and host-preparation utilities for the 0.4 develo
 
 ## Public Surface
 
+New integrations should import this experimental 0.4 surface from `@zihanw/pi-forge/subagent`. The package root retains the same exports during 0.4 development for compatibility. Stability classifications and compatibility-path policy are recorded in [`PUBLIC_API.md`](PUBLIC_API.md).
+
 The package root exports:
 
 - `AgentRequest`, `AgentProfileSnapshot`, `BackendPreflightResult`, `AgentExecutionPlan`, and `AgentResponse`.

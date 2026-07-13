@@ -9,6 +9,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./subagent": {
+      "types": "./dist/subagent/index.d.ts",
+      "import": "./dist/subagent/index.js",
+      "default": "./dist/subagent/index.js"
+    },
     "./src/*.ts": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
@@ -84,6 +89,7 @@
     "README.md",
     "README.zh-CN.md",
     "SUBAGENT_ADAPTER_CONTRACT.md",
+    "PUBLIC_API.md",
     "LICENSE*"
   ],
   "publishConfig": {
