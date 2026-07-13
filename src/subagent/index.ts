@@ -18,3 +18,17 @@ export {
 	type SubagentPromptRegistration,
 	type SubagentPromptRegistrationCatalog,
 } from "../subagent-host.ts";
+export {
+	SubagentBackendRegistry,
+	SubagentBackendRegistryError,
+	type SubagentBackend,
+	type SubagentBackendCancelInput,
+	type SubagentBackendExecutionContext,
+	type SubagentBackendExecutionResult,
+	type SubagentBackendPreparationContext,
+	type SubagentBackendPreflightInput,
+	type SubagentBackendRegistryOptions,
+	type SubagentBackendTraceInput,
+	type SubagentBackendTraceResult,
+	type SubagentExecutionOptions,
+} from "./backend-registry.ts";

@@ -887,6 +887,7 @@ export function validateAgentResponse(
 	validateResponseStatusMatrix(response, diagnostics);
 	if (context?.request && response.requestId !== context.request.requestId) diagnostics.push(error("response.request-id", "requestId does not match the request.", "requestId"));
 	if (context?.plan) {
+		if (response.requestId !== context.plan.requestId) diagnostics.push(error("response.request-plan-id", "requestId does not match the execution plan.", "requestId"));
 		if (response.runId !== context.plan.runId) diagnostics.push(error("response.run-id", "runId does not match the execution plan.", "runId"));
 		if (response.backendId !== context.plan.backendId) diagnostics.push(error("response.backend-id", "backendId does not match the execution plan.", "backendId"));
 		if (response.executionFingerprint !== context.plan.executionFingerprint) diagnostics.push(error("response.execution-fingerprint", "executionFingerprint does not match the execution plan.", "executionFingerprint"));

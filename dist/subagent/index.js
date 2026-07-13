@@ -7,4 +7,5 @@
  */
 export * from "../subagent-contract.js";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, resolveSubagentHostProfile, } from "../subagent-host.js";
+export { SubagentBackendRegistry, SubagentBackendRegistryError, } from "./backend-registry.js";
 //# sourceMappingURL=index.js.map

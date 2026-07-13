@@ -10,6 +10,7 @@ test("the dedicated subagent entry point preserves the package-root adapter surf
 		"resolveSubagentHostProfile",
 		"createAgentExecutionPlan",
 		"validateAgentResponse",
+		"SubagentBackendRegistry",
 	] as const) {
 		assert.equal(typeof subagentSurface[name], "function", name);
 		assert.equal(rootSurface[name], subagentSurface[name], name);

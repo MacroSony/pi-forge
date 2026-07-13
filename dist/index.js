@@ -15,6 +15,7 @@ export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePrevi
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 export * from "./subagent-contract.js";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, resolveSubagentHostProfile, } from "./subagent-host.js";
+export { SubagentBackendRegistry, SubagentBackendRegistryError, } from "./subagent/backend-registry.js";
 export default function piForge(pi) {
     const state = createRuntimeState();
     const toolPolicy = createToolPolicyRuntime(pi, state);

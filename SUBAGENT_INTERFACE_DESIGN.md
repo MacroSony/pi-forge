@@ -220,14 +220,14 @@ Implemented in `src/subagent-host.ts` and `src/subagent-contract.ts`. The SDK sp
 
 Implemented with canonical `sha256:v1` fingerprints, deterministic UTF-8 context budgeting, access/limit/status matrices, artifact/trace validation, and package-root exports. Legacy profile provenance fingerprints are unchanged.
 
-### Iteration 5: Backend registration and conformance (next)
+### Iteration 5: Backend registration and conformance (completed)
 
-- Add an optional backend registry/dispatcher with granular capability negotiation.
-- Add fake-backend conformance tests after the real spike has shaped the contract.
-- Normalize cancellation, failures, enforcement receipts, and trace routing.
-- Keep pi-forge fully functional with no registered backend.
+- Added an optional backend registry/dispatcher with validated descriptor discovery and granular capability negotiation.
+- Added a deterministic fake backend and reusable conformance fixtures shaped by the real spike.
+- Normalized cancellation races, host-abort timeouts, provider failures, malformed responses, enforcement receipts, and authorization-scoped trace routing.
+- pi-forge remains fully functional with no registered backend; the registry starts empty.
 
-### Iteration 6: Parent integration
+### Iteration 6: Parent integration (next design decision)
 
 - Design the smallest run/inspect tool surface after enforcement and task preservation work end to end.
 - Resolve profile/context and prepare a plan before dispatch; backends never read project profile/session files directly.

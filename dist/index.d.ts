@@ -8,5 +8,6 @@ export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePrevi
 export { createVariableAccess, promptRenderHelpers, type PromptRenderHelpers, type PromptVariableAccess, type PromptVariableScope, type PromptWritableVariableScope, } from "./render-helpers.ts";
 export * from "./subagent-contract.ts";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, resolveSubagentHostProfile, type SubagentHostResolution, type SubagentPromptRegistration, type SubagentPromptRegistrationCatalog, } from "./subagent-host.ts";
+export { SubagentBackendRegistry, SubagentBackendRegistryError, type SubagentBackend, type SubagentBackendCancelInput, type SubagentBackendExecutionContext, type SubagentBackendExecutionResult, type SubagentBackendPreparationContext, type SubagentBackendPreflightInput, type SubagentBackendRegistryOptions, type SubagentBackendTraceInput, type SubagentBackendTraceResult, type SubagentExecutionOptions, } from "./subagent/backend-registry.ts";
 export default function piForge(pi: ExtensionAPI): void;
 //# sourceMappingURL=index.d.ts.map

@@ -38,6 +38,8 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Backend-independent host profile resolution produces path-free declarative snapshots and does not consult the parent model registry or authentication state.
 - Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.
 - Backend tool negotiation intersects prompt-stack name policy with declared filesystem/process/network effects and per-request access.
+- Optional empty-by-default backend registry validates registration and preflight identity, routes exact/backend-assisted preparation, rejects unbound plans, arbitrates cancellation and host timeouts, normalizes failures, and protects opaque trace routing behind authorization-scoped handles.
+- Deterministic fake-backend conformance coverage exercises accepted/rejected preflight, tool effects, access/limit refusal, exact preparation, success/failure, cancellation races, timeout, media, artifacts, and traces without shipping a concrete backend.
 - Selected parent context uses explicit provenance and deterministic exact UTF-8 budgeting; required items survive, optional items are selected newest-first, and the complete delegated text/media task remains the protected final user message.
 - Granular validators cover request access/depth/media/limits, backend capabilities and enforcement, prompt-runtime fidelity, plan correlation, all response terminal statuses, usage units, artifact namespaces/paths, and authorized trace handles.
 - Portable profile, prompt-stack, and complete execution fingerprints use canonical `sha256:v1` serialization without changing legacy branch-provenance fingerprints.

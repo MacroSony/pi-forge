@@ -1,6 +1,6 @@
 # Subagent Adapter Contract
 
-Status: exported pure contract and host-preparation utilities for the 0.4 development branch. This is an adapter boundary, not a runner, backend registry, or parent-agent tool.
+Status: exported pure contract, host-preparation utilities, and optional backend registry for the 0.4 development branch. This is an adapter boundary and dispatcher, not a concrete backend, owned runner, or parent-agent tool.
 
 ## Public Surface
 
@@ -17,6 +17,7 @@ The package root exports:
 - Plan construction through `createAgentExecutionPlan()`.
 - Pure request, snapshot, preflight, plan, response, artifact, and trace validators.
 - Canonical `sha256:v1` profile, stack, and execution fingerprints.
+- Optional backend registration, validated dispatch, cancellation/timeout arbitration, response normalization, and authorization-scoped trace routing through `SubagentBackendRegistry`.
 
 The existing `agentProfileFingerprint()` remains unchanged. It is still the legacy JSON provenance value used for branch drift. New portable fingerprints use separately named functions and semantics.
 
@@ -25,10 +26,10 @@ The existing `agentProfileFingerprint()` remains unchanged. It is still the lega
 ```text
 AgentRequest
     -> resolveSubagentHostProfile
-    -> backend discovery/preflight
-    -> backend-assisted exact preparation
+    -> SubagentBackendRegistry discovery/preflight
+    -> registry-mediated exact or backend-assisted preparation
     -> createAgentExecutionPlan
-    -> backend execution
+    -> registry-validated backend execution
     -> validateAgentResponse
 ```
 
@@ -128,6 +129,22 @@ Canonical serialization sorts object keys, omits undefined object fields, reject
 
 It also validates request/run/backend correlation, model and fingerprints, effective backend tool IDs, backend-produced enforcement receipts, duration, token/cost units, artifact namespaces, relative paths, cleanup ownership, and authorized trace handles. Cost requires an ISO 4217 currency code.
 
+### 8. Optional backend registry
+
+`SubagentBackendRegistry` starts empty and never installs a default backend. It:
+
+- Validates backend descriptors and rejects duplicate identities.
+- Binds accepted preflight IDs to the exact backend, request, and profile fingerprint used during discovery.
+- Routes exact-preflight preparation directly to the host preparer and requires backend-assisted adapters to invoke the same host boundary.
+- Rejects malformed, tampered, foreign, or unbound execution plans before transport.
+- Arbitrates backend completion, explicit user cancellation, external abort signals, and declared host-abort timeouts through one terminal result.
+- Normalizes thrown provider failures and malformed backend responses into contract-valid failed responses.
+- Replaces backend-reported duration with host-observed duration.
+- Keeps opaque backend trace IDs behind host-generated handles and enforces authorization scope, backend routing, expiry, and explicit forgetting during inspection.
+- Refuses backend unregistration while an execution remains active or is draining after cancellation.
+
+The registry validates receipts but does not manufacture filesystem, process, network, token, turn, or output isolation. Those remain adapter responsibilities.
+
 ## Adapter-Enforced Responsibilities
 
 The exported validators cannot create isolation. Every adapter remains responsible for:
@@ -148,8 +165,7 @@ An adapter must reject preflight when it cannot enforce a required field. The cu
 
 ## Deliberately Not Included
 
-- Backend registration or dispatch.
-- A shipped Pi SDK backend.
+- A registered-by-default or concrete backend, including a shipped Pi SDK backend.
 - Parent run/inspect tools or result projection insertion.
 - Session resume, retries, queues, chains, or pipelines.
 - Artifact/trace storage implementations.
