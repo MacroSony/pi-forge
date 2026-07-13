@@ -16,11 +16,12 @@ Stable means changes should preserve source compatibility within the documented 
 - The runner-neutral subagent contract, host-resolution helpers, and optional empty-by-default backend registry are 0.4 experimental surfaces.
 - New subagent integrations should import from `@zihanw/pi-forge/subagent`. The package root continues to re-export the current subagent names during 0.4 development for compatibility.
 
-Experimental APIs are typed, tested, and documented, but may be revised before the 0.4 release as backend conformance work exposes missing semantics. Changes should still be deliberate and recorded.
+Experimental APIs are typed, tested, and documented, but may be revised before the 0.4 release as real adapter and parent-integration work exposes missing semantics. Changes should still be deliberate and recorded.
 
 ## Internal compatibility paths
 
 - `@zihanw/pi-forge/src/*` subpath exports exist for compatibility with earlier source-shaped imports. They resolve to compiled `dist` modules and are not a promise that every implementation module is a permanent public API.
+- `src/subagent-contract.ts` is a compatibility barrel over the focused contract modules; it does not contain a second implementation.
 - Physical `src/` files are currently included in the package tarball for compatibility and inspection. Runtime installation uses `dist/index.js`.
 - `scripts/subagent-sdk-spike*.ts` are diagnostic development interfaces, not a supported runner API.
 

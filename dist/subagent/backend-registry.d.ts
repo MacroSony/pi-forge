@@ -1,4 +1,4 @@
-import { type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type AgentResponse, type BackendPreflightResult, type SubagentBackendDescriptor, type SubagentHostPlanPreparer, type SubagentPreparationInput, type SubagentPreparationOutput, type SubagentTraceReference } from "../subagent-contract.ts";
+import { type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type AgentResponse, type BackendPreflightResult, type SubagentBackendDescriptor, type SubagentHostPlanPreparer, type SubagentPreparationInput, type SubagentPreparationOutput, type SubagentTraceReference } from "./contract.ts";
 type WithoutTrace<T> = T extends AgentResponse ? Omit<T, "trace"> : never;
 export interface SubagentBackendTraceResult {
     id: string;

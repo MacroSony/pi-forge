@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: implemented pure adapter contract for the 0.4 development branch. The Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). Backend registration and execution remain deferred.
+Status: implemented pure adapter contract and optional empty-by-default backend registry for the 0.4 development branch. The Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). No concrete backend or parent-agent run tool is shipped.
 
 ## Goals
 
@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The TypeScript shapes and pure validators for the following artifacts are now exported. Concrete backend implementations and registration remain deferred.
+The TypeScript shapes and pure validators for the following artifacts are exported. The registry dispatches conforming package-provided backends but starts empty; concrete backend implementations and parent integration remain deferred.
 
 ### AgentRequest
 
@@ -209,7 +209,7 @@ Implemented as the opt-in `scripts/subagent-sdk-spike.ts`; results and limitatio
 - Implement protected task/context preparation and tool negotiation.
 - Validate null/replace/append/prepend stacks and missing custom dependencies.
 
-Implemented in `src/subagent-host.ts` and `src/subagent-contract.ts`. The SDK spike consumes the shared protected-task and host-resolution helpers.
+Implemented in `src/subagent-host.ts` and focused modules under `src/subagent/`, with `src/subagent-contract.ts` retained as a compatibility barrel. The SDK spike consumes the shared protected-task and host-resolution helpers.
 
 ### Iteration 4: Stable validation and fingerprints (completed)
 
@@ -239,7 +239,7 @@ Implemented with canonical `sha256:v1` fingerprints, deterministic UTF-8 context
 - Decide whether the validated adapter remains internal, ships optionally, or just informs integrations.
 - Continue deferring a full owned runner, resumable agents, retries, queues, chains, pipelines, and concurrency orchestration until concrete demand exists.
 
-Profile UI can proceed independently on the completed Iteration 1 service; it does not need to block Iteration 5. Each iteration remains independently reviewable and revertible.
+Profile UI can proceed independently on the completed Iteration 1 service; it does not need to block parent integration or a concrete adapter decision. Each iteration remains independently reviewable and revertible.
 
 ## Deferred Decisions
 

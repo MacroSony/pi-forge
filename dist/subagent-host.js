@@ -1,7 +1,7 @@
 import { getRegisteredMacros, } from "./macro-engine.js";
 import { getRegisteredSlots, } from "./slot-renderers.js";
 import { compileMessages } from "./compiler.js";
-import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, } from "./subagent-contract.js";
+import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, } from "./subagent/contract.js";
 const BUILT_IN_MACROS = new Set([
     "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
     "setvar", "setturnvar", "setsessionvar", "getvar", "var", "getturnvar", "getsessionvar",

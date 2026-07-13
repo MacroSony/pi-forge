@@ -29,6 +29,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 - The extension entry point is now a small composition root; prompt-stack state, one-shot profile activation, tool-policy/preview behavior, and shared web-editor lifecycle live in focused runtime modules.
 - The web editor client is authored as strict TypeScript modules for API transport, DOM access, policy editing, regex editing, preview/payload inspection, and orchestration. A build-only esbuild step produces the self-contained script used by the localhost editor, and verification rejects stale generated output.
+- The subagent contract implementation is split into focused type, canonicalization, request, preflight, tool, context, plan, response, and diagnostic modules. Existing package-root and `src/subagent-contract.ts` exports remain compatibility barrels with an exact import-surface test.
 - Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
 - Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
 - The roadmap now records the implemented profile v1 contract and moves forward to profile UI and a narrow runner-independent subagent adapter.

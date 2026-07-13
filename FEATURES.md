@@ -34,6 +34,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 ## Subagent Adapter Contract
 
 - Dedicated experimental `@zihanw/pi-forge/subagent` entry point, with the existing package-root exports retained for 0.4 compatibility.
+- Subagent types, canonicalization, request/preflight validation, tool negotiation, context preparation, plan construction, response validation, and diagnostics live in focused modules behind a compatibility contract barrel.
 - Exported pure v1 `AgentRequest`, profile snapshot, backend preflight, execution-plan, enforcement-receipt, and discriminated response types without registering or shipping a runner.
 - Backend-independent host profile resolution produces path-free declarative snapshots and does not consult the parent model registry or authentication state.
 - Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.

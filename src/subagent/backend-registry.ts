@@ -21,7 +21,7 @@ import {
 	type SubagentPreparationInput,
 	type SubagentPreparationOutput,
 	type SubagentTraceReference,
-} from "../subagent-contract.ts";
+} from "./contract.ts";
 
 type WithoutTrace<T> = T extends AgentResponse ? Omit<T, "trace"> : never;
 

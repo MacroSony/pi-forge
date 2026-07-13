@@ -16,7 +16,7 @@ import {
 	type SubagentDependencyKind,
 	type SubagentDiagnostic,
 	type SubagentPromptDependency,
-} from "./subagent-contract.ts";
+} from "./subagent/contract.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 
 export interface SubagentPromptRegistration {

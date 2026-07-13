@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { LoadedAgentProfile } from "./agent-profile.ts";
-import { type AgentProfileSnapshot, type SubagentDependencyKind, type SubagentDiagnostic, type SubagentPromptDependency } from "./subagent-contract.ts";
+import { type AgentProfileSnapshot, type SubagentDependencyKind, type SubagentDiagnostic, type SubagentPromptDependency } from "./subagent/contract.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 export interface SubagentPromptRegistration {
     name: string;

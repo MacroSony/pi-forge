@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { SUBAGENT_CONTRACT_VERSION, canonicalSubagentJson, hasSubagentErrors, validateAgentExecutionPlan, validateAgentProfileSnapshot, validateAgentRequest, validateAgentResponse, validateBackendPreflight, validateSubagentTraceReference, } from "../subagent-contract.js";
+import { SUBAGENT_CONTRACT_VERSION, canonicalSubagentJson, hasSubagentErrors, validateAgentExecutionPlan, validateAgentProfileSnapshot, validateAgentRequest, validateAgentResponse, validateBackendPreflight, validateSubagentTraceReference, } from "./contract.js";
 export class SubagentBackendRegistryError extends Error {
     code;
     constructor(code, message) {
