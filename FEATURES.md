@@ -6,7 +6,8 @@ This file tracks the currently implemented feature surface for agent profiles, t
 
 - Pi package manifest with compiled `dist/index.js` exposed through `package.json` `pi.extensions`.
 - Public npm package configuration for `@zihanw/pi-forge`.
-- Compiled `dist` JavaScript, source, and examples included in the npm package tarball.
+- Compiled npm runtime containing JavaScript, declarations, documentation, and examples without physical `src/` files; repository source remains available for clone-based development.
+- Tarball verification rejects physical `src/` entries and requires the root and subagent compiled entry points.
 - Strict typed web-editor client modules bundled into one self-contained browser script at build time, with generated-client consistency verification.
 - Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.80.6 through 0.80.x.
 - Project trust check before loading prompt stacks.

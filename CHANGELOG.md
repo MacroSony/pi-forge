@@ -27,6 +27,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Changed
 
+- The npm tarball no longer includes physical `src/` files and uses compiled runtime entries. Legacy `@zihanw/pi-forge/src/*` imports continue to resolve to compiled modules, while development documentation directs source modifications through a repository clone and explicit local TypeScript extension entry.
 - The extension entry point is now a small composition root; prompt-stack state, one-shot profile activation, tool-policy/preview behavior, and shared web-editor lifecycle live in focused runtime modules.
 - The web editor client is authored as strict TypeScript modules for API transport, DOM access, policy editing, regex editing, preview/payload inspection, and orchestration. A build-only esbuild step produces the self-contained script used by the localhost editor, and verification rejects stale generated output.
 - The subagent contract implementation is split into focused type, canonicalization, request, preflight, tool, context, plan, response, and diagnostic modules. Existing package-root and `src/subagent-contract.ts` exports remain compatibility barrels with an exact import-surface test.

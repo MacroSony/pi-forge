@@ -561,7 +561,7 @@ SillyTavern imports convert deterministic prompt-only `{{match}}` / `$0` full-ma
 ## Package setup for development
 
 ```bash
-git clone <repo>
+git clone https://github.com/MacroSony/pi-forge.git
 cd pi-forge
 npm install
 npm run build
@@ -569,7 +569,25 @@ npm run build
 pi    # start Pi, trust the project, /reload if needed
 ```
 
-Use the tracked `dist/index.js` path for normal development and release-like testing. For a deliberate source-level smoke test without rebuilding first, load the TypeScript entry explicitly from another project, for example `pi -e ../pi-forge/src/index.ts`. Do not combine that flag with another enabled pi-forge installation.
+The npm package intentionally omits physical `src/` files and loads compiled `dist/` output at runtime. To inspect or modify pi-forge itself, clone or fork the repository instead of editing `node_modules` or generated `dist/` files. A clone preserves your changes in Git and includes the development dependencies, tests, and source-to-dist consistency checks.
+
+For release-like local testing, register the cloned package directory. Its package manifest loads the tracked `dist/index.js`:
+
+```json
+{
+  "packages": ["../pi-forge"]
+}
+```
+
+For live source development, remove that pi-forge package entry and load the TypeScript extension directly from `.pi/settings.json`:
+
+```json
+{
+  "extensions": ["../pi-forge/src/index.ts"]
+}
+```
+
+You can also run `pi -e ../pi-forge/src/index.ts` for a one-off source-level smoke test. Do not load the package and source entry simultaneously or pi-forge will initialize twice. Browser-client source changes additionally require `npm run build:client` because the local editor serves its generated browser bundle.
 
 Run tests:
 

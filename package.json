@@ -2,6 +2,10 @@
   "name": "@zihanw/pi-forge",
   "version": "0.3.2",
   "description": "Pi extension for prompt stacks, one-shot agent profiles, policy, import, and debugging.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MacroSony/pi-forge.git"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -76,16 +80,16 @@
     "build:client": "node scripts/build-web-client.mjs",
     "check:client": "node scripts/build-web-client.mjs --check",
     "check:dist": "node scripts/check-dist.mjs",
+    "check:package": "node scripts/check-package.mjs",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:browser": "node --test tests-browser/*.test.ts",
     "spike:subagent": "node scripts/subagent-sdk-spike.ts",
-    "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:client && npm run check:dist"
+    "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:client && npm run check:dist && npm run check:package"
   },
   "files": [
     "dist/",
-    "src/",
     "scripts/subagent-sdk-spike.ts",
     "scripts/subagent-sdk-spike-lib.ts",
     "examples/",

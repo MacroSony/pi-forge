@@ -544,7 +544,7 @@ SillyTavern 导入会把确定性的 prompt-only `{{match}}` / `$0` full-match r
 ## 开发环境搭建
 
 ```bash
-git clone <repo>
+git clone https://github.com/MacroSony/pi-forge.git
 cd pi-forge
 npm install
 npm run build
@@ -552,7 +552,25 @@ npm run build
 pi    # 启动 Pi，信任项目，必要时 /reload
 ```
 
-常规开发和接近 release 的测试应使用已跟踪的 `dist/index.js`。如果需要不先重新构建、直接进行源码级 smoke test，可以从另一个项目显式加载 TypeScript entry，例如 `pi -e ../pi-forge/src/index.ts`。不要让这个参数和另一个已启用的 pi-forge 安装同时生效。
+npm package 会有意省略实际的 `src/` 文件，并在运行时加载编译后的 `dist/`。需要查看或修改 pi-forge 本身时，请 clone 或 fork 仓库，不要直接修改 `node_modules` 或生成的 `dist/`。仓库 clone 可以用 Git 保留改动，并包含开发依赖、测试以及 source-to-dist 一致性检查。
+
+进行接近 release 的本地测试时，在 `.pi/settings.json` 中注册 clone 后的 package 目录；package manifest 会加载已跟踪的 `dist/index.js`：
+
+```json
+{
+  "packages": ["../pi-forge"]
+}
+```
+
+进行实时源码开发时，请移除上面的 pi-forge package entry，再通过 `.pi/settings.json` 直接加载 TypeScript extension：
+
+```json
+{
+  "extensions": ["../pi-forge/src/index.ts"]
+}
+```
+
+也可以用 `pi -e ../pi-forge/src/index.ts` 做一次性的源码级 smoke test。不要同时加载 package 和 source entry，否则 pi-forge 会初始化两次。修改 browser client 源码后还需要执行 `npm run build:client`，因为本地编辑器提供的是生成后的 browser bundle。
 
 运行测试：
 
