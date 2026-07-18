@@ -227,15 +227,16 @@ test("user cancellation wins the completion race and drains before unregister", 
 	const { plan } = await createFakeExecutionPlan({ registry, backend, runId: "run-cancel" });
 	const execution = registry.execute(plan, { authorizationScope: "session.main" });
 	await backend.executionStarted;
-	assert.equal(await registry.cancel(plan.runId, "user requested cancellation"), true);
+	const cancellation = registry.cancel(plan.runId, "user requested cancellation");
+	await waitFor(() => backend.cancelCalls.length === 1);
+	assert.throws(() => registry.unregister(backend.descriptor.id), (error: unknown) => registryError(error, "backend.active"));
+	backend.releaseDelayedExecution();
+	assert.equal(await cancellation, true);
 	const response = await execution;
 	assert.equal(response.status, "cancelled");
 	assert.deepEqual(validateAgentResponse(response, { plan }), []);
 	assert.deepEqual(backend.cancelCalls, [{ runId: plan.runId, reason: "user requested cancellation" }]);
 	assert.equal(await registry.cancel(plan.runId), false);
-	assert.throws(() => registry.unregister(backend.descriptor.id), (error: unknown) => registryError(error, "backend.active"));
-	backend.releaseDelayedExecution();
-	await new Promise<void>((resolve) => setImmediate(resolve));
 	assert.equal(registry.unregister(backend.descriptor.id), true);
 });
 
@@ -264,7 +265,10 @@ test("host-abort timeout settles once and records backend cancellation", async (
 	registry.register(backend);
 	const request = fakeRequest({ limits: { timeoutMs: { value: 10, enforcement: "best-effort" } } });
 	const { plan } = await createFakeExecutionPlan({ registry, backend, request, runId: "run-timeout" });
-	const response = await registry.execute(plan, { authorizationScope: "session.main" });
+	const execution = registry.execute(plan, { authorizationScope: "session.main" });
+	await waitFor(() => backend.cancelCalls.length === 1);
+	backend.releaseDelayedExecution();
+	const response = await execution;
 	assert.equal(response.status, "timed-out");
 	assert.deepEqual(validateAgentResponse(response, { request, plan }), []);
 	assert.equal(backend.cancelCalls[0]?.runId, plan.runId);
@@ -343,4 +347,12 @@ function registryError(error: unknown, code: string): boolean {
 	assert.ok(error instanceof SubagentBackendRegistryError);
 	assert.equal(error.code, code);
 	return true;
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error("Timed out waiting for registry test condition.");
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
 }

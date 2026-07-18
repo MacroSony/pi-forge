@@ -116,6 +116,8 @@ interface ActiveRun {
 	plan: AgentExecutionPlan;
 	controller: AbortController;
 	settled: boolean;
+	terminal: Promise<AgentResponse>;
+	cancellation?: { kind: "cancelled" | "timed-out"; reason: string };
 	requestCancellation?: (kind: "cancelled" | "timed-out", reason: string) => void;
 	cancelPromise?: Promise<void>;
 }
@@ -299,7 +301,7 @@ export class SubagentBackendRegistry {
 		const controller = new AbortController();
 		let resolveTerminal!: (response: AgentResponse) => void;
 		const terminal = new Promise<AgentResponse>((resolve) => { resolveTerminal = resolve; });
-		const active: ActiveRun = { backend, plan, controller, settled: false };
+		const active: ActiveRun = { backend, plan, controller, settled: false, terminal };
 		this.#activeRuns.set(plan.runId, active);
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		let externalAbort: (() => void) | undefined;
@@ -314,15 +316,20 @@ export class SubagentBackendRegistry {
 		};
 
 		const cancelRun = (kind: "cancelled" | "timed-out", reason: string): void => {
-			if (active.settled) return;
+			if (active.settled || active.cancellation) return;
+			active.cancellation = { kind, reason };
 			controller.abort(reason);
 			active.cancelPromise = Promise.resolve(backend.cancel?.({ runId: plan.runId, reason })).catch(() => undefined);
-			const durationMs = elapsed(this.#now(), startedAt);
-			settle(kind === "timed-out"
-				? { ...responseCommon(plan, durationMs), status: "timed-out", reason, enforcedTimeoutMs: plan.limits.timeoutMs!.value }
-				: { ...responseCommon(plan, durationMs), status: "cancelled", reason });
 		};
 		active.requestCancellation = cancelRun;
+		const settleCancellation = (): boolean => {
+			const cancellation = active.cancellation;
+			if (!cancellation) return false;
+			const durationMs = elapsed(this.#now(), startedAt);
+			return settle(cancellation.kind === "timed-out"
+				? { ...responseCommon(plan, durationMs), status: "timed-out", reason: cancellation.reason, enforcedTimeoutMs: plan.limits.timeoutMs!.value }
+				: { ...responseCommon(plan, durationMs), status: "cancelled", reason: cancellation.reason });
+		};
 
 		if (options.signal) {
 			externalAbort = () => cancelRun("cancelled", abortReason(options.signal, "user"));
@@ -336,8 +343,10 @@ export class SubagentBackendRegistry {
 
 		const backendExecution = Promise.resolve()
 			.then(async () => {
-				if (active.settled) {
+				if (active.cancellation) {
+					await active.cancelPromise;
 					await backend.discard?.(plan.preflightId);
+					settleCancellation();
 					return;
 				}
 				const result = await backend.execute(structuredClone(plan), {
@@ -352,11 +361,19 @@ export class SubagentBackendRegistry {
 						}
 						: undefined,
 				});
-				if (active.settled) return;
+				if (active.cancellation) {
+					await active.cancelPromise;
+					settleCancellation();
+					return;
+				}
 				settle(this.#normalizeBackendResponse(result, plan, options.authorizationScope, elapsed(this.#now(), startedAt)));
 			})
-			.catch((error) => {
-				if (active.settled) return;
+			.catch(async (error) => {
+				if (active.cancellation) {
+					await active.cancelPromise;
+					settleCancellation();
+					return;
+				}
 				settle({
 					...responseCommon(plan, elapsed(this.#now(), startedAt)),
 					status: "failed",
@@ -376,9 +393,9 @@ export class SubagentBackendRegistry {
 
 	async cancel(runId: string, reason = "user"): Promise<boolean> {
 		const active = this.#activeRuns.get(runId);
-		if (!active || active.settled) return false;
+		if (!active || active.settled || active.cancellation) return false;
 		active.requestCancellation?.("cancelled", reason);
-		await active.cancelPromise;
+		await active.terminal;
 		return true;
 	}
 

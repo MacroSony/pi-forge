@@ -135,6 +135,12 @@ interface PiInvocation {
 	args: string[];
 }
 
+interface ActiveSubprocessRun {
+	child: ChildProcess;
+	termination?: Promise<void>;
+	terminationReason?: string;
+}
+
 export interface PiSubprocessBackendOptions {
 	modelRegistry: ModelRegistry;
 	modelRuntime?: ModelRuntime;
@@ -155,7 +161,7 @@ export class PiSubprocessBackend implements SubagentBackend {
 	readonly #invocationFactory: (piArgs: string[]) => PiInvocation;
 	readonly #bridgePath: string;
 	readonly #primed = new Map<string, PrimedSubprocessRun>();
-	readonly #active = new Map<string, ChildProcess>();
+	readonly #active = new Map<string, ActiveSubprocessRun>();
 	readonly #reports = new Map<string, PiSubprocessRunReport>();
 
 	constructor(options: PiSubprocessBackendOptions) {
@@ -308,32 +314,38 @@ export class PiSubprocessBackend implements SubagentBackend {
 		this.#reports.set(plan.runId, report);
 		context.onUpdate?.({ phase: "starting", message: `Starting ${plan.profile.profile.id} with ${effectiveToolNames.join(", ") || "no tools"}.`, details: reportSummary(report) });
 
-		const runDir = mkdtempSync(join(tmpdir(), "pi-forge-subprocess-run-"));
-		const inputPath = join(runDir, "bridge-input.json");
-		const systemPromptPath = join(runDir, "system-prompt.md");
-		const marker = `PI_FORGE_SUBAGENT_MARKER_${randomUUID()}`;
-		writeFileSync(inputPath, JSON.stringify({
-			marker,
-			systemPrompt: plan.systemPrompt,
-			messages: plan.messages,
-			model: plan.model,
-			effectiveToolNames,
-		}), { encoding: "utf8", mode: 0o600 });
-		writeFileSync(systemPromptPath, plan.systemPrompt, { encoding: "utf8", mode: 0o600 });
-
+		let runDir: string | undefined;
 		try {
+			runDir = mkdtempSync(join(tmpdir(), "pi-forge-subprocess-run-"));
+			const inputPath = join(runDir, "bridge-input.json");
+			const systemPromptPath = join(runDir, "system-prompt.md");
+			const marker = `PI_FORGE_SUBAGENT_MARKER_${randomUUID()}`;
+			writeFileSync(inputPath, JSON.stringify({
+				marker,
+				systemPrompt: plan.systemPrompt,
+				messages: plan.messages,
+				model: plan.model,
+				effectiveToolNames,
+			}), { encoding: "utf8", mode: 0o600 });
+			writeFileSync(systemPromptPath, plan.systemPrompt, { encoding: "utf8", mode: 0o600 });
 			const piArgs = subprocessArguments(plan, effectiveToolNames, this.#bridgePath, systemPromptPath, marker);
 			const invocation = this.#invocationFactory(piArgs);
 			const terminal = await this.#runChild(invocation, plan, report, inputPath, context);
 			return terminal;
+		} catch (error) {
+			if (report.status === "running") {
+				report.status = context.signal.aborted ? "cancelled" : "failed";
+				report.finishedAt = this.#now().toISOString();
+				if (!context.signal.aborted) report.errorMessage = error instanceof Error ? error.message : String(error);
+			}
+			throw error;
 		} finally {
-			rmSync(runDir, { recursive: true, force: true });
+			if (runDir) rmSync(runDir, { recursive: true, force: true });
 		}
 	}
 
 	async cancel(input: SubagentBackendCancelInput): Promise<void> {
-		const child = this.#active.get(input.runId);
-		if (child) terminateChild(child);
+		await this.#terminateRun(input.runId, input.reason);
 	}
 
 	async discard(preflightId: string): Promise<boolean> {
@@ -352,10 +364,18 @@ export class PiSubprocessBackend implements SubagentBackend {
 
 	async dispose(): Promise<void> {
 		for (const primed of [...this.#primed.values()]) await this.#stopPreparation(primed);
-		for (const child of this.#active.values()) terminateChild(child);
+		await Promise.all([...this.#active.keys()].map((runId) => this.#terminateRun(runId, "Subprocess backend disposed.")));
 		this.#primed.clear();
 		this.#active.clear();
 		this.#reports.clear();
+	}
+
+	async #terminateRun(runId: string, reason?: string): Promise<void> {
+		const active = this.#active.get(runId);
+		if (!active) return;
+		active.terminationReason ??= reason;
+		active.termination ??= terminateChild(active.child);
+		await active.termination;
 	}
 
 	#compilerBridge(
@@ -454,14 +474,15 @@ export class PiSubprocessBackend implements SubagentBackend {
 				[PI_FORGE_SUBPROCESS_REPORT_FD_ENV]: "3",
 			},
 		});
-		this.#active.set(plan.runId, child);
-		const abort = () => terminateChild(child);
+		const active: ActiveSubprocessRun = { child };
+		this.#active.set(plan.runId, active);
+		const abort = () => { void this.#terminateRun(plan.runId, abortReason(context.signal)); };
 		if (context.signal.aborted) abort();
 		else context.signal.addEventListener("abort", abort, { once: true });
 
 		const failStream = (message: string): void => {
 			if (!report.errorMessage) report.errorMessage = message;
-			terminateChild(child);
+			void this.#terminateRun(plan.runId);
 		};
 		const processLine = (line: string): void => {
 			if (!line.trim()) return;
@@ -530,10 +551,10 @@ export class PiSubprocessBackend implements SubagentBackend {
 		const output = latestAssistantText(report.messages);
 		const common = backendResponseCommon(plan);
 
-		if (context.signal.aborted) {
+		if (context.signal.aborted || active.terminationReason) {
 			report.status = "cancelled";
 			context.onUpdate?.({ phase: "finishing", message: "Subagent cancelled.", details: reportSummary(report) });
-			return { ...common, status: "cancelled", reason: abortReason(context.signal) };
+			return { ...common, status: "cancelled", reason: active.terminationReason ?? abortReason(context.signal) };
 		}
 		if (outcome.spawnError || outcome.code !== 0 || report.stopReason === "error" || report.stopReason === "aborted" || report.errorMessage) {
 			report.status = "failed";
@@ -683,13 +704,18 @@ function appendBounded(current: string, addition: string, maxBytes: number): str
 	return current + bytes.subarray(0, remaining).toString("utf8");
 }
 
-function terminateChild(child: ChildProcess): void {
+async function terminateChild(child: ChildProcess): Promise<void> {
 	if (child.exitCode !== null || child.signalCode !== null) return;
+	const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
 	child.kill("SIGTERM");
 	const force = setTimeout(() => {
 		if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 	}, 5_000);
-	force.unref();
+	try {
+		await closed;
+	} finally {
+		clearTimeout(force);
+	}
 }
 
 function preparedMessageToAgentMessage(message: SubagentPreparedMessage, preflight: BackendPreflightAccepted, index: number): AgentMessage {

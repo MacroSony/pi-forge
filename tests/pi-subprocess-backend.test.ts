@@ -126,6 +126,167 @@ test("read-only subprocess backend reuses the parent model runtime and captures 
 	assert.deepEqual(subprocessTempDirectories(), tempDirectoriesBefore);
 });
 
+test("subprocess cancellation waits for the child to close and terminalizes its report", async () => {
+	const tempDirectoriesBefore = subprocessTempDirectories();
+	const faux = createFauxCore({ api: API, provider: PROVIDER, models: [{ id: MODEL_ID, name: "Fixture", reasoning: true }] });
+	faux.setResponses([() => { throw new Error("dry preparation must not reach this provider"); }]);
+	const { modelRegistry } = await fixtureModelRuntime(faux);
+	const startedEvent = {
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [{ type: "text", text: "Subprocess started." }],
+			api: API,
+			provider: PROVIDER,
+			model: MODEL_ID,
+			usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			stopReason: "stop",
+			timestamp: 1,
+		},
+	};
+	const script = [
+		'const { writeSync } = await import("node:fs");',
+		'process.on("SIGTERM", () => setTimeout(() => process.exit(0), 60));',
+		`writeSync(3, JSON.stringify(${JSON.stringify(startedEvent)}) + "\\n");`,
+		"setInterval(() => undefined, 1_000);",
+	].join("\n");
+	const backend = new PiSubprocessBackend({
+		modelRegistry,
+		cwd: process.cwd(),
+		idFactory: () => "pi-subprocess-preflight-cancellation",
+		invocationFactory: () => ({ command: process.execPath, args: ["--input-type=module", "-e", script] }),
+	});
+	const registry = new SubagentBackendRegistry();
+	registry.register(backend);
+	const snapshot = fixtureSnapshot();
+	const request = fakeRequest({
+		requestId: "subprocess-request-cancellation",
+		profileId: snapshot.profile.id,
+		input: { text: "Wait for cancellation." },
+		access: {
+			level: "read-only",
+			workspaces: [{ handle: "project", mode: "read-only" }],
+			workingDirectory: { workspaceHandle: "project", path: "." },
+			network: "allow",
+		},
+		limits: { timeoutMs: { value: 5_000, enforcement: "best-effort" } },
+		remoteEgressConsent: true,
+	});
+
+	try {
+		const preflight = await registry.preflight(PI_SUBPROCESS_READONLY_BACKEND_ID, request, snapshot);
+		assert.equal(preflight.status, "accepted", preflight.diagnostics.map((item) => item.message).join("; "));
+		if (preflight.status !== "accepted") return;
+		const prepared = await registry.prepare(
+			PI_SUBPROCESS_READONLY_BACKEND_ID,
+			{ request, snapshot, preflight },
+			prepareSubagentHostPlan,
+		);
+		const planned = createAgentExecutionPlan({
+			runId: "subprocess-run-cancellation",
+			request,
+			snapshot,
+			preflight,
+			preparation: prepared.preparation,
+			runtime: prepared.runtime,
+		});
+		assert.ok(planned.plan, planned.diagnostics.map((item) => `${item.code}: ${item.message}`).join("; "));
+		let notifyStarted!: () => void;
+		const childStarted = new Promise<void>((resolve) => { notifyStarted = resolve; });
+		const controller = new AbortController();
+		const execution = registry.execute(planned.plan, {
+			authorizationScope: "session.fixture",
+			signal: controller.signal,
+			onUpdate: (update) => {
+				if (update.phase === "message" && update.message.includes("Subprocess started")) notifyStarted();
+			},
+		});
+		await childStarted;
+		const cancelledAt = Date.now();
+		controller.abort("fixture cancellation");
+		const response = await execution;
+		assert.equal(response.status, "cancelled");
+		assert.ok(Date.now() - cancelledAt >= 40, "the response must wait for the child close event");
+		const report = backend.takeReport(planned.plan.runId);
+		assert.equal(report?.status, "cancelled");
+		assert.ok(report?.finishedAt);
+	} finally {
+		await backend.dispose();
+		modelRegistry.unregisterProvider(PROVIDER);
+	}
+	assert.deepEqual(subprocessTempDirectories(), tempDirectoriesBefore);
+});
+
+test("subprocess disposal waits for active children instead of orphaning them", async () => {
+	const tempDirectoriesBefore = subprocessTempDirectories();
+	const faux = createFauxCore({ api: API, provider: PROVIDER, models: [{ id: MODEL_ID, name: "Fixture", reasoning: true }] });
+	faux.setResponses([() => { throw new Error("dry preparation must not reach this provider"); }]);
+	const { modelRegistry } = await fixtureModelRuntime(faux);
+	const startedEvent = fixtureEvents().at(-1);
+	const script = [
+		'const { writeSync } = await import("node:fs");',
+		'process.on("SIGTERM", () => setTimeout(() => process.exit(0), 60));',
+		`writeSync(3, JSON.stringify(${JSON.stringify(startedEvent)}) + "\\n");`,
+		"setInterval(() => undefined, 1_000);",
+	].join("\n");
+	const backend = new PiSubprocessBackend({
+		modelRegistry,
+		cwd: process.cwd(),
+		idFactory: () => "pi-subprocess-preflight-dispose",
+		invocationFactory: () => ({ command: process.execPath, args: ["--input-type=module", "-e", script] }),
+	});
+	const registry = new SubagentBackendRegistry();
+	registry.register(backend);
+	const snapshot = fixtureSnapshot();
+	const request = fakeRequest({
+		requestId: "subprocess-request-dispose",
+		profileId: snapshot.profile.id,
+		input: { text: "Wait for disposal." },
+		access: {
+			level: "read-only",
+			workspaces: [{ handle: "project", mode: "read-only" }],
+			workingDirectory: { workspaceHandle: "project", path: "." },
+			network: "allow",
+		},
+		limits: { timeoutMs: { value: 5_000, enforcement: "best-effort" } },
+		remoteEgressConsent: true,
+	});
+
+	try {
+		const preflight = await registry.preflight(PI_SUBPROCESS_READONLY_BACKEND_ID, request, snapshot);
+		assert.equal(preflight.status, "accepted", preflight.diagnostics.map((item) => item.message).join("; "));
+		if (preflight.status !== "accepted") return;
+		const prepared = await registry.prepare(PI_SUBPROCESS_READONLY_BACKEND_ID, { request, snapshot, preflight }, prepareSubagentHostPlan);
+		const planned = createAgentExecutionPlan({
+			runId: "subprocess-run-dispose",
+			request,
+			snapshot,
+			preflight,
+			preparation: prepared.preparation,
+			runtime: prepared.runtime,
+		});
+		assert.ok(planned.plan, planned.diagnostics.map((item) => `${item.code}: ${item.message}`).join("; "));
+		let notifyStarted!: () => void;
+		const childStarted = new Promise<void>((resolve) => { notifyStarted = resolve; });
+		const execution = registry.execute(planned.plan, {
+			authorizationScope: "session.fixture",
+			onUpdate: (update) => {
+				if (update.phase === "message") notifyStarted();
+			},
+		});
+		await childStarted;
+		const disposedAt = Date.now();
+		await backend.dispose();
+		assert.ok(Date.now() - disposedAt >= 40, "dispose must wait for the child close event");
+		const response = await execution;
+		assert.equal(response.status, "cancelled");
+	} finally {
+		await backend.dispose();
+		modelRegistry.unregisterProvider(PROVIDER);
+	}
+	assert.deepEqual(subprocessTempDirectories(), tempDirectoriesBefore);
+});
+
 test("subprocess bridge replaces only the marker and blocks tools outside the approved plan", () => {
 	const handlers: Record<string, Function> = {};
 	const reportEvents: unknown[] = [];
