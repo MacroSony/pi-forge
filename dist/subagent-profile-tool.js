@@ -14,10 +14,11 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
         parameters: ForgeSubagentProfilesParameters,
         async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
             if (!ctx.isProjectTrusted()) {
-                return result("Subagent profile discovery is disabled because the project is not trusted.", { status: "disabled", profiles: [] });
+                return result("Subagent profile discovery is disabled because the project is not trusted.", { status: "disabled", invocationToolAvailable: false, profiles: [] });
             }
+            const invocationToolAvailable = pi.getActiveTools().includes("forge_subagent");
             const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
-            return result(renderProfileCatalog(summaries), { status: "completed", profiles: summaries });
+            return result(renderProfileCatalog(summaries, invocationToolAvailable), { status: "completed", invocationToolAvailable, profiles: summaries });
         },
     });
 }
@@ -33,13 +34,15 @@ export function summarizeProfile(loaded, resolved) {
         diagnostics: structuredClone(resolved.diagnostics),
     };
 }
-export function renderProfileCatalog(profiles) {
-    if (profiles.length === 0)
-        return "No Pi Forge subagent profiles are currently loaded.";
+export function renderProfileCatalog(profiles, invocationToolAvailable) {
+    if (profiles.length === 0) {
+        return `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}.`;
+    }
     const ready = profiles.filter((profile) => profile.status === "ready");
     const unavailable = profiles.filter((profile) => profile.status === "unavailable");
     const lines = [
         `Pi Forge subagent profiles: ${ready.length} ready, ${unavailable.length} unavailable.`,
+        `Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive; the current tool policy must permit forge_subagent before the main agent can invoke a profile"}.`,
         "A ready profile still undergoes exact backend preflight and human approval when invoked.",
     ];
     if (ready.length > 0) {

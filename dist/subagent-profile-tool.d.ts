@@ -15,9 +15,10 @@ export interface ForgeSubagentProfileSummary {
 }
 export interface ForgeSubagentProfilesToolDetails {
     status: "completed" | "disabled";
+    invocationToolAvailable: boolean;
     profiles: ForgeSubagentProfileSummary[];
 }
 export declare function registerForgeSubagentProfilesTool(pi: ExtensionAPI, profiles: () => readonly LoadedAgentProfile[], resolveProfile: (profile: LoadedAgentProfile, ctx: ExtensionContext) => ResolvedAgentProfile): void;
 export declare function summarizeProfile(loaded: LoadedAgentProfile, resolved: ResolvedAgentProfile): ForgeSubagentProfileSummary;
-export declare function renderProfileCatalog(profiles: readonly ForgeSubagentProfileSummary[]): string;
+export declare function renderProfileCatalog(profiles: readonly ForgeSubagentProfileSummary[], invocationToolAvailable: boolean): string;
 //# sourceMappingURL=subagent-profile-tool.d.ts.map

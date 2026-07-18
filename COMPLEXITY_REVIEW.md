@@ -19,8 +19,8 @@ Measured from the current `feature/0.4-subagents-prep` working tree:
 
 | Area | Files | Lines of TypeScript |
 |---|---:|---:|
-| Production source (`src`) | 69 | 16,073 |
-| Core tests and helpers (`tests`) | 22 | 7,106 |
+| Production source (`src`) | 70 | 16,213 |
+| Core tests and helpers (`tests`) | 23 | 7,217 |
 | Browser tests (`tests-browser`) | 1 | 139 |
 | Internal TypeScript scripts (`scripts`) | 2 | 626 |
 
@@ -28,7 +28,7 @@ Additional observations:
 
 - `dist/` is generated output and is about 2.1 MB; verification rejects stale generated files.
 - Runtime dependency count remains low.
-- The implementation checkpoint passes 182 core tests, one browser test, TypeScript typecheck, generated-client and `dist` consistency, and npm package-layout checks.
+- The implementation checkpoint passes 184 core tests, one browser test, TypeScript typecheck, generated-client and `dist` consistency, and npm package-layout checks.
 - The npm package resolves both entry points to compiled output and contains no physical `src/` files.
 
 ## Completed Structural Work

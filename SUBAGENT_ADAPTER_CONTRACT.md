@@ -164,6 +164,8 @@ Access receipts may explicitly declare `executionBoundary: "shared-user"`. This 
 
 This backend declares `executionBoundary: "shared-user"`. It does not create allowed-root mount containment, symlink-safe path containment, process isolation, or agent-network isolation. The subprocess retains the invoking user's OS permissions; `read-only` describes the tools exposed to the model, not a security sandbox. Network is therefore honestly recorded as allowed even though no dedicated network or shell tool is exposed.
 
+The model-callable `forge_subagent_profiles` tool reads the already-loaded host profile catalog without preparing a prompt or contacting a provider. It exposes IDs, names, descriptions, declared model/thinking/stack metadata, ready/unavailable resolution diagnostics, and whether parent policy currently exposes the invocation tool. A restrictive parent stack must allow both `forge_subagent_profiles` and `forge_subagent` for discovery followed by delegation.
+
 The model-callable `forge_subagent` tool and `/forge-agent run` use the same registry path. Both prepare an exact immutable plan while provider transport remains closed, show a compact approval summary, allow the human to inspect the complete prompt, and require interactive approval bound to the execution fingerprint. Non-UI execution refuses to run. The tool returns bounded content to the parent model and full expandable execution details to the human. `/forge-agent plan` still prepares and discards without provider transport; `/forge-agent backends` shows capabilities. The older access-none `PiSdkIsolatedBackend` remains exported and tested for compatibility but is not the extension default.
 
 ## Adapter-Enforced Responsibilities

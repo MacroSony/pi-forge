@@ -109,7 +109,7 @@ A profile can also be written directly:
 
 ### Experimental foreground subagent
 
-The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi subprocess. The main agent can invoke the `forge_subagent` tool when the active prompt stack permits it, and the same path remains available to a human through commands:
+The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi subprocess. The no-egress `forge_subagent_profiles` tool lets the main agent discover the currently loaded profile IDs, names, descriptions, declared model/thinking/stack, and current resolution status. It should call that first when the user has not specified a profile, then invoke `forge_subagent`. A restrictive main-agent prompt stack must permit both tool names. The same execution path remains available to a human through commands:
 
 ```text
 /forge-agent backends
@@ -296,7 +296,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/forge-agent plan <profile> <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
 | `/forge-agent run <profile> <task>` | Review the exact plan and run one foreground read-only text task after approval |
 
-The model-callable equivalent is `forge_subagent`. It is available only when the current main-agent tool policy permits that name and an interactive approval UI is present.
+The model-callable tools are `forge_subagent_profiles` for local metadata discovery and `forge_subagent` for execution. Discovery needs no approval and performs no provider request or subagent prompt preparation. Invocation is available only when the current main-agent tool policy permits it and an interactive approval UI is present.
 
 ### Import & debug
 

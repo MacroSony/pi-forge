@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root registers the experimental `pi-subprocess-readonly` backend for `forge_subagent` and `/forge-agent`; the older `pi-sdk-isolated` backend remains an exported compatibility adapter.
+The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root registers local `forge_subagent_profiles` discovery and the experimental `pi-subprocess-readonly` backend for `forge_subagent` and `/forge-agent`; the older `pi-sdk-isolated` backend remains an exported compatibility adapter.
 
 ### AgentRequest
 
@@ -247,6 +247,7 @@ Implemented as the exported experimental `PiSdkIsolatedBackend` and `/forge-agen
 
 ### Iteration 7: Foreground parent integration (completed)
 
+- Added no-egress `forge_subagent_profiles` discovery so the main agent can select from current profile IDs and descriptions rather than guessing.
 - Added the sequential `forge_subagent` tool on the shared command/runtime path rather than creating a second runner.
 - Resolve the profile and prepare the exact immutable plan before asking for interactive approval or permitting provider transport.
 - Show a compact default review, with full prompt inspection on demand, and bind approval to the execution fingerprint.

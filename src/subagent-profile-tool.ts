@@ -25,6 +25,7 @@ export interface ForgeSubagentProfileSummary {
 
 export interface ForgeSubagentProfilesToolDetails {
 	status: "completed" | "disabled";
+	invocationToolAvailable: boolean;
 	profiles: ForgeSubagentProfileSummary[];
 }
 
@@ -47,12 +48,16 @@ export function registerForgeSubagentProfilesTool(
 			if (!ctx.isProjectTrusted()) {
 				return result(
 					"Subagent profile discovery is disabled because the project is not trusted.",
-					{ status: "disabled", profiles: [] },
+					{ status: "disabled", invocationToolAvailable: false, profiles: [] },
 				);
 			}
 
+			const invocationToolAvailable = pi.getActiveTools().includes("forge_subagent");
 			const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
-			return result(renderProfileCatalog(summaries), { status: "completed", profiles: summaries });
+			return result(
+				renderProfileCatalog(summaries, invocationToolAvailable),
+				{ status: "completed", invocationToolAvailable, profiles: summaries },
+			);
 		},
 	});
 }
@@ -73,13 +78,19 @@ export function summarizeProfile(
 	};
 }
 
-export function renderProfileCatalog(profiles: readonly ForgeSubagentProfileSummary[]): string {
-	if (profiles.length === 0) return "No Pi Forge subagent profiles are currently loaded.";
+export function renderProfileCatalog(
+	profiles: readonly ForgeSubagentProfileSummary[],
+	invocationToolAvailable: boolean,
+): string {
+	if (profiles.length === 0) {
+		return `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}.`;
+	}
 
 	const ready = profiles.filter((profile) => profile.status === "ready");
 	const unavailable = profiles.filter((profile) => profile.status === "unavailable");
 	const lines = [
 		`Pi Forge subagent profiles: ${ready.length} ready, ${unavailable.length} unavailable.`,
+		`Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive; the current tool policy must permit forge_subagent before the main agent can invoke a profile"}.`,
 		"A ready profile still undergoes exact backend preflight and human approval when invoked.",
 	];
 

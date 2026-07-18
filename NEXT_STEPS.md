@@ -31,7 +31,7 @@ The `pi-subprocess-readonly` path sends one requested text task through profile 
 
 User test surface:
 
-- Ask the main agent to use `forge_subagent` when the active tool policy permits it.
+- Ask the main agent to discover profiles with `forge_subagent_profiles` and execute with `forge_subagent`; restrictive tool policy must permit both names.
 - `/forge-agent backends`
 - `/forge-agent plan <profile> <task>` prepares the exact request behind a provider gate, reports its plan, and discards it without transport.
 - `/forge-agent run <profile> <task>` reviews the same exact prepared plan in the TUI and executes it only after approval.
@@ -45,6 +45,7 @@ Current boundary:
 - Load trusted pi-forge macro/slot registrations only in the host compiler and preserve the delegated task as the final protected user message.
 - Treat timeout and abort as host best-effort enforcement.
 - Keep provider execution opt-in through interactive approval bound to the exact execution fingerprint. Ordinary automated tests use only an offline faux provider.
+- Let the main agent inspect loaded profile IDs/descriptions and current resolution status locally without approval, provider transport, or exact prompt preparation.
 - Return bounded model-visible output and expandable human-visible plan, approval, diagnostics, transcript, tool-event, usage, and response details. Advertise no artifact or contract trace storage until those implementations exist.
 
 ## Milestone 1: Sandbox and Write-Safety Evaluation

@@ -109,7 +109,7 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 
 ### 实验性前台 subagent
 
-0.4 开发分支可以把已有 profile 作为独立、干净、一次性的 Pi 子进程运行。当前 prompt stack 允许 `forge_subagent` 时，主 agent 可以调用该工具；用户也可以继续使用同一执行路径的命令：
+0.4 开发分支可以把已有 profile 作为独立、干净、一次性的 Pi 子进程运行。无数据外发的 `forge_subagent_profiles` 工具让主 agent 查看当前已加载 profile 的 ID、名称、描述、声明的模型/思考等级/stack 和当前解析状态。用户没有指定 profile 时，主 agent 应先调用该工具，再调用 `forge_subagent`。限制严格的主 agent prompt stack 必须同时允许这两个工具名。用户也可以继续使用同一执行路径的命令：
 
 ```text
 /forge-agent backends
@@ -294,7 +294,7 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `/forge-agent plan <profile> <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
 | `/forge-agent run <profile> <task>` | 审查精确计划并在批准后运行一个前台只读文本任务 |
 
-模型可调用的等价工具是 `forge_subagent`。只有当前主 agent 的工具策略允许该名称，并且存在交互式审批 UI 时，它才可运行。
+模型可调用的工具包括用于本地元数据发现的 `forge_subagent_profiles`，以及用于执行的 `forge_subagent`。发现工具不需要审批，也不会请求 provider 或准备 subagent prompt。只有当前主 agent 工具策略允许执行工具，并且存在交互式审批 UI 时，subagent 才可运行。
 
 ### 导入 & 调试
 

@@ -8,10 +8,14 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 	const broken = loadedProfile("broken", "Currently unavailable.");
 	const profiles = [reviewer, broken];
 	let resolveCalls = 0;
+	let invocationActive = true;
 	const registered: Record<string, any> = {};
 
 	registerForgeSubagentProfilesTool(
-		{ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any,
+		{
+			registerTool: (tool: any) => { registered[tool.name] = tool; },
+			getActiveTools: () => invocationActive ? ["forge_subagent_profiles", "forge_subagent"] : ["forge_subagent_profiles"],
+		} as any,
 		() => profiles,
 		(loaded) => {
 			resolveCalls++;
@@ -26,20 +30,30 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 
 	assert.equal(resolveCalls, 2);
 	assert.equal(result.details.status, "completed");
+	assert.equal(result.details.invocationToolAvailable, true);
 	assert.equal(result.details.profiles[0].description, "Reviews code and architecture.");
 	assert.equal(result.details.profiles[0].status, "ready");
 	assert.equal(result.details.profiles[1].status, "unavailable");
 	assert.match(result.content[0].text, /reviewer — Review specialist/);
 	assert.match(result.content[0].text, /Description: Reviews code and architecture\./);
+	assert.match(result.content[0].text, /Parent invocation tool: active/);
 	assert.match(result.content[0].text, /test-provider\/test-model; thinking: high; stack: reviewer-stack/);
 	assert.match(result.content[0].text, /Unavailable because: Model authentication is missing\./);
+
+	invocationActive = false;
+	const policyBlocked = await tool.execute("catalog", {}, undefined, undefined, trustedContext());
+	assert.equal(policyBlocked.details.invocationToolAvailable, false);
+	assert.match(policyBlocked.content[0].text, /current tool policy must permit forge_subagent/);
 });
 
 test("forge_subagent_profiles fails closed for an untrusted project", async () => {
 	let profileReads = 0;
 	let tool: any;
 	registerForgeSubagentProfilesTool(
-		{ registerTool: (definition: any) => { tool = definition; } } as any,
+		{
+			registerTool: (definition: any) => { tool = definition; },
+			getActiveTools: () => ["forge_subagent_profiles"],
+		} as any,
 		() => {
 			profileReads++;
 			return [];
@@ -49,6 +63,7 @@ test("forge_subagent_profiles fails closed for an untrusted project", async () =
 
 	const result = await tool.execute("catalog", {}, undefined, undefined, trustedContext(false));
 	assert.equal(result.details.status, "disabled");
+	assert.equal(result.details.invocationToolAvailable, false);
 	assert.deepEqual(result.details.profiles, []);
 	assert.match(result.content[0].text, /project is not trusted/);
 	assert.equal(profileReads, 0);
