@@ -4,6 +4,7 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { buildPreview } from "./preview.ts";
 import { registerPresetCommand } from "./preset-command.ts";
 import { registerProfileCommand } from "./profile-command.ts";
+import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.ts";
 import { registerForgeSubagentCommand } from "./subagent-command.ts";
 import { registerForgeSubagentTool } from "./subagent-tool.ts";
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
@@ -202,5 +203,6 @@ export default function piForge(pi: ExtensionAPI) {
 		previewToolNames: toolPolicy.previewToolNames,
 	});
 	registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+	registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
 	registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }

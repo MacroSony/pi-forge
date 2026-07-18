@@ -25,6 +25,7 @@ process.env.HOME = TEST_HOME;
 test("extension composition registers the foreground subagent tool and commands", () => {
 	const harness = createHarness();
 	assert.equal(harness.tools.forge_subagent?.name, "forge_subagent");
+	assert.equal(harness.tools.forge_subagent_profiles?.name, "forge_subagent_profiles");
 	assert.ok(harness.commands["forge-agent"]);
 });
 

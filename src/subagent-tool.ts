@@ -80,6 +80,7 @@ export function registerForgeSubagentTool(
 		label: "Forge Subagent",
 		description: [
 			"Delegate one foreground task to a loaded Pi Forge agent profile.",
+			"Use forge_subagent_profiles first when the user has not already specified a profile ID.",
 			"Every run requires human approval after the exact prompt is prepared and before provider transport.",
 			"The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
 			"Use the final report as evidence and do not repeatedly request the same rejected delegation.",

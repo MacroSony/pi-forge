@@ -3,6 +3,7 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { buildPreview } from "./preview.js";
 import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
+import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.js";
 import { registerForgeSubagentCommand } from "./subagent-command.js";
 import { registerForgeSubagentTool } from "./subagent-tool.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
@@ -83,6 +84,7 @@ export default function piForge(pi) {
         previewToolNames: toolPolicy.previewToolNames,
     });
     registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+    registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
     registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }
 //# sourceMappingURL=index.js.map
