@@ -13,8 +13,8 @@ import {
 	type SubagentDiagnostic,
 } from "../subagent/contract.ts";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.ts";
-import { SubagentBackendRegistry } from "../subagent/backend-registry.ts";
-import { PiSdkIsolatedBackend } from "../subagent/pi-sdk-backend.ts";
+import { SubagentBackendRegistry, type SubagentBackendExecutionUpdate } from "../subagent/backend-registry.ts";
+import { PiSubprocessBackend, type PiSubprocessRunReport } from "../subagent/pi-subprocess-backend.ts";
 
 export interface ForgeSubagentPreparedRun {
 	request: AgentRequest;
@@ -31,21 +31,24 @@ export interface ForgeSubagentRuntime {
 	descriptors(ctx: ExtensionContext): SubagentBackendDescriptor[];
 	prepare(profileId: string, task: string, ctx: ExtensionContext): Promise<ForgeSubagentPreparationResult>;
 	discard(prepared: ForgeSubagentPreparedRun): Promise<void>;
-	execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal): Promise<AgentResponse>;
+	execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse>;
+	takeReport?(runId: string): PiSubprocessRunReport | undefined;
 	dispose(): Promise<void>;
 }
 
 export function createForgeSubagentRuntime(state: PiForgeRuntimeState): ForgeSubagentRuntime {
 	let modelRegistry: ModelRegistry | undefined;
+	let cwd: string | undefined;
 	let registry: SubagentBackendRegistry | undefined;
-	let backend: PiSdkIsolatedBackend | undefined;
+	let backend: PiSubprocessBackend | undefined;
 
-	function ensure(ctx: ExtensionContext): { registry: SubagentBackendRegistry; backend: PiSdkIsolatedBackend } {
-		if (registry && backend && modelRegistry === ctx.modelRegistry) return { registry, backend };
+	function ensure(ctx: ExtensionContext): { registry: SubagentBackendRegistry; backend: PiSubprocessBackend } {
+		if (registry && backend && modelRegistry === ctx.modelRegistry && cwd === ctx.cwd) return { registry, backend };
 		if (backend) void backend.dispose();
 		modelRegistry = ctx.modelRegistry;
+		cwd = ctx.cwd;
 		registry = new SubagentBackendRegistry();
-		backend = new PiSdkIsolatedBackend({ modelRegistry });
+		backend = new PiSubprocessBackend({ modelRegistry, cwd });
 		registry.register(backend);
 		return { registry, backend };
 	}
@@ -71,7 +74,12 @@ export function createForgeSubagentRuntime(state: PiForgeRuntimeState): ForgeSub
 			profileId,
 			expectedProfileFingerprint: resolution.snapshot.profileFingerprint,
 			input: { text: task },
-			access: { level: "none", workspaces: [], network: "deny" },
+			access: {
+				level: "read-only",
+				workspaces: [{ handle: "project", mode: "read-only" }],
+				workingDirectory: { workspaceHandle: "project", path: "." },
+				network: "allow",
+			},
 			limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
 			resultProjection: { maxChars: 12_000 },
 			parent: { sessionId: ctx.sessionManager.getSessionId(), depth: 0, maxDepth: 1 },
@@ -118,12 +126,17 @@ export function createForgeSubagentRuntime(state: PiForgeRuntimeState): ForgeSub
 		await registry.discard(prepared.preflight.preflightId);
 	}
 
-	async function execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal): Promise<AgentResponse> {
+	async function execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse> {
 		const current = ensure(ctx);
 		return current.registry.execute(prepared.plan, {
 			authorizationScope: `session.${ctx.sessionManager.getSessionId().replace(/[^A-Za-z0-9._-]/g, "-")}`,
 			signal,
+			onUpdate,
 		});
+	}
+
+	function takeReport(runId: string): PiSubprocessRunReport | undefined {
+		return backend?.takeReport(runId);
 	}
 
 	async function dispose(): Promise<void> {
@@ -131,9 +144,10 @@ export function createForgeSubagentRuntime(state: PiForgeRuntimeState): ForgeSub
 		backend = undefined;
 		registry = undefined;
 		modelRegistry = undefined;
+		cwd = undefined;
 	}
 
-	return { descriptors, prepare, discard, execute, dispose };
+	return { descriptors, prepare, discard, execute, takeReport, dispose };
 }
 
 function error(code: string, message: string): SubagentDiagnostic {

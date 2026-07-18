@@ -50,6 +50,13 @@ export interface SubagentBackendPreparationContext {
 
 export interface SubagentBackendExecutionContext {
 	signal: AbortSignal;
+	onUpdate?: (update: SubagentBackendExecutionUpdate) => void;
+}
+
+export interface SubagentBackendExecutionUpdate {
+	phase: "starting" | "message" | "tool-result" | "finishing";
+	message: string;
+	details?: unknown;
 }
 
 export interface SubagentBackendCancelInput {
@@ -80,6 +87,7 @@ export interface SubagentBackendRegistryOptions {
 export interface SubagentExecutionOptions {
 	authorizationScope: string;
 	signal?: AbortSignal;
+	onUpdate?: (update: SubagentBackendExecutionUpdate) => void;
 }
 
 interface AcceptedPreflightRecord {
@@ -332,7 +340,18 @@ export class SubagentBackendRegistry {
 					await backend.discard?.(plan.preflightId);
 					return;
 				}
-				const result = await backend.execute(structuredClone(plan), { signal: controller.signal });
+				const result = await backend.execute(structuredClone(plan), {
+					signal: controller.signal,
+					onUpdate: options.onUpdate
+						? (update) => {
+							try {
+								options.onUpdate?.(structuredClone(update));
+							} catch {
+								// UI/reporting callbacks cannot fail backend execution.
+							}
+						}
+						: undefined,
+				});
 				if (active.settled) return;
 				settle(this.#normalizeBackendResponse(result, plan, options.authorizationScope, elapsed(this.#now(), startedAt)));
 			})

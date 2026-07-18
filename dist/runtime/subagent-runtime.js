@@ -2,19 +2,21 @@ import { randomUUID } from "node:crypto";
 import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, } from "../subagent/contract.js";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.js";
 import { SubagentBackendRegistry } from "../subagent/backend-registry.js";
-import { PiSdkIsolatedBackend } from "../subagent/pi-sdk-backend.js";
+import { PiSubprocessBackend } from "../subagent/pi-subprocess-backend.js";
 export function createForgeSubagentRuntime(state) {
     let modelRegistry;
+    let cwd;
     let registry;
     let backend;
     function ensure(ctx) {
-        if (registry && backend && modelRegistry === ctx.modelRegistry)
+        if (registry && backend && modelRegistry === ctx.modelRegistry && cwd === ctx.cwd)
             return { registry, backend };
         if (backend)
             void backend.dispose();
         modelRegistry = ctx.modelRegistry;
+        cwd = ctx.cwd;
         registry = new SubagentBackendRegistry();
-        backend = new PiSdkIsolatedBackend({ modelRegistry });
+        backend = new PiSubprocessBackend({ modelRegistry, cwd });
         registry.register(backend);
         return { registry, backend };
     }
@@ -39,7 +41,12 @@ export function createForgeSubagentRuntime(state) {
             profileId,
             expectedProfileFingerprint: resolution.snapshot.profileFingerprint,
             input: { text: task },
-            access: { level: "none", workspaces: [], network: "deny" },
+            access: {
+                level: "read-only",
+                workspaces: [{ handle: "project", mode: "read-only" }],
+                workingDirectory: { workspaceHandle: "project", path: "." },
+                network: "allow",
+            },
             limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
             resultProjection: { maxChars: 12_000 },
             parent: { sessionId: ctx.sessionManager.getSessionId(), depth: 0, maxDepth: 1 },
@@ -81,20 +88,25 @@ export function createForgeSubagentRuntime(state) {
             return;
         await registry.discard(prepared.preflight.preflightId);
     }
-    async function execute(prepared, ctx, signal) {
+    async function execute(prepared, ctx, signal, onUpdate) {
         const current = ensure(ctx);
         return current.registry.execute(prepared.plan, {
             authorizationScope: `session.${ctx.sessionManager.getSessionId().replace(/[^A-Za-z0-9._-]/g, "-")}`,
             signal,
+            onUpdate,
         });
+    }
+    function takeReport(runId) {
+        return backend?.takeReport(runId);
     }
     async function dispose() {
         await backend?.dispose();
         backend = undefined;
         registry = undefined;
         modelRegistry = undefined;
+        cwd = undefined;
     }
-    return { descriptors, prepare, discard, execute, dispose };
+    return { descriptors, prepare, discard, execute, takeReport, dispose };
 }
 function error(code, message) {
     return { level: "error", code, message };

@@ -18,6 +18,12 @@ export interface SubagentBackendPreparationContext {
 }
 export interface SubagentBackendExecutionContext {
     signal: AbortSignal;
+    onUpdate?: (update: SubagentBackendExecutionUpdate) => void;
+}
+export interface SubagentBackendExecutionUpdate {
+    phase: "starting" | "message" | "tool-result" | "finishing";
+    message: string;
+    details?: unknown;
 }
 export interface SubagentBackendCancelInput {
     runId: string;
@@ -43,6 +49,7 @@ export interface SubagentBackendRegistryOptions {
 export interface SubagentExecutionOptions {
     authorizationScope: string;
     signal?: AbortSignal;
+    onUpdate?: (update: SubagentBackendExecutionUpdate) => void;
 }
 export declare class SubagentBackendRegistryError extends Error {
     readonly code: string;

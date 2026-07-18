@@ -223,7 +223,19 @@ export class SubagentBackendRegistry {
                 await backend.discard?.(plan.preflightId);
                 return;
             }
-            const result = await backend.execute(structuredClone(plan), { signal: controller.signal });
+            const result = await backend.execute(structuredClone(plan), {
+                signal: controller.signal,
+                onUpdate: options.onUpdate
+                    ? (update) => {
+                        try {
+                            options.onUpdate?.(structuredClone(update));
+                        }
+                        catch {
+                            // UI/reporting callbacks cannot fail backend execution.
+                        }
+                    }
+                    : undefined,
+            });
             if (active.settled)
                 return;
             settle(this.#normalizeBackendResponse(result, plan, options.authorizationScope, elapsed(this.#now(), startedAt)));
