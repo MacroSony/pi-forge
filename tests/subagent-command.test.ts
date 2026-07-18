@@ -63,20 +63,20 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	assert.match(context.editors.at(-1)?.text ?? "", /Provider transport: not started/);
 
 	await command.handler("run reviewer inspect this", context.ctx);
-	assert.equal(calls.prepare, 1, "declined confirmation must stop before preparation/provider transport");
+	assert.equal(calls.prepare, 2, "approval is requested only after exact dry preparation");
+	assert.equal(calls.discard, 2, "a rejected prepared plan must be discarded");
 	assert.match(context.notifications.at(-1)?.message ?? "", /cancelled before provider transport/);
 
 	context.setHasUI(false);
-	context.setConfirmed(true);
 	await command.handler("run reviewer inspect this", context.ctx);
-	assert.equal(calls.prepare, 1, "non-UI execution must fail closed even when a confirmation stub would approve");
+	assert.equal(calls.prepare, 2, "non-UI execution must fail closed before preparation");
 	assert.equal(calls.execute, 0);
 	assert.match(context.notifications.at(-1)?.message ?? "", /requires interactive provider-egress confirmation/);
 
 	context.setHasUI(true);
-	context.setConfirmed(true);
+	context.setSelection("Approve and run");
 	await command.handler("run reviewer inspect this", context.ctx);
-	assert.equal(calls.prepare, 2);
+	assert.equal(calls.prepare, 3);
 	assert.equal(calls.execute, 1);
 	assert.match(context.editors.at(-1)?.text ?? "", /command fixture complete/);
 	assert.equal(context.statuses["pi-forge-subagent"], undefined);
@@ -86,7 +86,7 @@ function commandContext() {
 	const editors: Array<{ title: string; text: string }> = [];
 	const notifications: Array<{ message: string; type?: string }> = [];
 	const statuses: Record<string, string | undefined> = {};
-	let confirmed = false;
+	let selection: string | undefined;
 	const ctx = {
 		hasUI: true,
 		signal: undefined,
@@ -94,7 +94,7 @@ function commandContext() {
 			theme: { fg: (_color: string, text: string) => text },
 			editor: async (title: string, text: string) => { editors.push({ title, text }); return text; },
 			notify: (message: string, type?: string) => notifications.push({ message, type }),
-			confirm: async () => confirmed,
+			select: async () => selection,
 			setStatus: (key: string, value: string | undefined) => { statuses[key] = value; },
 		},
 	};
@@ -103,7 +103,7 @@ function commandContext() {
 		editors,
 		notifications,
 		statuses,
-		setConfirmed: (value: boolean) => { confirmed = value; },
+		setSelection: (value: string | undefined) => { selection = value; },
 		setHasUI: (value: boolean) => { ctx.hasUI = value; },
 	};
 }

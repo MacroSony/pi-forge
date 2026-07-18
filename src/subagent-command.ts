@@ -1,11 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { showText } from "./preview.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
+import { requestForgeSubagentApproval } from "./subagent-tool.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 
 export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSubagentRuntime, profileIds: () => string[]): void {
 	pi.registerCommand("forge-agent", {
-		description: "Plan or run an experimental access-none agent profile through the isolated Pi SDK backend",
+		description: "Plan or run a foreground human-approved read-only agent profile",
 		getArgumentCompletions: (prefix) => completeForgeAgentArguments(prefix, profileIds()),
 		handler: async (args, ctx) => {
 			const parsed = parseForgeAgentArgs(args);
@@ -16,7 +17,7 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 			if (parsed.command === "backends") {
 				const lines = runtime.descriptors(ctx).map((descriptor) => [
 					`${descriptor.id} @ ${descriptor.version}`,
-					`  access: none only`,
+					`  default boundary: shared-user subprocess with read-only model tools`,
 					`  prompt runtime: ${descriptor.capabilities.promptRuntimeFidelity}`,
 					`  cancellation: ${descriptor.capabilities.cancellation ? "yes" : "no"}`,
 					`  remote transport: ${descriptor.capabilities.remoteTransport ? "yes" : "no"}`,
@@ -32,17 +33,6 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 				ctx.ui.notify("pi-forge: subagent execution requires interactive provider-egress confirmation; use /forge-agent plan in non-UI mode.", "error");
 				return;
 			}
-			if (parsed.command === "run") {
-				const approved = await ctx.ui.confirm(
-					"Run isolated subagent?",
-					`Profile: ${parsed.profileId}\nTask: ${previewTask(parsed.task)}\n\nThe task will be sent to the profile's configured provider. The subagent has no tools or project access.`,
-				);
-				if (!approved) {
-					ctx.ui.notify("pi-forge: subagent run cancelled before provider transport.", "info");
-					return;
-				}
-			}
-
 			ctx.ui.setStatus("pi-forge-subagent", ctx.ui.theme.fg("accent", parsed.command === "plan" ? "agent:preparing" : "agent:running"));
 			let prepared: ForgeSubagentPreparedRun | undefined;
 			try {
@@ -58,8 +48,16 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 					prepared = undefined;
 					return;
 				}
+				const approval = await requestForgeSubagentApproval(prepared, parsed.task, ctx, ctx.signal);
+				if (!approval.approved) {
+					await runtime.discard(prepared);
+					prepared = undefined;
+					ctx.ui.notify("pi-forge: subagent run cancelled before provider transport.", "info");
+					return;
+				}
 				const response = await runtime.execute(prepared, ctx, ctx.signal);
 				prepared = undefined;
+				runtime.takeReport?.(response.runId);
 				await showText(ctx, `pi-forge subagent result: ${parsed.profileId}`, renderResponse(response));
 			} catch (error) {
 				if (prepared) await runtime.discard(prepared).catch(() => undefined);
@@ -143,19 +141,14 @@ function renderDiagnostics(diagnostics: readonly SubagentDiagnostic[]): string {
 
 function helpText(): string {
 	return [
-		"Experimental access-none Pi SDK subagent commands:",
+		"Foreground read-only subprocess agent commands:",
 		"",
 		"  /forge-agent backends",
 		"  /forge-agent plan <profile> <task>",
 		"  /forge-agent run <profile> <task>",
 		"",
 		"plan prepares and validates the exact request without provider transport.",
-		"run asks for provider-egress confirmation, then executes one foreground text task.",
-		"The initial backend has no tools, filesystem access, process access, project context, skills, artifacts, or trace storage.",
+		"run prepares the exact prompt, asks for human approval, then executes one foreground text task.",
+		"The default child exposes read, grep, find, and ls only. It shares the invoking user's OS permissions and is not sandboxed.",
 	].join("\n");
-}
-
-function previewTask(task: string): string {
-	const compact = task.replace(/\s+/g, " ").trim();
-	return compact.length <= 180 ? compact : `${compact.slice(0, 177)}...`;
 }

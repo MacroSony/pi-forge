@@ -5,6 +5,7 @@ import { buildPreview } from "./preview.ts";
 import { registerPresetCommand } from "./preset-command.ts";
 import { registerProfileCommand } from "./profile-command.ts";
 import { registerForgeSubagentCommand } from "./subagent-command.ts";
+import { registerForgeSubagentTool } from "./subagent-tool.ts";
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.ts";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
@@ -201,4 +202,5 @@ export default function piForge(pi: ExtensionAPI) {
 		previewToolNames: toolPolicy.previewToolNames,
 	});
 	registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+	registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }

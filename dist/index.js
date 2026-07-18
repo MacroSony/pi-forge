@@ -4,6 +4,7 @@ import { buildPreview } from "./preview.js";
 import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
 import { registerForgeSubagentCommand } from "./subagent-command.js";
+import { registerForgeSubagentTool } from "./subagent-tool.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.js";
@@ -82,5 +83,6 @@ export default function piForge(pi) {
         previewToolNames: toolPolicy.previewToolNames,
     });
     registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+    registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }
 //# sourceMappingURL=index.js.map
