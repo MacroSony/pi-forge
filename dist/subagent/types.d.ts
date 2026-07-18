@@ -41,6 +41,16 @@ export interface SubagentSelectedContext {
 export type SubagentAccessLevel = "none" | "read-only" | "workspace-write";
 export type SubagentWorkspaceMode = "read-only" | "read-write";
 export type SubagentNetworkPolicy = "deny" | "allow";
+/**
+ * Describes the operating-system boundary behind an access receipt.
+ *
+ * `isolated` is the legacy/default contract: access levels are backed by the
+ * isolation capabilities declared in `enforcement`. `shared-user` is an
+ * explicitly unsafe boundary where the child process retains the invoking
+ * user's OS permissions and the effective access level is constrained only by
+ * the tools exposed to the model.
+ */
+export type SubagentExecutionBoundary = "isolated" | "shared-user";
 export interface SubagentWorkspaceRequest {
     handle: string;
     mode: SubagentWorkspaceMode;
@@ -144,6 +154,8 @@ export interface SubagentAccessReceipt {
     };
     network: SubagentNetworkPolicy;
     process: boolean;
+    /** Omitted receipts use the legacy `isolated` interpretation. */
+    executionBoundary?: SubagentExecutionBoundary;
     enforcement: SubagentAccessCapabilities;
 }
 export interface SubagentEnforcedLimit {

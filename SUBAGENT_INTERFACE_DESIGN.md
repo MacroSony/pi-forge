@@ -160,6 +160,7 @@ Requests identify host resources with opaque workspace/resource handles. Backend
 - `none` permits no filesystem mounts and no filesystem working directory.
 - `read-only` permits only read-only mounts.
 - `workspace-write` permits explicitly identified read-write mounts; all other mounts remain read-only or absent.
+- An access receipt distinguishes an `isolated` execution boundary from an explicitly unsafe `shared-user` process. At the shared-user boundary, access levels describe the model-visible tool policy rather than the child process's operating-system permissions.
 - A working directory, when present, must be contained within an accepted mount.
 - The backend canonicalizes and checks paths in its own namespace immediately before access and must enforce containment against symlink races.
 - Model/provider transport is distinct from agent-accessible network tools.

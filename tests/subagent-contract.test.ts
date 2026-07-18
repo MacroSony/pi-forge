@@ -357,6 +357,37 @@ test("preflight accepts the complete access-level and required-limit matrices", 
 	}
 });
 
+test("shared-user read-only receipts remain explicit without claiming OS isolation", () => {
+	const sharedUserEnforcement: SubagentAccessCapabilities = {
+		readOnlyMountIsolation: false,
+		readWriteMountIsolation: false,
+		symlinkSafeContainment: false,
+		processIsolation: false,
+		agentNetworkIsolation: false,
+	};
+	const access: AgentRequest["access"] = {
+		level: "read-only",
+		workspaces: [{ handle: "workspace", mode: "read-only" }],
+		workingDirectory: { workspaceHandle: "workspace", path: "." },
+		network: "allow",
+	};
+	const receipt: BackendPreflightAccepted["access"] = {
+		level: "read-only",
+		mounts: [{ workspaceHandle: "workspace", mountId: "host-workspace", mode: "read-only" }],
+		workingDirectory: { mountId: "host-workspace", path: "." },
+		network: "allow",
+		process: false,
+		executionBoundary: "shared-user",
+		enforcement: sharedUserEnforcement,
+	};
+	assert.deepEqual(validateBackendPreflight(preflight({ access: receipt }), request({ access }), snapshot()), []);
+
+	const dishonest = structuredClone(receipt);
+	dishonest.enforcement.readOnlyMountIsolation = true;
+	assert.ok(validateBackendPreflight(preflight({ access: dishonest }), request({ access }), snapshot())
+		.some((item) => item.code === "access-receipt.shared-user-claim"));
+});
+
 test("execution plan creation requires the protected task and produces a tamper-evident fingerprint", () => {
 	const req = request();
 	const snap = snapshot();

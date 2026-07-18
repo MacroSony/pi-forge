@@ -149,6 +149,8 @@ It also validates request/run/backend correlation, model and fingerprints, effec
 
 The registry validates receipts but does not manufacture filesystem, process, network, token, turn, or output isolation. Those remain adapter responsibilities.
 
+Access receipts may explicitly declare `executionBoundary: "shared-user"`. This boundary means the subprocess retains the invoking user's operating-system permissions and its effective access is constrained only by the tools exposed to the model. A shared-user receipt cannot claim mount, symlink, process, or network isolation. Omitting the field preserves the legacy `isolated` interpretation.
+
 ### 9. Experimental Pi SDK adapter and command path
 
 `PiSdkIsolatedBackend` is a deliberately narrow concrete adapter:

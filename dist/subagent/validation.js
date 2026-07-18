@@ -285,12 +285,22 @@ export function validateAccessReceipt(value, path, diagnostics) {
         diagnostics.push(error("access-receipt.process", "Access receipt process must be boolean.", `${path}.process`));
     if (value.process === true && value.level !== "workspace-write")
         diagnostics.push(error("access-receipt.process-level", "Process access requires workspace-write.", `${path}.process`));
+    if (value.executionBoundary !== undefined && value.executionBoundary !== "isolated" && value.executionBoundary !== "shared-user") {
+        diagnostics.push(error("access-receipt.boundary", "executionBoundary must be isolated or shared-user.", `${path}.executionBoundary`));
+    }
+    const executionBoundary = value.executionBoundary ?? "isolated";
     if (!isRecord(value.enforcement))
         diagnostics.push(error("access-receipt.enforcement", "Access enforcement receipt is required.", `${path}.enforcement`));
     else {
         validateAccessCapabilities(value.enforcement, `${path}.enforcement`, diagnostics);
-        if (value.level === "read-only" && (!value.enforcement.readOnlyMountIsolation || !value.enforcement.symlinkSafeContainment))
-            diagnostics.push(error("access-receipt.read-isolation", "Read-only receipt requires mount isolation and symlink-safe containment.", `${path}.enforcement`));
+        if (executionBoundary === "shared-user") {
+            for (const field of ["readOnlyMountIsolation", "readWriteMountIsolation", "symlinkSafeContainment", "processIsolation", "agentNetworkIsolation"]) {
+                if (value.enforcement[field] === true)
+                    diagnostics.push(error("access-receipt.shared-user-claim", `A shared-user boundary cannot claim ${field}.`, `${path}.enforcement.${field}`));
+            }
+        }
+        if (executionBoundary === "isolated" && value.level === "read-only" && (!value.enforcement.readOnlyMountIsolation || !value.enforcement.symlinkSafeContainment))
+            diagnostics.push(error("access-receipt.read-isolation", "Isolated read-only access requires mount isolation and symlink-safe containment.", `${path}.enforcement`));
         if (value.level === "workspace-write" && (!value.enforcement.readWriteMountIsolation || !value.enforcement.symlinkSafeContainment))
             diagnostics.push(error("access-receipt.write-isolation", "Workspace-write receipt requires write isolation and symlink-safe containment.", `${path}.enforcement`));
         if (value.process === true && !value.enforcement.processIsolation)
@@ -322,14 +332,15 @@ export function validateLimitReceipt(value, path, diagnostics) {
 }
 export function validateAccessEnforcement(request, receipt) {
     const diagnostics = [];
+    const executionBoundary = receipt.executionBoundary ?? "isolated";
     if (receipt.level !== request.level)
         diagnostics.push(error("preflight.access-level", "Access receipt level does not match request.", "access.level"));
     if (receipt.network !== request.network)
         diagnostics.push(error("preflight.network", "Access receipt network policy does not match request.", "access.network"));
     if (receipt.process !== (request.allowProcess === true))
         diagnostics.push(error("preflight.process", "Access receipt process policy does not match request.", "access.process"));
-    if (request.level === "read-only" && (!receipt.enforcement.readOnlyMountIsolation || !receipt.enforcement.symlinkSafeContainment))
-        diagnostics.push(error("preflight.read-isolation", "Read-only access requires mount isolation and symlink-safe containment.", "access.enforcement"));
+    if (executionBoundary === "isolated" && request.level === "read-only" && (!receipt.enforcement.readOnlyMountIsolation || !receipt.enforcement.symlinkSafeContainment))
+        diagnostics.push(error("preflight.read-isolation", "Isolated read-only access requires mount isolation and symlink-safe containment.", "access.enforcement"));
     if (request.level === "workspace-write" && (!receipt.enforcement.readWriteMountIsolation || !receipt.enforcement.symlinkSafeContainment))
         diagnostics.push(error("preflight.write-isolation", "Workspace-write access requires write isolation and symlink-safe containment.", "access.enforcement"));
     if (request.allowProcess && !receipt.enforcement.processIsolation)
