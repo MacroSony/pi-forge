@@ -52,7 +52,8 @@ export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 
 const MAX_STDOUT_BYTES = 8 * 1024 * 1024;
 const MAX_REPORT_STREAM_BYTES = 8 * 1024 * 1024;
-const MAX_STDERR_BYTES = 256 * 1024;
+const MAX_STDERR_BYTES = 64 * 1024;
+export const MAX_RETAINED_SUBPROCESS_REPORT_BYTES = 512 * 1024;
 
 const ACCESS_CAPABILITIES = {
 	readOnlyMountIsolation: false,
@@ -113,6 +114,12 @@ export interface PiSubprocessRunReport {
 	executionBoundary: "shared-user";
 	workingDirectory: string;
 	messages: unknown[];
+	retention: {
+		maxBytes: number;
+		retainedBytes: number;
+		truncated: boolean;
+		omittedMessages: number;
+	};
 	stderr: string;
 	usage: PiSubprocessUsage;
 	stopReason?: string;
@@ -495,8 +502,8 @@ export class PiSubprocessBackend implements SubagentBackend {
 			}
 			if (event.type === "message_end" && event.message) {
 				const message = sanitizePiSubprocessMessage(event.message);
-				report.messages.push(message);
 				captureAssistantReceipt(report, message);
+				appendReportMessage(report, message);
 				if (isRecord(message) && message.role === "toolResult") {
 					context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
 				} else {
@@ -504,7 +511,7 @@ export class PiSubprocessBackend implements SubagentBackend {
 				}
 			} else if (event.type === "tool_result_end" && event.message) {
 				const message = sanitizePiSubprocessMessage(event.message);
-				report.messages.push(message);
+				appendReportMessage(report, message);
 				context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
 			}
 		};
@@ -585,13 +592,17 @@ export class PiSubprocessBackend implements SubagentBackend {
 }
 
 export function sanitizePiSubprocessRunReport(report: PiSubprocessRunReport): PiSubprocessRunReport {
-	return {
+	const sanitized: PiSubprocessRunReport = {
 		...report,
 		model: { ...report.model },
 		effectiveToolNames: [...report.effectiveToolNames],
-		messages: report.messages.map(sanitizeSubprocessReportValue),
+		messages: [],
+		retention: createRetention(report.retention?.omittedMessages ?? 0),
+		stderr: appendBounded("", String(sanitizeSubprocessReportValue(report.stderr)), MAX_STDERR_BYTES),
 		usage: { ...report.usage },
 	};
+	for (const message of report.messages) appendReportMessage(sanitized, message);
+	return sanitized;
 }
 
 function sanitizePiSubprocessMessage(value: unknown): unknown {
@@ -655,6 +666,7 @@ function createReport(plan: AgentExecutionPlan, cwd: string, toolNames: string[]
 		executionBoundary: "shared-user",
 		workingDirectory: cwd,
 		messages: [],
+		retention: createRetention(),
 		stderr: "",
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0, turns: 0 },
 	};
@@ -663,6 +675,66 @@ function createReport(plan: AgentExecutionPlan, cwd: string, toolNames: string[]
 function reportSummary(report: PiSubprocessRunReport): Omit<PiSubprocessRunReport, "messages" | "stderr"> & { messageCount: number; stderrBytes: number } {
 	const { messages, stderr, ...rest } = report;
 	return { ...rest, usage: { ...report.usage }, effectiveToolNames: [...report.effectiveToolNames], messageCount: messages.length, stderrBytes: Buffer.byteLength(stderr, "utf8") };
+}
+
+function createRetention(omittedMessages = 0): PiSubprocessRunReport["retention"] {
+	return {
+		maxBytes: MAX_RETAINED_SUBPROCESS_REPORT_BYTES,
+		retainedBytes: 0,
+		truncated: omittedMessages > 0,
+		omittedMessages,
+	};
+}
+
+function appendReportMessage(report: PiSubprocessRunReport, value: unknown): void {
+	let message = sanitizeSubprocessReportValue(value);
+	let messageBytes = serializedBytes(message);
+	if (messageBytes > report.retention.maxBytes) {
+		message = summarizeOversizedMessage(message, messageBytes);
+		messageBytes = serializedBytes(message);
+		report.retention.truncated = true;
+		report.retention.omittedMessages += 1;
+	}
+	report.messages.push(message);
+	report.retention.retainedBytes += messageBytes;
+	while (report.retention.retainedBytes > report.retention.maxBytes && report.messages.length > 1) {
+		const removed = report.messages.shift();
+		report.retention.retainedBytes -= serializedBytes(removed);
+		report.retention.truncated = true;
+		report.retention.omittedMessages += 1;
+	}
+}
+
+function summarizeOversizedMessage(value: unknown, originalBytes: number): unknown {
+	if (!isRecord(value)) return `[Oversized subagent report message omitted: ${originalBytes} bytes]`;
+	const role = typeof value.role === "string" ? value.role : "custom";
+	const summary: Record<string, unknown> = {
+		role,
+		content: [{ type: "text", text: `[Oversized subagent report message compacted: ${originalBytes} bytes]` }],
+		reportDataOmitted: true,
+		originalBytes,
+	};
+	if (typeof value.toolName === "string") summary.toolName = value.toolName;
+	if (typeof value.toolCallId === "string") summary.toolCallId = value.toolCallId;
+	if (value.isError === true) summary.isError = true;
+	if (role === "assistant") {
+		const text = assistantText(value);
+		if (text) summary.content = [{ type: "text", text }];
+	}
+	return summary;
+}
+
+function assistantText(value: Record<string, unknown>): string {
+	if (!Array.isArray(value.content)) return "";
+	return value.content
+		.filter(isRecord)
+		.filter((part) => part.type === "text" && typeof part.text === "string")
+		.map((part) => String(part.text))
+		.join("");
+}
+
+function serializedBytes(value: unknown): number {
+	return Buffer.byteLength(JSON.stringify(value) ?? "null", "utf8");
 }
 
 function captureAssistantReceipt(report: PiSubprocessRunReport, value: unknown): void {

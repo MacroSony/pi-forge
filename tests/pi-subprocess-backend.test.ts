@@ -13,10 +13,14 @@ import {
 } from "../src/subagent-contract.ts";
 import { SubagentBackendRegistry } from "../src/subagent/backend-registry.ts";
 import {
+	MAX_RETAINED_SUBPROCESS_REPORT_BYTES,
 	PI_SUBPROCESS_READONLY_BACKEND_ID,
 	PiSubprocessBackend,
+	sanitizePiSubprocessRunReport,
+	type PiSubprocessRunReport,
 } from "../src/subagent/pi-subprocess-backend.ts";
 import { createSubprocessBridge } from "../src/subagent/subprocess-bridge.ts";
+import { MAX_SUBPROCESS_REPORT_STRING_BYTES } from "../src/subagent/subprocess-report.ts";
 import { fakeRequest, fakeSnapshot } from "./helpers/fake-subagent-backend.ts";
 
 const PROVIDER = "pi-forge-subprocess-fixture";
@@ -322,6 +326,61 @@ test("subprocess bridge replaces only the marker and blocks tools outside the ap
 	assert.doesNotMatch(reportJson, /x{100}/);
 	assert.match(reportJson, /"dataOmitted":true/);
 	assert.match(reportJson, /"encodedBytes":3600000/);
+
+	const base64Text = "QUJD".repeat(900_000);
+	const assistantMessage = {
+		role: "assistant",
+		content: [{ type: "text", text: base64Text }],
+	};
+	handlers.message_end?.({ message: assistantMessage });
+	assert.equal(assistantMessage.content[0]!.text.length, base64Text.length, "the child assistant event remains unchanged");
+	const assistantReportJson = JSON.stringify(reportEvents.at(-1));
+	assert.ok(Buffer.byteLength(assistantReportJson, "utf8") < 1_024);
+	assert.match(assistantReportJson, /Base64-like data omitted/);
+});
+
+test("retained subprocess reports bound strings and keep a rolling transcript tail", () => {
+	const messages = Array.from({ length: 12 }, (_, index) => ({
+		role: "toolResult",
+		toolName: "read",
+		content: [{ type: "text", text: `result-${index}\n${"ordinary words ".repeat(8_000)}` }],
+		isError: false,
+	}));
+	messages.push({
+		role: "assistant",
+		toolName: "",
+		content: [{ type: "text", text: "Final retained report." }],
+		isError: false,
+	});
+	const report: PiSubprocessRunReport = {
+		runId: "retention-run",
+		executionFingerprint: "sha256:v1:retention",
+		status: "completed",
+		startedAt: "2026-07-18T12:00:00.000Z",
+		finishedAt: "2026-07-18T12:00:01.000Z",
+		exitCode: 0,
+		model: { provider: PROVIDER, id: MODEL_ID },
+		thinkingLevel: "low",
+		effectiveToolNames: ["read"],
+		executionBoundary: "shared-user",
+		workingDirectory: "/workspace",
+		messages,
+		retention: { maxBytes: MAX_RETAINED_SUBPROCESS_REPORT_BYTES, retainedBytes: 0, truncated: false, omittedMessages: 0 },
+		stderr: "",
+		usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: 0, turns: 1 },
+	};
+
+	const sanitized = sanitizePiSubprocessRunReport(report);
+	assert.equal(sanitized.retention.maxBytes, MAX_RETAINED_SUBPROCESS_REPORT_BYTES);
+	assert.ok(sanitized.retention.retainedBytes <= MAX_RETAINED_SUBPROCESS_REPORT_BYTES);
+	assert.equal(sanitized.retention.truncated, true);
+	assert.ok(sanitized.retention.omittedMessages > 0);
+	assert.match(JSON.stringify(sanitized.messages.at(-1)), /Final retained report/);
+	assert.ok(JSON.stringify(sanitized.messages).includes("Text truncated in retained subagent report"));
+	for (const message of sanitized.messages) {
+		const text = JSON.stringify(message);
+		assert.ok(Buffer.byteLength(text, "utf8") <= MAX_SUBPROCESS_REPORT_STRING_BYTES + 1_024);
+	}
 });
 
 test("subprocess backend rejects access claims that a shared-user child cannot enforce", async () => {

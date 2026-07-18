@@ -67,7 +67,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.match(collapsed.render(100).join("\n"), /Review complete with evidence/);
 	const expanded = tool.renderResult(result, { expanded: true, isPartial: false }, theme(), {});
 	const expandedText = expanded.render(120).join("\n");
-	assert.match(expandedText, /Full subagent transcript/);
+	assert.match(expandedText, /Subagent transcript/);
 	assert.match(expandedText, /read/);
 	assert.match(expandedText, /Image data omitted/);
 });
@@ -167,6 +167,7 @@ function subprocessReport(prepared: ForgeSubagentPreparedRun, output: string): P
 			},
 			{ role: "assistant", content: [{ type: "text", text: output }] },
 		],
+		retention: { maxBytes: 512 * 1024, retainedBytes: 0, truncated: false, omittedMessages: 0 },
 		stderr: "",
 		usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: 0, turns: 2 },
 	};

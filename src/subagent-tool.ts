@@ -334,7 +334,10 @@ function renderExpandedResult(
 
 	if (details.report?.messages.length) {
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("muted", "─── Full subagent transcript ───"), 0, 0));
+		const transcriptLabel = details.report.retention.truncated
+			? `─── Bounded subagent transcript tail (${details.report.retention.omittedMessages} earlier/oversized message${details.report.retention.omittedMessages === 1 ? "" : "s"} omitted) ───`
+			: "─── Subagent transcript ───";
+		container.addChild(new Text(theme.fg("muted", transcriptLabel), 0, 0));
 		for (const message of details.report.messages) appendMessage(container, message, theme);
 		container.addChild(new Spacer(1));
 		container.addChild(new Text(theme.fg("dim", usageText(details.report)), 0, 0));
@@ -433,7 +436,8 @@ function formatBytes(bytes: number): string {
 
 function usageText(report: PiSubprocessRunReport): string {
 	const usage = report.usage;
-	return `${usage.turns} turn${usage.turns === 1 ? "" : "s"} · ${usage.input} input · ${usage.output} output · ${usage.totalTokens} total · $${usage.cost.toFixed(4)}`;
+	const retention = report.retention.truncated ? ` · ${report.retention.omittedMessages} transcript message${report.retention.omittedMessages === 1 ? "" : "s"} omitted` : "";
+	return `${usage.turns} turn${usage.turns === 1 ? "" : "s"} · ${usage.input} input · ${usage.output} output · ${usage.totalTokens} total · $${usage.cost.toFixed(4)}${retention}`;
 }
 
 function indent(text: string): string {
