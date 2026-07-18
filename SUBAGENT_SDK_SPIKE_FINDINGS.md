@@ -1,6 +1,6 @@
 # Pi SDK Subagent Spike Findings
 
-Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are implemented in the exported adapter boundary and retained `pi-sdk-isolated` compatibility backend. The extension now defaults to the later approval-gated `pi-subprocess-readonly` path; this document remains a historical record and a broader live diagnostic for media and trusted-extension preparation.
+Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are implemented in the exported adapter boundary and retained `pi-sdk-isolated` compatibility backend. The runnable spike and backends have since migrated to Pi 0.80.10's `ModelRuntime`; the 0.80.6 observations and terminology below remain a historical record. The extension now defaults to the later approval-gated `pi-subprocess-readonly` path, while the spike remains a broader live diagnostic for media and trusted-extension preparation.
 
 ## Deliverable
 

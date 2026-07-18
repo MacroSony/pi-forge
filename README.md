@@ -28,7 +28,9 @@ Think of it as a character sheet for your AI agent.
 pi install npm:@zihanw/pi-forge
 ```
 
-The current package supports `@earendil-works/pi-*` 0.80.x starting at 0.80.6 and requires Node.js 22.19 or newer.
+This development version requires Node.js 22.19 or newer and the exact `@earendil-works/pi-*` 0.80.10 packages used by Pi 0.80.10.
+
+> **Pi version compatibility:** Pi changed session authentication/runtime wiring within the 0.80.x line. This build targets 0.80.10 exactly; 0.80.6–0.80.9 and later unverified 0.80.x releases are not claimed as compatible. After installing or rebuilding pi-forge, restart Pi so the extension and host SDK agree. If the parent agent can use a provider but subagent preparation reports `No API key found`, check for an older pi-forge build before using `/login`: a build using the pre-0.80.10 session API can lose the parent authentication during preparation, and logging in again does not fix that version mismatch.
 
 ### Your first prompt stack
 

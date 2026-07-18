@@ -155,7 +155,7 @@ Access receipts may explicitly declare `executionBoundary: "shared-user"`. This 
 
 `PiSubprocessBackend` is the extension's deliberately narrow default adapter:
 
-- It resolves the exact profile model through Pi's existing `ModelRegistry` and authentication storage, then prepares the exact prompt inside an in-process Pi session held behind a provider gate.
+- It resolves the exact profile model through Pi's existing `ModelRegistry`, reuses the parent Pi 0.80.10 `ModelRuntime` so preparation sees the same authentication, and prepares the exact prompt inside an in-process Pi session held behind a provider gate.
 - After approval, it disposes the preparation session and launches a fresh foreground Pi JSON subprocess with the approved model, thinking level, system prompt, messages, and tool IDs.
 - Its bridge preserves the exact prepared messages and rejects tools outside the approved allowlist. Candidate tools are limited to `read`, `grep`, `find`, and `ls`, then intersected with prompt-stack policy.
 - It loads no write/edit/shell tools, skills, prompt templates, context files, themes, or third-party Pi extensions and writes no child session file.

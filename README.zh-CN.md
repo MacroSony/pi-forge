@@ -28,7 +28,9 @@
 pi install npm:@zihanw/pi-forge
 ```
 
-当前 package 支持从 0.80.6 开始的 `@earendil-works/pi-*` 0.80.x，并要求 Node.js 22.19 或更高版本。
+当前开发版本要求 Node.js 22.19 或更高版本，并且必须使用 Pi 0.80.10 所采用的精确 `@earendil-works/pi-*` 0.80.10 package 版本。
+
+> **Pi 版本兼容性：** Pi 在 0.80.x 系列内部修改了 session 认证/runtime 的接线方式。此 build 只以 0.80.10 为目标；不声明兼容 0.80.6–0.80.9，也不声明兼容尚未验证的后续 0.80.x 版本。安装或重新 build pi-forge 后请重启 Pi，确保 extension 与 host SDK 使用同一套接口。如果主 agent 可以正常使用 provider，但 subagent preparation 报告 `No API key found`，请先检查是否仍在运行旧的 pi-forge build，不要直接执行 `/login`：使用 0.80.10 之前 session API 的 build 会在 preparation 时丢失主 session 的认证信息，重新登录无法修复这个版本不匹配。
 
 ### 第一个 prompt stack
 

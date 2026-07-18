@@ -29,6 +29,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- **Pi 0.80.10 subagent authentication.** Subagent preparation now reuses the parent `ModelRuntime` when creating its temporary `AgentSession`, preserving the parent's OAuth/API-key state instead of passing session options that Pi 0.80.10 ignores. An offline regression test covers the extension's real model-registry-only path.
 - **Fail-closed subagent egress consent.** `/forge-agent run` and `forge_subagent` refuse non-UI execution instead of treating the absence of an interactive confirmation surface as approval. Exact preparation remains behind a closed provider gate, and dry planning remains available without provider transport.
 - **Cancellation before backend dispatch.** An external abort that wins before backend execution now discards the prepared backend state without calling `execute()`. Concrete Pi SDK cancellation and host-timeout tests verify `AgentSession` abort and temporary-runtime cleanup.
 - **Web editor lifecycle refresh.** Reused editor servers now bind ordinary lifecycle contexts separately from snapshotted system-prompt options, so resource inventory and preview remain available after startup reload, tree navigation, compaction, and extension reinitialization.
@@ -47,7 +48,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - The subagent contract implementation is split into focused type, canonicalization, request, preflight, tool, context, plan, response, and diagnostic modules. Existing package-root and `src/subagent-contract.ts` exports remain compatibility barrels with an exact import-surface test.
 - Backend-assisted preparation now makes the adapter, rather than the caller, provide the complete runtime compiler inputs. The registry fingerprints and validates that runtime, invokes the host compiler exactly once, binds the resulting prompt/messages/tools to execution, routes discard through the owning backend, and rejects adapters or callers that bypass, alter, or refingerprint a substitute host result.
 - Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
-- Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
+- Package metadata now declares Node.js 22.19+ and pins the Pi peer/runtime/development packages to exactly 0.80.10. Pi changed session runtime wiring within 0.80.x, so this development version no longer claims compatibility with 0.80.6–0.80.9 or unverified later 0.80.x releases.
 - The roadmap now records the approval-gated foreground subprocess path and moves forward to sandboxing, staged writes, profile UI, and release hardening without adding background orchestration.
 
 ## [0.3.2] - 2026-07-07

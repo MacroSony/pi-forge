@@ -19,10 +19,10 @@ Measured from the current `feature/0.4-subagents-prep` working tree:
 
 | Area | Files | Lines of TypeScript |
 |---|---:|---:|
-| Production source (`src`) | 70 | 16,213 |
-| Core tests and helpers (`tests`) | 23 | 7,217 |
+| Production source (`src`) | 71 | 16,249 |
+| Core tests and helpers (`tests`) | 23 | 7,229 |
 | Browser tests (`tests-browser`) | 1 | 139 |
-| Internal TypeScript scripts (`scripts`) | 2 | 626 |
+| Internal TypeScript scripts (`scripts`) | 2 | 628 |
 
 Additional observations:
 
@@ -57,11 +57,11 @@ The previous 1,373-line `src/subagent-contract.ts` implementation is now a seven
 | `src/web-editor/styles.ts` | 995 | Large but mostly presentation logic |
 | `src/compiler.ts` | 578 | Mature core compiler; change cautiously |
 | `src/subagent/backend-registry.ts` | 575 | Highest semantic risk: dispatch, cancellation, timeout, binding, and trace routing |
-| `src/subagent/pi-subprocess-backend.ts` | 724 | Foreground child lifecycle, exact bridge inputs, event capture, cancellation, and cleanup |
+| `src/subagent/pi-subprocess-backend.ts` | 728 | Foreground child lifecycle, exact bridge inputs, event capture, cancellation, and cleanup |
 | `src/subagent-tool.ts` | 434 | Approval UX, bounded model projection, and expandable human report rendering |
 | `src/loader.ts` | 518 | Broad input normalization and validation surface |
 | `src/regex.ts` | 500 | Mature transformation engine with focused tests |
-| `src/subagent/pi-sdk-backend.ts` | 446 | Experimental provider/session lifecycle boundary |
+| `src/subagent/pi-sdk-backend.ts` | 450 | Experimental provider/session lifecycle boundary |
 
 The registry, subprocess backend, and approval tool are not concerning solely by line count, but they carry the strongest correctness and egress guarantees. Prefer focused helpers and end-to-end lifecycle tests over broad rewrites.
 
