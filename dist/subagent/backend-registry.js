@@ -180,7 +180,7 @@ export class SubagentBackendRegistry {
         const controller = new AbortController();
         let resolveTerminal;
         const terminal = new Promise((resolve) => { resolveTerminal = resolve; });
-        const active = { backend, plan, controller, settled: false };
+        const active = { backend, plan, controller, settled: false, terminal };
         this.#activeRuns.set(plan.runId, active);
         let timeout;
         let externalAbort;
@@ -196,16 +196,22 @@ export class SubagentBackendRegistry {
             return true;
         };
         const cancelRun = (kind, reason) => {
-            if (active.settled)
+            if (active.settled || active.cancellation)
                 return;
+            active.cancellation = { kind, reason };
             controller.abort(reason);
             active.cancelPromise = Promise.resolve(backend.cancel?.({ runId: plan.runId, reason })).catch(() => undefined);
-            const durationMs = elapsed(this.#now(), startedAt);
-            settle(kind === "timed-out"
-                ? { ...responseCommon(plan, durationMs), status: "timed-out", reason, enforcedTimeoutMs: plan.limits.timeoutMs.value }
-                : { ...responseCommon(plan, durationMs), status: "cancelled", reason });
         };
         active.requestCancellation = cancelRun;
+        const settleCancellation = () => {
+            const cancellation = active.cancellation;
+            if (!cancellation)
+                return false;
+            const durationMs = elapsed(this.#now(), startedAt);
+            return settle(cancellation.kind === "timed-out"
+                ? { ...responseCommon(plan, durationMs), status: "timed-out", reason: cancellation.reason, enforcedTimeoutMs: plan.limits.timeoutMs.value }
+                : { ...responseCommon(plan, durationMs), status: "cancelled", reason: cancellation.reason });
+        };
         if (options.signal) {
             externalAbort = () => cancelRun("cancelled", abortReason(options.signal, "user"));
             if (options.signal.aborted)
@@ -219,8 +225,10 @@ export class SubagentBackendRegistry {
         }
         const backendExecution = Promise.resolve()
             .then(async () => {
-            if (active.settled) {
+            if (active.cancellation) {
+                await active.cancelPromise;
                 await backend.discard?.(plan.preflightId);
+                settleCancellation();
                 return;
             }
             const result = await backend.execute(structuredClone(plan), {
@@ -236,13 +244,19 @@ export class SubagentBackendRegistry {
                     }
                     : undefined,
             });
-            if (active.settled)
+            if (active.cancellation) {
+                await active.cancelPromise;
+                settleCancellation();
                 return;
+            }
             settle(this.#normalizeBackendResponse(result, plan, options.authorizationScope, elapsed(this.#now(), startedAt)));
         })
-            .catch((error) => {
-            if (active.settled)
+            .catch(async (error) => {
+            if (active.cancellation) {
+                await active.cancelPromise;
+                settleCancellation();
                 return;
+            }
             settle({
                 ...responseCommon(plan, elapsed(this.#now(), startedAt)),
                 status: "failed",
@@ -263,10 +277,10 @@ export class SubagentBackendRegistry {
     }
     async cancel(runId, reason = "user") {
         const active = this.#activeRuns.get(runId);
-        if (!active || active.settled)
+        if (!active || active.settled || active.cancellation)
             return false;
         active.requestCancellation?.("cancelled", reason);
-        await active.cancelPromise;
+        await active.terminal;
         return true;
     }
     async inspectTrace(reference, authorizationScope, signal) {

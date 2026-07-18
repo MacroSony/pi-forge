@@ -3,6 +3,7 @@ import { type AgentExecutionPlan, type BackendPreflightResult, type SubagentBack
 import type { SubagentBackend, SubagentBackendCancelInput, SubagentBackendExecutionContext, SubagentBackendExecutionResult, SubagentBackendPreparationContext, SubagentBackendPreflightInput } from "./backend-registry.ts";
 export declare const PI_SUBPROCESS_READONLY_BACKEND_ID = "pi-subprocess-readonly";
 export declare const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
+export declare const MAX_RETAINED_SUBPROCESS_REPORT_BYTES: number;
 export declare const PI_SUBPROCESS_READONLY_BACKEND_DESCRIPTOR: SubagentBackendDescriptor;
 export interface PiSubprocessUsage {
     input: number;
@@ -30,6 +31,12 @@ export interface PiSubprocessRunReport {
     executionBoundary: "shared-user";
     workingDirectory: string;
     messages: unknown[];
+    retention: {
+        maxBytes: number;
+        retainedBytes: number;
+        truncated: boolean;
+        omittedMessages: number;
+    };
     stderr: string;
     usage: PiSubprocessUsage;
     stopReason?: string;

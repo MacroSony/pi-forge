@@ -1,6 +1,6 @@
 {
   "name": "@zihanw/pi-forge",
-  "version": "0.3.2",
+  "version": "0.4.0-beta.1",
   "description": "Pi extension for prompt stacks, one-shot agent profiles, policy, import, and debugging.",
   "repository": {
     "type": "git",
@@ -94,11 +94,10 @@
   },
   "files": [
     "dist/",
-    "scripts/subagent-sdk-spike.ts",
-    "scripts/subagent-sdk-spike-lib.ts",
     "examples/",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "SUBAGENT_ADAPTER_CONTRACT.md",
     "PUBLIC_API.md",
     "LICENSE*"

@@ -4,9 +4,10 @@ import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import type { SubagentBackendExecutionUpdate } from "./subagent/backend-registry.ts";
 import { type PiSubprocessRunReport } from "./subagent/pi-subprocess-backend.ts";
 export interface ForgeSubagentApprovalReceipt {
-    required: true;
+    required: boolean;
     approved: boolean;
     viewedFullPrompt: boolean;
+    source: "none" | "human" | "trusted-project-config";
     executionFingerprint?: string;
     approvedAt?: string;
 }
@@ -27,7 +28,7 @@ export interface ForgeSubagentPlanSummary {
     executionFingerprint: string;
 }
 export interface ForgeSubagentToolDetails {
-    status: "preparing" | "awaiting-approval" | "cancelled" | "running" | "completed" | "failed" | "timed-out";
+    status: "preparing" | "prepared" | "awaiting-approval" | "cancelled" | "running" | "completed" | "failed" | "timed-out";
     profileId: string;
     task: string;
     plan?: ForgeSubagentPlanSummary;

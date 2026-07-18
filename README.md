@@ -25,10 +25,10 @@ Think of it as a character sheet for your AI agent.
 ### Install
 
 ```bash
-pi install npm:@zihanw/pi-forge
+pi install npm:@zihanw/pi-forge@0.4.0-beta.1
 ```
 
-This development version requires Node.js 22.19 or newer and the exact `@earendil-works/pi-*` 0.80.10 packages used by Pi 0.80.10.
+The beta is published under npm's `next` channel rather than replacing the stable `latest` release. It requires Node.js 22.19 or newer and the exact `@earendil-works/pi-*` 0.80.10 packages used by Pi 0.80.10.
 
 > **Pi version compatibility:** Pi changed session authentication/runtime wiring within the 0.80.x line. This build targets 0.80.10 exactly; 0.80.6–0.80.9 and later unverified 0.80.x releases are not claimed as compatible. After installing or rebuilding pi-forge, restart Pi so the extension and host SDK agree. If the parent agent can use a provider but subagent preparation reports `No API key found`, check for an older pi-forge build before using `/login`: a build using the pre-0.80.10 session API can lose the parent authentication during preparation, and logging in again does not fix that version mismatch.
 
@@ -111,7 +111,7 @@ A profile can also be written directly:
 
 ### Experimental foreground subagent
 
-The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi subprocess. The no-egress `forge_subagent_profiles` tool lets the main agent discover the currently loaded profile IDs, names, descriptions, declared model/thinking/stack, and current resolution status. It should call that first when the user has not specified a profile, then invoke `forge_subagent`. A restrictive main-agent prompt stack must permit both tool names. The same execution path remains available to a human through commands:
+The 0.4 beta can run a stored profile as a separate, clean, one-shot Pi subprocess. The no-egress `forge_subagent_profiles` tool lets the main agent discover the currently loaded profile IDs, names, descriptions, declared model/thinking/stack, current resolution status, and approval mode. It should call that first when the user has not specified a profile, then invoke `forge_subagent`. A restrictive main-agent prompt stack must permit both tool names. The same execution path remains available to a human through commands:
 
 ```text
 /forge-agent backends

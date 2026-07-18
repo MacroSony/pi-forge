@@ -14,7 +14,8 @@ export const PI_SUBPROCESS_READONLY_BACKEND_ID = "pi-subprocess-readonly";
 export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 const MAX_STDOUT_BYTES = 8 * 1024 * 1024;
 const MAX_REPORT_STREAM_BYTES = 8 * 1024 * 1024;
-const MAX_STDERR_BYTES = 256 * 1024;
+const MAX_STDERR_BYTES = 64 * 1024;
+export const MAX_RETAINED_SUBPROCESS_REPORT_BYTES = 512 * 1024;
 const ACCESS_CAPABILITIES = {
     readOnlyMountIsolation: false,
     readWriteMountIsolation: false,
@@ -212,32 +213,41 @@ export class PiSubprocessBackend {
         const report = createReport(plan, this.#cwd, effectiveToolNames, this.#now());
         this.#reports.set(plan.runId, report);
         context.onUpdate?.({ phase: "starting", message: `Starting ${plan.profile.profile.id} with ${effectiveToolNames.join(", ") || "no tools"}.`, details: reportSummary(report) });
-        const runDir = mkdtempSync(join(tmpdir(), "pi-forge-subprocess-run-"));
-        const inputPath = join(runDir, "bridge-input.json");
-        const systemPromptPath = join(runDir, "system-prompt.md");
-        const marker = `PI_FORGE_SUBAGENT_MARKER_${randomUUID()}`;
-        writeFileSync(inputPath, JSON.stringify({
-            marker,
-            systemPrompt: plan.systemPrompt,
-            messages: plan.messages,
-            model: plan.model,
-            effectiveToolNames,
-        }), { encoding: "utf8", mode: 0o600 });
-        writeFileSync(systemPromptPath, plan.systemPrompt, { encoding: "utf8", mode: 0o600 });
+        let runDir;
         try {
+            runDir = mkdtempSync(join(tmpdir(), "pi-forge-subprocess-run-"));
+            const inputPath = join(runDir, "bridge-input.json");
+            const systemPromptPath = join(runDir, "system-prompt.md");
+            const marker = `PI_FORGE_SUBAGENT_MARKER_${randomUUID()}`;
+            writeFileSync(inputPath, JSON.stringify({
+                marker,
+                systemPrompt: plan.systemPrompt,
+                messages: plan.messages,
+                model: plan.model,
+                effectiveToolNames,
+            }), { encoding: "utf8", mode: 0o600 });
+            writeFileSync(systemPromptPath, plan.systemPrompt, { encoding: "utf8", mode: 0o600 });
             const piArgs = subprocessArguments(plan, effectiveToolNames, this.#bridgePath, systemPromptPath, marker);
             const invocation = this.#invocationFactory(piArgs);
             const terminal = await this.#runChild(invocation, plan, report, inputPath, context);
             return terminal;
         }
+        catch (error) {
+            if (report.status === "running") {
+                report.status = context.signal.aborted ? "cancelled" : "failed";
+                report.finishedAt = this.#now().toISOString();
+                if (!context.signal.aborted)
+                    report.errorMessage = error instanceof Error ? error.message : String(error);
+            }
+            throw error;
+        }
         finally {
-            rmSync(runDir, { recursive: true, force: true });
+            if (runDir)
+                rmSync(runDir, { recursive: true, force: true });
         }
     }
     async cancel(input) {
-        const child = this.#active.get(input.runId);
-        if (child)
-            terminateChild(child);
+        await this.#terminateRun(input.runId, input.reason);
     }
     async discard(preflightId) {
         const primed = this.#primed.get(preflightId);
@@ -256,11 +266,18 @@ export class PiSubprocessBackend {
     async dispose() {
         for (const primed of [...this.#primed.values()])
             await this.#stopPreparation(primed);
-        for (const child of this.#active.values())
-            terminateChild(child);
+        await Promise.all([...this.#active.keys()].map((runId) => this.#terminateRun(runId, "Subprocess backend disposed.")));
         this.#primed.clear();
         this.#active.clear();
         this.#reports.clear();
+    }
+    async #terminateRun(runId, reason) {
+        const active = this.#active.get(runId);
+        if (!active)
+            return;
+        active.terminationReason ??= reason;
+        active.termination ??= terminateChild(active.child);
+        await active.termination;
     }
     #compilerBridge(input, context, providerGate, preparationReady, setPrepared) {
         return (pi) => {
@@ -342,8 +359,9 @@ export class PiSubprocessBackend {
                 [PI_FORGE_SUBPROCESS_REPORT_FD_ENV]: "3",
             },
         });
-        this.#active.set(plan.runId, child);
-        const abort = () => terminateChild(child);
+        const active = { child };
+        this.#active.set(plan.runId, active);
+        const abort = () => { void this.#terminateRun(plan.runId, abortReason(context.signal)); };
         if (context.signal.aborted)
             abort();
         else
@@ -351,7 +369,7 @@ export class PiSubprocessBackend {
         const failStream = (message) => {
             if (!report.errorMessage)
                 report.errorMessage = message;
-            terminateChild(child);
+            void this.#terminateRun(plan.runId);
         };
         const processLine = (line) => {
             if (!line.trim())
@@ -366,8 +384,8 @@ export class PiSubprocessBackend {
             }
             if (event.type === "message_end" && event.message) {
                 const message = sanitizePiSubprocessMessage(event.message);
-                report.messages.push(message);
                 captureAssistantReceipt(report, message);
+                appendReportMessage(report, message);
                 if (isRecord(message) && message.role === "toolResult") {
                     context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
                 }
@@ -377,7 +395,7 @@ export class PiSubprocessBackend {
             }
             else if (event.type === "tool_result_end" && event.message) {
                 const message = sanitizePiSubprocessMessage(event.message);
-                report.messages.push(message);
+                appendReportMessage(report, message);
                 context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
             }
         };
@@ -429,10 +447,10 @@ export class PiSubprocessBackend {
             report.errorMessage = outcome.spawnError.message;
         const output = latestAssistantText(report.messages);
         const common = backendResponseCommon(plan);
-        if (context.signal.aborted) {
+        if (context.signal.aborted || active.terminationReason) {
             report.status = "cancelled";
             context.onUpdate?.({ phase: "finishing", message: "Subagent cancelled.", details: reportSummary(report) });
-            return { ...common, status: "cancelled", reason: abortReason(context.signal) };
+            return { ...common, status: "cancelled", reason: active.terminationReason ?? abortReason(context.signal) };
         }
         if (outcome.spawnError || outcome.code !== 0 || report.stopReason === "error" || report.stopReason === "aborted" || report.errorMessage) {
             report.status = "failed";
@@ -462,13 +480,18 @@ export class PiSubprocessBackend {
     }
 }
 export function sanitizePiSubprocessRunReport(report) {
-    return {
+    const sanitized = {
         ...report,
         model: { ...report.model },
         effectiveToolNames: [...report.effectiveToolNames],
-        messages: report.messages.map(sanitizeSubprocessReportValue),
+        messages: [],
+        retention: createRetention(report.retention?.omittedMessages ?? 0),
+        stderr: appendBounded("", String(sanitizeSubprocessReportValue(report.stderr)), MAX_STDERR_BYTES),
         usage: { ...report.usage },
     };
+    for (const message of report.messages)
+        appendReportMessage(sanitized, message);
+    return sanitized;
 }
 function sanitizePiSubprocessMessage(value) {
     return sanitizeSubprocessReportValue(value);
@@ -531,6 +554,7 @@ function createReport(plan, cwd, toolNames, now) {
         executionBoundary: "shared-user",
         workingDirectory: cwd,
         messages: [],
+        retention: createRetention(),
         stderr: "",
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0, turns: 0 },
     };
@@ -538,6 +562,67 @@ function createReport(plan, cwd, toolNames, now) {
 function reportSummary(report) {
     const { messages, stderr, ...rest } = report;
     return { ...rest, usage: { ...report.usage }, effectiveToolNames: [...report.effectiveToolNames], messageCount: messages.length, stderrBytes: Buffer.byteLength(stderr, "utf8") };
+}
+function createRetention(omittedMessages = 0) {
+    return {
+        maxBytes: MAX_RETAINED_SUBPROCESS_REPORT_BYTES,
+        retainedBytes: 0,
+        truncated: omittedMessages > 0,
+        omittedMessages,
+    };
+}
+function appendReportMessage(report, value) {
+    let message = sanitizeSubprocessReportValue(value);
+    let messageBytes = serializedBytes(message);
+    if (messageBytes > report.retention.maxBytes) {
+        message = summarizeOversizedMessage(message, messageBytes);
+        messageBytes = serializedBytes(message);
+        report.retention.truncated = true;
+        report.retention.omittedMessages += 1;
+    }
+    report.messages.push(message);
+    report.retention.retainedBytes += messageBytes;
+    while (report.retention.retainedBytes > report.retention.maxBytes && report.messages.length > 1) {
+        const removed = report.messages.shift();
+        report.retention.retainedBytes -= serializedBytes(removed);
+        report.retention.truncated = true;
+        report.retention.omittedMessages += 1;
+    }
+}
+function summarizeOversizedMessage(value, originalBytes) {
+    if (!isRecord(value))
+        return `[Oversized subagent report message omitted: ${originalBytes} bytes]`;
+    const role = typeof value.role === "string" ? value.role : "custom";
+    const summary = {
+        role,
+        content: [{ type: "text", text: `[Oversized subagent report message compacted: ${originalBytes} bytes]` }],
+        reportDataOmitted: true,
+        originalBytes,
+    };
+    if (typeof value.toolName === "string")
+        summary.toolName = value.toolName;
+    if (typeof value.toolCallId === "string")
+        summary.toolCallId = value.toolCallId;
+    if (value.isError === true)
+        summary.isError = true;
+    if (role === "assistant") {
+        const text = assistantText(value);
+        if (text)
+            summary.content = [{ type: "text", text }];
+    }
+    return summary;
+}
+function assistantText(value) {
+    if (!Array.isArray(value.content))
+        return "";
+    return value.content
+        .filter(isRecord)
+        .filter((part) => part.type === "text" && typeof part.text === "string")
+        .map((part) => String(part.text))
+        .join("");
+}
+function serializedBytes(value) {
+    return Buffer.byteLength(JSON.stringify(value) ?? "null", "utf8");
 }
 function captureAssistantReceipt(report, value) {
     if (!isRecord(value) || value.role !== "assistant")
@@ -582,15 +667,21 @@ function appendBounded(current, addition, maxBytes) {
     const bytes = Buffer.from(addition, "utf8");
     return current + bytes.subarray(0, remaining).toString("utf8");
 }
-function terminateChild(child) {
+async function terminateChild(child) {
     if (child.exitCode !== null || child.signalCode !== null)
         return;
+    const closed = new Promise((resolve) => child.once("close", () => resolve()));
     child.kill("SIGTERM");
     const force = setTimeout(() => {
         if (child.exitCode === null && child.signalCode === null)
             child.kill("SIGKILL");
     }, 5_000);
-    force.unref();
+    try {
+        await closed;
+    }
+    finally {
+        clearTimeout(force);
+    }
 }
 function preparedMessageToAgentMessage(message, preflight, index) {
     if (message.content.some((part) => part.type === "media"))

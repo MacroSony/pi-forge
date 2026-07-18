@@ -8,6 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+## [0.4.0-beta.1] - 2026-07-18
+
 ### Added
 
 - **Main-agent profile discovery.** Added the no-egress `forge_subagent_profiles` tool. It returns loaded profile IDs, names, descriptions, declared model/thinking/stack metadata, ready/unavailable resolution diagnostics, and whether parent policy currently exposes `forge_subagent`, without preparing a child prompt or contacting a provider.
@@ -52,7 +54,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - The subagent contract implementation is split into focused type, canonicalization, request, preflight, tool, context, plan, response, and diagnostic modules. Existing package-root and `src/subagent-contract.ts` exports remain compatibility barrels with an exact import-surface test.
 - Backend-assisted preparation now makes the adapter, rather than the caller, provide the complete runtime compiler inputs. The registry fingerprints and validates that runtime, invokes the host compiler exactly once, binds the resulting prompt/messages/tools to execution, routes discard through the owning backend, and rejects adapters or callers that bypass, alter, or refingerprint a substitute host result.
 - Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
-- Package metadata now declares Node.js 22.19+ and pins the Pi peer/runtime/development packages to exactly 0.80.10. Pi changed session runtime wiring within 0.80.x, so this development version no longer claims compatibility with 0.80.6–0.80.9 or unverified later 0.80.x releases.
+- Package metadata now declares Node.js 22.19+ and pins the Pi peer/runtime/development packages to exactly 0.80.10. Pi changed session runtime wiring within 0.80.x, so this beta no longer claims compatibility with 0.80.6–0.80.9 or unverified later 0.80.x releases.
 - The roadmap now records the approval-gated foreground subprocess path and moves forward to sandboxing, staged writes, profile UI, and release hardening without adding background orchestration.
 
 ## [0.3.2] - 2026-07-07

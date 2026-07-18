@@ -1,10 +1,10 @@
 # Subagent Adapter Contract
 
-Status: exported pure contract, host-preparation utilities, optional backend registry, retained `pi-sdk-isolated` compatibility adapter, and an approval-gated `pi-subprocess-readonly` foreground path for the 0.4 development branch. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
+Status: exported pure contract, host-preparation utilities, optional backend registry, retained `pi-sdk-isolated` compatibility adapter, and a default-approval `pi-subprocess-readonly` foreground path for the 0.4 beta. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
 
 ## Public Surface
 
-New integrations should import this experimental 0.4 surface from `@zihanw/pi-forge/subagent`. The package root retains the same exports during 0.4 development for compatibility. Stability classifications and compatibility-path policy are recorded in [`PUBLIC_API.md`](PUBLIC_API.md).
+New integrations should import this experimental 0.4 surface from `@zihanw/pi-forge/subagent`. The package root retains the same exports through the 0.4 prereleases for compatibility. Stability classifications and compatibility-path policy are recorded in [`PUBLIC_API.md`](PUBLIC_API.md).
 
 The package root exports:
 
