@@ -156,11 +156,11 @@ Access receipts may explicitly declare `executionBoundary: "shared-user"`. This 
 `PiSubprocessBackend` is the extension's deliberately narrow default adapter:
 
 - It resolves the exact profile model through Pi's existing `ModelRegistry`, reuses the parent Pi 0.80.10 `ModelRuntime` so preparation sees the same authentication, and prepares the exact prompt inside an in-process Pi session held behind a provider gate.
-- After approval, it disposes the preparation session and launches a fresh foreground Pi JSON subprocess with the approved model, thinking level, system prompt, messages, and tool IDs.
+- After approval, it disposes the preparation session and launches a fresh foreground Pi subprocess with the approved model, thinking level, system prompt, messages, and tool IDs. Pi's ordinary text stdout is drained separately from a dedicated newline-delimited report channel.
 - Its bridge preserves the exact prepared messages and rejects tools outside the approved allowlist. Candidate tools are limited to `read`, `grep`, `find`, and `ls`, then intersected with prompt-stack policy.
 - It loads no write/edit/shell tools, skills, prompt templates, context files, themes, or third-party Pi extensions and writes no child session file.
 - It accepts text-only, one-shot, sequential `read-only` requests rooted at the project working directory, with no process tool and optional host-abort timeout. It advertises no artifact retention or contract trace inspection.
-- It records a bounded foreground execution report containing JSON transcript events, tool calls/results, usage, stderr, status, and execution identity. Temporary bridge inputs are mode `0600` and removed during cleanup.
+- It records a bounded foreground execution report containing sanitized transcript events, tool calls/results, usage, stderr, status, and execution identity. Inline images remain available to the child model but cross the report boundary only as MIME/encoded-size metadata, so binary data is never retained in the parent tool details. Temporary bridge inputs are mode `0600` and removed during cleanup.
 
 This backend declares `executionBoundary: "shared-user"`. It does not create allowed-root mount containment, symlink-safe path containment, process isolation, or agent-network isolation. The subprocess retains the invoking user's OS permissions; `read-only` describes the tools exposed to the model, not a security sandbox. Network is therefore honestly recorded as allowed even though no dedicated network or shell tool is exposed.
 

@@ -121,7 +121,7 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 
 `plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃它，不会联系 provider。`run` 和 `forge_subagent` 会先准备完全相同的精确计划，再显示审批界面。默认界面显示 agent 任务、profile/stack、provider、模型、思考等级、最终工具、工作目录、安全边界、payload 大小和执行 fingerprint。选择 **View full prompt** 可以在批准前查看完整 system prompt 和按顺序排列的 provider-bound messages；在查看器中的编辑不会生效。
 
-子 agent 从干净对话开始，不会自动继承主 agent 历史。它在前台运行，并使用 profile 指定的精确模型、思考等级和 prompt stack。候选工具只有 `read`、`grep`、`find` 和 `ls`，还会继续受到 stack 工具策略限制；不会加载 write/edit/shell 工具、skills、prompt templates、context files 或第三方 extensions。最终工具结果包含有界的模型可见报告，以及可展开的人类可见执行详情，包括完整 transcript 和所有工具调用/结果。
+子 agent 从干净对话开始，不会自动继承主 agent 历史。它在前台运行，并使用 profile 指定的精确模型、思考等级和 prompt stack。候选工具只有 `read`、`grep`、`find` 和 `ls`，还会继续受到 stack 工具策略限制；不会加载 write/edit/shell 工具、skills、prompt templates、context files 或第三方 extensions。最终工具结果包含有界的模型可见报告，以及可展开的人类可见执行详情，包括完整文本 transcript 和所有工具调用/结果。内联图片数据会留在 child 内供所选视觉模型使用，但专用 report channel 会在任何内容进入主 session 前，把二进制 payload 替换成 MIME type 和编码体积元数据。
 
 重要：首个 backend 是 **shared-user**，不是操作系统沙箱。只读是模型工具策略；子进程仍然拥有启动它的用户权限，因此可以读取该用户可读的绝对路径，并把内容发送给所选 provider。Host timeout 和取消仅为 best effort。`/tree` 可以从当前对话分支移除调用和结果，但不能撤销 provider 请求、计费或外部副作用。默认工具集刻意不提供文件系统写入路径；bubblewrap 类沙箱和 staged write mode 留待后续实现。
 
