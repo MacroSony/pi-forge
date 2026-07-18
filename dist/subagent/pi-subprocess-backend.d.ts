@@ -1,4 +1,4 @@
-import { type ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { type ModelRuntime, type ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { type AgentExecutionPlan, type BackendPreflightResult, type SubagentBackendDescriptor, type SubagentPreparationResult } from "./contract.ts";
 import type { SubagentBackend, SubagentBackendCancelInput, SubagentBackendExecutionContext, SubagentBackendExecutionResult, SubagentBackendPreparationContext, SubagentBackendPreflightInput } from "./backend-registry.ts";
 export declare const PI_SUBPROCESS_READONLY_BACKEND_ID = "pi-subprocess-readonly";
@@ -41,6 +41,7 @@ interface PiInvocation {
 }
 export interface PiSubprocessBackendOptions {
     modelRegistry: ModelRegistry;
+    modelRuntime?: ModelRuntime;
     cwd: string;
     now?: () => Date;
     idFactory?: () => string;

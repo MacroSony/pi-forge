@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSession, } from "@earendil-works/pi-coding-agent";
 import { SUBAGENT_CONTRACT_VERSION, canonicalSubagentJson, subagentPromptRuntimeFingerprint, } from "./contract.js";
+import { modelRuntimeFromRegistry } from "./pi-model-runtime.js";
 export const PI_SDK_ISOLATED_BACKEND_ID = "pi-sdk-isolated";
 const ISOLATED_BASE_PROMPT = [
     "You are an isolated subagent.",
@@ -40,12 +41,14 @@ export const PI_SDK_ISOLATED_BACKEND_DESCRIPTOR = {
 export class PiSdkIsolatedBackend {
     descriptor = structuredClone(PI_SDK_ISOLATED_BACKEND_DESCRIPTOR);
     #modelRegistry;
+    #modelRuntime;
     #now;
     #idFactory;
     #primed = new Map();
     #active = new Map();
     constructor(options) {
         this.#modelRegistry = options.modelRegistry;
+        this.#modelRuntime = options.modelRuntime ?? modelRuntimeFromRegistry(options.modelRegistry);
         this.#now = options.now ?? (() => new Date());
         this.#idFactory = options.idFactory ?? (() => `pi-sdk-preflight:${randomUUID()}`);
     }
@@ -130,8 +133,7 @@ export class PiSdkIsolatedBackend {
             const created = await createAgentSession({
                 cwd: tempDir,
                 agentDir: tempDir,
-                authStorage: this.#modelRegistry.authStorage,
-                modelRegistry: this.#modelRegistry,
+                modelRuntime: this.#modelRuntime,
                 model,
                 thinkingLevel: input.preflight.thinkingLevel,
                 resourceLoader,

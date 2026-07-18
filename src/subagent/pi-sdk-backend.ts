@@ -12,6 +12,7 @@ import {
 	type AgentSession,
 	type ExtensionAPI,
 	type ExtensionFactory,
+	type ModelRuntime,
 	type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -35,6 +36,7 @@ import type {
 	SubagentBackendPreparationContext,
 	SubagentBackendPreflightInput,
 } from "./backend-registry.ts";
+import { modelRuntimeFromRegistry } from "./pi-model-runtime.ts";
 
 export const PI_SDK_ISOLATED_BACKEND_ID = "pi-sdk-isolated";
 
@@ -92,6 +94,7 @@ interface PiSdkTerminalResult {
 
 export interface PiSdkIsolatedBackendOptions {
 	modelRegistry: ModelRegistry;
+	modelRuntime?: ModelRuntime;
 	now?: () => Date;
 	idFactory?: () => string;
 }
@@ -99,6 +102,7 @@ export interface PiSdkIsolatedBackendOptions {
 export class PiSdkIsolatedBackend implements SubagentBackend {
 	readonly descriptor = structuredClone(PI_SDK_ISOLATED_BACKEND_DESCRIPTOR);
 	readonly #modelRegistry: ModelRegistry;
+	readonly #modelRuntime: ModelRuntime;
 	readonly #now: () => Date;
 	readonly #idFactory: () => string;
 	readonly #primed = new Map<string, PrimedPiSdkRun>();
@@ -106,6 +110,7 @@ export class PiSdkIsolatedBackend implements SubagentBackend {
 
 	constructor(options: PiSdkIsolatedBackendOptions) {
 		this.#modelRegistry = options.modelRegistry;
+		this.#modelRuntime = options.modelRuntime ?? modelRuntimeFromRegistry(options.modelRegistry);
 		this.#now = options.now ?? (() => new Date());
 		this.#idFactory = options.idFactory ?? (() => `pi-sdk-preflight:${randomUUID()}`);
 	}
@@ -185,8 +190,7 @@ export class PiSdkIsolatedBackend implements SubagentBackend {
 			const created = await createAgentSession({
 				cwd: tempDir,
 				agentDir: tempDir,
-				authStorage: this.#modelRegistry.authStorage,
-				modelRegistry: this.#modelRegistry,
+				modelRuntime: this.#modelRuntime,
 				model,
 				thinkingLevel: input.preflight.thinkingLevel,
 				resourceLoader,

@@ -51,9 +51,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.80.6 <0.81.0",
-    "@earendil-works/pi-ai": ">=0.80.6 <0.81.0",
-    "@earendil-works/pi-coding-agent": ">=0.80.6 <0.81.0"
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
@@ -67,13 +67,13 @@
     }
   },
   "dependencies": {
-    "@earendil-works/pi-tui": "0.80.6",
+    "@earendil-works/pi-tui": "0.80.10",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "0.80.6",
-    "@earendil-works/pi-ai": "0.80.6",
-    "@earendil-works/pi-coding-agent": "0.80.6",
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10",
     "@types/node": "22.20.1",
     "esbuild": "^0.28.1",
     "playwright-core": "1.61.1",

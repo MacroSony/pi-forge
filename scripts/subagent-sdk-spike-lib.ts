@@ -5,8 +5,8 @@ import { extname, join, resolve } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
-	AuthStorage,
 	DefaultResourceLoader,
+	ModelRuntime,
 	ModelRegistry,
 	SessionManager,
 	SettingsManager,
@@ -226,8 +226,11 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 
 	let stacks = loadPromptStacks(options.cwd);
 	const agentDir = getAgentDir();
-	const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
-	const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+	const modelRuntime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json"),
+	});
+	const modelRegistry = new ModelRegistry(modelRuntime);
 	let prelim = resolveAgentProfile(matches[0]!, {
 		models: modelRegistry.getAll(),
 		availableModels: modelRegistry.getAvailable(),
@@ -303,8 +306,7 @@ export async function runSubagentSdkSpike(options: SpikeCliOptions): Promise<Sub
 		const created = await createAgentSession({
 			cwd: options.access === "none" ? isolatedResources : options.cwd,
 			agentDir,
-			authStorage,
-			modelRegistry,
+			modelRuntime,
 			model: prelim.model,
 			thinkingLevel: prelim.effectiveThinkingLevel,
 			resourceLoader,

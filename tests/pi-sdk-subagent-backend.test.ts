@@ -3,8 +3,8 @@ import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import type { Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { createFauxCore, fauxAssistantMessage, InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { prepareSubagentHostPlan } from "../src/subagent-host.ts";
 import {
@@ -40,12 +40,13 @@ test("isolated Pi SDK backend dry-plans behind a provider gate and executes thro
 			return fauxAssistantMessage("", { stopReason: "error", errorMessage: "fixture provider failed" });
 		},
 	]);
-	const modelRegistry = fixtureModelRegistry(faux);
+	const { modelRegistry, modelRuntime } = await fixtureModelRuntime(faux);
 
 	const registry = new SubagentBackendRegistry();
 	let preflightSequence = 0;
 	const backend = new PiSdkIsolatedBackend({
 		modelRegistry,
+		modelRuntime,
 		now: () => new Date("2026-07-14T12:00:00.000Z"),
 		idFactory: () => `pi-sdk-preflight-${++preflightSequence}`,
 	});
@@ -177,11 +178,12 @@ test("isolated Pi SDK backend cancels and times out concrete sessions without le
 			return fauxAssistantMessage("This timeout fixture should not finish streaming.");
 		},
 	]);
-	const modelRegistry = fixtureModelRegistry(faux);
+	const { modelRegistry, modelRuntime } = await fixtureModelRuntime(faux);
 	const registry = new SubagentBackendRegistry();
 	let preflightSequence = 0;
 	const backend = new PiSdkIsolatedBackend({
 		modelRegistry,
+		modelRuntime,
 		idFactory: () => `pi-sdk-cancellation-${++preflightSequence}`,
 	});
 	registry.register(backend);
@@ -228,9 +230,12 @@ test("isolated Pi SDK backend cancels and times out concrete sessions without le
 test("isolated Pi SDK backend rejects unsupported access, media, hard limits, and missing auth", async () => {
 	const missingKeyName = "PI_FORGE_TEST_MISSING_API_KEY_7B763E";
 	delete process.env[missingKeyName];
-	const authStorage = AuthStorage.inMemory();
-	const modelRegistry = ModelRegistry.inMemory(authStorage);
-	modelRegistry.registerProvider(PROVIDER, {
+	const modelRuntime = await ModelRuntime.create({
+		credentials: new InMemoryCredentialStore(),
+		modelsPath: null,
+		allowModelNetwork: false,
+	});
+	modelRuntime.registerProvider(PROVIDER, {
 		api: API,
 		baseUrl: "https://fixture.invalid",
 		apiKey: `$${missingKeyName}`,
@@ -245,7 +250,8 @@ test("isolated Pi SDK backend rejects unsupported access, media, hard limits, an
 			maxTokens: 4_000,
 		}],
 	});
-	const backend = new PiSdkIsolatedBackend({ modelRegistry, idFactory: () => "pi-sdk-rejected" });
+	const modelRegistry = new ModelRegistry(modelRuntime);
+	const backend = new PiSdkIsolatedBackend({ modelRegistry, modelRuntime, idFactory: () => "pi-sdk-rejected" });
 	const snapshot = fixtureSnapshot();
 	const result = backend.preflight({
 		request: fakeRequest({
@@ -280,10 +286,13 @@ function fixtureSnapshot(): AgentProfileSnapshot {
 	return snapshot;
 }
 
-function fixtureModelRegistry(faux: ReturnType<typeof createFauxCore>): ModelRegistry {
-	const authStorage = AuthStorage.inMemory({ [PROVIDER]: { type: "api_key", key: "fixture-key" } });
-	const modelRegistry = ModelRegistry.inMemory(authStorage);
-	modelRegistry.registerProvider(PROVIDER, {
+async function fixtureModelRuntime(faux: ReturnType<typeof createFauxCore>): Promise<{ modelRegistry: ModelRegistry; modelRuntime: ModelRuntime }> {
+	const modelRuntime = await ModelRuntime.create({
+		credentials: new InMemoryCredentialStore(),
+		modelsPath: null,
+		allowModelNetwork: false,
+	});
+	modelRuntime.registerProvider(PROVIDER, {
 		api: API,
 		baseUrl: "https://fixture.invalid",
 		apiKey: "fixture-key",
@@ -298,7 +307,7 @@ function fixtureModelRegistry(faux: ReturnType<typeof createFauxCore>): ModelReg
 			maxTokens: 4_000,
 		}],
 	});
-	return modelRegistry;
+	return { modelRuntime, modelRegistry: new ModelRegistry(modelRuntime) };
 }
 
 async function preparePiSdkPlan(

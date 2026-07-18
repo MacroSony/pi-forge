@@ -14,6 +14,7 @@ import {
 	type AgentSession,
 	type ExtensionAPI,
 	type ExtensionFactory,
+	type ModelRuntime,
 	type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -39,6 +40,7 @@ import type {
 	SubagentBackendPreparationContext,
 	SubagentBackendPreflightInput,
 } from "./backend-registry.ts";
+import { modelRuntimeFromRegistry } from "./pi-model-runtime.ts";
 export const PI_SUBPROCESS_READONLY_BACKEND_ID = "pi-subprocess-readonly";
 export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 
@@ -128,6 +130,7 @@ interface PiInvocation {
 
 export interface PiSubprocessBackendOptions {
 	modelRegistry: ModelRegistry;
+	modelRuntime?: ModelRuntime;
 	cwd: string;
 	now?: () => Date;
 	idFactory?: () => string;
@@ -138,6 +141,7 @@ export interface PiSubprocessBackendOptions {
 export class PiSubprocessBackend implements SubagentBackend {
 	readonly descriptor = structuredClone(PI_SUBPROCESS_READONLY_BACKEND_DESCRIPTOR);
 	readonly #modelRegistry: ModelRegistry;
+	readonly #modelRuntime: ModelRuntime;
 	readonly #cwd: string;
 	readonly #now: () => Date;
 	readonly #idFactory: () => string;
@@ -149,6 +153,7 @@ export class PiSubprocessBackend implements SubagentBackend {
 
 	constructor(options: PiSubprocessBackendOptions) {
 		this.#modelRegistry = options.modelRegistry;
+		this.#modelRuntime = options.modelRuntime ?? modelRuntimeFromRegistry(options.modelRegistry);
 		this.#cwd = options.cwd;
 		this.#now = options.now ?? (() => new Date());
 		this.#idFactory = options.idFactory ?? (() => `pi-subprocess-preflight:${randomUUID()}`);
@@ -245,8 +250,7 @@ export class PiSubprocessBackend implements SubagentBackend {
 			const created = await createAgentSession({
 				cwd: this.#cwd,
 				agentDir: tempDir,
-				authStorage: this.#modelRegistry.authStorage,
-				modelRegistry: this.#modelRegistry,
+				modelRuntime: this.#modelRuntime,
 				model,
 				thinkingLevel: input.preflight.thinkingLevel,
 				resourceLoader,

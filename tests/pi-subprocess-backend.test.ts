@@ -3,8 +3,8 @@ import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import type { Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { createFauxCore } from "@earendil-works/pi-ai";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { createFauxCore, InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { prepareSubagentHostPlan } from "../src/subagent-host.ts";
 import {
 	createAgentExecutionPlan,
@@ -23,7 +23,7 @@ const PROVIDER = "pi-forge-subprocess-fixture";
 const MODEL_ID = "fixture-model";
 const API = "pi-forge-subprocess-api";
 
-test("read-only subprocess backend prepares without egress and captures the foreground JSON report", async () => {
+test("read-only subprocess backend reuses the parent model runtime and captures the foreground JSON report", async () => {
 	const tempDirectoriesBefore = subprocessTempDirectories();
 	const providerContexts: Context[] = [];
 	const faux = createFauxCore({ api: API, provider: PROVIDER, models: [{ id: MODEL_ID, name: "Fixture", reasoning: true }] });
@@ -31,7 +31,7 @@ test("read-only subprocess backend prepares without egress and captures the fore
 		providerContexts.push(structuredClone(context));
 		throw new Error("dry preparation must not reach this provider");
 	}]);
-	const modelRegistry = fixtureModelRegistry(faux);
+	const { modelRegistry } = await fixtureModelRuntime(faux);
 	const invocationArgs: string[][] = [];
 	const events = fixtureEvents();
 	const backend = new PiSubprocessBackend({
@@ -144,10 +144,10 @@ test("subprocess bridge replaces only the marker and blocks tools outside the ap
 	assert.match(handlers.tool_call?.({ toolName: "write" }).reason, /outside the approved/);
 });
 
-test("subprocess backend rejects access claims that a shared-user child cannot enforce", () => {
+test("subprocess backend rejects access claims that a shared-user child cannot enforce", async () => {
 	const faux = createFauxCore({ api: API, provider: PROVIDER, models: [{ id: MODEL_ID, name: "Fixture", reasoning: true }] });
-	const modelRegistry = fixtureModelRegistry(faux);
-	const backend = new PiSubprocessBackend({ modelRegistry, cwd: process.cwd(), idFactory: () => "rejected-preflight" });
+	const { modelRegistry, modelRuntime } = await fixtureModelRuntime(faux);
+	const backend = new PiSubprocessBackend({ modelRegistry, modelRuntime, cwd: process.cwd(), idFactory: () => "rejected-preflight" });
 	const snapshot = fixtureSnapshot();
 	try {
 		const result = backend.preflight({
@@ -179,10 +179,13 @@ function fixtureSnapshot(): AgentProfileSnapshot {
 	return snapshot;
 }
 
-function fixtureModelRegistry(faux: ReturnType<typeof createFauxCore>): ModelRegistry {
-	const authStorage = AuthStorage.inMemory({ [PROVIDER]: { type: "api_key", key: "fixture-key" } });
-	const modelRegistry = ModelRegistry.inMemory(authStorage);
-	modelRegistry.registerProvider(PROVIDER, {
+async function fixtureModelRuntime(faux: ReturnType<typeof createFauxCore>): Promise<{ modelRegistry: ModelRegistry; modelRuntime: ModelRuntime }> {
+	const modelRuntime = await ModelRuntime.create({
+		credentials: new InMemoryCredentialStore(),
+		modelsPath: null,
+		allowModelNetwork: false,
+	});
+	modelRuntime.registerProvider(PROVIDER, {
 		api: API,
 		baseUrl: "https://fixture.invalid",
 		apiKey: "fixture-key",
@@ -197,7 +200,7 @@ function fixtureModelRegistry(faux: ReturnType<typeof createFauxCore>): ModelReg
 			maxTokens: 4_000,
 		}],
 	});
-	return modelRegistry;
+	return { modelRuntime, modelRegistry: new ModelRegistry(modelRuntime) };
 }
 
 function fixtureEvents(): unknown[] {
