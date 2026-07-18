@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { LoadedAgentProfile, ResolvedAgentProfile } from "../src/agent-profile.ts";
 import { registerForgeSubagentProfilesTool } from "../src/subagent-profile-tool.ts";
@@ -31,6 +34,7 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 	assert.equal(resolveCalls, 2);
 	assert.equal(result.details.status, "completed");
 	assert.equal(result.details.invocationToolAvailable, true);
+	assert.equal(result.details.approvalMode, "interactive");
 	assert.equal(result.details.profiles[0].description, "Reviews code and architecture.");
 	assert.equal(result.details.profiles[0].status, "ready");
 	assert.equal(result.details.profiles[1].status, "unavailable");
@@ -69,6 +73,29 @@ test("forge_subagent_profiles fails closed for an untrusted project", async () =
 	assert.equal(profileReads, 0);
 });
 
+test("forge_subagent_profiles exposes trusted-project unattended approval mode", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-unattended-profiles-"));
+	const configDir = join(cwd, ".pi", "forge");
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true } }), "utf8");
+	let tool: any;
+	registerForgeSubagentProfilesTool(
+		{
+			registerTool: (definition: any) => { tool = definition; },
+			getActiveTools: () => ["forge_subagent_profiles", "forge_subagent"],
+		} as any,
+		() => [loadedProfile("reviewer", "Reviews code.")],
+		(loaded) => resolvedProfile(loaded),
+	);
+	try {
+		const result = await tool.execute("catalog", {}, undefined, undefined, { cwd, isProjectTrusted: () => true });
+		assert.equal(result.details.approvalMode, "unattended-config");
+		assert.match(result.content[0].text, /may contact the provider without per-run human approval/);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 function loadedProfile(id: string, description: string, name?: string): LoadedAgentProfile {
 	return {
 		filePath: `/workspace/.pi/forge/agent-profiles/${id}.json`,
@@ -97,5 +124,5 @@ function resolvedProfile(loaded: LoadedAgentProfile, error?: string): ResolvedAg
 }
 
 function trustedContext(trusted = true) {
-	return { isProjectTrusted: () => trusted } as any;
+	return { cwd: "/workspace", isProjectTrusted: () => trusted } as any;
 }

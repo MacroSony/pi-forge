@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
 import { registerForgeSubagentTool } from "../src/subagent-tool.ts";
@@ -47,6 +50,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.equal(result.content[0].text, "Review complete with evidence.");
 	assert.equal(result.details.status, "completed");
 	assert.equal(result.details.approval.approved, true);
+	assert.equal(result.details.approval.source, "human");
 	assert.equal(result.details.approval.viewedFullPrompt, true);
 	assert.equal(result.details.approval.executionFingerprint, fixture.prepared.plan.executionFingerprint);
 	assert.equal(result.details.report?.messages.length, 3);
@@ -105,6 +109,47 @@ test("forge_subagent rejects a prepared plan without transport and fails closed 
 	assert.equal(unavailable.details.status, "cancelled");
 	assert.match(unavailable.content[0].text, /approval is unavailable/);
 	assert.equal(calls.prepare, 1);
+});
+
+test("forge_subagent can run without per-invocation UI only after trusted-project opt-in", async () => {
+	const fixture = await toolFixture();
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-unattended-tool-"));
+	const configDir = join(cwd, ".pi", "forge");
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true } }), "utf8");
+	let executeCalls = 0;
+	const runtime: ForgeSubagentRuntime = {
+		descriptors: () => [],
+		prepare: async () => ({ ok: true, prepared: fixture.prepared }),
+		discard: async () => undefined,
+		execute: async () => {
+			executeCalls++;
+			return completedResponse(fixture.prepared, "Unattended review complete.");
+		},
+		dispose: async () => undefined,
+	};
+	let tool: any;
+	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId]);
+	const context = toolContext([]);
+	context.ctx.cwd = cwd;
+	context.ctx.hasUI = false;
+	context.ctx.isProjectTrusted = () => true;
+	try {
+		const result = await tool.execute("unattended", { profileId: fixture.profileId, task: "Run from config." }, undefined, undefined, context.ctx);
+		assert.equal(executeCalls, 1);
+		assert.equal(result.details.status, "completed");
+		assert.deepEqual(result.details.approval, {
+			required: false,
+			approved: true,
+			viewedFullPrompt: false,
+			source: "trusted-project-config",
+			executionFingerprint: fixture.prepared.plan.executionFingerprint,
+			approvedAt: result.details.approval.approvedAt,
+		});
+		assert.ok(result.details.approval.approvedAt);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
 });
 
 async function toolFixture() {
@@ -181,6 +226,7 @@ function toolContext(selections: string[]) {
 		ctx: {
 			hasUI: true,
 			cwd: "/workspace",
+			isProjectTrusted: () => true,
 			ui: {
 				select: async (title: string) => {
 					selectTitles.push(title);

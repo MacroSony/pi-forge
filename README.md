@@ -119,7 +119,19 @@ The 0.4 development branch can run a stored profile as a separate, clean, one-sh
 /forge-agent run reviewer Review this API design for correctness.
 ```
 
-`plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `run` and `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
+`plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `/forge-agent run` and, by default, `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
+
+To deliberately let the parent agent invoke `forge_subagent` without per-run approval, set the following trusted-project option in `.pi/forge/config.json`:
+
+```json
+{
+  "subagents": {
+    "allowAgentInvocationWithoutApproval": true
+  }
+}
+```
+
+This option affects only the model-callable `forge_subagent` tool; `/forge-agent run` remains interactively approved. The exact preflight and immutable-plan checks still run, and the tool result records `trusted-project-config` as its authorization source, but provider transport begins without showing the prompt to a human. Profile discovery reports the active approval mode. The setting is ignored for untrusted projects and malformed values fail closed. Treat the project config as authorization: do not enable or commit this option in a repository unless every parent agent allowed to use `forge_subagent` should be able to send the compiled prompt and readable file contents to the selected provider without asking again.
 
 The child starts with a clean conversation and receives no parent history automatically. It runs in the foreground with the profile's exact model/thinking level and prompt stack. Its only candidate tools are `read`, `grep`, `find`, and `ls`, further restricted by the stack's tool policy; it receives no write/edit/shell tools, skills, prompt templates, context files, or third-party extensions. The final tool result contains a bounded model-visible report plus expandable human-visible execution details. Retained transcript strings are individually bounded, base64-like text is redacted, and the transcript keeps a 512 KiB rolling tail so the final report remains available without making the TUI retain an unbounded tool history. Inline image data stays inside the child long enough for the selected vision model to use it, but the dedicated report channel replaces binary payloads with MIME type and encoded-size metadata before anything is retained in the parent session.
 
@@ -298,7 +310,7 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/forge-agent plan <profile> <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
 | `/forge-agent run <profile> <task>` | Review the exact plan and run one foreground read-only text task after approval |
 
-The model-callable tools are `forge_subagent_profiles` for local metadata discovery and `forge_subagent` for execution. Discovery needs no approval and performs no provider request or subagent prompt preparation. Invocation is available only when the current main-agent tool policy permits it and an interactive approval UI is present.
+The model-callable tools are `forge_subagent_profiles` for local metadata discovery and `forge_subagent` for execution. Discovery needs no approval and performs no provider request or subagent prompt preparation. Invocation requires the current main-agent tool policy to permit it; execution then requires either an interactive approval UI or the explicit trusted-project unattended option described above.
 
 ### Import & debug
 

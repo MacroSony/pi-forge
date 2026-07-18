@@ -27,7 +27,7 @@ The current tool and commands already share the same request, preflight, host pr
 
 ## Recently Completed: Approval-Gated Foreground Subagent
 
-The `pi-subprocess-readonly` path sends one requested text task through profile resolution, backend preflight, exact backend-assisted prompt preparation, immutable plan validation, interactive review, a foreground Pi JSON subprocess, and normalized response handling without owning a general runner. The older access-none `pi-sdk-isolated` adapter remains exported and tested for compatibility.
+The `pi-subprocess-readonly` path sends one requested text task through profile resolution, backend preflight, exact backend-assisted prompt preparation, immutable plan validation, interactive review by default, a foreground Pi JSON subprocess, and normalized response handling without owning a general runner. A trusted-project option can explicitly authorize the model-callable tool without per-run review; the older access-none `pi-sdk-isolated` adapter remains exported and tested for compatibility.
 
 User test surface:
 
@@ -44,7 +44,7 @@ Current boundary:
 - Declare `executionBoundary: shared-user`: read-only is model-tool policy, not mount, path, process, or network isolation. The child retains the invoking user's OS permissions.
 - Load trusted pi-forge macro/slot registrations only in the host compiler and preserve the delegated task as the final protected user message.
 - Treat timeout and abort as host best-effort enforcement.
-- Keep provider execution opt-in through interactive approval bound to the exact execution fingerprint. Ordinary automated tests use only an offline faux provider.
+- Keep provider execution opt-in through interactive approval bound to the exact execution fingerprint or the explicit trusted-project unattended-tool setting. Ordinary automated tests use only an offline faux provider.
 - Let the main agent inspect loaded profile IDs/descriptions and current resolution status locally without approval, provider transport, or exact prompt preparation.
 - Return bounded model-visible output and expandable human-visible plan, approval, diagnostics, transcript, tool-event, usage, and response details. Advertise no artifact or contract trace storage until those implementations exist.
 

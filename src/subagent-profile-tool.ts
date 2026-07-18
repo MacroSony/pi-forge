@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { loadForgeSubagentSettings } from "./forge-config.ts";
 import {
 	isResolvedAgentProfileUsable,
 	type AgentProfileDiagnostic,
@@ -26,6 +27,8 @@ export interface ForgeSubagentProfileSummary {
 export interface ForgeSubagentProfilesToolDetails {
 	status: "completed" | "disabled";
 	invocationToolAvailable: boolean;
+	approvalMode: "interactive" | "unattended-config";
+	configWarnings: string[];
 	profiles: ForgeSubagentProfileSummary[];
 }
 
@@ -38,7 +41,7 @@ export function registerForgeSubagentProfilesTool(
 		name: "forge_subagent_profiles",
 		label: "Forge Subagent Profiles",
 		description: [
-			"List the currently loaded Pi Forge subagent profiles and their descriptions.",
+			"List the currently loaded Pi Forge subagent profiles, descriptions, and active approval mode.",
 			"Use this before forge_subagent when the user has not already specified a profile ID.",
 			"This reads only in-memory profile metadata and performs no provider request or subagent prompt preparation.",
 		].join(" "),
@@ -48,15 +51,17 @@ export function registerForgeSubagentProfilesTool(
 			if (!ctx.isProjectTrusted()) {
 				return result(
 					"Subagent profile discovery is disabled because the project is not trusted.",
-					{ status: "disabled", invocationToolAvailable: false, profiles: [] },
+					{ status: "disabled", invocationToolAvailable: false, approvalMode: "interactive", configWarnings: [], profiles: [] },
 				);
 			}
 
 			const invocationToolAvailable = pi.getActiveTools().includes("forge_subagent");
+			const settings = loadForgeSubagentSettings(ctx);
+			const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
 			const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
 			return result(
-				renderProfileCatalog(summaries, invocationToolAvailable),
-				{ status: "completed", invocationToolAvailable, profiles: summaries },
+				renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings),
+				{ status: "completed", invocationToolAvailable, approvalMode, configWarnings: settings.warnings, profiles: summaries },
 			);
 		},
 	});
@@ -81,9 +86,14 @@ export function summarizeProfile(
 export function renderProfileCatalog(
 	profiles: readonly ForgeSubagentProfileSummary[],
 	invocationToolAvailable: boolean,
+	approvalMode: "interactive" | "unattended-config" = "interactive",
+	configWarnings: readonly string[] = [],
 ): string {
 	if (profiles.length === 0) {
-		return `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}.`;
+		return [
+			`No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
+			...configWarnings.map((warning) => `Configuration warning: ${warning}`),
+		].join("\n");
 	}
 
 	const ready = profiles.filter((profile) => profile.status === "ready");
@@ -91,8 +101,11 @@ export function renderProfileCatalog(
 	const lines = [
 		`Pi Forge subagent profiles: ${ready.length} ready, ${unavailable.length} unavailable.`,
 		`Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive; the current tool policy must permit forge_subagent before the main agent can invoke a profile"}.`,
-		"A ready profile still undergoes exact backend preflight and human approval when invoked.",
+		approvalMode === "unattended-config"
+			? "Approval mode: unattended-config; exact backend preflight still runs, but forge_subagent may contact the provider without per-run human approval."
+			: "Approval mode: interactive; a ready profile still undergoes exact backend preflight and per-run human approval.",
 	];
+	if (configWarnings.length > 0) lines.push(...configWarnings.map((warning) => `Configuration warning: ${warning}`));
 
 	if (ready.length > 0) {
 		lines.push("", "Ready profiles:");

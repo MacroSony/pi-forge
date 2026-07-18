@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { loadForgeSubagentSettings } from "./forge-config.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import type { SubagentBackendExecutionUpdate } from "./subagent/backend-registry.ts";
@@ -32,9 +33,10 @@ const ForgeSubagentParameters = Type.Object({
 });
 
 export interface ForgeSubagentApprovalReceipt {
-	required: true;
+	required: boolean;
 	approved: boolean;
 	viewedFullPrompt: boolean;
+	source: "none" | "human" | "trusted-project-config";
 	executionFingerprint?: string;
 	approvedAt?: string;
 }
@@ -57,7 +59,7 @@ export interface ForgeSubagentPlanSummary {
 }
 
 export interface ForgeSubagentToolDetails {
-	status: "preparing" | "awaiting-approval" | "cancelled" | "running" | "completed" | "failed" | "timed-out";
+	status: "preparing" | "prepared" | "awaiting-approval" | "cancelled" | "running" | "completed" | "failed" | "timed-out";
 	profileId: string;
 	task: string;
 	plan?: ForgeSubagentPlanSummary;
@@ -84,7 +86,7 @@ export function registerForgeSubagentTool(
 		description: [
 			"Delegate one foreground task to a loaded Pi Forge agent profile.",
 			"Use forge_subagent_profiles first when the user has not already specified a profile ID.",
-			"Every run requires human approval after the exact prompt is prepared and before provider transport.",
+			"Runs require human approval after exact preparation unless the trusted project explicitly enables unattended agent invocation.",
 			"The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
 			"Use the final report as evidence and do not repeatedly request the same rejected delegation.",
 		].join(" "),
@@ -92,15 +94,23 @@ export function registerForgeSubagentTool(
 		executionMode: "sequential",
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<ForgeSubagentToolDetails>> {
+			const settings = loadForgeSubagentSettings(ctx);
+			const approvalRequired = !settings.allowAgentInvocationWithoutApproval;
+			const configDiagnostics = settings.warnings.map((message): SubagentDiagnostic => ({ level: "warning", code: "host.config", message }));
 			const baseDetails: ForgeSubagentToolDetails = {
 				status: "preparing",
 				profileId: params.profileId,
 				task: params.task,
-				approval: { required: true, approved: false, viewedFullPrompt: false },
-				diagnostics: [],
+				approval: {
+					required: approvalRequired,
+					approved: false,
+					viewedFullPrompt: false,
+					source: approvalRequired ? "none" : "trusted-project-config",
+				},
+				diagnostics: configDiagnostics,
 				progress: [],
 			};
-			if (!ctx.hasUI) {
+			if (approvalRequired && !ctx.hasUI) {
 				return toolResult("Subagent invocation was not run: interactive human approval is unavailable.", { ...baseDetails, status: "cancelled" });
 			}
 			if (!profileIds().includes(params.profileId)) {
@@ -113,41 +123,50 @@ export function registerForgeSubagentTool(
 			try {
 				const preparation = await runtime.prepare(params.profileId, params.task, ctx);
 				if (!preparation.ok) {
+					const diagnostics = [...configDiagnostics, ...preparation.diagnostics];
 					return toolResult(
-						`Subagent preparation failed:\n${renderDiagnostics(preparation.diagnostics)}`,
-						{ ...baseDetails, status: "failed", diagnostics: preparation.diagnostics },
+						`Subagent preparation failed:\n${renderDiagnostics(diagnostics)}`,
+						{ ...baseDetails, status: "failed", diagnostics },
 						true,
 					);
 				}
 				prepared = preparation.prepared;
 				const plan = summarizeForgeSubagentPlan(prepared, ctx.cwd);
-				const awaiting: ForgeSubagentToolDetails = {
+				const preparedDetails: ForgeSubagentToolDetails = {
 					...baseDetails,
-					status: "awaiting-approval",
+					status: approvalRequired ? "awaiting-approval" : "prepared",
 					plan,
-					diagnostics: prepared.diagnostics,
+					diagnostics: [...configDiagnostics, ...prepared.diagnostics],
 				};
-				onUpdate?.(toolResult("The exact plan is ready and awaiting human approval.", awaiting));
-				const approval = await requestForgeSubagentApproval(prepared, params.task, ctx, signal);
+				onUpdate?.(toolResult(
+					approvalRequired
+						? "The exact plan is ready and awaiting human approval."
+						: "The exact plan is ready; per-run approval is bypassed by trusted-project configuration.",
+					preparedDetails,
+				));
+				const approval = approvalRequired
+					? await requestForgeSubagentApproval(prepared, params.task, ctx, signal)
+					: { approved: true, viewedFullPrompt: false };
 				if (!approval.approved) {
 					await runtime.discard(prepared);
 					prepared = undefined;
 					return toolResult("Subagent invocation was rejected by the human before provider transport.", {
-						...awaiting,
+						...preparedDetails,
 						status: "cancelled",
-						approval: { required: true, approved: false, viewedFullPrompt: approval.viewedFullPrompt },
+						approval: { required: true, approved: false, viewedFullPrompt: approval.viewedFullPrompt, source: "none" },
 					});
 				}
 
 				const approvedAt = new Date().toISOString();
 				const progress: SubagentBackendExecutionUpdate[] = [];
 				const running: ForgeSubagentToolDetails = {
-					...awaiting,
+					...preparedDetails,
 					status: "running",
 					approval: {
-						required: true,
+						required: approvalRequired,
 						approved: true,
 						viewedFullPrompt: approval.viewedFullPrompt,
+						source: approvalRequired ? "human" : "trusted-project-config",
 						executionFingerprint: prepared.plan.executionFingerprint,
 						approvedAt,
 					},
@@ -325,7 +344,7 @@ function renderExpandedResult(
 			`${theme.fg("muted", "Boundary:")} ${details.plan.executionBoundary}; read-only model tools`,
 			`${theme.fg("muted", "Tools:")} ${details.plan.effectiveToolIds.join(", ") || "none"}`,
 			`${theme.fg("muted", "Fingerprint:")} ${details.plan.executionFingerprint}`,
-			`${theme.fg("muted", "Approval:")} ${details.approval.approved ? `approved${details.approval.viewedFullPrompt ? " after full-prompt review" : ""}` : "not approved"}`,
+			`${theme.fg("muted", "Approval:")} ${approvalText(details.approval)}`,
 		].join("\n"), 0, 0));
 	}
 	container.addChild(new Spacer(1));
@@ -438,6 +457,12 @@ function usageText(report: PiSubprocessRunReport): string {
 	const usage = report.usage;
 	const retention = report.retention.truncated ? ` · ${report.retention.omittedMessages} transcript message${report.retention.omittedMessages === 1 ? "" : "s"} omitted` : "";
 	return `${usage.turns} turn${usage.turns === 1 ? "" : "s"} · ${usage.input} input · ${usage.output} output · ${usage.totalTokens} total · $${usage.cost.toFixed(4)}${retention}`;
+}
+
+function approvalText(approval: ForgeSubagentApprovalReceipt): string {
+	if (!approval.approved) return approval.required ? "not approved" : "not executed";
+	if (approval.source === "trusted-project-config") return "per-run approval bypassed by trusted-project config";
+	return `approved${approval.viewedFullPrompt ? " after full-prompt review" : ""}`;
 }
 
 function indent(text: string): string {

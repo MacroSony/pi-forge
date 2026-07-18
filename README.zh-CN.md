@@ -119,7 +119,19 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 /forge-agent run reviewer 检查这个 API 设计是否正确。
 ```
 
-`plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃它，不会联系 provider。`run` 和 `forge_subagent` 会先准备完全相同的精确计划，再显示审批界面。默认界面显示 agent 任务、profile/stack、provider、模型、思考等级、最终工具、工作目录、安全边界、payload 大小和执行 fingerprint。选择 **View full prompt** 可以在批准前查看完整 system prompt 和按顺序排列的 provider-bound messages；在查看器中的编辑不会生效。
+`plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃它，不会联系 provider。`/forge-agent run` 和默认配置下的 `forge_subagent` 会先准备完全相同的精确计划，再显示审批界面。默认界面显示 agent 任务、profile/stack、provider、模型、思考等级、最终工具、工作目录、安全边界、payload 大小和执行 fingerprint。选择 **View full prompt** 可以在批准前查看完整 system prompt 和按顺序排列的 provider-bound messages；在查看器中的编辑不会生效。
+
+如果要明确允许父 agent 无需逐次审批即可调用 `forge_subagent`，可以在受信任项目的 `.pi/forge/config.json` 中设置：
+
+```json
+{
+  "subagents": {
+    "allowAgentInvocationWithoutApproval": true
+  }
+}
+```
+
+此选项只影响模型可调用的 `forge_subagent` 工具；`/forge-agent run` 仍然需要交互审批。精确 preflight 和不可变计划校验仍会执行，tool result 也会记录 `trusted-project-config` 授权来源，但 provider transport 会在不向人类显示 prompt 的情况下开始。Profile discovery 会报告当前审批模式。未受信任项目会忽略该设置，格式错误的值会 fail closed。请把项目 config 当作授权文件：除非允许所有能调用 `forge_subagent` 的父 agent 无需再次询问就把编译后的 prompt 和可读文件内容发送给指定 provider，否则不要启用或提交此选项。
 
 子 agent 从干净对话开始，不会自动继承主 agent 历史。它在前台运行，并使用 profile 指定的精确模型、思考等级和 prompt stack。候选工具只有 `read`、`grep`、`find` 和 `ls`，还会继续受到 stack 工具策略限制；不会加载 write/edit/shell 工具、skills、prompt templates、context files 或第三方 extensions。最终工具结果包含有界的模型可见报告和可展开的人类可见执行详情。保留的 transcript 会限制每个字符串的大小、删去类似 base64 的文本，并只保留 512 KiB 的滚动尾部，以便保留最终报告而不让 TUI 持有无界工具历史。内联图片数据会留在 child 内供所选视觉模型使用，但专用 report channel 会在任何内容进入主 session 前，把二进制 payload 替换成 MIME type 和编码体积元数据。
 
@@ -296,7 +308,7 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `/forge-agent plan <profile> <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
 | `/forge-agent run <profile> <task>` | 审查精确计划并在批准后运行一个前台只读文本任务 |
 
-模型可调用的工具包括用于本地元数据发现的 `forge_subagent_profiles`，以及用于执行的 `forge_subagent`。发现工具不需要审批，也不会请求 provider 或准备 subagent prompt。只有当前主 agent 工具策略允许执行工具，并且存在交互式审批 UI 时，subagent 才可运行。
+模型可调用的工具包括用于本地元数据发现的 `forge_subagent_profiles`，以及用于执行的 `forge_subagent`。发现工具不需要审批，也不会请求 provider 或准备 subagent prompt。当前主 agent 工具策略必须允许执行工具；之后还必须存在交互式审批 UI，或者启用上文明确说明的受信任项目免审批选项，subagent 才可运行。
 
 ### 导入 & 调试
 
