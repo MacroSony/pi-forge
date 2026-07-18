@@ -47,6 +47,7 @@ test("the dedicated subagent entry point preserves the package-root adapter surf
 		"createAgentExecutionPlan",
 		"validateAgentResponse",
 		"SubagentBackendRegistry",
+		"PiSubprocessBackend",
 	] as const) {
 		assert.equal(typeof subagentSurface[name], "function", name);
 		assert.equal(rootSurface[name], subagentSurface[name], name);
@@ -55,4 +56,6 @@ test("the dedicated subagent entry point preserves the package-root adapter surf
 	const packaged = await import("@zihanw/pi-forge/subagent");
 	assert.equal(typeof packaged.validateAgentRequest, "function");
 	assert.equal(typeof packaged.resolveSubagentHostProfile, "function");
+	assert.equal(typeof packaged.PiSubprocessBackend, "function");
+	assert.equal(packaged.PI_SUBPROCESS_READONLY_BACKEND_ID, "pi-subprocess-readonly");
 });

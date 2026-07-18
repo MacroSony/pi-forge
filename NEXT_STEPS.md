@@ -15,58 +15,62 @@ This file is the forward-looking product roadmap. Completed capability belongs i
 
 ## Current Objective
 
-Turn the completed human-operated subagent path into a safe parent-agent workflow. Work should proceed in this order:
+Harden the completed approval-gated foreground subagent path without turning pi-forge into a general orchestrator. Work should proceed in this order:
 
-1. Add the smallest model-callable parent integration on top of the proven command/backend path.
-2. Expose agent profiles in the existing browser editor.
-3. Harden the workflows and prepare the release.
+1. Dogfood the shared-user read-only path and tighten report, cancellation, and sensitive-path behavior found in real use.
+2. Evaluate an optional bubblewrap-style backend that can enforce allowed roots, subprocess limits, and network policy honestly.
+3. Design any future write access as an inspectable staged patch with a separate approval boundary.
+4. Expose agent profiles in the existing browser editor.
+5. Harden the workflows and prepare the release.
 
-The parent tool must reuse the same request, preflight, host preparation, immutable plan, execution, and response projection path as `/forge-agent`; it must not introduce a second runner. Profile UI remains a bounded user-facing iteration after the delegation path has a main-agent feedback loop.
+The current tool and commands already share the same request, preflight, host preparation, immutable plan, execution, and response-projection path. Further safety work should strengthen the backend boundary rather than introduce a second runner. Profile UI remains a bounded user-facing iteration independent of sandbox development.
 
-## Recently Completed: Pi SDK Backend and Human Test Path
+## Recently Completed: Approval-Gated Foreground Subagent
 
-The `pi-sdk-isolated` walking skeleton now sends one user-requested text task through profile resolution, backend preflight, exact backend-assisted prompt preparation, immutable plan validation, a real Pi `AgentSession`, and normalized response handling without owning a general runner.
+The `pi-subprocess-readonly` path sends one requested text task through profile resolution, backend preflight, exact backend-assisted prompt preparation, immutable plan validation, interactive review, a foreground Pi JSON subprocess, and normalized response handling without owning a general runner. The older access-none `pi-sdk-isolated` adapter remains exported and tested for compatibility.
 
 User test surface:
 
+- Ask the main agent to use `forge_subagent` when the active tool policy permits it.
 - `/forge-agent backends`
 - `/forge-agent plan <profile> <task>` prepares the exact request behind a provider gate, reports its plan, and discards it without transport.
-- `/forge-agent run <profile> <task>` confirms provider egress in the TUI and executes the same prepared path.
+- `/forge-agent run <profile> <task>` reviews the same exact prepared plan in the TUI and executes it only after approval.
 
 Current boundary:
 
 - Use Pi's existing model registry, authentication, streaming, and in-memory session primitives.
-- Support one-shot foreground text execution with an existing agent profile and clean context.
-- Advertise and accept only `access: none`, with no agent tools, mounts, process access, project context discovery, skills, prompt templates, or third-party Pi extensions.
+- Support one-shot sequential foreground text execution with an existing agent profile and clean context.
+- Expose only stack-filtered `read`, `grep`, `find`, and `ls`; load no write/edit/shell tools, skills, prompt templates, context files, or third-party Pi extensions.
+- Declare `executionBoundary: shared-user`: read-only is model-tool policy, not mount, path, process, or network isolation. The child retains the invoking user's OS permissions.
 - Load trusted pi-forge macro/slot registrations only in the host compiler and preserve the delegated task as the final protected user message.
 - Treat timeout and abort as host best-effort enforcement.
-- Keep provider execution opt-in. Ordinary automated tests use only an offline faux provider; live external-provider tests require an explicit command.
-- Return compact normalized output and diagnostics. Advertise no artifact or trace storage until those implementations exist.
+- Keep provider execution opt-in through interactive approval bound to the exact execution fingerprint. Ordinary automated tests use only an offline faux provider.
+- Return bounded model-visible output and expandable human-visible plan, approval, diagnostics, transcript, tool-event, usage, and response details. Advertise no artifact or contract trace storage until those implementations exist.
 
-## Milestone 1: Parent-Agent Integration
+## Milestone 1: Sandbox and Write-Safety Evaluation
 
-Goal: expose the proven one-shot backend to the main agent without broadening its access or returning control-plane detail into parent context.
+Goal: determine whether stronger isolation and useful write workflows can be added without obscuring the current honest shared-user boundary.
 
 Implementation sequence:
 
-1. Register a `forge_agent_run` tool with profile, task, explicit context, timeout, and result-projection inputs.
-2. Require prior user/session consent for remote provider egress; a model tool call cannot grant that consent itself.
-3. Route the tool abort signal through registry cancellation and SDK-session abort.
-4. Add media-resource resolution and authorized trace inspection only after text delegation is stable.
+1. Exercise the current subprocess against representative local and remote providers, cancellation timing, long prompts, large read results, and rejection/full-prompt review flows.
+2. Define an optional sandbox-driver interface and prototype bubblewrap on supported Linux hosts with explicit allowed roots, a minimal environment, process restrictions, and configurable network policy.
+3. Keep shared-user as an explicitly unsafe compatibility mode; never report sandbox enforcement when the selected host cannot provide it.
+4. Specify a staged-write result containing proposed patches/change metadata that the human can inspect and approve separately before host application.
 
 Initial scope:
 
-- One foreground text task at a time.
-- Clean context plus explicit bounded, provenance-bearing context items; no automatic parent history.
-- `access: none`, no tools, no background execution, and no automatic retries.
-- Compact output/status/error projection only.
+- One foreground text task at a time, with no background execution or automatic retries.
+- Clean context and explicit task only; no automatic parent history.
+- Preserve read-only defaults until a separate staged-write approval/apply path exists.
+- No generic shell merely to obtain file writes; sandbox claims require enforcement tests and receipts.
 
 Done criteria:
 
-- The main agent can invoke one stored profile and receives only the bounded result projection.
-- Explicit selected context preserves provenance and excludes hidden reasoning, raw provider payloads, secrets, and automatic full-history export.
-- User cancellation and host timeout settle once and clean up the SDK session.
-- The tool is unavailable or refuses execution without explicit user/session egress consent.
+- The optional sandbox can demonstrate and test allowed-root, process, symlink, and requested network behavior, or the product continues to label execution shared-user without ambiguity.
+- A proposed write cannot affect the workspace before a second, human-visible approval and has a clear failure/partial-application strategy.
+- User cancellation and host timeout settle once and clean up preparation sessions, child processes, and temporary bridge data.
+- Documentation and receipts remain accurate on unsupported platforms and when falling back to shared-user execution.
 
 ## Milestone 2: Profile UI
 
@@ -113,7 +117,7 @@ Done criteria:
 
 ### Broader or Owned Subagent Runner
 
-Do not build a full runner in 0.4. If pi-forge later owns one, start with subprocess isolation, fresh context, profile-backed foreground execution, cancellation, and compact results rather than chains or pipelines.
+Do not build a full runner in 0.4. The current subprocess path should remain fresh-context, profile-backed, foreground, approval-gated, and sequential rather than expanding into chains or pipelines.
 
 Requirements before implementation:
 

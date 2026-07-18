@@ -22,6 +22,12 @@ import {
 const TEST_HOME = mkdtempSync(join(tmpdir(), "pi-forge-home-"));
 process.env.HOME = TEST_HOME;
 
+test("extension composition registers the foreground subagent tool and commands", () => {
+	const harness = createHarness();
+	assert.equal(harness.tools.forge_subagent?.name, "forge_subagent");
+	assert.ok(harness.commands["forge-agent"]);
+});
+
 test("/preset completions preserve second-level subcommand text", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {

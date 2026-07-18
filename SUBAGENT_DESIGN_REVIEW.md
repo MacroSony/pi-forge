@@ -1,5 +1,7 @@
 # Review of `NEXT_STEPS.md` and `SUBAGENT_INTERFACE_DESIGN.md`
 
+Status: historical pre-implementation review. Its blocking findings were resolved by the exported contract, validated backend registry, immutable preparation binding, concrete backends, and approval-gated foreground integration; the text below records the issues that shaped that design.
+
 ## Verdict
 
 `NEXT_STEPS.md` is directionally sound and mostly suits pi-forge's current architecture. The profile CLI to shared profile service to profile UI progression is appropriate, and deferring an owned runner is the right call.

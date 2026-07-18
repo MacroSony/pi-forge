@@ -1,6 +1,6 @@
 # Pi SDK Subagent Spike Findings
 
-Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are now implemented in the exported adapter boundary, optional backend registry, and experimental text-only `pi-sdk-isolated` command path. The spike remains useful for broader live diagnostics such as media and trusted-extension preparation that the shipped walking skeleton intentionally defers.
+Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are implemented in the exported adapter boundary and retained `pi-sdk-isolated` compatibility backend. The extension now defaults to the later approval-gated `pi-subprocess-readonly` path; this document remains a historical record and a broader live diagnostic for media and trusted-extension preparation.
 
 ## Deliverable
 
@@ -101,12 +101,12 @@ The spike trace includes lifecycle and tool start/end metadata only. It excludes
 
 - No allowed-root filesystem, subprocess, or agent-network isolation.
 - No hard turn, token, or output-byte enforcement.
-- No extension-tool execution in the shipped adapter: it intentionally isolates third-party Pi extensions and exposes an empty tool catalog.
-- The registry and text-only SDK backend now exist, but there is still no artifact store, trace storage implementation, model-callable parent run/inspect tool, media resolution in the shipped command path, or parent-visible result insertion.
+- The retained SDK adapter exposes an empty tool catalog. The default subprocess adapter adds only stack-filtered `read`, `grep`, `find`, and `ls`, under an explicit shared-user rather than sandboxed boundary.
+- The registry, model-callable foreground tool, and text-only subprocess backend now exist, but there is still no artifact store, contract trace storage, media resolution in the shipped path, sandbox enforcement, or staged write workflow.
 - Custom dependency scanning records macro/slot names and registration sources, but it cannot fingerprint executable registration code.
-- The human command is foreground-only and does not yet expose a separate cancel command; Pi/host abort signals and host timeouts route to `AgentSession.abort()`.
+- The command/tool is foreground-only and does not expose a separate cancel command; Pi/host abort signals and host timeouts terminate the active SDK session or subprocess on a best-effort basis.
 
-These gaps do not block the human-operated access-none walking skeleton. They do constrain the next parent-agent tool: it must stay text-only, foreground, no-tool, and consent-gated until stronger enforcement and resource handling are implemented.
+These gaps do not block the approval-gated read-only foreground workflow. They do require the UI and receipts to keep saying shared-user, and they rule out adding direct write/shell tools until stronger sandboxing or a separately approved staged-change design exists.
 
 ## Verification Evidence
 

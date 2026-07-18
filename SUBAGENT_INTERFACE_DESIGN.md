@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: implemented pure adapter contract, optional empty-by-default backend registry, and an experimental human-operated `pi-sdk-isolated` walking skeleton for the 0.4 development branch. The broader Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). A model-callable parent-agent tool is not yet shipped.
+Status: implemented pure adapter contract, optional empty-by-default backend registry, retained `pi-sdk-isolated` compatibility backend, and an approval-gated model-callable foreground `pi-subprocess-readonly` path for the 0.4 development branch. The broader Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
 
 ## Goals
 
@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root lazily registers the experimental `pi-sdk-isolated` backend for `/forge-agent`; parent-agent integration remains deferred.
+The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root registers the experimental `pi-subprocess-readonly` backend for `forge_subagent` and `/forge-agent`; the older `pi-sdk-isolated` backend remains an exported compatibility adapter.
 
 ### AgentRequest
 
@@ -180,9 +180,9 @@ The existing `agentProfileFingerprint()` JSON string remains unchanged for store
 
 ## Parent-Visible Result
 
-The complete response is control-plane data. The main agent receives a bounded tool-result projection containing only run ID, terminal status, output, compact artifact/change references, and a compact error/warning when applicable.
+The complete response is control-plane data. The main agent receives a bounded tool-result projection containing run ID, terminal status, output, and compact errors/warnings when applicable.
 
-Usage details, raw diagnostics, enforcement receipts, and trace history remain out of parent context unless explicitly inspected. Full history is never returned inline. Trace inspection is paginated by summary, normalized transcript, or tool events and excludes hidden reasoning by default. Resumable sessions remain separate and deferred.
+The human can expand the same tool result to inspect the plan summary, approval receipt, diagnostics, usage, normalized response, and complete captured subprocess transcript/tool events. Those details stay out of the normal model-visible projection. The full prepared prompt is shown only on demand before approval and is not persisted in result details by default. `/tree` changes the active conversation branch; it cannot undo provider egress, billing, or external effects. Contract trace inspection, artifacts, and resumable sessions remain separate and deferred.
 
 ## Revised Implementation Plan
 
@@ -190,7 +190,7 @@ Usage details, raw diagnostics, enforcement receipts, and trace history remain o
 
 Fake-backend conformance proves contract and registry behavior, while the standalone SDK spike proves broader Pi provider behavior. The shipped walking skeleton now sends a human-requested task through the complete profile-resolution, registry-preflight, prompt-preparation, plan-validation, provider-execution, and response-projection path.
 
-The first concrete integration is a pi-forge-owned `pi-sdk-isolated` adapter plus a human-operated plan/run command. It starts with `access: none`, no tools, foreground text execution, explicit provider egress, host-abort timeout, and compact output. The model-callable parent tool follows this now-proven command path.
+The first concrete integration was a pi-forge-owned `pi-sdk-isolated` adapter plus a human-operated plan/run command. The current integration retains that adapter for compatibility and uses a foreground `pi-subprocess-readonly` backend for the command and model-callable tool. It exposes only stack-filtered read/list/search tools, declares a shared-user boundary rather than filesystem isolation, requires explicit approval of an immutable plan, and returns bounded output plus expandable reports.
 
 This integration also exposed a contract seam hidden by the fake backend: backend-assisted preparation cannot require the caller to fabricate the prompt runtime that the backend is responsible for discovering. The backend must supply complete, canonical compiler inputs; the host must compile from them; and the registry must return the exact runtime/preparation pair used for execution-plan construction.
 
@@ -245,17 +245,19 @@ Implemented with canonical `sha256:v1` fingerprints, deterministic UTF-8 context
 
 Implemented as the exported experimental `PiSdkIsolatedBackend` and `/forge-agent backends|plan|run` command path. Ordinary tests use Pi's faux provider through a real in-memory `AgentSession`, proving provider gating and final context without network traffic.
 
-### Iteration 7: Parent integration
+### Iteration 7: Foreground parent integration (completed)
 
-- Design the smallest run/inspect tool surface after enforcement and task preservation work end to end.
-- Resolve profile/context and prepare a plan before dispatch; backends never read project profile/session files directly.
-- Insert only the bounded response projection into parent context.
-- Cover success, failure, cancellation, timeout, limit, media, access rejection, artifact, and trace inspection end to end.
+- Added the sequential `forge_subagent` tool on the shared command/runtime path rather than creating a second runner.
+- Resolve the profile and prepare the exact immutable plan before asking for interactive approval or permitting provider transport.
+- Show a compact default review, with full prompt inspection on demand, and bind approval to the execution fingerprint.
+- Insert only bounded response text into parent context while retaining complete transcript/tool-event details for expanded human inspection.
+- Keep execution text-only, foreground, clean-context, read-only, and shared-user; cancellation, rejection, provider failure, and missing-UI cases fail closed.
 
-### Iteration 8: Product and runner decision
+### Iteration 8: Sandbox and staged-write decision
 
-- Decide whether the validated adapter remains internal, ships optionally, or just informs integrations.
-- Continue deferring a full owned runner, resumable agents, retries, queues, chains, pipelines, and concurrency orchestration until concrete demand exists.
+- Evaluate an optional bubblewrap-style backend that can honestly enforce allowed roots, network policy, and subprocess restrictions without changing the portable contract.
+- Design writes as a separately approved staged patch/change set with clear inspection and undo semantics; do not simply add `write`, `edit`, or shell to the shared-user child.
+- Continue deferring resumable agents, retries, queues, chains, pipelines, background work, and concurrency orchestration until concrete demand exists.
 
 Profile UI can proceed independently on the completed Iteration 1 service; it does not need to block parent integration or a concrete adapter decision. Each iteration remains independently reviewable and revertible.
 

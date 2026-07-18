@@ -1,6 +1,6 @@
 # Subagent Adapter Contract
 
-Status: exported pure contract, host-preparation utilities, optional backend registry, and experimental `pi-sdk-isolated` adapter for the 0.4 development branch. This is a narrow adapter boundary and human-operated walking skeleton, not an owned orchestration runner or parent-agent tool.
+Status: exported pure contract, host-preparation utilities, optional backend registry, retained `pi-sdk-isolated` compatibility adapter, and an approval-gated `pi-subprocess-readonly` foreground path for the 0.4 development branch. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
 
 ## Public Surface
 
@@ -18,7 +18,7 @@ The package root exports:
 - Pure request, snapshot, preflight, plan, response, artifact, and trace validators.
 - Canonical `sha256:v1` profile, stack, and execution fingerprints.
 - Optional backend registration, validated dispatch, cancellation/timeout arbitration, response normalization, and authorization-scoped trace routing through `SubagentBackendRegistry`.
-- Experimental `PiSdkIsolatedBackend`, its descriptor/ID, and host preparation through `prepareSubagentHostPlan()`.
+- Experimental `PiSdkIsolatedBackend` compatibility adapter and the default `PiSubprocessBackend`, including their descriptors/IDs, report types, and host preparation through `prepareSubagentHostPlan()`.
 
 The existing `agentProfileFingerprint()` remains unchanged. It is still the legacy JSON provenance value used for branch drift. New portable fingerprints use separately named functions and semantics.
 
@@ -151,18 +151,20 @@ The registry validates receipts but does not manufacture filesystem, process, ne
 
 Access receipts may explicitly declare `executionBoundary: "shared-user"`. This boundary means the subprocess retains the invoking user's operating-system permissions and its effective access is constrained only by the tools exposed to the model. A shared-user receipt cannot claim mount, symlink, process, or network isolation. Omitting the field preserves the legacy `isolated` interpretation.
 
-### 9. Experimental Pi SDK adapter and command path
+### 9. Experimental foreground subprocess and approval path
 
-`PiSdkIsolatedBackend` is a deliberately narrow concrete adapter:
+`PiSubprocessBackend` is the extension's deliberately narrow default adapter:
 
-- It resolves the exact profile model through Pi's existing `ModelRegistry` and authentication storage.
-- It creates a fresh in-memory `AgentSession`, isolated temporary resource directory, empty active tool set, and no session file.
-- It loads no skills, prompt templates, context files, themes, or third-party Pi extensions.
-- Its inline compiler bridge captures the exact `before_agent_start` prompt runtime, calls the registry-controlled host preparer, replaces provider-bound context with the prepared messages, and holds `before_provider_request` behind a gate until execution receives the validated plan.
-- It accepts text-only, one-shot, foreground requests with access `none`, denied agent network, no process access, and optional host-abort timeout. It advertises no artifact retention or trace inspection.
-- It disposes the SDK session and temporary directory after execution, explicit dry-plan discard, or extension shutdown.
+- It resolves the exact profile model through Pi's existing `ModelRegistry` and authentication storage, then prepares the exact prompt inside an in-process Pi session held behind a provider gate.
+- After approval, it disposes the preparation session and launches a fresh foreground Pi JSON subprocess with the approved model, thinking level, system prompt, messages, and tool IDs.
+- Its bridge preserves the exact prepared messages and rejects tools outside the approved allowlist. Candidate tools are limited to `read`, `grep`, `find`, and `ls`, then intersected with prompt-stack policy.
+- It loads no write/edit/shell tools, skills, prompt templates, context files, themes, or third-party Pi extensions and writes no child session file.
+- It accepts text-only, one-shot, sequential `read-only` requests rooted at the project working directory, with no process tool and optional host-abort timeout. It advertises no artifact retention or contract trace inspection.
+- It records a bounded foreground execution report containing JSON transcript events, tool calls/results, usage, stderr, status, and execution identity. Temporary bridge inputs are mode `0600` and removed during cleanup.
 
-The extension exposes this path through `/forge-agent backends`, `/forge-agent plan <profile> <task>`, and `/forge-agent run <profile> <task>`. `plan` prepares then discards without provider transport. A TUI `run` asks for explicit confirmation before preparation and provider egress; non-UI execution refuses to run because no interactive consent surface is available. This command path returns the normalized result to the user; it does not insert anything into the parent model context.
+This backend declares `executionBoundary: "shared-user"`. It does not create allowed-root mount containment, symlink-safe path containment, process isolation, or agent-network isolation. The subprocess retains the invoking user's OS permissions; `read-only` describes the tools exposed to the model, not a security sandbox. Network is therefore honestly recorded as allowed even though no dedicated network or shell tool is exposed.
+
+The model-callable `forge_subagent` tool and `/forge-agent run` use the same registry path. Both prepare an exact immutable plan while provider transport remains closed, show a compact approval summary, allow the human to inspect the complete prompt, and require interactive approval bound to the execution fingerprint. Non-UI execution refuses to run. The tool returns bounded content to the parent model and full expandable execution details to the human. `/forge-agent plan` still prepares and discards without provider transport; `/forge-agent backends` shows capabilities. The older access-none `PiSdkIsolatedBackend` remains exported and tested for compatibility but is not the extension default.
 
 ## Adapter-Enforced Responsibilities
 
@@ -180,15 +182,15 @@ The exported validators cannot create isolation. Every adapter remains responsib
 - Trace storage, authorization, redaction, pagination, and expiry.
 - Returning actual enforcement receipts rather than echoing request fields.
 
-An adapter must reject preflight when it cannot enforce a required field. The current Pi SDK adapter can execute only access `none`; its host-abort timeout is best-effort, not backend-hard. Denied agent network means the isolated agent has no network-capable tools or loaded extension code; it does not prohibit the host-managed provider transport explicitly requested by the user.
+An adapter must reject preflight when it cannot enforce a required field. The retained Pi SDK adapter can execute only access `none`; the subprocess adapter accepts shared-user read-only access and network allow. Both use best-effort host abort rather than a backend-hard timeout. Provider transport is always a separate, explicitly approved egress path.
 
 ## Deliberately Not Included
 
-- Parent model-callable run/inspect tools or result projection insertion.
-- Filesystem/process access, agent tools, media input, background runs, or general backend selection/configuration in the shipped command path.
+- Filesystem writes, process/shell tools, media input, background runs, or general backend selection/configuration in the shipped path.
+- OS-level filesystem, process, or network sandboxing for the shared-user subprocess.
+- Automatic parent-history/context selection; the delegated task is explicit and starts a clean conversation.
 - Session resume, retries, queues, chains, or pipelines.
 - Artifact/trace storage implementations.
 - Automatic provider fallback.
-- Automatic parent-context selection.
 
 Those belong to later iterations and cannot be inferred from these pure types alone.

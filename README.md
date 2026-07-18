@@ -107,9 +107,9 @@ A profile can also be written directly:
 
 `/profile preview <id>` resolves the model, authentication, thinking-level support, prompt stack, and effective tools without changing runtime state. `/profile status` reports the last-applied profile and current drift; it deliberately does not describe a profile as active. Provenance follows the session branch for status purposes but never causes automatic reapplication during reload, resume, tree navigation, or compaction. Fresh-session auto-activation is still one-shot, so later manual changes are preserved.
 
-### Experimental isolated subagent
+### Experimental foreground subagent
 
-The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi SDK session:
+The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi subprocess. The main agent can invoke the `forge_subagent` tool when the active prompt stack permits it, and the same path remains available to a human through commands:
 
 ```text
 /forge-agent backends
@@ -117,9 +117,11 @@ The 0.4 development branch can run a stored profile as a separate, clean, one-sh
 /forge-agent run reviewer Review this API design for correctness.
 ```
 
-`plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards the isolated session without contacting the provider. `run` uses the same path and asks for explicit provider-egress confirmation in the TUI before sending the task.
+`plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `run` and `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
 
-This is intentionally a walking skeleton, not a general subagent runner. It supports one foreground text task with the profile's exact model/thinking level and prompt stack, but starts with a clean conversation and no parent project context. The isolated agent has no tools, filesystem or process access, skills, prompt templates, third-party Pi extensions, artifacts, or stored trace. Its timeout is a host abort, not a hard process sandbox. The result is shown to the human and is not yet callable by or inserted into the main agent.
+The child starts with a clean conversation and receives no parent history automatically. It runs in the foreground with the profile's exact model/thinking level and prompt stack. Its only candidate tools are `read`, `grep`, `find`, and `ls`, further restricted by the stack's tool policy; it receives no write/edit/shell tools, skills, prompt templates, context files, or third-party extensions. The final tool result contains a bounded model-visible report plus expandable human-visible execution details, including the complete transcript and tool calls/results.
+
+Important: this first backend is **shared-user**, not an operating-system sandbox. Read-only is a model-tool policy: the subprocess retains the invoking user's OS permissions, and absolute paths readable by that user may be read and sent to the selected provider. Host timeout and cancellation are best effort. `/tree` can remove the invocation and result from the active conversation branch, but it cannot undo provider requests, billing, or external side effects. The default tool set intentionally provides no filesystem mutation path while a bubblewrap-style sandbox and staged write mode remain future work.
 
 ## Use cases
 
@@ -286,13 +288,15 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/profile reload` | Reload profile files without applying them |
 | `/profile forget` | Forget last-applied provenance without changing runtime state |
 
-### Experimental isolated subagent
+### Experimental foreground subagent
 
 | Command | What it does |
 |---------|-------------|
 | `/forge-agent backends` | Show the available experimental backend and its capabilities |
 | `/forge-agent plan <profile> <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
-| `/forge-agent run <profile> <task>` | Confirm provider egress and run one foreground access-none text task |
+| `/forge-agent run <profile> <task>` | Review the exact plan and run one foreground read-only text task after approval |
+
+The model-callable equivalent is `forge_subagent`. It is available only when the current main-agent tool policy permits that name and an interactive approval UI is present.
 
 ### Import & debug
 

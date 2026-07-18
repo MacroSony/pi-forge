@@ -10,6 +10,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Added
 
+- **Approval-gated foreground subagents.** Added the model-callable `forge_subagent` tool and moved `/forge-agent run` onto the same prepare-review-execute path. Every run prepares an immutable exact plan before provider transport, shows a compact task/profile/provider/model/thinking/tool/boundary/fingerprint summary, permits on-demand inspection of the full provider-bound prompt, and requires explicit interactive human approval.
+- **Read-only Pi subprocess backend.** Added the experimental `pi-subprocess-readonly` backend as the extension default. It runs one sequential foreground Pi JSON subprocess with a clean conversation and only stack-filtered `read`, `grep`, `find`, and `ls` tools; write, edit, shell, skills, templates, context files, and third-party extensions are disabled.
+- **Inspectable subagent reports.** Foreground progress and bounded output now return through a normal Pi tool call result. Expandable result details retain the approval receipt, plan summary, normalized response, diagnostics, usage, complete transcript, and tool calls/results while the full compiled prompt remains transient unless the user explicitly opens it before approval.
+- **Explicit shared-user execution boundary.** Access receipts can now distinguish isolated execution from a shared-user subprocess. The latter cannot claim mount, symlink, process, or network isolation and documents that read-only model tools do not reduce the child process's operating-system permissions.
 - **Public API classification.** Added a dedicated experimental `@zihanw/pi-forge/subagent` entry point and documented stable, experimental, and internal compatibility surfaces while preserving existing package-root exports.
 - **Optional subagent backend registry.** Added empty-by-default validated backend registration, accepted-preflight binding, exact/backend-assisted preparation dispatch, execution and cancellation arbitration, host-abort timeout handling, failure normalization, and authorization-scoped trace routing. Deterministic fake-backend conformance tests cover the full adapter status and enforcement matrix.
 - **Experimental isolated Pi SDK backend.** Added a pi-forge-owned, text-only `pi-sdk-isolated` adapter backed by an in-memory Pi `AgentSession`. It accepts only access `none`, advertises no agent tools or stored artifacts/traces, blocks provider transport until exact host preparation and immutable-plan validation complete, and cleans up temporary runtime state after execution or discard.
@@ -24,7 +28,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
-- **Fail-closed subagent egress consent.** `/forge-agent run` now refuses non-UI execution instead of treating the absence of an interactive confirmation surface as approval. Dry planning remains available in non-UI modes.
+- **Fail-closed subagent egress consent.** `/forge-agent run` and `forge_subagent` refuse non-UI execution instead of treating the absence of an interactive confirmation surface as approval. Exact preparation remains behind a closed provider gate, and dry planning remains available without provider transport.
 - **Cancellation before backend dispatch.** An external abort that wins before backend execution now discards the prepared backend state without calling `execute()`. Concrete Pi SDK cancellation and host-timeout tests verify `AgentSession` abort and temporary-runtime cleanup.
 - **Web editor lifecycle refresh.** Reused editor servers now bind ordinary lifecycle contexts separately from snapshotted system-prompt options, so resource inventory and preview remain available after startup reload, tree navigation, compaction, and extension reinitialization.
 - **Trusted extension disposal and reload.** Runtime shutdown unregisters owned custom macros and slots before replacement. Every ESM load receives a process-unique cache token, while CommonJS entry caches are cleared, so `.ts`, `.mjs`, CommonJS `.js`, and `.cjs` extension edits reload without duplicate registrations or stale entry code.
@@ -43,7 +47,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - Backend-assisted preparation now makes the adapter, rather than the caller, provide the complete runtime compiler inputs. The registry fingerprints and validates that runtime, invokes the host compiler exactly once, binds the resulting prompt/messages/tools to execution, routes discard through the owning backend, and rejects adapters or callers that bypass, alter, or refingerprint a substitute host result.
 - Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
 - Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
-- The roadmap now records the human-operated Pi SDK walking skeleton and moves forward to a narrow parent-agent tool, profile UI, and release hardening.
+- The roadmap now records the approval-gated foreground subprocess path and moves forward to sandboxing, staged writes, profile UI, and release hardening without adding background orchestration.
 
 ## [0.3.2] - 2026-07-07
 

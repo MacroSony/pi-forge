@@ -13,7 +13,7 @@ Stable means changes should preserve source compatibility within the documented 
 ## Experimental
 
 - Agent-profile repository, resolution, application, preview, provenance, and drift APIs are 0.4 experimental surfaces.
-- The runner-neutral subagent contract, host-resolution helpers, optional empty-by-default backend registry, and `PiSdkIsolatedBackend` adapter are 0.4 experimental surfaces.
+- The runner-neutral subagent contract, host-resolution helpers, optional empty-by-default backend registry, retained `PiSdkIsolatedBackend`, and default `PiSubprocessBackend` adapter are 0.4 experimental surfaces.
 - New subagent integrations should import from `@zihanw/pi-forge/subagent`. The package root continues to re-export the current subagent names during 0.4 development for compatibility.
 
 Experimental APIs are typed, tested, and documented, but may be revised before the 0.4 release as real adapter and parent-integration work exposes missing semantics. Changes should still be deliberate and recorded.

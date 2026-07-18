@@ -107,9 +107,9 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 
 `/profile preview <id>` 会解析模型、认证、思考等级支持、prompt stack 和最终工具集，但不会改变运行时。`/profile status` 显示上次应用的 profile 和当前 drift；profile provenance 会跟随 session branch 恢复用于状态显示，但 reload、resume、tree navigation 或 compaction 绝不会自动重新应用 profile。全新 session 的自动应用仍然是一次性的，因此之后的手动修改会被保留。
 
-### 实验性隔离 subagent
+### 实验性前台 subagent
 
-0.4 开发分支可以把已有 profile 作为独立、干净、一次性的 Pi SDK session 运行：
+0.4 开发分支可以把已有 profile 作为独立、干净、一次性的 Pi 子进程运行。当前 prompt stack 允许 `forge_subagent` 时，主 agent 可以调用该工具；用户也可以继续使用同一执行路径的命令：
 
 ```text
 /forge-agent backends
@@ -117,9 +117,11 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 /forge-agent run reviewer 检查这个 API 设计是否正确。
 ```
 
-`plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃隔离 session，不会联系 provider。`run` 使用同一条路径，并在 TUI 中发送任务之前明确询问 provider 数据外发确认。
+`plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃它，不会联系 provider。`run` 和 `forge_subagent` 会先准备完全相同的精确计划，再显示审批界面。默认界面显示 agent 任务、profile/stack、provider、模型、思考等级、最终工具、工作目录、安全边界、payload 大小和执行 fingerprint。选择 **View full prompt** 可以在批准前查看完整 system prompt 和按顺序排列的 provider-bound messages；在查看器中的编辑不会生效。
 
-这是一个刻意收窄的 walking skeleton，不是通用 subagent runner。它只支持一个前台文本任务，使用 profile 指定的精确模型、思考等级和 prompt stack，但从干净对话开始，不自动继承主 agent 的项目上下文。隔离 agent 没有工具、文件系统或进程访问、skills、prompt templates、第三方 Pi extensions、artifacts 或持久 trace。超时只是 host abort，不是进程级硬沙箱。结果目前只展示给用户，还不能由主 agent 调用，也不会自动插入主 agent 上下文。
+子 agent 从干净对话开始，不会自动继承主 agent 历史。它在前台运行，并使用 profile 指定的精确模型、思考等级和 prompt stack。候选工具只有 `read`、`grep`、`find` 和 `ls`，还会继续受到 stack 工具策略限制；不会加载 write/edit/shell 工具、skills、prompt templates、context files 或第三方 extensions。最终工具结果包含有界的模型可见报告，以及可展开的人类可见执行详情，包括完整 transcript 和所有工具调用/结果。
+
+重要：首个 backend 是 **shared-user**，不是操作系统沙箱。只读是模型工具策略；子进程仍然拥有启动它的用户权限，因此可以读取该用户可读的绝对路径，并把内容发送给所选 provider。Host timeout 和取消仅为 best effort。`/tree` 可以从当前对话分支移除调用和结果，但不能撤销 provider 请求、计费或外部副作用。默认工具集刻意不提供文件系统写入路径；bubblewrap 类沙箱和 staged write mode 留待后续实现。
 
 ## 使用场景
 
@@ -284,13 +286,15 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `/profile reload` | 从磁盘重新加载 profile，但不应用 |
 | `/profile forget` | 忘记上次应用来源，不改变运行时 |
 
-### 实验性隔离 subagent
+### 实验性前台 subagent
 
 | 命令 | 作用 |
 |------|------|
 | `/forge-agent backends` | 显示实验性 backend 及其能力 |
 | `/forge-agent plan <profile> <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
-| `/forge-agent run <profile> <task>` | 确认 provider 数据外发后，运行一个前台、access-none 文本任务 |
+| `/forge-agent run <profile> <task>` | 审查精确计划并在批准后运行一个前台只读文本任务 |
+
+模型可调用的等价工具是 `forge_subagent`。只有当前主 agent 的工具策略允许该名称，并且存在交互式审批 UI 时，它才可运行。
 
 ### 导入 & 调试
 
