@@ -191,6 +191,7 @@ export interface BackendPreflightAccepted {
 	toolCatalog: SubagentBackendTool[];
 	access: SubagentAccessReceipt;
 	limits: SubagentLimitReceipt;
+	promptRuntime?: SubagentPreparationRuntime;
 	diagnostics: SubagentDiagnostic[];
 }
 
@@ -231,16 +232,40 @@ export interface SubagentPreparedMessage {
 	source?: "selected-context" | "prompt-stack" | "delegated-task";
 }
 
+export interface SubagentPromptRuntimeSkill {
+	name: string;
+	description: string;
+	filePath: string;
+	disableModelInvocation: boolean;
+}
+
+export interface SubagentPromptRuntimeOptions {
+	customPrompt?: string;
+	selectedTools: string[];
+	toolSnippets: Record<string, string>;
+	promptGuidelines: string[];
+	appendSystemPrompt?: string;
+	cwd: string;
+	contextFiles: Array<{ path: string; content: string }>;
+	skills: SubagentPromptRuntimeSkill[];
+}
+
 export interface SubagentPreparationRuntime {
 	baseSystemPrompt: string;
+	options: SubagentPromptRuntimeOptions;
+	model: AgentProfileModelReference;
+	preparedAt: string;
 	promptRuntimeFingerprint: SubagentFingerprint;
 	fidelity: "exact-preflight" | "backend-assisted";
 }
 
-export interface SubagentPreparationInput {
+export interface SubagentPreparationBaseInput {
 	request: AgentRequest;
 	snapshot: AgentProfileSnapshot;
 	preflight: BackendPreflightAccepted;
+}
+
+export interface SubagentPreparationInput extends SubagentPreparationBaseInput {
 	runtime: SubagentPreparationRuntime;
 }
 
@@ -250,6 +275,11 @@ export interface SubagentPreparationOutput {
 	toolNegotiation: SubagentToolNegotiationResult;
 	contextBudget?: SubagentContextBudgetReceipt;
 	diagnostics: SubagentDiagnostic[];
+}
+
+export interface SubagentPreparationResult {
+	runtime: SubagentPreparationRuntime;
+	preparation: SubagentPreparationOutput;
 }
 
 export type SubagentHostPlanPreparer = (input: SubagentPreparationInput) => Promise<SubagentPreparationOutput> | SubagentPreparationOutput;

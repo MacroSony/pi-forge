@@ -1,6 +1,6 @@
 # Subagent Adapter Contract
 
-Status: exported pure contract, host-preparation utilities, and optional backend registry for the 0.4 development branch. This is an adapter boundary and dispatcher, not a concrete backend, owned runner, or parent-agent tool.
+Status: exported pure contract, host-preparation utilities, optional backend registry, and experimental `pi-sdk-isolated` adapter for the 0.4 development branch. This is a narrow adapter boundary and human-operated walking skeleton, not an owned orchestration runner or parent-agent tool.
 
 ## Public Surface
 
@@ -18,6 +18,7 @@ The package root exports:
 - Pure request, snapshot, preflight, plan, response, artifact, and trace validators.
 - Canonical `sha256:v1` profile, stack, and execution fingerprints.
 - Optional backend registration, validated dispatch, cancellation/timeout arbitration, response normalization, and authorization-scoped trace routing through `SubagentBackendRegistry`.
+- Experimental `PiSdkIsolatedBackend`, its descriptor/ID, and host preparation through `prepareSubagentHostPlan()`.
 
 The existing `agentProfileFingerprint()` remains unchanged. It is still the legacy JSON provenance value used for branch drift. New portable fingerprints use separately named functions and semantics.
 
@@ -136,14 +137,30 @@ It also validates request/run/backend correlation, model and fingerprints, effec
 - Validates backend descriptors and rejects duplicate identities.
 - Binds accepted preflight IDs to the exact backend, request, and profile fingerprint used during discovery.
 - Routes exact-preflight preparation directly to the host preparer and requires backend-assisted adapters to invoke the same host boundary.
+- Binds the exact runtime fingerprint, compiled system/messages, effective tools, and context receipt returned by host preparation; recomputing an execution fingerprint cannot substitute a different plan.
+- Routes dry-plan discard through the owning backend before forgetting the preflight binding.
 - Rejects malformed, tampered, foreign, or unbound execution plans before transport.
 - Arbitrates backend completion, explicit user cancellation, external abort signals, and declared host-abort timeouts through one terminal result.
+- Discards prepared backend state without invoking execution when cancellation wins before backend dispatch.
 - Normalizes thrown provider failures and malformed backend responses into contract-valid failed responses.
 - Replaces backend-reported duration with host-observed duration.
 - Keeps opaque backend trace IDs behind host-generated handles and enforces authorization scope, backend routing, expiry, and explicit forgetting during inspection.
 - Refuses backend unregistration while an execution remains active or is draining after cancellation.
 
 The registry validates receipts but does not manufacture filesystem, process, network, token, turn, or output isolation. Those remain adapter responsibilities.
+
+### 9. Experimental Pi SDK adapter and command path
+
+`PiSdkIsolatedBackend` is a deliberately narrow concrete adapter:
+
+- It resolves the exact profile model through Pi's existing `ModelRegistry` and authentication storage.
+- It creates a fresh in-memory `AgentSession`, isolated temporary resource directory, empty active tool set, and no session file.
+- It loads no skills, prompt templates, context files, themes, or third-party Pi extensions.
+- Its inline compiler bridge captures the exact `before_agent_start` prompt runtime, calls the registry-controlled host preparer, replaces provider-bound context with the prepared messages, and holds `before_provider_request` behind a gate until execution receives the validated plan.
+- It accepts text-only, one-shot, foreground requests with access `none`, denied agent network, no process access, and optional host-abort timeout. It advertises no artifact retention or trace inspection.
+- It disposes the SDK session and temporary directory after execution, explicit dry-plan discard, or extension shutdown.
+
+The extension exposes this path through `/forge-agent backends`, `/forge-agent plan <profile> <task>`, and `/forge-agent run <profile> <task>`. `plan` prepares then discards without provider transport. A TUI `run` asks for explicit confirmation before preparation and provider egress; non-UI execution refuses to run because no interactive consent surface is available. This command path returns the normalized result to the user; it does not insert anything into the parent model context.
 
 ## Adapter-Enforced Responsibilities
 
@@ -161,12 +178,12 @@ The exported validators cannot create isolation. Every adapter remains responsib
 - Trace storage, authorization, redaction, pagination, and expiry.
 - Returning actual enforcement receipts rather than echoing request fields.
 
-An adapter must reject preflight when it cannot enforce a required field. The current Pi SDK spike can execute only access `none`; its host-abort timeout is best-effort, not backend-hard.
+An adapter must reject preflight when it cannot enforce a required field. The current Pi SDK adapter can execute only access `none`; its host-abort timeout is best-effort, not backend-hard. Denied agent network means the isolated agent has no network-capable tools or loaded extension code; it does not prohibit the host-managed provider transport explicitly requested by the user.
 
 ## Deliberately Not Included
 
-- A registered-by-default or concrete backend, including a shipped Pi SDK backend.
-- Parent run/inspect tools or result projection insertion.
+- Parent model-callable run/inspect tools or result projection insertion.
+- Filesystem/process access, agent tools, media input, background runs, or general backend selection/configuration in the shipped command path.
 - Session resume, retries, queues, chains, or pipelines.
 - Artifact/trace storage implementations.
 - Automatic provider fallback.

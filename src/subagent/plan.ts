@@ -4,7 +4,7 @@ import { validateBackendPreflight } from "./preflight.ts";
 import { validateAgentProfileSnapshot, validateAgentRequest } from "./request.ts";
 import { negotiateSubagentTools } from "./tools.ts";
 import { SUBAGENT_CONTRACT_VERSION, type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type BackendPreflightAccepted, type SubagentDiagnostic, type SubagentPreparationOutput, type SubagentPreparationRuntime, type SubagentPreparedMessage } from "./types.ts";
-import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparedMessage, validateUniqueStringArray } from "./validation.ts";
+import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.ts";
 
 export function createAgentExecutionPlan(input: {
 	runId: string;
@@ -22,7 +22,8 @@ export function createAgentExecutionPlan(input: {
 		...input.preparation.toolNegotiation.diagnostics,
 	];
 	validateOpaqueId(input.runId, "runId", diagnostics);
-	validateFingerprint(input.runtime.promptRuntimeFingerprint, "runtime.promptRuntimeFingerprint", diagnostics);
+	validatePreparationRuntime(input.runtime, "runtime", diagnostics, input.preflight.backend.capabilities.promptRuntimeFidelity === "partial" ? undefined : input.preflight.backend.capabilities.promptRuntimeFidelity);
+	if (input.runtime.model.provider !== input.preflight.model.provider || input.runtime.model.id !== input.preflight.model.id) diagnostics.push(error("plan.runtime-model", "Prompt runtime model does not match preflight model.", "runtime.model"));
 	if (input.request.profileId !== input.snapshot.profile.id) diagnostics.push(error("plan.profile-id", "Request profileId does not match the resolved snapshot.", "profileId"));
 	if (input.request.expectedProfileFingerprint && input.request.expectedProfileFingerprint !== input.snapshot.profileFingerprint) diagnostics.push(error("plan.profile-drift", "Resolved profile fingerprint does not match expectedProfileFingerprint.", "expectedProfileFingerprint"));
 	if (!isProtectedSubagentTaskPreserved(input.preparation.messages, input.request.input)) {

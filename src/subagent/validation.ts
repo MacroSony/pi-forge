@@ -1,5 +1,6 @@
 import { posix } from "node:path";
-import type { SubagentAccessReceipt, SubagentAccessRequest, SubagentBackendTool, SubagentDiagnostic, SubagentFingerprint, SubagentLimitName } from "./types.ts";
+import { subagentPromptRuntimeFingerprint } from "./canonical.ts";
+import type { SubagentAccessReceipt, SubagentAccessRequest, SubagentBackendTool, SubagentDiagnostic, SubagentFingerprint, SubagentLimitName, SubagentPreparationRuntime } from "./types.ts";
 
 export const SUBAGENT_LIMIT_NAMES: readonly SubagentLimitName[] = ["timeoutMs", "maxTurns", "tokenBudget", "maxOutputBytes"];
 
@@ -137,6 +138,63 @@ export function validateToolCatalog(value: readonly unknown[], diagnostics: Suba
 		if (typeof tool.id === "string") ids.add(tool.id);
 		if (typeof tool.name === "string") names.add(tool.name);
 		if (!Array.isArray(tool.effects) || tool.effects.some((effect) => !["filesystem-read", "filesystem-write", "process", "network"].includes(String(effect)))) diagnostics.push(error("tools.effects", "Tool effects must be a valid effect array.", `toolCatalog[${index}].effects`));
+	});
+}
+
+export function validatePreparationRuntime(
+	value: unknown,
+	path: string,
+	diagnostics: SubagentDiagnostic[],
+	expectedFidelity?: SubagentPreparationRuntime["fidelity"],
+): void {
+	if (!isRecord(value)) {
+		diagnostics.push(error("runtime.type", "Prompt runtime must be an object.", path));
+		return;
+	}
+	if (typeof value.baseSystemPrompt !== "string") diagnostics.push(error("runtime.base-prompt", "baseSystemPrompt must be a string.", `${path}.baseSystemPrompt`));
+	validateModelReference(value.model, `${path}.model`, diagnostics);
+	if (!isIsoDate(value.preparedAt)) diagnostics.push(error("runtime.prepared-at", "preparedAt must be a canonical ISO timestamp.", `${path}.preparedAt`));
+	if (value.fidelity !== "exact-preflight" && value.fidelity !== "backend-assisted") diagnostics.push(error("runtime.fidelity", "Runtime fidelity must be exact-preflight or backend-assisted.", `${path}.fidelity`));
+	else if (expectedFidelity && value.fidelity !== expectedFidelity) diagnostics.push(error("runtime.fidelity-mismatch", `Runtime fidelity must be ${expectedFidelity}.`, `${path}.fidelity`));
+	validateFingerprint(value.promptRuntimeFingerprint, `${path}.promptRuntimeFingerprint`, diagnostics);
+	validatePromptRuntimeOptions(value.options, `${path}.options`, diagnostics);
+	if (isFingerprint(value.promptRuntimeFingerprint)) {
+		try {
+			if (subagentPromptRuntimeFingerprint(value as unknown as SubagentPreparationRuntime) !== value.promptRuntimeFingerprint) {
+				diagnostics.push(error("runtime.fingerprint", "promptRuntimeFingerprint does not match the runtime snapshot.", `${path}.promptRuntimeFingerprint`));
+			}
+		} catch (fingerprintError) {
+			diagnostics.push(error("runtime.fingerprint-input", fingerprintError instanceof Error ? fingerprintError.message : String(fingerprintError), `${path}.promptRuntimeFingerprint`));
+		}
+	}
+}
+
+function validatePromptRuntimeOptions(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
+	if (!isRecord(value)) {
+		diagnostics.push(error("runtime.options", "Prompt runtime options must be an object.", path));
+		return;
+	}
+	if (value.customPrompt !== undefined && typeof value.customPrompt !== "string") diagnostics.push(error("runtime.custom-prompt", "customPrompt must be a string.", `${path}.customPrompt`));
+	if (value.appendSystemPrompt !== undefined && typeof value.appendSystemPrompt !== "string") diagnostics.push(error("runtime.append-prompt", "appendSystemPrompt must be a string.", `${path}.appendSystemPrompt`));
+	if (typeof value.cwd !== "string" || !value.cwd.trim()) diagnostics.push(error("runtime.cwd", "cwd must be a non-empty display path.", `${path}.cwd`));
+	for (const field of ["selectedTools", "promptGuidelines"] as const) {
+		if (!Array.isArray(value[field])) diagnostics.push(error("runtime.string-array", `${field} must be a string array.`, `${path}.${field}`));
+		else validateUniqueStringArray(value[field], `${path}.${field}`, diagnostics);
+	}
+	if (!isRecord(value.toolSnippets) || Object.values(value.toolSnippets).some((entry) => typeof entry !== "string")) diagnostics.push(error("runtime.tool-snippets", "toolSnippets must map tool names to strings.", `${path}.toolSnippets`));
+	if (!Array.isArray(value.contextFiles)) diagnostics.push(error("runtime.context-files", "contextFiles must be an array.", `${path}.contextFiles`));
+	else value.contextFiles.forEach((file, index) => {
+		if (!isRecord(file) || typeof file.path !== "string" || typeof file.content !== "string") diagnostics.push(error("runtime.context-file", "Context files require path and content strings.", `${path}.contextFiles[${index}]`));
+	});
+	if (!Array.isArray(value.skills)) diagnostics.push(error("runtime.skills", "skills must be an array.", `${path}.skills`));
+	else value.skills.forEach((skill, index) => {
+		if (!isRecord(skill)
+			|| typeof skill.name !== "string" || !skill.name.trim()
+			|| typeof skill.description !== "string"
+			|| typeof skill.filePath !== "string" || !skill.filePath.trim()
+			|| typeof skill.disableModelInvocation !== "boolean") {
+			diagnostics.push(error("runtime.skill", "Skills require name, description, filePath, and disableModelInvocation.", `${path}.skills[${index}]`));
+		}
 	});
 }
 

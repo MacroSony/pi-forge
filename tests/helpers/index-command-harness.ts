@@ -220,6 +220,8 @@ export function createContext(cwd: string, entries: unknown[] = [], options: {
 		},
 		signal: undefined,
 		sessionManager: {
+			getSessionId: () => "test-session",
+			getSessionFile: () => undefined,
 			getEntries: () => entries,
 			getLeafId: () => leafId,
 			getBranch,

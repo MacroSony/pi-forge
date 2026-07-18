@@ -7,4 +7,5 @@ export * from "./context.js";
 export * from "./plan.js";
 export * from "./response.js";
 export * from "./diagnostics.js";
+export { validatePreparationRuntime } from "./validation.js";
 //# sourceMappingURL=contract.js.map

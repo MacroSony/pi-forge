@@ -12,6 +12,10 @@ export function subagentSourceProfileFingerprint(profile) {
 export function subagentPromptStackFingerprint(stack) {
     return subagentFingerprint(stack);
 }
+export function subagentPromptRuntimeFingerprint(runtime) {
+    const { promptRuntimeFingerprint: _ignored, ...behavior } = runtime;
+    return subagentFingerprint(behavior);
+}
 export function subagentExecutionFingerprint(plan) {
     const { executionFingerprint: _ignored, ...behavior } = plan;
     return subagentFingerprint(behavior);

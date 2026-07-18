@@ -7,6 +7,7 @@ export interface LifecycleDeps {
         suppressAutoActivate?: boolean;
     }): Promise<void>;
     disposePromptStackRuntime(): PromptStackDiagnostic[];
+    disposeSubagentRuntime(): Promise<void>;
     activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
     refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
     notifyActivePreset(ctx: ExtensionContext, detail: string): void;

@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: implemented pure adapter contract and optional empty-by-default backend registry for the 0.4 development branch. The Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). No concrete backend or parent-agent run tool is shipped.
+Status: implemented pure adapter contract, optional empty-by-default backend registry, and an experimental human-operated `pi-sdk-isolated` walking skeleton for the 0.4 development branch. The broader Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md). A model-callable parent-agent tool is not yet shipped.
 
 ## Goals
 
@@ -9,7 +9,7 @@ Status: implemented pure adapter contract and optional empty-by-default backend 
 - Keep prompt stacks as the profile-level source of prompt layout, visible-tool policy, and model-visible skills.
 - Keep access, limits, cancellation, trace storage, and result reporting outside reusable profiles.
 - Return a compact parent-visible tool result while retaining normalized execution history for authorized inspection.
-- Export the demonstrated pure request/resolution/preflight/plan/response boundary while keeping backend registration and execution out of the package surface.
+- Export the demonstrated request/resolution/preflight/plan/response boundary while keeping a full owned runner, orchestration, and automatic delegation out of the package surface.
 
 ## Execution Flow
 
@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The TypeScript shapes and pure validators for the following artifacts are exported. The registry dispatches conforming package-provided backends but starts empty; concrete backend implementations and parent integration remain deferred.
+The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root lazily registers the experimental `pi-sdk-isolated` backend for `/forge-agent`; parent-agent integration remains deferred.
 
 ### AgentRequest
 
@@ -185,6 +185,14 @@ Usage details, raw diagnostics, enforcement receipts, and trace history remain o
 
 ## Revised Implementation Plan
 
+### Integration checkpoint: require a user-visible walking skeleton
+
+Fake-backend conformance proves contract and registry behavior, while the standalone SDK spike proves broader Pi provider behavior. The shipped walking skeleton now sends a human-requested task through the complete profile-resolution, registry-preflight, prompt-preparation, plan-validation, provider-execution, and response-projection path.
+
+The first concrete integration is a pi-forge-owned `pi-sdk-isolated` adapter plus a human-operated plan/run command. It starts with `access: none`, no tools, foreground text execution, explicit provider egress, host-abort timeout, and compact output. The model-callable parent tool follows this now-proven command path.
+
+This integration also exposed a contract seam hidden by the fake backend: backend-assisted preparation cannot require the caller to fabricate the prompt runtime that the backend is responsible for discovering. The backend must supply complete, canonical compiler inputs; the host must compile from them; and the registry must return the exact runtime/preparation pair used for execution-plan construction.
+
 ### Iteration 1: Shared profile service
 
 - Extract shared typed profile repository operations for load, capture, save/update, and delete.
@@ -227,14 +235,23 @@ Implemented with canonical `sha256:v1` fingerprints, deterministic UTF-8 context
 - Normalized cancellation races, host-abort timeouts, provider failures, malformed responses, enforcement receipts, and authorization-scoped trace routing.
 - pi-forge remains fully functional with no registered backend; the registry starts empty.
 
-### Iteration 6: Parent integration (next design decision)
+### Iteration 6: Concrete Pi SDK walking skeleton (completed)
+
+- Correct backend-assisted prompt-runtime ownership and add complete compiler-input validation/fingerprints.
+- Extract an access-none, no-tool, in-memory Pi SDK backend from the completed spike.
+- Add human-operated backend discovery, dry plan, and explicit real-run commands through the registry.
+- Cover pre-transport refusal, provider failure, host timeout, cancellation, response normalization, and cleanup without live provider calls in ordinary tests.
+
+Implemented as the exported experimental `PiSdkIsolatedBackend` and `/forge-agent backends|plan|run` command path. Ordinary tests use Pi's faux provider through a real in-memory `AgentSession`, proving provider gating and final context without network traffic.
+
+### Iteration 7: Parent integration
 
 - Design the smallest run/inspect tool surface after enforcement and task preservation work end to end.
 - Resolve profile/context and prepare a plan before dispatch; backends never read project profile/session files directly.
 - Insert only the bounded response projection into parent context.
 - Cover success, failure, cancellation, timeout, limit, media, access rejection, artifact, and trace inspection end to end.
 
-### Iteration 7: Product and runner decision
+### Iteration 8: Product and runner decision
 
 - Decide whether the validated adapter remains internal, ships optionally, or just informs integrations.
 - Continue deferring a full owned runner, resumable agents, retries, queues, chains, pipelines, and concurrency orchestration until concrete demand exists.
@@ -243,7 +260,7 @@ Profile UI can proceed independently on the completed Iteration 1 service; it do
 
 ## Deferred Decisions
 
-- Concrete shipped backend and configuration surface.
+- Whether the experimental Pi SDK backend remains built in, becomes separately configurable, or moves to an optional integration after 0.4 feedback.
 - Trace/artifact storage location, retention defaults, redaction, and cleanup implementation.
 - Resumable sessions and continuation references.
 - Automatic retries, fallbacks, priorities, queues, and concurrency.

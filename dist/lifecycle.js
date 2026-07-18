@@ -11,6 +11,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         startupToolPolicyPending = false;
         deps.restoreActiveToolPolicy();
         deps.disposePromptStackRuntime();
+        await deps.disposeSubagentRuntime();
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;

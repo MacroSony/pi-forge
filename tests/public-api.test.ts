@@ -21,6 +21,7 @@ const contractRuntimeExports = [
 	"renderSubagentSelectedContext",
 	"subagentExecutionFingerprint",
 	"subagentFingerprint",
+	"subagentPromptRuntimeFingerprint",
 	"subagentPromptStackFingerprint",
 	"subagentSourceProfileFingerprint",
 	"validateAgentExecutionPlan",
@@ -29,6 +30,7 @@ const contractRuntimeExports = [
 	"validateAgentResponse",
 	"validateBackendPreflight",
 	"validatePreflightAgainstRequest",
+	"validatePreparationRuntime",
 	"validateSubagentArtifactReference",
 	"validateSubagentTraceReference",
 ].sort();

@@ -11,7 +11,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Added
 
 - **Public API classification.** Added a dedicated experimental `@zihanw/pi-forge/subagent` entry point and documented stable, experimental, and internal compatibility surfaces while preserving existing package-root exports.
-- **Optional subagent backend registry.** Added empty-by-default validated backend registration, accepted-preflight binding, exact/backend-assisted preparation dispatch, execution and cancellation arbitration, host-abort timeout handling, failure normalization, and authorization-scoped trace routing. Deterministic fake-backend conformance tests cover the full adapter status and enforcement matrix without shipping a concrete backend or parent tool.
+- **Optional subagent backend registry.** Added empty-by-default validated backend registration, accepted-preflight binding, exact/backend-assisted preparation dispatch, execution and cancellation arbitration, host-abort timeout handling, failure normalization, and authorization-scoped trace routing. Deterministic fake-backend conformance tests cover the full adapter status and enforcement matrix.
+- **Experimental isolated Pi SDK backend.** Added a pi-forge-owned, text-only `pi-sdk-isolated` adapter backed by an in-memory Pi `AgentSession`. It accepts only access `none`, advertises no agent tools or stored artifacts/traces, blocks provider transport until exact host preparation and immutable-plan validation complete, and cleans up temporary runtime state after execution or discard.
+- **Human subagent test commands.** Added `/forge-agent backends`, `/forge-agent plan <profile> <task>`, and `/forge-agent run <profile> <task>`. Dry planning exercises the complete request pipeline without provider transport; TUI execution requires explicit provider-egress confirmation and returns a compact normalized response.
 
 - **Native one-shot agent profiles.** Project profiles under `.pi/forge/agent-profiles` store an exact model, thinking level, and prompt-stack reference. `/profile use` preflights and applies once, `/profile save` captures the current runtime, and list/status/preview/validate/reload/forget commands cover diagnostics, drift, direct file editing, and branch-scoped provenance without automatic reapplication.
 - **Profile resolution API.** Exported strict profile types, loading, validation, exact model/auth/thinking/stack resolution, fingerprints, provenance guards, and diagnostics for future subagent adapters without adding a runner dependency. Prompt stacks remain the single source of truth for tool policy and model-visible skill filtering.
@@ -22,6 +24,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- **Fail-closed subagent egress consent.** `/forge-agent run` now refuses non-UI execution instead of treating the absence of an interactive confirmation surface as approval. Dry planning remains available in non-UI modes.
+- **Cancellation before backend dispatch.** An external abort that wins before backend execution now discards the prepared backend state without calling `execute()`. Concrete Pi SDK cancellation and host-timeout tests verify `AgentSession` abort and temporary-runtime cleanup.
 - **Web editor lifecycle refresh.** Reused editor servers now bind ordinary lifecycle contexts separately from snapshotted system-prompt options, so resource inventory and preview remain available after startup reload, tree navigation, compaction, and extension reinitialization.
 - **Trusted extension disposal and reload.** Runtime shutdown unregisters owned custom macros and slots before replacement. Every ESM load receives a process-unique cache token, while CommonJS entry caches are cleared, so `.ts`, `.mjs`, CommonJS `.js`, and `.cjs` extension edits reload without duplicate registrations or stale entry code.
 - **Strict prompt-stack input validation.** Behavior-changing booleans, enums, defaults, context fields, variables, and item shapes are diagnosed before recovery normalization. Malformed values can still be displayed for repair but can no longer become an automatically usable stack.
@@ -36,9 +40,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - The extension entry point is now a small composition root; prompt-stack state, one-shot profile activation, tool-policy/preview behavior, and shared web-editor lifecycle live in focused runtime modules.
 - The web editor client is authored as strict TypeScript modules for API transport, DOM access, policy editing, regex editing, preview/payload inspection, and orchestration. A build-only esbuild step produces the self-contained script used by the localhost editor, and verification rejects stale generated output.
 - The subagent contract implementation is split into focused type, canonicalization, request, preflight, tool, context, plan, response, and diagnostic modules. Existing package-root and `src/subagent-contract.ts` exports remain compatibility barrels with an exact import-surface test.
+- Backend-assisted preparation now makes the adapter, rather than the caller, provide the complete runtime compiler inputs. The registry fingerprints and validates that runtime, invokes the host compiler exactly once, binds the resulting prompt/messages/tools to execution, routes discard through the owning backend, and rejects adapters or callers that bypass, alter, or refingerprint a substitute host result.
 - Profile commands now consume shared typed repository, application, preview, provenance, and drift-status services, establishing one behavioral core for profile UI and future subagent preparation.
 - Package metadata now declares Node.js 22.19+ and support for `@earendil-works/pi-*` 0.80.6 through 0.80.x; matching development dependencies are pinned for reproducible verification against the current Pi runtime.
-- The roadmap now records the implemented profile v1 contract and moves forward to profile UI and a narrow runner-independent subagent adapter.
+- The roadmap now records the human-operated Pi SDK walking skeleton and moves forward to a narrow parent-agent tool, profile UI, and release hardening.
 
 ## [0.3.2] - 2026-07-07
 

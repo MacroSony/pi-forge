@@ -107,6 +107,20 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 
 `/profile preview <id>` 会解析模型、认证、思考等级支持、prompt stack 和最终工具集，但不会改变运行时。`/profile status` 显示上次应用的 profile 和当前 drift；profile provenance 会跟随 session branch 恢复用于状态显示，但 reload、resume、tree navigation 或 compaction 绝不会自动重新应用 profile。全新 session 的自动应用仍然是一次性的，因此之后的手动修改会被保留。
 
+### 实验性隔离 subagent
+
+0.4 开发分支可以把已有 profile 作为独立、干净、一次性的 Pi SDK session 运行：
+
+```text
+/forge-agent backends
+/forge-agent plan reviewer 检查这个 API 设计是否正确。
+/forge-agent run reviewer 检查这个 API 设计是否正确。
+```
+
+`plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃隔离 session，不会联系 provider。`run` 使用同一条路径，并在 TUI 中发送任务之前明确询问 provider 数据外发确认。
+
+这是一个刻意收窄的 walking skeleton，不是通用 subagent runner。它只支持一个前台文本任务，使用 profile 指定的精确模型、思考等级和 prompt stack，但从干净对话开始，不自动继承主 agent 的项目上下文。隔离 agent 没有工具、文件系统或进程访问、skills、prompt templates、第三方 Pi extensions、artifacts 或持久 trace。超时只是 host abort，不是进程级硬沙箱。结果目前只展示给用户，还不能由主 agent 调用，也不会自动插入主 agent 上下文。
+
 ## 使用场景
 
 ### 🎭 角色扮演 & 创意写作
@@ -269,6 +283,14 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 | `/profile validate [id]` | 校验一个 profile；省略 id 时校验全部 |
 | `/profile reload` | 从磁盘重新加载 profile，但不应用 |
 | `/profile forget` | 忘记上次应用来源，不改变运行时 |
+
+### 实验性隔离 subagent
+
+| 命令 | 作用 |
+|------|------|
+| `/forge-agent backends` | 显示实验性 backend 及其能力 |
+| `/forge-agent plan <profile> <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
+| `/forge-agent run <profile> <task>` | 确认 provider 数据外发后，运行一个前台、access-none 文本任务 |
 
 ### 导入 & 调试
 

@@ -8,6 +8,7 @@ import {
 	validateAgentRequest,
 	validateAgentResponse,
 	validateBackendPreflight,
+	validatePreparationRuntime,
 	validateSubagentTraceReference,
 	type AgentExecutionPlan,
 	type AgentProfileSnapshot,
@@ -18,8 +19,10 @@ import {
 	type SubagentBackendDescriptor,
 	type SubagentDiagnostic,
 	type SubagentHostPlanPreparer,
+	type SubagentPreparationBaseInput,
 	type SubagentPreparationInput,
-	type SubagentPreparationOutput,
+	type SubagentPreparationResult,
+	type SubagentPreparationRuntime,
 	type SubagentTraceReference,
 } from "./contract.ts";
 
@@ -42,7 +45,7 @@ export interface SubagentBackendPreflightInput {
 
 export interface SubagentBackendPreparationContext {
 	signal?: AbortSignal;
-	prepare: SubagentHostPlanPreparer;
+	prepare(runtime: SubagentPreparationRuntime): Promise<SubagentPreparationResult>;
 }
 
 export interface SubagentBackendExecutionContext {
@@ -62,8 +65,9 @@ export interface SubagentBackendTraceInput {
 export interface SubagentBackend {
 	readonly descriptor: SubagentBackendDescriptor;
 	preflight(input: SubagentBackendPreflightInput): Promise<BackendPreflightResult> | BackendPreflightResult;
-	prepare?(input: SubagentPreparationInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationOutput> | SubagentPreparationOutput;
+	prepare?(input: SubagentPreparationBaseInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationResult> | SubagentPreparationResult;
 	execute(plan: AgentExecutionPlan, context: SubagentBackendExecutionContext): Promise<SubagentBackendExecutionResult> | SubagentBackendExecutionResult;
+	discard?(preflightId: string): Promise<boolean> | boolean;
 	cancel?(input: SubagentBackendCancelInput): Promise<void> | void;
 	inspectTrace?(input: SubagentBackendTraceInput): Promise<unknown> | unknown;
 }
@@ -82,6 +86,16 @@ interface AcceptedPreflightRecord {
 	backendId: string;
 	requestId: string;
 	profileFingerprint: string;
+	requestCanonical: string;
+	snapshotCanonical: string;
+	preflightCanonical: string;
+	preparation?: {
+		promptRuntimeFingerprint: string;
+		systemPrompt: string;
+		messagesCanonical: string;
+		effectiveToolIdsCanonical: string;
+		contextBudgetCanonical: string;
+	};
 }
 
 interface TraceRecord {
@@ -150,6 +164,25 @@ export class SubagentBackendRegistry {
 			.sort((left, right) => left.id.localeCompare(right.id));
 	}
 
+	forgetPreflight(preflightId: string): boolean {
+		if ([...this.#activeRuns.values()].some((run) => run.plan.preflightId === preflightId)) {
+			throw new SubagentBackendRegistryError("preflight.active", `Cannot forget preflight ${preflightId} while its run is active or draining.`);
+		}
+		return this.#preflights.delete(preflightId);
+	}
+
+	async discard(preflightId: string): Promise<boolean> {
+		if ([...this.#activeRuns.values()].some((run) => run.plan.preflightId === preflightId)) {
+			throw new SubagentBackendRegistryError("preflight.active", `Cannot discard preflight ${preflightId} while its run is active or draining.`);
+		}
+		const record = this.#preflights.get(preflightId);
+		if (!record) return false;
+		const backend = this.#requireBackend(record.backendId);
+		await backend.discard?.(preflightId);
+		this.#preflights.delete(preflightId);
+		return true;
+	}
+
 	async preflight(backendId: string, request: AgentRequest, snapshot: AgentProfileSnapshot, signal?: AbortSignal): Promise<BackendPreflightResult> {
 		const backend = this.#requireBackend(backendId);
 		const inputDiagnostics = [...validateAgentRequest(request), ...validateAgentProfileSnapshot(snapshot)];
@@ -174,6 +207,9 @@ export class SubagentBackendRegistry {
 				backendId,
 				requestId: request.requestId,
 				profileFingerprint: snapshot.profileFingerprint,
+				requestCanonical: canonicalSubagentJson(request),
+				snapshotCanonical: canonicalSubagentJson(snapshot),
+				preflightCanonical: canonicalSubagentJson(result),
 			});
 		}
 		return structuredClone(result);
@@ -181,18 +217,49 @@ export class SubagentBackendRegistry {
 
 	async prepare(
 		backendId: string,
-		input: SubagentPreparationInput,
+		input: SubagentPreparationBaseInput,
 		hostPreparer: SubagentHostPlanPreparer,
 		signal?: AbortSignal,
-	): Promise<SubagentPreparationOutput> {
+	): Promise<SubagentPreparationResult> {
 		const backend = this.#requireBackend(backendId);
 		this.#assertPreflightBinding(input.preflight, input.request, input.snapshot);
+		const record = this.#preflights.get(input.preflight.preflightId)!;
+		if (record.preparation) throw new SubagentBackendRegistryError("preparation.already-bound", "Accepted preflight already has a host preparation bound to it.");
 		if (signal?.aborted) throw new SubagentBackendRegistryError("preparation.cancelled", "Preparation was cancelled before it started.");
 		const fidelity = backend.descriptor.capabilities.promptRuntimeFidelity;
 		if (fidelity === "partial") throw new SubagentBackendRegistryError("preparation.partial", "A partial prompt runtime cannot prepare an execution plan.");
-		if (fidelity === "exact-preflight") return structuredClone(await hostPreparer(structuredClone(input)));
+
+		let hostResult: SubagentPreparationResult | undefined;
+		const prepare = async (runtime: SubagentPreparationRuntime): Promise<SubagentPreparationResult> => {
+			if (hostResult) throw new SubagentBackendRegistryError("preparation.duplicate", "Backend attempted to prepare the same request more than once.");
+			const runtimeDiagnostics: SubagentDiagnostic[] = [];
+			validatePreparationRuntime(runtime, "runtime", runtimeDiagnostics, fidelity);
+			if (runtime.model.provider !== input.preflight.model.provider || runtime.model.id !== input.preflight.model.id) {
+				runtimeDiagnostics.push(diagnostic("preparation.runtime-model", "Prompt runtime model does not match the accepted preflight model.", "runtime.model"));
+			}
+			if (hasSubagentErrors(runtimeDiagnostics)) throw new SubagentBackendRegistryError("preparation.invalid-runtime", summarizeDiagnostics(runtimeDiagnostics));
+			const exactInput: SubagentPreparationInput = { ...structuredClone(input), runtime: structuredClone(runtime) };
+			hostResult = {
+				runtime: structuredClone(runtime),
+				preparation: structuredClone(await hostPreparer(exactInput)),
+			};
+			return structuredClone(hostResult);
+		};
+
+		if (fidelity === "exact-preflight") {
+			if (!input.preflight.promptRuntime) throw new SubagentBackendRegistryError("preparation.runtime-missing", "Exact-preflight backend did not provide a prompt runtime receipt.");
+			const result = await prepare(input.preflight.promptRuntime);
+			this.#bindPreparation(record, result);
+			return result;
+		}
 		if (!backend.prepare) throw new SubagentBackendRegistryError("preparation.unsupported", `Backend ${backendId} advertises backend-assisted preparation but has no prepare method.`);
-		return structuredClone(await backend.prepare(structuredClone(input), { signal, prepare: hostPreparer }));
+		const backendResult = structuredClone(await backend.prepare(structuredClone(input), { signal, prepare }));
+		if (!hostResult) throw new SubagentBackendRegistryError("preparation.host-bypass", `Backend ${backendId} returned without invoking host preparation.`);
+		if (canonicalSubagentJson(backendResult) !== canonicalSubagentJson(hostResult)) {
+			throw new SubagentBackendRegistryError("preparation.host-mismatch", `Backend ${backendId} altered the host preparation result.`);
+		}
+		this.#bindPreparation(record, backendResult);
+		return backendResult;
 	}
 
 	async execute(plan: AgentExecutionPlan, options: SubagentExecutionOptions): Promise<AgentResponse> {
@@ -203,8 +270,19 @@ export class SubagentBackendRegistry {
 		if (!preflightRecord
 			|| preflightRecord.backendId !== plan.backendId
 			|| preflightRecord.requestId !== plan.requestId
-			|| preflightRecord.profileFingerprint !== plan.profile.profileFingerprint) {
+			|| preflightRecord.profileFingerprint !== plan.profile.profileFingerprint
+			|| preflightRecord.snapshotCanonical !== canonicalSubagentJson(plan.profile)
+			|| preflightRecord.preflightCanonical !== canonicalSubagentJson(plan.preflight)) {
 			throw new SubagentBackendRegistryError("execution.unbound-preflight", "Execution plan is not bound to an accepted registry preflight.");
+		}
+		const preparation = preflightRecord.preparation;
+		if (!preparation
+			|| preparation.promptRuntimeFingerprint !== plan.promptRuntimeFingerprint
+			|| preparation.systemPrompt !== plan.systemPrompt
+			|| preparation.messagesCanonical !== canonicalSubagentJson(plan.messages)
+			|| preparation.effectiveToolIdsCanonical !== canonicalSubagentJson(plan.effectiveToolIds)
+			|| preparation.contextBudgetCanonical !== canonicalSubagentJson(plan.contextBudget ?? null)) {
+			throw new SubagentBackendRegistryError("execution.unbound-preparation", "Execution plan does not match the exact host preparation bound to its preflight.");
 		}
 		if (!validNamespace(options.authorizationScope)) throw new SubagentBackendRegistryError("execution.authorization", "authorizationScope must be a normalized namespace.");
 		if (this.#activeRuns.has(plan.runId)) throw new SubagentBackendRegistryError("execution.duplicate-run", `Run ${plan.runId} is already active.`);
@@ -249,8 +327,12 @@ export class SubagentBackendRegistry {
 		}
 
 		const backendExecution = Promise.resolve()
-			.then(() => backend.execute(structuredClone(plan), { signal: controller.signal }))
-			.then((result) => {
+			.then(async () => {
+				if (active.settled) {
+					await backend.discard?.(plan.preflightId);
+					return;
+				}
+				const result = await backend.execute(structuredClone(plan), { signal: controller.signal });
 				if (active.settled) return;
 				settle(this.#normalizeBackendResponse(result, plan, options.authorizationScope, elapsed(this.#now(), startedAt)));
 			})
@@ -266,6 +348,7 @@ export class SubagentBackendRegistry {
 				if (timeout) clearTimeout(timeout);
 				if (externalAbort && options.signal) options.signal.removeEventListener("abort", externalAbort);
 				if (this.#activeRuns.get(plan.runId) === active) this.#activeRuns.delete(plan.runId);
+				this.#preflights.delete(plan.preflightId);
 			});
 
 		void backendExecution;
@@ -312,9 +395,22 @@ export class SubagentBackendRegistry {
 		if (!record
 			|| record.backendId !== preflight.backend.id
 			|| record.requestId !== request.requestId
-			|| record.profileFingerprint !== snapshot.profileFingerprint) {
+			|| record.profileFingerprint !== snapshot.profileFingerprint
+			|| record.requestCanonical !== canonicalSubagentJson(request)
+			|| record.snapshotCanonical !== canonicalSubagentJson(snapshot)
+			|| record.preflightCanonical !== canonicalSubagentJson(preflight)) {
 			throw new SubagentBackendRegistryError("preparation.unbound-preflight", "Preparation input is not bound to an accepted registry preflight.");
 		}
+	}
+
+	#bindPreparation(record: AcceptedPreflightRecord, result: SubagentPreparationResult): void {
+		record.preparation = {
+			promptRuntimeFingerprint: result.runtime.promptRuntimeFingerprint,
+			systemPrompt: result.preparation.systemPrompt,
+			messagesCanonical: canonicalSubagentJson(result.preparation.messages),
+			effectiveToolIdsCanonical: canonicalSubagentJson(result.preparation.toolNegotiation.effectiveToolIds),
+			contextBudgetCanonical: canonicalSubagentJson(result.preparation.contextBudget ?? null),
+		};
 	}
 
 	#rejectedPreflight(backend: SubagentBackend, diagnostics: SubagentDiagnostic[], preflightId?: string): BackendPreflightResult {

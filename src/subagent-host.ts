@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { BuildSystemPromptOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	getRegisteredMacros,
 	type PromptMacroDefinition,
@@ -8,14 +9,19 @@ import {
 	type PromptSlotDefinition,
 } from "./slot-renderers.ts";
 import type { LoadedAgentProfile } from "./agent-profile.ts";
-import { compileMessages } from "./compiler.ts";
+import { compileMessages, compileSystemPrompt, createPromptVariableStore } from "./compiler.ts";
 import {
 	subagentPromptStackFingerprint,
 	subagentSourceProfileFingerprint,
+	negotiateSubagentTools,
+	prepareSubagentInitialMessages,
 	type AgentProfileSnapshot,
 	type SubagentDependencyKind,
 	type SubagentDiagnostic,
 	type SubagentPromptDependency,
+	type SubagentPreparationInput,
+	type SubagentPreparationOutput,
+	type SubagentPreparedMessage,
 } from "./subagent/contract.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 
@@ -119,6 +125,51 @@ export function resolveSubagentHostProfile(
 		};
 	}
 	return resolution;
+}
+
+export function prepareSubagentHostPlan(input: SubagentPreparationInput): SubagentPreparationOutput {
+	const toolNegotiation = negotiateSubagentTools(input.preflight.toolCatalog, input.snapshot.promptStack?.tools, input.request.access);
+	const options: BuildSystemPromptOptions = {
+		...structuredClone(input.runtime.options),
+		selectedTools: [...toolNegotiation.effectiveToolNames],
+		toolSnippets: Object.fromEntries(Object.entries(input.runtime.options.toolSnippets)
+			.filter(([name]) => toolNegotiation.effectiveToolNames.includes(name))),
+		promptGuidelines: toolNegotiation.effectiveToolNames.length > 0
+			? [...input.runtime.options.promptGuidelines]
+			: [],
+		skills: structuredClone(input.runtime.options.skills) as BuildSystemPromptOptions["skills"],
+	};
+	const model = {
+		provider: input.runtime.model.provider,
+		id: input.runtime.model.id,
+		api: "unknown",
+	};
+	const runtime: PromptRuntime = {
+		options,
+		ctx: { model } as unknown as ExtensionContext,
+		latestUserMessage: input.request.input.text,
+		now: new Date(input.runtime.preparedAt),
+		variables: createPromptVariableStore(),
+	};
+	let systemPrompt = input.runtime.baseSystemPrompt;
+	let stackMessages: SubagentPreparedMessage[] = [];
+	const diagnostics: SubagentDiagnostic[] = [];
+	if (input.snapshot.promptStack) {
+		const system = compileSystemPrompt(input.snapshot.promptStack, runtime, input.runtime.baseSystemPrompt);
+		systemPrompt = system.systemPrompt;
+		diagnostics.push(...system.diagnostics.map((item) => promptDiagnostic("system", item)));
+		const messages = compileMessages(input.snapshot.promptStack, runtime, []);
+		stackMessages = messages.messages.map(preparedPromptStackMessage);
+		diagnostics.push(...messages.diagnostics.map((item) => promptDiagnostic("messages", item)));
+	}
+	const initial = prepareSubagentInitialMessages(input.request, stackMessages);
+	return {
+		systemPrompt,
+		messages: initial.messages,
+		contextBudget: initial.contextBudget,
+		toolNegotiation,
+		diagnostics: [...diagnostics, ...initial.diagnostics],
+	};
 }
 
 export function collectSubagentPromptDependencies(
@@ -279,6 +330,32 @@ function findLastUserMessageIndex(messages: readonly AgentMessage[]): number {
 function normalizeUserContent(content: unknown): string {
 	const normalized = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [content];
 	return JSON.stringify(normalized);
+}
+
+function preparedPromptStackMessage(message: AgentMessage): SubagentPreparedMessage {
+	if (message.role !== "user" && message.role !== "assistant" && message.role !== "custom") {
+		throw new Error(`Unsupported prompt-stack message role for subagent preparation: ${message.role}`);
+	}
+	const rawContent = (message as { content?: unknown }).content;
+	const parts = typeof rawContent === "string"
+		? [{ type: "text" as const, text: rawContent }]
+		: Array.isArray(rawContent)
+			? rawContent.filter((part): part is { type: "text"; text: string } => !!part && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string")
+			: [];
+	return {
+		role: message.role,
+		content: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+		source: "prompt-stack",
+	};
+}
+
+function promptDiagnostic(stage: "system" | "messages", diagnostic: import("./types.ts").PromptStackDiagnostic): SubagentDiagnostic {
+	return {
+		level: diagnostic.level,
+		code: `preparation.${stage}`,
+		path: diagnostic.itemId ? `promptStack.items.${diagnostic.itemId}` : "promptStack",
+		message: diagnostic.message,
+	};
 }
 
 function compareDependencies(

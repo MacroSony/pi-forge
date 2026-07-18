@@ -1,4 +1,4 @@
-import { type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type AgentResponse, type BackendPreflightResult, type SubagentBackendDescriptor, type SubagentHostPlanPreparer, type SubagentPreparationInput, type SubagentPreparationOutput, type SubagentTraceReference } from "./contract.ts";
+import { type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type AgentResponse, type BackendPreflightResult, type SubagentBackendDescriptor, type SubagentHostPlanPreparer, type SubagentPreparationBaseInput, type SubagentPreparationResult, type SubagentPreparationRuntime, type SubagentTraceReference } from "./contract.ts";
 type WithoutTrace<T> = T extends AgentResponse ? Omit<T, "trace"> : never;
 export interface SubagentBackendTraceResult {
     id: string;
@@ -14,7 +14,7 @@ export interface SubagentBackendPreflightInput {
 }
 export interface SubagentBackendPreparationContext {
     signal?: AbortSignal;
-    prepare: SubagentHostPlanPreparer;
+    prepare(runtime: SubagentPreparationRuntime): Promise<SubagentPreparationResult>;
 }
 export interface SubagentBackendExecutionContext {
     signal: AbortSignal;
@@ -30,8 +30,9 @@ export interface SubagentBackendTraceInput {
 export interface SubagentBackend {
     readonly descriptor: SubagentBackendDescriptor;
     preflight(input: SubagentBackendPreflightInput): Promise<BackendPreflightResult> | BackendPreflightResult;
-    prepare?(input: SubagentPreparationInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationOutput> | SubagentPreparationOutput;
+    prepare?(input: SubagentPreparationBaseInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationResult> | SubagentPreparationResult;
     execute(plan: AgentExecutionPlan, context: SubagentBackendExecutionContext): Promise<SubagentBackendExecutionResult> | SubagentBackendExecutionResult;
+    discard?(preflightId: string): Promise<boolean> | boolean;
     cancel?(input: SubagentBackendCancelInput): Promise<void> | void;
     inspectTrace?(input: SubagentBackendTraceInput): Promise<unknown> | unknown;
 }
@@ -54,8 +55,10 @@ export declare class SubagentBackendRegistry {
     register(backend: SubagentBackend): () => boolean;
     unregister(backendId: string): boolean;
     descriptors(): SubagentBackendDescriptor[];
+    forgetPreflight(preflightId: string): boolean;
+    discard(preflightId: string): Promise<boolean>;
     preflight(backendId: string, request: AgentRequest, snapshot: AgentProfileSnapshot, signal?: AbortSignal): Promise<BackendPreflightResult>;
-    prepare(backendId: string, input: SubagentPreparationInput, hostPreparer: SubagentHostPlanPreparer, signal?: AbortSignal): Promise<SubagentPreparationOutput>;
+    prepare(backendId: string, input: SubagentPreparationBaseInput, hostPreparer: SubagentHostPlanPreparer, signal?: AbortSignal): Promise<SubagentPreparationResult>;
     execute(plan: AgentExecutionPlan, options: SubagentExecutionOptions): Promise<AgentResponse>;
     cancel(runId: string, reason?: string): Promise<boolean>;
     inspectTrace(reference: SubagentTraceReference, authorizationScope: string, signal?: AbortSignal): Promise<unknown>;

@@ -4,7 +4,7 @@ import { validateBackendPreflight } from "./preflight.js";
 import { validateAgentProfileSnapshot, validateAgentRequest } from "./request.js";
 import { negotiateSubagentTools } from "./tools.js";
 import { SUBAGENT_CONTRACT_VERSION } from "./types.js";
-import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparedMessage, validateUniqueStringArray } from "./validation.js";
+import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.js";
 export function createAgentExecutionPlan(input) {
     const diagnostics = [
         ...validateAgentRequest(input.request),
@@ -14,7 +14,9 @@ export function createAgentExecutionPlan(input) {
         ...input.preparation.toolNegotiation.diagnostics,
     ];
     validateOpaqueId(input.runId, "runId", diagnostics);
-    validateFingerprint(input.runtime.promptRuntimeFingerprint, "runtime.promptRuntimeFingerprint", diagnostics);
+    validatePreparationRuntime(input.runtime, "runtime", diagnostics, input.preflight.backend.capabilities.promptRuntimeFidelity === "partial" ? undefined : input.preflight.backend.capabilities.promptRuntimeFidelity);
+    if (input.runtime.model.provider !== input.preflight.model.provider || input.runtime.model.id !== input.preflight.model.id)
+        diagnostics.push(error("plan.runtime-model", "Prompt runtime model does not match preflight model.", "runtime.model"));
     if (input.request.profileId !== input.snapshot.profile.id)
         diagnostics.push(error("plan.profile-id", "Request profileId does not match the resolved snapshot.", "profileId"));
     if (input.request.expectedProfileFingerprint && input.request.expectedProfileFingerprint !== input.snapshot.profileFingerprint)

@@ -1,6 +1,6 @@
 # Pi SDK Subagent Spike Findings
 
-Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its Iteration 3/4 contract findings are now implemented in the exported pure adapter boundary; it still does not add a user-facing subagent runner or backend registry.
+Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are now implemented in the exported adapter boundary, optional backend registry, and experimental text-only `pi-sdk-isolated` command path. The spike remains useful for broader live diagnostics such as media and trusted-extension preparation that the shipped walking skeleton intentionally defers.
 
 ## Deliverable
 
@@ -97,20 +97,20 @@ The spike trace includes lifecycle and tool start/end metadata only. It excludes
 7. Load trusted macro/slot registrations before final stack validation and later add explicit dependency identities/fingerprints.
 8. Normalize assistant error/aborted stop reasons because `session.prompt()` may settle with a terminal assistant message rather than throw.
 
-## Remaining Gaps
+## Remaining Concrete-Adapter Gaps
 
 - No allowed-root filesystem, subprocess, or agent-network isolation.
 - No hard turn, token, or output-byte enforcement.
-- No extension-tool execution: the spike intentionally isolates third-party Pi extensions and validates only the built-in catalog plus prompt-stack filtering.
-- No backend registry, artifact store, trace registry, run/inspect tool, or parent-visible result projection.
+- No extension-tool execution in the shipped adapter: it intentionally isolates third-party Pi extensions and exposes an empty tool catalog.
+- The registry and text-only SDK backend now exist, but there is still no artifact store, trace storage implementation, model-callable parent run/inspect tool, media resolution in the shipped command path, or parent-visible result insertion.
 - Custom dependency scanning records macro/slot names and registration sources, but it cannot fingerprint executable registration code.
-- Cancellation was validated through a deadline; user-initiated cancellation and cancellation races still need conformance cases.
+- The human command is foreground-only and does not yet expose a separate cancel command; Pi/host abort signals and host timeouts route to `AgentSession.abort()`.
 
-These gaps block user-facing delegation and a concrete backend registration, but the pure adapter contract is now available for Iteration 5 conformance work.
+These gaps do not block the human-operated access-none walking skeleton. They do constrain the next parent-agent tool: it must stay text-only, foreground, no-tool, and consent-gated until stronger enforcement and resource handling are implemented.
 
 ## Verification Evidence
 
-- Offline suite: 146 tests passed, including twelve contract matrix tests and four SDK-spike policy/context tests.
+- Offline suite covers the contract matrix, fake-backend conformance, command consent/dry-plan behavior, and concrete SDK execution through Pi's faux provider and a real in-memory `AgentSession` without network traffic.
 - TypeScript typecheck: passed.
 - Real profile dry preflight: passed.
 - Real `glm-5.2` no-tool completion: passed.

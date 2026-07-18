@@ -8,6 +8,7 @@ import {
 	prepareSubagentInitialMessages,
 	subagentFingerprint,
 	subagentPromptStackFingerprint,
+	subagentPromptRuntimeFingerprint,
 	subagentSourceProfileFingerprint,
 	type AgentExecutionPlan,
 	type AgentProfileSnapshot,
@@ -19,8 +20,10 @@ import {
 	type SubagentBackendTool,
 	type SubagentLimitEnforcement,
 	type SubagentLimitName,
-	type SubagentPreparationInput,
+	type SubagentPreparationBaseInput,
 	type SubagentPreparationOutput,
+	type SubagentPreparationResult,
+	type SubagentPreparationRuntime,
 } from "../../src/subagent-contract.ts";
 import type {
 	SubagentBackend,
@@ -67,7 +70,7 @@ export class DeterministicFakeSubagentBackend implements SubagentBackend {
 	preflightMode: FakePreflightMode = "accepted";
 	executionMode: FakeExecutionMode = "completed";
 	readonly preflightCalls: SubagentBackendPreflightInput[] = [];
-	readonly preparationCalls: SubagentPreparationInput[] = [];
+	readonly preparationCalls: SubagentPreparationBaseInput[] = [];
 	readonly executionCalls: AgentExecutionPlan[] = [];
 	readonly cancelCalls: SubagentBackendCancelInput[] = [];
 	readonly traceCalls: SubagentBackendTraceInput[] = [];
@@ -137,13 +140,16 @@ export class DeterministicFakeSubagentBackend implements SubagentBackend {
 			toolCatalog: structuredClone(TOOL_CATALOG),
 			access,
 			limits,
+			promptRuntime: this.descriptor.capabilities.promptRuntimeFidelity === "exact-preflight"
+				? fakePromptRuntime("exact-preflight")
+				: undefined,
 			diagnostics: [],
 		};
 	}
 
-	async prepare(input: SubagentPreparationInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationOutput> {
+	async prepare(input: SubagentPreparationBaseInput, context: SubagentBackendPreparationContext): Promise<SubagentPreparationResult> {
 		this.preparationCalls.push(structuredClone(input));
-		return context.prepare(input);
+		return context.prepare(fakePromptRuntime("backend-assisted"));
 	}
 
 	async execute(plan: AgentExecutionPlan, _context: SubagentBackendExecutionContext): Promise<SubagentBackendExecutionResult> {
@@ -236,6 +242,24 @@ export function fakeSnapshot(stackOverrides: Partial<PromptStack> = {}): AgentPr
 	};
 }
 
+export function fakePromptRuntime(fidelity: SubagentPreparationRuntime["fidelity"] = "backend-assisted"): SubagentPreparationRuntime {
+	const runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> = {
+		baseSystemPrompt: "Base fake system prompt.",
+		options: {
+			selectedTools: ["echo", "read", "write", "shell", "web"],
+			toolSnippets: { echo: "Echo input." },
+			promptGuidelines: ["Use tools only when needed."],
+			cwd: ".",
+			contextFiles: [],
+			skills: [],
+		},
+		model: { provider: "test", id: "model" },
+		preparedAt: "2026-07-14T00:00:00.000Z",
+		fidelity,
+	};
+	return { ...runtime, promptRuntimeFingerprint: subagentPromptRuntimeFingerprint(runtime) };
+}
+
 export async function createFakeExecutionPlan(input: {
 	registry: SubagentBackendRegistry;
 	backend: DeterministicFakeSubagentBackend;
@@ -247,13 +271,7 @@ export async function createFakeExecutionPlan(input: {
 	const snapshot = input.snapshot ?? fakeSnapshot();
 	const preflight = await input.registry.preflight(input.backend.descriptor.id, request, snapshot);
 	assert.equal(preflight.status, "accepted", preflight.diagnostics.map((item) => item.message).join("; "));
-	const runtime = {
-		baseSystemPrompt: "Base fake system prompt.",
-		promptRuntimeFingerprint: FAKE_DIGEST,
-		fidelity: input.backend.descriptor.capabilities.promptRuntimeFidelity === "backend-assisted" ? "backend-assisted" as const : "exact-preflight" as const,
-	};
-	const preparationInput = { request, snapshot, preflight, runtime };
-	const preparation = await input.registry.prepare(input.backend.descriptor.id, preparationInput, (candidate) => {
+	const prepared = await input.registry.prepare(input.backend.descriptor.id, { request, snapshot, preflight }, (candidate) => {
 		const messages = prepareSubagentInitialMessages(candidate.request, [
 			{ role: "assistant", content: [{ type: "text", text: "Prepared stack message." }], source: "prompt-stack" },
 		]);
@@ -270,11 +288,11 @@ export async function createFakeExecutionPlan(input: {
 		request,
 		snapshot,
 		preflight,
-		preparation,
-		runtime,
+		preparation: prepared.preparation,
+		runtime: prepared.runtime,
 	});
 	assert.ok(planned.plan, planned.diagnostics.map((item) => `${item.code}: ${item.message}`).join("; "));
-	return { request, snapshot, preflight, preparation, plan: planned.plan };
+	return { request, snapshot, preflight, preparation: prepared.preparation, plan: planned.plan };
 }
 
 export function deterministicRegistry(): SubagentBackendRegistry {

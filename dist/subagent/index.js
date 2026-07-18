@@ -6,6 +6,7 @@
  * they do not depend on the Pi extension composition entry point.
  */
 export * from "./contract.js";
-export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, resolveSubagentHostProfile, } from "../subagent-host.js";
+export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "../subagent-host.js";
 export { SubagentBackendRegistry, SubagentBackendRegistryError, } from "./backend-registry.js";
+export { PI_SDK_ISOLATED_BACKEND_DESCRIPTOR, PI_SDK_ISOLATED_BACKEND_ID, PiSdkIsolatedBackend, } from "./pi-sdk-backend.js";
 //# sourceMappingURL=index.js.map

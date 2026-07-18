@@ -15,6 +15,7 @@ import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } 
 export interface LifecycleDeps {
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
 	disposePromptStackRuntime(): PromptStackDiagnostic[];
+	disposeSubagentRuntime(): Promise<void>;
 	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
@@ -36,6 +37,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		startupToolPolicyPending = false;
 		deps.restoreActiveToolPolicy();
 		deps.disposePromptStackRuntime();
+		await deps.disposeSubagentRuntime();
 	});
 
 	pi.on("session_start", async (event, ctx) => {

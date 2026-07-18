@@ -1,4 +1,4 @@
-import type { SubagentAccessReceipt, SubagentAccessRequest, SubagentDiagnostic, SubagentFingerprint, SubagentLimitName } from "./types.ts";
+import type { SubagentAccessReceipt, SubagentAccessRequest, SubagentDiagnostic, SubagentFingerprint, SubagentLimitName, SubagentPreparationRuntime } from "./types.ts";
 export declare const SUBAGENT_LIMIT_NAMES: readonly SubagentLimitName[];
 export declare const OPAQUE_ID_PATTERN: RegExp;
 export declare const NAMESPACE_PATTERN: RegExp;
@@ -9,6 +9,7 @@ export declare function validateAccessRequest(value: unknown, path: string, diag
 export declare function validateLimitRequest(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void;
 export declare function validateBackendDescriptor(value: Record<string, unknown>, path: string, diagnostics: SubagentDiagnostic[]): void;
 export declare function validateToolCatalog(value: readonly unknown[], diagnostics: SubagentDiagnostic[]): void;
+export declare function validatePreparationRuntime(value: unknown, path: string, diagnostics: SubagentDiagnostic[], expectedFidelity?: SubagentPreparationRuntime["fidelity"]): void;
 export declare function validateAccessReceipt(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void;
 export declare function validateAccessCapabilities(value: Record<string, unknown>, path: string, diagnostics: SubagentDiagnostic[]): void;
 export declare function validateLimitReceipt(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void;

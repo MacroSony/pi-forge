@@ -107,6 +107,20 @@ A profile can also be written directly:
 
 `/profile preview <id>` resolves the model, authentication, thinking-level support, prompt stack, and effective tools without changing runtime state. `/profile status` reports the last-applied profile and current drift; it deliberately does not describe a profile as active. Provenance follows the session branch for status purposes but never causes automatic reapplication during reload, resume, tree navigation, or compaction. Fresh-session auto-activation is still one-shot, so later manual changes are preserved.
 
+### Experimental isolated subagent
+
+The 0.4 development branch can run a stored profile as a separate, clean, one-shot Pi SDK session:
+
+```text
+/forge-agent backends
+/forge-agent plan reviewer Review this API design for correctness.
+/forge-agent run reviewer Review this API design for correctness.
+```
+
+`plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards the isolated session without contacting the provider. `run` uses the same path and asks for explicit provider-egress confirmation in the TUI before sending the task.
+
+This is intentionally a walking skeleton, not a general subagent runner. It supports one foreground text task with the profile's exact model/thinking level and prompt stack, but starts with a clean conversation and no parent project context. The isolated agent has no tools, filesystem or process access, skills, prompt templates, third-party Pi extensions, artifacts, or stored trace. Its timeout is a host abort, not a hard process sandbox. The result is shown to the human and is not yet callable by or inserted into the main agent.
+
 ## Use cases
 
 ### 🎭 Roleplay & creative writing
@@ -271,6 +285,14 @@ Items are arranged in order. When the stack is active, pi-forge:
 | `/profile validate [id]` | Validate one profile, or all profiles when omitted |
 | `/profile reload` | Reload profile files without applying them |
 | `/profile forget` | Forget last-applied provenance without changing runtime state |
+
+### Experimental isolated subagent
+
+| Command | What it does |
+|---------|-------------|
+| `/forge-agent backends` | Show the available experimental backend and its capabilities |
+| `/forge-agent plan <profile> <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
+| `/forge-agent run <profile> <task>` | Confirm provider egress and run one foreground access-none text task |
 
 ### Import & debug
 

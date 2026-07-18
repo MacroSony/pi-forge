@@ -1,7 +1,7 @@
 import { getRegisteredMacros, } from "./macro-engine.js";
 import { getRegisteredSlots, } from "./slot-renderers.js";
-import { compileMessages } from "./compiler.js";
-import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, } from "./subagent/contract.js";
+import { compileMessages, compileSystemPrompt, createPromptVariableStore } from "./compiler.js";
+import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, negotiateSubagentTools, prepareSubagentInitialMessages, } from "./subagent/contract.js";
 const BUILT_IN_MACROS = new Set([
     "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
     "setvar", "setturnvar", "setsessionvar", "getvar", "var", "getturnvar", "getsessionvar",
@@ -76,6 +76,50 @@ export function resolveSubagentHostProfile(loaded, resources) {
         };
     }
     return resolution;
+}
+export function prepareSubagentHostPlan(input) {
+    const toolNegotiation = negotiateSubagentTools(input.preflight.toolCatalog, input.snapshot.promptStack?.tools, input.request.access);
+    const options = {
+        ...structuredClone(input.runtime.options),
+        selectedTools: [...toolNegotiation.effectiveToolNames],
+        toolSnippets: Object.fromEntries(Object.entries(input.runtime.options.toolSnippets)
+            .filter(([name]) => toolNegotiation.effectiveToolNames.includes(name))),
+        promptGuidelines: toolNegotiation.effectiveToolNames.length > 0
+            ? [...input.runtime.options.promptGuidelines]
+            : [],
+        skills: structuredClone(input.runtime.options.skills),
+    };
+    const model = {
+        provider: input.runtime.model.provider,
+        id: input.runtime.model.id,
+        api: "unknown",
+    };
+    const runtime = {
+        options,
+        ctx: { model },
+        latestUserMessage: input.request.input.text,
+        now: new Date(input.runtime.preparedAt),
+        variables: createPromptVariableStore(),
+    };
+    let systemPrompt = input.runtime.baseSystemPrompt;
+    let stackMessages = [];
+    const diagnostics = [];
+    if (input.snapshot.promptStack) {
+        const system = compileSystemPrompt(input.snapshot.promptStack, runtime, input.runtime.baseSystemPrompt);
+        systemPrompt = system.systemPrompt;
+        diagnostics.push(...system.diagnostics.map((item) => promptDiagnostic("system", item)));
+        const messages = compileMessages(input.snapshot.promptStack, runtime, []);
+        stackMessages = messages.messages.map(preparedPromptStackMessage);
+        diagnostics.push(...messages.diagnostics.map((item) => promptDiagnostic("messages", item)));
+    }
+    const initial = prepareSubagentInitialMessages(input.request, stackMessages);
+    return {
+        systemPrompt,
+        messages: initial.messages,
+        contextBudget: initial.contextBudget,
+        toolNegotiation,
+        diagnostics: [...diagnostics, ...initial.diagnostics],
+    };
 }
 export function collectSubagentPromptDependencies(stack, registrations = currentSubagentPromptRegistrationCatalog()) {
     const diagnostics = [];
@@ -216,6 +260,30 @@ function findLastUserMessageIndex(messages) {
 function normalizeUserContent(content) {
     const normalized = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [content];
     return JSON.stringify(normalized);
+}
+function preparedPromptStackMessage(message) {
+    if (message.role !== "user" && message.role !== "assistant" && message.role !== "custom") {
+        throw new Error(`Unsupported prompt-stack message role for subagent preparation: ${message.role}`);
+    }
+    const rawContent = message.content;
+    const parts = typeof rawContent === "string"
+        ? [{ type: "text", text: rawContent }]
+        : Array.isArray(rawContent)
+            ? rawContent.filter((part) => !!part && typeof part === "object" && part.type === "text" && typeof part.text === "string")
+            : [];
+    return {
+        role: message.role,
+        content: parts.length > 0 ? parts : [{ type: "text", text: "" }],
+        source: "prompt-stack",
+    };
+}
+function promptDiagnostic(stage, diagnostic) {
+    return {
+        level: diagnostic.level,
+        code: `preparation.${stage}`,
+        path: diagnostic.itemId ? `promptStack.items.${diagnostic.itemId}` : "promptStack",
+        message: diagnostic.message,
+    };
 }
 function compareDependencies(left, right) {
     return left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name);

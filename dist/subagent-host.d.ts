@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { LoadedAgentProfile } from "./agent-profile.ts";
-import { type AgentProfileSnapshot, type SubagentDependencyKind, type SubagentDiagnostic, type SubagentPromptDependency } from "./subagent/contract.ts";
+import { type AgentProfileSnapshot, type SubagentDependencyKind, type SubagentDiagnostic, type SubagentPromptDependency, type SubagentPreparationInput, type SubagentPreparationOutput } from "./subagent/contract.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 export interface SubagentPromptRegistration {
     name: string;
@@ -25,6 +25,7 @@ export declare function resolveSubagentHostProfile(loaded: LoadedAgentProfile, r
     promptStacks: readonly LoadedPromptStack[];
     registrations?: SubagentPromptRegistrationCatalog;
 }): SubagentHostResolution;
+export declare function prepareSubagentHostPlan(input: SubagentPreparationInput): SubagentPreparationOutput;
 export declare function collectSubagentPromptDependencies(stack: PromptStack, registrations?: SubagentPromptRegistrationCatalog): {
     dependencies: SubagentPromptDependency[];
     missingDependencies: Array<{

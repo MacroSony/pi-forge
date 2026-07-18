@@ -4,8 +4,10 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { buildPreview } from "./preview.ts";
 import { registerPresetCommand } from "./preset-command.ts";
 import { registerProfileCommand } from "./profile-command.ts";
+import { registerForgeSubagentCommand } from "./subagent-command.ts";
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.ts";
+import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.ts";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createRuntimeState } from "./runtime-state.ts";
@@ -99,6 +101,7 @@ export {
 	compileProtectedAgentTaskMessages,
 	currentSubagentPromptRegistrationCatalog,
 	isProtectedAgentTaskPreserved,
+	prepareSubagentHostPlan,
 	resolveSubagentHostProfile,
 	type SubagentHostResolution,
 	type SubagentPromptRegistration,
@@ -118,6 +121,12 @@ export {
 	type SubagentBackendTraceResult,
 	type SubagentExecutionOptions,
 } from "./subagent/backend-registry.ts";
+export {
+	PI_SDK_ISOLATED_BACKEND_DESCRIPTOR,
+	PI_SDK_ISOLATED_BACKEND_ID,
+	PiSdkIsolatedBackend,
+	type PiSdkIsolatedBackendOptions,
+} from "./subagent/pi-sdk-backend.ts";
 
 export default function piForge(pi: ExtensionAPI) {
 	const state = createRuntimeState();
@@ -131,6 +140,7 @@ export default function piForge(pi: ExtensionAPI) {
 		setActive: stackRuntime.setActive,
 		updateStatus: stackRuntime.updateStatus,
 	});
+	const subagentRuntime = createForgeSubagentRuntime(state);
 	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
 		getStacks: () => state.stacks,
 		getActive: () => state.active,
@@ -154,6 +164,7 @@ export default function piForge(pi: ExtensionAPI) {
 	registerLifecycleHandlers(pi, state, {
 		reloadStacks: stackRuntime.reloadStacks,
 		disposePromptStackRuntime: stackRuntime.dispose,
+		disposeSubagentRuntime: subagentRuntime.dispose,
 		activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
 		refreshWebEditorHost: webEditorRuntime.refreshHost,
 		notifyActivePreset: stackRuntime.notifyActivePreset,
@@ -179,4 +190,5 @@ export default function piForge(pi: ExtensionAPI) {
 		setActive: stackRuntime.setActive,
 		previewToolNames: toolPolicy.previewToolNames,
 	});
+	registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }

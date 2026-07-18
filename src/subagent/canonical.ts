@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgentProfile } from "../agent-profile.ts";
 import type { PromptStack } from "../types.ts";
-import { SUBAGENT_FINGERPRINT_PREFIX, type AgentExecutionPlan, type SubagentFingerprint } from "./types.ts";
+import { SUBAGENT_FINGERPRINT_PREFIX, type AgentExecutionPlan, type SubagentFingerprint, type SubagentPreparationRuntime } from "./types.ts";
 
 export function canonicalSubagentJson(value: unknown): string {
 	return canonicalize(value, "$", new Set<object>());
@@ -17,6 +17,11 @@ export function subagentSourceProfileFingerprint(profile: AgentProfile): Subagen
 
 export function subagentPromptStackFingerprint(stack: PromptStack): SubagentFingerprint {
 	return subagentFingerprint(stack);
+}
+
+export function subagentPromptRuntimeFingerprint(runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> | SubagentPreparationRuntime): SubagentFingerprint {
+	const { promptRuntimeFingerprint: _ignored, ...behavior } = runtime as SubagentPreparationRuntime;
+	return subagentFingerprint(behavior);
 }
 
 export function subagentExecutionFingerprint(plan: Omit<AgentExecutionPlan, "executionFingerprint"> | AgentExecutionPlan): SubagentFingerprint {

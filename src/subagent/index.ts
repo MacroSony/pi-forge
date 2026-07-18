@@ -13,6 +13,7 @@ export {
 	compileProtectedAgentTaskMessages,
 	currentSubagentPromptRegistrationCatalog,
 	isProtectedAgentTaskPreserved,
+	prepareSubagentHostPlan,
 	resolveSubagentHostProfile,
 	type SubagentHostResolution,
 	type SubagentPromptRegistration,
@@ -32,3 +33,9 @@ export {
 	type SubagentBackendTraceResult,
 	type SubagentExecutionOptions,
 } from "./backend-registry.ts";
+export {
+	PI_SDK_ISOLATED_BACKEND_DESCRIPTOR,
+	PI_SDK_ISOLATED_BACKEND_ID,
+	PiSdkIsolatedBackend,
+	type PiSdkIsolatedBackendOptions,
+} from "./pi-sdk-backend.ts";

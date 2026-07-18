@@ -8,6 +8,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Public npm package configuration for `@zihanw/pi-forge`.
 - Compiled npm runtime containing JavaScript, declarations, documentation, and examples without physical `src/` files; repository source remains available for clone-based development.
 - Tarball verification rejects physical `src/` entries and requires the root and subagent compiled entry points.
+- The web editor's HTML page shell and static styles are maintained separately from its browser behavior modules.
 - Strict typed web-editor client modules bundled into one self-contained browser script at build time, with generated-client consistency verification.
 - Supported runtime range is Node.js 22.19+ with `@earendil-works/pi-*` 0.80.6 through 0.80.x.
 - Project trust check before loading prompt stacks.
@@ -40,12 +41,14 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Backend-independent host profile resolution produces path-free declarative snapshots and does not consult the parent model registry or authentication state.
 - Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.
 - Backend tool negotiation intersects prompt-stack name policy with declared filesystem/process/network effects and per-request access.
-- Optional empty-by-default backend registry validates registration and preflight identity, routes exact/backend-assisted preparation, rejects unbound plans, arbitrates cancellation and host timeouts, normalizes failures, and protects opaque trace routing behind authorization-scoped handles.
-- Deterministic fake-backend conformance coverage exercises accepted/rejected preflight, tool effects, access/limit refusal, exact preparation, success/failure, cancellation races, timeout, media, artifacts, and traces without shipping a concrete backend.
+- Optional empty-by-default backend registry validates registration and preflight identity, requires the backend to supply a complete fingerprinted prompt runtime, binds the exact host preparation to execution, routes dry-plan discard, rejects unbound or refingerprinted substitute plans, arbitrates cancellation and host timeouts, normalizes failures, and protects opaque trace routing behind authorization-scoped handles.
+- Experimental `pi-sdk-isolated` backend uses Pi's model registry, authentication, provider transport, and an in-memory `AgentSession` while exposing no agent tools, filesystem/process access, skills, prompt templates, third-party Pi extensions, artifacts, or stored traces.
+- `/forge-agent backends`, `/forge-agent plan <profile> <task>`, and `/forge-agent run <profile> <task>` expose the complete profile/resolution/preflight/preparation/plan/response path to a human. Dry plans block provider transport and are discarded; TUI runs require explicit provider-egress confirmation.
+- Deterministic fake-backend conformance coverage exercises accepted/rejected preflight, tool effects, access/limit refusal, exact preparation, success/failure, cancellation races, timeout, media, artifacts, and traces. An offline faux-provider test additionally executes the concrete SDK backend through a real Pi `AgentSession` without network traffic.
 - Selected parent context uses explicit provenance and deterministic exact UTF-8 budgeting; required items survive, optional items are selected newest-first, and the complete delegated text/media task remains the protected final user message.
 - Granular validators cover request access/depth/media/limits, backend capabilities and enforcement, prompt-runtime fidelity, plan correlation, all response terminal statuses, usage units, artifact namespaces/paths, and authorized trace handles.
 - Portable profile, prompt-stack, and complete execution fingerprints use canonical `sha256:v1` serialization without changing legacy branch-provenance fingerprints.
-- The opt-in internal Pi SDK spike validates real profile/model/auth application, exact lifecycle prompt preparation, no-access tool filtering, timeout abort, media, and trusted custom registrations. It is not a user-facing subagent command.
+- The opt-in internal Pi SDK spike remains available for broader live diagnostics, including media and trusted custom registrations beyond the shipped text-only walking skeleton.
 - Adapter responsibilities and unsupported runner behavior are documented in `SUBAGENT_ADAPTER_CONTRACT.md`.
 
 ## Prompt Stack Loading and Storage
@@ -169,6 +172,9 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/profile validate [id]`
 - `/profile reload`
 - `/profile forget`
+- `/forge-agent backends`
+- `/forge-agent plan <profile> <task>`
+- `/forge-agent run <profile> <task>`
 - `/preset list`
 - `/preset status`
 - `/preset use <id|none>`
@@ -213,7 +219,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
 - Tests cover subagent host resolution, custom dependency detection, all access/required-limit/terminal-status matrices, effect-aware tool negotiation, context budgeting, protected media tasks, canonical fingerprint tamper detection, and malformed external contract values.
-- A real headless-Chrome smoke test covers editor load, metadata editing, validation, policy guidance, save, disk persistence, and browser-console errors.
+- A real headless-Chrome smoke test covers editor load, dirty state, metadata editing, policy and regex editing, validation, save, disk persistence, export, import, and browser-console errors.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
 

@@ -1,5 +1,5 @@
 import { type AgentProfileSnapshot, type AgentRequest, type BackendPreflightAccepted, type SubagentDiagnostic } from "./types.ts";
-import { SUBAGENT_LIMIT_NAMES, error, isRecord, validateAccessEnforcement, validateAccessReceipt, validateBackendDescriptor, validateDiagnosticArray, validateLimitReceipt, validateModelReference, validateOpaqueId, validateToolCatalog } from "./validation.ts";
+import { SUBAGENT_LIMIT_NAMES, error, isRecord, validateAccessEnforcement, validateAccessReceipt, validateBackendDescriptor, validateDiagnosticArray, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validateToolCatalog } from "./validation.ts";
 
 export function validateBackendPreflight(
 	value: unknown,
@@ -28,6 +28,14 @@ export function validateBackendPreflight(
 	else validateToolCatalog(value.toolCatalog, diagnostics);
 	validateAccessReceipt(value.access, "access", diagnostics);
 	validateLimitReceipt(value.limits, "limits", diagnostics);
+	if (isRecord(value.backend) && isRecord(value.backend.capabilities)) {
+		const fidelity = value.backend.capabilities.promptRuntimeFidelity;
+		if (fidelity === "exact-preflight") {
+			validatePreparationRuntime(value.promptRuntime, "promptRuntime", diagnostics, "exact-preflight");
+		} else if (value.promptRuntime !== undefined) {
+			diagnostics.push(error("preflight.runtime-extra", "Only exact-preflight backends may include promptRuntime in preflight.", "promptRuntime"));
+		}
+	}
 
 	if (request) {
 		try {
@@ -42,6 +50,10 @@ export function validateBackendPreflight(
 		}
 		if (value.thinkingLevel !== snapshot.profile.thinkingLevel) {
 			diagnostics.push(error("preflight.thinking-mismatch", "Preflight thinkingLevel does not match the profile snapshot.", "thinkingLevel"));
+		}
+		if (isRecord(value.promptRuntime) && isRecord(value.promptRuntime.model)
+			&& (value.promptRuntime.model.provider !== value.model.provider || value.promptRuntime.model.id !== value.model.id)) {
+			diagnostics.push(error("preflight.runtime-model", "Prompt runtime model does not match the resolved backend model.", "promptRuntime.model"));
 		}
 	}
 	return diagnostics;

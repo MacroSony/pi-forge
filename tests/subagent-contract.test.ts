@@ -20,6 +20,7 @@ import {
 	renderSubagentSelectedContext,
 	subagentExecutionFingerprint,
 	subagentFingerprint,
+	subagentPromptRuntimeFingerprint,
 	validateAgentExecutionPlan,
 	validateAgentProfileSnapshot,
 	validateAgentRequest,
@@ -35,6 +36,7 @@ import {
 	type SubagentAccessCapabilities,
 	type SubagentBackendTool,
 	type SubagentPreparedMessage,
+	type SubagentPreparationRuntime,
 } from "../src/subagent-contract.ts";
 import {
 	collectMacroCommandNames,
@@ -44,6 +46,24 @@ import {
 import type { LoadedPromptStack, PromptStack } from "../src/types.ts";
 
 const DIGEST = subagentFingerprint("fixture");
+
+function preparationRuntime(fidelity: SubagentPreparationRuntime["fidelity"] = "backend-assisted"): SubagentPreparationRuntime {
+	const runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> = {
+		baseSystemPrompt: "base",
+		options: {
+			selectedTools: [],
+			toolSnippets: {},
+			promptGuidelines: [],
+			cwd: ".",
+			contextFiles: [],
+			skills: [],
+		},
+		model: { provider: "test", id: "model" },
+		preparedAt: "2026-07-14T00:00:00.000Z",
+		fidelity,
+	};
+	return { ...runtime, promptRuntimeFingerprint: subagentPromptRuntimeFingerprint(runtime) };
+}
 
 function profile(promptStack: string | null = "worker"): AgentProfile {
 	return {
@@ -354,7 +374,7 @@ test("execution plan creation requires the protected task and produces a tamper-
 			toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] },
 			diagnostics: [],
 		},
-		runtime: { baseSystemPrompt: "base", promptRuntimeFingerprint: subagentFingerprint({ base: true }), fidelity: "backend-assisted" },
+		runtime: preparationRuntime(),
 	});
 	assert.equal(hasSubagentErrors(result.diagnostics), false);
 	assert.equal(result.diagnostics.filter((item) => item.code === "tools.unmatched-allow").length, 2);
@@ -368,7 +388,7 @@ test("execution plan creation requires the protected task and produces a tamper-
 	const missingTask = createAgentExecutionPlan({
 		runId: "run-2", request: req, snapshot: snap, preflight: preflight(),
 		preparation: { systemPrompt: "compiled", messages: [], toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] }, diagnostics: [] },
-		runtime: { baseSystemPrompt: "base", promptRuntimeFingerprint: DIGEST, fidelity: "backend-assisted" },
+		runtime: preparationRuntime(),
 	});
 	assert.equal(missingTask.plan, undefined);
 	assert.equal(missingTask.diagnostics.some((item) => item.code === "plan.protected-task"), true);
@@ -386,7 +406,7 @@ test("response validation enforces every terminal status matrix", () => {
 			maxTurns: { value: 5, enforcement: "backend-hard" },
 		} }),
 		preparation: { systemPrompt: "system", messages: appendProtectedSubagentTask([], req.input), toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] }, diagnostics: [] },
-		runtime: { baseSystemPrompt: "base", promptRuntimeFingerprint: DIGEST, fidelity: "backend-assisted" },
+		runtime: preparationRuntime(),
 	});
 	const plan = planResult.plan!;
 	const common = {

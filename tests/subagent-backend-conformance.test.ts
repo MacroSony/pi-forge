@@ -7,6 +7,7 @@ import {
 import {
 	hasSubagentErrors,
 	isProtectedSubagentTaskPreserved,
+	subagentExecutionFingerprint,
 	validateAgentResponse,
 	validateBackendPreflight,
 } from "../src/subagent-contract.ts";
@@ -15,6 +16,7 @@ import {
 	FAKE_DIGEST,
 	createFakeExecutionPlan,
 	deterministicRegistry,
+	fakePromptRuntime,
 	fakeRequest,
 	fakeSnapshot,
 } from "./helpers/fake-subagent-backend.ts";
@@ -107,6 +109,58 @@ test("registry preparation supports exact and backend-assisted prompt runtimes",
 	}
 });
 
+test("backend-assisted preparation cannot bypass or alter the host compiler", async () => {
+	const bypassRegistry = deterministicRegistry();
+	const bypassBackend = new DeterministicFakeSubagentBackend();
+	bypassBackend.prepare = async () => ({
+		runtime: fakePromptRuntime(),
+		preparation: {
+			systemPrompt: "backend-authored",
+			messages: [],
+			toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] },
+			diagnostics: [],
+		},
+	});
+	bypassRegistry.register(bypassBackend);
+	const bypassRequest = fakeRequest();
+	const bypassSnapshot = fakeSnapshot();
+	const bypassPreflight = await bypassRegistry.preflight(bypassBackend.descriptor.id, bypassRequest, bypassSnapshot);
+	assert.equal(bypassPreflight.status, "accepted");
+	await assert.rejects(
+		() => bypassRegistry.prepare(
+			bypassBackend.descriptor.id,
+			{ request: bypassRequest, snapshot: bypassSnapshot, preflight: bypassPreflight },
+			() => { throw new Error("host preparer should not be reached"); },
+		),
+		(error: unknown) => registryError(error, "preparation.host-bypass"),
+	);
+
+	const mismatchRegistry = deterministicRegistry();
+	const mismatchBackend = new DeterministicFakeSubagentBackend();
+	mismatchBackend.prepare = async (_input, context) => {
+		const result = await context.prepare(fakePromptRuntime());
+		return { ...result, preparation: { ...result.preparation, systemPrompt: "backend-tampered" } };
+	};
+	mismatchRegistry.register(mismatchBackend);
+	const mismatchRequest = fakeRequest({ requestId: "request-host-mismatch" });
+	const mismatchSnapshot = fakeSnapshot();
+	const mismatchPreflight = await mismatchRegistry.preflight(mismatchBackend.descriptor.id, mismatchRequest, mismatchSnapshot);
+	assert.equal(mismatchPreflight.status, "accepted");
+	await assert.rejects(
+		() => mismatchRegistry.prepare(
+			mismatchBackend.descriptor.id,
+			{ request: mismatchRequest, snapshot: mismatchSnapshot, preflight: mismatchPreflight },
+			() => ({
+				systemPrompt: "host-compiled",
+				messages: [],
+				toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] },
+				diagnostics: [],
+			}),
+		),
+		(error: unknown) => registryError(error, "preparation.host-mismatch"),
+	);
+});
+
 test("registry planning applies declared tool effects after stack policy", async () => {
 	const registry = deterministicRegistry();
 	const backend = new DeterministicFakeSubagentBackend();
@@ -185,6 +239,24 @@ test("user cancellation wins the completion race and drains before unregister", 
 	assert.equal(registry.unregister(backend.descriptor.id), true);
 });
 
+test("an abort before backend dispatch cancels without starting execution", async () => {
+	const registry = deterministicRegistry();
+	const backend = new DeterministicFakeSubagentBackend();
+	registry.register(backend);
+	const { plan } = await createFakeExecutionPlan({ registry, backend, runId: "run-pre-dispatch-cancel" });
+	const controller = new AbortController();
+	const execution = registry.execute(plan, { authorizationScope: "session.main", signal: controller.signal });
+	controller.abort("cancelled before dispatch");
+	const response = await execution;
+	await new Promise<void>((resolve) => setImmediate(resolve));
+
+	assert.equal(response.status, "cancelled");
+	assert.deepEqual(validateAgentResponse(response, { plan }), []);
+	assert.equal(backend.executionCalls.length, 0);
+	assert.deepEqual(backend.cancelCalls, [{ runId: plan.runId, reason: "cancelled before dispatch" }]);
+	assert.equal(registry.unregister(backend.descriptor.id), true);
+});
+
 test("host-abort timeout settles once and records backend cancellation", async () => {
 	const registry = deterministicRegistry();
 	const backend = new DeterministicFakeSubagentBackend({ limitEnforcement: { timeoutMs: "host-abort" } });
@@ -250,6 +322,14 @@ test("registry refuses plans that are invalid or not bound to its accepted prefl
 		() => sourceRegistry.execute(tampered, { authorizationScope: "session.main" }),
 		(error: unknown) => registryError(error, "execution.invalid-plan"),
 	);
+	const refingerprinted = structuredClone(plan);
+	refingerprinted.systemPrompt = "tampered and refingerprinted";
+	refingerprinted.executionFingerprint = subagentExecutionFingerprint(refingerprinted);
+	await assert.rejects(
+		() => sourceRegistry.execute(refingerprinted, { authorizationScope: "session.main" }),
+		(error: unknown) => registryError(error, "execution.unbound-preparation"),
+	);
+	assert.equal(await sourceRegistry.discard(plan.preflightId), true);
 
 	const foreignRegistry = deterministicRegistry();
 	foreignRegistry.register(new DeterministicFakeSubagentBackend());
