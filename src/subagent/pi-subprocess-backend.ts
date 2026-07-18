@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
@@ -41,10 +43,15 @@ import type {
 	SubagentBackendPreflightInput,
 } from "./backend-registry.ts";
 import { modelRuntimeFromRegistry } from "./pi-model-runtime.ts";
+import {
+	PI_FORGE_SUBPROCESS_REPORT_FD_ENV,
+	sanitizeSubprocessReportValue,
+} from "./subprocess-report.ts";
 export const PI_SUBPROCESS_READONLY_BACKEND_ID = "pi-subprocess-readonly";
 export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 
 const MAX_STDOUT_BYTES = 8 * 1024 * 1024;
+const MAX_REPORT_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
 
 const ACCESS_CAPABILITIES = {
@@ -435,25 +442,34 @@ export class PiSubprocessBackend implements SubagentBackend {
 		context: SubagentBackendExecutionContext,
 	): Promise<SubagentBackendExecutionResult> {
 		let stdoutBytes = 0;
-		let stdoutBuffer = "";
+		let reportBytes = 0;
 		let settled = false;
 		const child = spawn(invocation.command, invocation.args, {
 			cwd: this.#cwd,
 			shell: false,
-			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, [PI_FORGE_SUBPROCESS_INPUT_ENV]: inputPath },
+			stdio: ["ignore", "pipe", "pipe", "pipe"],
+			env: {
+				...process.env,
+				[PI_FORGE_SUBPROCESS_INPUT_ENV]: inputPath,
+				[PI_FORGE_SUBPROCESS_REPORT_FD_ENV]: "3",
+			},
 		});
 		this.#active.set(plan.runId, child);
 		const abort = () => terminateChild(child);
 		if (context.signal.aborted) abort();
 		else context.signal.addEventListener("abort", abort, { once: true });
 
+		const failStream = (message: string): void => {
+			if (!report.errorMessage) report.errorMessage = message;
+			terminateChild(child);
+		};
 		const processLine = (line: string): void => {
 			if (!line.trim()) return;
 			let event: Record<string, unknown>;
 			try {
 				event = JSON.parse(line) as Record<string, unknown>;
 			} catch {
+				failStream("Subprocess bridge emitted malformed report JSON.");
 				return;
 			}
 			if (event.type === "message_end" && event.message) {
@@ -472,22 +488,32 @@ export class PiSubprocessBackend implements SubagentBackend {
 			}
 		};
 
-		child.stdout.on("data", (chunk: Buffer) => {
-			stdoutBytes += chunk.length;
-			if (stdoutBytes > MAX_STDOUT_BYTES) {
-				report.errorMessage = `Subprocess JSON stream exceeded ${MAX_STDOUT_BYTES} bytes.`;
-				terminateChild(child);
-				return;
-			}
-			stdoutBuffer += chunk.toString("utf8");
-			const lines = stdoutBuffer.split("\n");
-			stdoutBuffer = lines.pop() ?? "";
-			for (const line of lines) processLine(line);
-		});
-		child.stderr.on("data", (chunk: Buffer) => {
-			if (Buffer.byteLength(report.stderr, "utf8") >= MAX_STDERR_BYTES) return;
-			report.stderr = appendBounded(report.stderr, chunk.toString("utf8"), MAX_STDERR_BYTES);
-		});
+		if (!child.stdout) {
+			failStream("Subprocess text output channel was unavailable.");
+		} else {
+			child.stdout.on("data", (chunk: Buffer) => {
+				stdoutBytes += chunk.length;
+				if (stdoutBytes > MAX_STDOUT_BYTES) failStream(`Subprocess text output exceeded ${MAX_STDOUT_BYTES} bytes.`);
+			});
+		}
+		const reportStream = child.stdio[3] as Readable | null;
+		if (!reportStream) {
+			failStream("Subprocess bridge report channel was unavailable.");
+		} else {
+			reportStream.on("data", (chunk: Buffer) => {
+				reportBytes += chunk.length;
+				if (reportBytes > MAX_REPORT_STREAM_BYTES) failStream(`Sanitized subprocess report stream exceeded ${MAX_REPORT_STREAM_BYTES} bytes.`);
+			});
+			createInterface({ input: reportStream, crlfDelay: Infinity }).on("line", processLine);
+		}
+		if (!child.stderr) {
+			failStream("Subprocess error output channel was unavailable.");
+		} else {
+			child.stderr.on("data", (chunk: Buffer) => {
+				if (Buffer.byteLength(report.stderr, "utf8") >= MAX_STDERR_BYTES) return;
+				report.stderr = appendBounded(report.stderr, chunk.toString("utf8"), MAX_STDERR_BYTES);
+			});
+		}
 
 		const outcome = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; spawnError?: Error }>((resolve) => {
 			child.once("error", (error) => resolve({ code: null, signal: null, spawnError: error }));
@@ -495,7 +521,6 @@ export class PiSubprocessBackend implements SubagentBackend {
 		});
 		if (settled) throw new Error("Subprocess completion settled more than once.");
 		settled = true;
-		if (stdoutBuffer.trim()) processLine(stdoutBuffer);
 		context.signal.removeEventListener("abort", abort);
 		this.#active.delete(plan.runId);
 		report.exitCode = outcome.code ?? undefined;
@@ -543,23 +568,13 @@ export function sanitizePiSubprocessRunReport(report: PiSubprocessRunReport): Pi
 		...report,
 		model: { ...report.model },
 		effectiveToolNames: [...report.effectiveToolNames],
-		messages: report.messages.map(sanitizePiSubprocessMessage),
+		messages: report.messages.map(sanitizeSubprocessReportValue),
 		usage: { ...report.usage },
 	};
 }
 
 function sanitizePiSubprocessMessage(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(sanitizePiSubprocessMessage);
-	if (!isRecord(value)) return value;
-	if (value.type === "image" && typeof value.data === "string") {
-		const { data, ...metadata } = value;
-		return {
-			...Object.fromEntries(Object.entries(metadata).map(([key, item]) => [key, sanitizePiSubprocessMessage(item)])),
-			dataOmitted: true,
-			encodedBytes: Buffer.byteLength(data, "utf8"),
-		};
-	}
-	return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizePiSubprocessMessage(item)]));
+	return sanitizeSubprocessReportValue(value);
 }
 
 function defaultPiInvocation(piArgs: string[]): PiInvocation {
@@ -578,7 +593,7 @@ function defaultBridgePath(): string {
 
 function subprocessArguments(plan: AgentExecutionPlan, toolNames: string[], bridgePath: string, systemPromptPath: string, marker: string): string[] {
 	const args = [
-		"--mode", "json",
+		"--mode", "text",
 		"--print",
 		"--no-session",
 		"--model", `${plan.model.provider}/${plan.model.id}`,

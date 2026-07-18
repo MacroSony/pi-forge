@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeSync } from "node:fs";
+import { PI_FORGE_SUBPROCESS_REPORT_FD_ENV, sanitizeSubprocessReportValue, } from "./subprocess-report.js";
 export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 export function loadSubprocessBridgeInput(path = process.env[PI_FORGE_SUBPROCESS_INPUT_ENV]) {
     if (!path)
@@ -16,9 +17,10 @@ export function loadSubprocessBridgeInput(path = process.env[PI_FORGE_SUBPROCESS
         throw new Error("Subprocess bridge input has an invalid tool allowlist.");
     return parsed;
 }
-export function createSubprocessBridge(input) {
+export function createSubprocessBridge(input, options = {}) {
     return (pi) => {
         let markerObserved = false;
+        const report = options.report ?? writeSubprocessReportEvent;
         pi.on("before_agent_start", () => ({ systemPrompt: input.systemPrompt }));
         pi.on("context", (event) => {
             const markerIndex = event.messages.findIndex((message) => isMarkerMessage(message, input.marker));
@@ -41,7 +43,17 @@ export function createSubprocessBridge(input) {
                 return { block: true, reason: `Tool ${event.toolName} is outside the approved Pi Forge subprocess allowlist.` };
             }
         });
+        pi.on("message_end", (event) => {
+            report({ type: "message_end", message: sanitizeSubprocessReportValue(event.message) });
+        });
     };
+}
+function writeSubprocessReportEvent(event) {
+    const rawFd = process.env[PI_FORGE_SUBPROCESS_REPORT_FD_ENV];
+    const fd = rawFd ? Number(rawFd) : Number.NaN;
+    if (!Number.isSafeInteger(fd) || fd < 3)
+        throw new Error(`Missing or invalid ${PI_FORGE_SUBPROCESS_REPORT_FD_ENV}.`);
+    writeSync(fd, `${JSON.stringify(event)}\n`, undefined, "utf8");
 }
 function isMarkerMessage(message, marker) {
     if (message.role !== "user")

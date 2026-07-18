@@ -1,7 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeSync } from "node:fs";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BackendPreflightAccepted, SubagentPreparedMessage } from "./contract.ts";
+import {
+	PI_FORGE_SUBPROCESS_REPORT_FD_ENV,
+	sanitizeSubprocessReportValue,
+} from "./subprocess-report.ts";
 
 export const PI_FORGE_SUBPROCESS_INPUT_ENV = "PI_FORGE_SUBAGENT_BRIDGE_INPUT";
 
@@ -11,6 +15,15 @@ export interface SubprocessBridgeInput {
 	messages: SubagentPreparedMessage[];
 	model: BackendPreflightAccepted["model"];
 	effectiveToolNames: string[];
+}
+
+export interface SubprocessBridgeReportEvent {
+	type: "message_end";
+	message: unknown;
+}
+
+export interface SubprocessBridgeOptions {
+	report?: (event: SubprocessBridgeReportEvent) => void;
 }
 
 export function loadSubprocessBridgeInput(path = process.env[PI_FORGE_SUBPROCESS_INPUT_ENV]): SubprocessBridgeInput {
@@ -24,9 +37,10 @@ export function loadSubprocessBridgeInput(path = process.env[PI_FORGE_SUBPROCESS
 	return parsed as SubprocessBridgeInput;
 }
 
-export function createSubprocessBridge(input: SubprocessBridgeInput) {
+export function createSubprocessBridge(input: SubprocessBridgeInput, options: SubprocessBridgeOptions = {}) {
 	return (pi: ExtensionAPI): void => {
 		let markerObserved = false;
+		const report = options.report ?? writeSubprocessReportEvent;
 		pi.on("before_agent_start", () => ({ systemPrompt: input.systemPrompt }));
 		pi.on("context", (event) => {
 			const markerIndex = event.messages.findIndex((message) => isMarkerMessage(message, input.marker));
@@ -48,7 +62,17 @@ export function createSubprocessBridge(input: SubprocessBridgeInput) {
 				return { block: true, reason: `Tool ${event.toolName} is outside the approved Pi Forge subprocess allowlist.` };
 			}
 		});
+		pi.on("message_end", (event) => {
+			report({ type: "message_end", message: sanitizeSubprocessReportValue(event.message) });
+		});
 	};
+}
+
+function writeSubprocessReportEvent(event: SubprocessBridgeReportEvent): void {
+	const rawFd = process.env[PI_FORGE_SUBPROCESS_REPORT_FD_ENV];
+	const fd = rawFd ? Number(rawFd) : Number.NaN;
+	if (!Number.isSafeInteger(fd) || fd < 3) throw new Error(`Missing or invalid ${PI_FORGE_SUBPROCESS_REPORT_FD_ENV}.`);
+	writeSync(fd, `${JSON.stringify(event)}\n`, undefined, "utf8");
 }
 
 function isMarkerMessage(message: AgentMessage, marker: string): boolean {

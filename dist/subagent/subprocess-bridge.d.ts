@@ -8,7 +8,14 @@ export interface SubprocessBridgeInput {
     model: BackendPreflightAccepted["model"];
     effectiveToolNames: string[];
 }
+export interface SubprocessBridgeReportEvent {
+    type: "message_end";
+    message: unknown;
+}
+export interface SubprocessBridgeOptions {
+    report?: (event: SubprocessBridgeReportEvent) => void;
+}
 export declare function loadSubprocessBridgeInput(path?: string | undefined): SubprocessBridgeInput;
-export declare function createSubprocessBridge(input: SubprocessBridgeInput): (pi: ExtensionAPI) => void;
+export declare function createSubprocessBridge(input: SubprocessBridgeInput, options?: SubprocessBridgeOptions): (pi: ExtensionAPI) => void;
 export default function subprocessBridge(pi: ExtensionAPI): void;
 //# sourceMappingURL=subprocess-bridge.d.ts.map

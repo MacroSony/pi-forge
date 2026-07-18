@@ -23,7 +23,7 @@ const PROVIDER = "pi-forge-subprocess-fixture";
 const MODEL_ID = "fixture-model";
 const API = "pi-forge-subprocess-api";
 
-test("read-only subprocess backend reuses the parent model runtime and captures the foreground JSON report", async () => {
+test("read-only subprocess backend reuses the parent model runtime and captures a sanitized foreground report", async () => {
 	const tempDirectoriesBefore = subprocessTempDirectories();
 	const providerContexts: Context[] = [];
 	const faux = createFauxCore({ api: API, provider: PROVIDER, models: [{ id: MODEL_ID, name: "Fixture", reasoning: true }] });
@@ -42,7 +42,7 @@ test("read-only subprocess backend reuses the parent model runtime and captures 
 			invocationArgs.push([...args]);
 			return {
 				command: process.execPath,
-				args: ["--input-type=module", "-e", `for (const event of ${JSON.stringify(events)}) process.stdout.write(JSON.stringify(event) + "\\n");`],
+				args: ["--input-type=module", "-e", `const { writeSync } = await import("node:fs"); for (const event of ${JSON.stringify(events)}) writeSync(3, JSON.stringify(event) + "\\n");`],
 			};
 		},
 	});
@@ -102,6 +102,7 @@ test("read-only subprocess backend reuses the parent model runtime and captures 
 		assert.equal(invocationArgs.length, 1);
 		assertContainsFlag(invocationArgs[0]!, "--tools", "read,grep,find,ls");
 		assertContainsFlag(invocationArgs[0]!, "--model", `${PROVIDER}/${MODEL_ID}`);
+		assertContainsFlag(invocationArgs[0]!, "--mode", "text");
 		for (const flag of ["--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files"]) assert.ok(invocationArgs[0]!.includes(flag), flag);
 		assert.ok(updates.some((update) => update.startsWith("tool-result:read completed")));
 		assert.ok(updates.some((update) => update.startsWith("finishing:Subagent report ready")));
@@ -127,6 +128,7 @@ test("read-only subprocess backend reuses the parent model runtime and captures 
 
 test("subprocess bridge replaces only the marker and blocks tools outside the approved plan", () => {
 	const handlers: Record<string, Function> = {};
+	const reportEvents: unknown[] = [];
 	const input = {
 		marker: "fixture-marker",
 		systemPrompt: "Exact compiled prompt",
@@ -134,7 +136,7 @@ test("subprocess bridge replaces only the marker and blocks tools outside the ap
 		model: { provider: PROVIDER, id: MODEL_ID },
 		effectiveToolNames: ["read"],
 	};
-	createSubprocessBridge(input)({ on: (name: string, handler: Function) => { handlers[name] = handler; } } as any);
+	createSubprocessBridge(input, { report: (event) => reportEvents.push(event) })({ on: (name: string, handler: Function) => { handlers[name] = handler; } } as any);
 	assert.deepEqual(handlers.before_agent_start?.({ systemPrompt: "other" }), { systemPrompt: input.systemPrompt });
 	const transformed = handlers.context?.({
 		messages: [
@@ -146,6 +148,19 @@ test("subprocess bridge replaces only the marker and blocks tools outside the ap
 	assert.equal(transformed.messages[1].role, "toolResult");
 	assert.equal(handlers.tool_call?.({ toolName: "read" }), undefined);
 	assert.match(handlers.tool_call?.({ toolName: "write" }).reason, /outside the approved/);
+	const imageData = "x".repeat(3_600_000);
+	const imageMessage = {
+		role: "toolResult",
+		toolName: "read",
+		content: [{ type: "image", data: imageData, mimeType: "image/png" }],
+	};
+	handlers.message_end?.({ message: imageMessage });
+	assert.equal(imageMessage.content[0]?.data.length, imageData.length, "the child model context keeps the image");
+	const reportJson = JSON.stringify(reportEvents[0]);
+	assert.ok(Buffer.byteLength(reportJson) < 1_024, String(reportJson.length));
+	assert.doesNotMatch(reportJson, /x{100}/);
+	assert.match(reportJson, /"dataOmitted":true/);
+	assert.match(reportJson, /"encodedBytes":3600000/);
 });
 
 test("subprocess backend rejects access claims that a shared-user child cannot enforce", async () => {
