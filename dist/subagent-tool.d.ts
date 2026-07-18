@@ -2,7 +2,7 @@ import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-cod
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import type { SubagentBackendExecutionUpdate } from "./subagent/backend-registry.ts";
-import type { PiSubprocessRunReport } from "./subagent/pi-subprocess-backend.ts";
+import { type PiSubprocessRunReport } from "./subagent/pi-subprocess-backend.ts";
 export interface ForgeSubagentApprovalReceipt {
     required: true;
     approved: boolean;

@@ -60,5 +60,6 @@ export declare class PiSubprocessBackend implements SubagentBackend {
     takeReport(runId: string): PiSubprocessRunReport | undefined;
     dispose(): Promise<void>;
 }
+export declare function sanitizePiSubprocessRunReport(report: PiSubprocessRunReport): PiSubprocessRunReport;
 export {};
 //# sourceMappingURL=pi-subprocess-backend.d.ts.map

@@ -248,7 +248,7 @@ export class PiSubprocessBackend {
         if (!report)
             return undefined;
         this.#reports.delete(runId);
-        return structuredClone(report);
+        return sanitizePiSubprocessRunReport(report);
     }
     async dispose() {
         for (const primed of [...this.#primed.values()])
@@ -352,13 +352,20 @@ export class PiSubprocessBackend {
                 return;
             }
             if (event.type === "message_end" && event.message) {
-                report.messages.push(event.message);
-                captureAssistantReceipt(report, event.message);
-                context.onUpdate?.({ phase: "message", message: latestAssistantText(report.messages) || "Subagent completed a model turn.", details: reportSummary(report) });
+                const message = sanitizePiSubprocessMessage(event.message);
+                report.messages.push(message);
+                captureAssistantReceipt(report, message);
+                if (isRecord(message) && message.role === "toolResult") {
+                    context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
+                }
+                else {
+                    context.onUpdate?.({ phase: "message", message: latestAssistantText(report.messages) || "Subagent completed a model turn.", details: reportSummary(report) });
+                }
             }
             else if (event.type === "tool_result_end" && event.message) {
-                report.messages.push(event.message);
-                context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(event.message), details: reportSummary(report) });
+                const message = sanitizePiSubprocessMessage(event.message);
+                report.messages.push(message);
+                context.onUpdate?.({ phase: "tool-result", message: toolResultSummary(message), details: reportSummary(report) });
             }
         };
         child.stdout.on("data", (chunk) => {
@@ -428,6 +435,30 @@ export class PiSubprocessBackend {
             throw new Error(`Pi subprocess model disappeared after preflight: ${provider}/${id}`);
         return model;
     }
+}
+export function sanitizePiSubprocessRunReport(report) {
+    return {
+        ...report,
+        model: { ...report.model },
+        effectiveToolNames: [...report.effectiveToolNames],
+        messages: report.messages.map(sanitizePiSubprocessMessage),
+        usage: { ...report.usage },
+    };
+}
+function sanitizePiSubprocessMessage(value) {
+    if (Array.isArray(value))
+        return value.map(sanitizePiSubprocessMessage);
+    if (!isRecord(value))
+        return value;
+    if (value.type === "image" && typeof value.data === "string") {
+        const { data, ...metadata } = value;
+        return {
+            ...Object.fromEntries(Object.entries(metadata).map(([key, item]) => [key, sanitizePiSubprocessMessage(item)])),
+            dataOmitted: true,
+            encodedBytes: Buffer.byteLength(data, "utf8"),
+        };
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizePiSubprocessMessage(item)]));
 }
 function defaultPiInvocation(piArgs) {
     const currentScript = process.argv[1];

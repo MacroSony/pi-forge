@@ -51,6 +51,9 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.equal(result.details.approval.executionFingerprint, fixture.prepared.plan.executionFingerprint);
 	assert.equal(result.details.report?.messages.length, 3);
 	assert.equal(result.details.report?.executionBoundary, "shared-user");
+	const retainedDetails = JSON.stringify(result.details);
+	assert.doesNotMatch(retainedDetails, /fixture-image-base64/);
+	assert.match(retainedDetails, /"dataOmitted":true/);
 	assert.ok(updates.length >= 4);
 	assert.match(context.selectTitles[0] ?? "", /Agent prompt:/);
 	assert.match(context.selectTitles[0] ?? "", new RegExp(fixture.prepared.plan.model.provider));
@@ -66,6 +69,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	const expandedText = expanded.render(120).join("\n");
 	assert.match(expandedText, /Full subagent transcript/);
 	assert.match(expandedText, /read/);
+	assert.match(expandedText, /Image data omitted/);
 });
 
 test("forge_subagent rejects a prepared plan without transport and fails closed without UI", async () => {
@@ -152,7 +156,15 @@ function subprocessReport(prepared: ForgeSubagentPreparedRun, output: string): P
 		workingDirectory: "/workspace",
 		messages: [
 			{ role: "assistant", content: [{ type: "toolCall", name: "read", arguments: { path: "src/index.ts" } }] },
-			{ role: "toolResult", toolName: "read", content: [{ type: "text", text: "source evidence" }], isError: false },
+			{
+				role: "toolResult",
+				toolName: "read",
+				content: [
+					{ type: "text", text: "source evidence" },
+					{ type: "image", data: "fixture-image-base64", mimeType: "image/png" },
+				],
+				isError: false,
+			},
 			{ role: "assistant", content: [{ type: "text", text: output }] },
 		],
 		stderr: "",

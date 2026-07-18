@@ -111,6 +111,10 @@ test("read-only subprocess backend reuses the parent model runtime and captures 
 		assert.equal(report.status, "completed");
 		assert.equal(report.executionBoundary, "shared-user");
 		assert.equal(report.messages.length, 2);
+		const retainedJson = JSON.stringify(report);
+		assert.doesNotMatch(retainedJson, /fixture-image-base64/);
+		assert.match(retainedJson, /"dataOmitted":true/);
+		assert.match(retainedJson, /"encodedBytes":20/);
 		assert.equal(report.usage.turns, 1);
 		assert.equal(report.usage.totalTokens, 15);
 		assert.equal(backend.takeReport(planned.plan.runId), undefined);
@@ -206,8 +210,19 @@ async function fixtureModelRuntime(faux: ReturnType<typeof createFauxCore>): Pro
 function fixtureEvents(): unknown[] {
 	return [
 		{
-			type: "tool_result_end",
-			message: { role: "toolResult", toolCallId: "tool-1", toolName: "read", content: [{ type: "text", text: "fixture source" }], details: {}, isError: false, timestamp: 1 },
+			type: "message_end",
+			message: {
+				role: "toolResult",
+				toolCallId: "tool-1",
+				toolName: "read",
+				content: [
+					{ type: "text", text: "fixture source" },
+					{ type: "image", data: "fixture-image-base64", mimeType: "image/png" },
+				],
+				details: {},
+				isError: false,
+				timestamp: 1,
+			},
 		},
 		{
 			type: "message_end",

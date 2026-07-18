@@ -10,7 +10,10 @@ import { Type } from "typebox";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import type { SubagentBackendExecutionUpdate } from "./subagent/backend-registry.ts";
-import type { PiSubprocessRunReport } from "./subagent/pi-subprocess-backend.ts";
+import {
+	sanitizePiSubprocessRunReport,
+	type PiSubprocessRunReport,
+} from "./subagent/pi-subprocess-backend.ts";
 
 const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";
@@ -156,7 +159,8 @@ export function registerForgeSubagentTool(
 					onUpdate?.(toolResult(truncate(update.message, 2_000), { ...running, progress: [...progress] }));
 				});
 				prepared = undefined;
-				const report = runtime.takeReport?.(response.runId);
+				const rawReport = runtime.takeReport?.(response.runId);
+				const report = rawReport ? sanitizePiSubprocessRunReport(rawReport) : undefined;
 				const finalDetails: ForgeSubagentToolDetails = {
 					...running,
 					status: toolStatus(response),
@@ -410,7 +414,21 @@ function textContent(result: AgentToolResult<unknown>): string {
 function messageText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (!Array.isArray(value)) return "";
-	return value.filter(isRecord).filter((part) => part.type === "text" && typeof part.text === "string").map((part) => String(part.text)).join("\n");
+	return value.filter(isRecord).flatMap((part) => {
+		if (part.type === "text" && typeof part.text === "string") return [part.text];
+		if (part.type === "image") {
+			const mimeType = typeof part.mimeType === "string" ? part.mimeType : "image/unknown";
+			const encodedBytes = typeof part.encodedBytes === "number" ? `; ${formatBytes(part.encodedBytes)} encoded` : "";
+			return [`[Image data omitted from retained subagent report: ${mimeType}${encodedBytes}]`];
+		}
+		return [];
+	}).join("\n");
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+	return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
 }
 
 function usageText(report: PiSubprocessRunReport): string {

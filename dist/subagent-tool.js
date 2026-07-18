@@ -1,6 +1,7 @@
 import { getMarkdownTheme, } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { sanitizePiSubprocessRunReport, } from "./subagent/pi-subprocess-backend.js";
 const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";
 const REJECT = "Reject";
@@ -91,7 +92,8 @@ export function registerForgeSubagentTool(pi, runtime, profileIds) {
                     onUpdate?.(toolResult(truncate(update.message, 2_000), { ...running, progress: [...progress] }));
                 });
                 prepared = undefined;
-                const report = runtime.takeReport?.(response.runId);
+                const rawReport = runtime.takeReport?.(response.runId);
+                const report = rawReport ? sanitizePiSubprocessRunReport(rawReport) : undefined;
                 const finalDetails = {
                     ...running,
                     status: toolStatus(response),
@@ -320,7 +322,23 @@ function messageText(value) {
         return value;
     if (!Array.isArray(value))
         return "";
-    return value.filter(isRecord).filter((part) => part.type === "text" && typeof part.text === "string").map((part) => String(part.text)).join("\n");
+    return value.filter(isRecord).flatMap((part) => {
+        if (part.type === "text" && typeof part.text === "string")
+            return [part.text];
+        if (part.type === "image") {
+            const mimeType = typeof part.mimeType === "string" ? part.mimeType : "image/unknown";
+            const encodedBytes = typeof part.encodedBytes === "number" ? `; ${formatBytes(part.encodedBytes)} encoded` : "";
+            return [`[Image data omitted from retained subagent report: ${mimeType}${encodedBytes}]`];
+        }
+        return [];
+    }).join("\n");
+}
+function formatBytes(bytes) {
+    if (bytes < 1024)
+        return `${bytes} B`;
+    if (bytes < 1024 * 1024)
+        return `${(bytes / 1024).toFixed(1)} KiB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
 }
 function usageText(report) {
     const usage = report.usage;
