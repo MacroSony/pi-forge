@@ -138,6 +138,7 @@ export function prepareSubagentHostPlan(input: SubagentPreparationInput): Subage
 			? [...input.runtime.options.promptGuidelines]
 			: [],
 		skills: structuredClone(input.runtime.options.skills) as BuildSystemPromptOptions["skills"],
+		contextFiles: [...input.runtime.options.contextFiles],
 	};
 	const model = {
 		provider: input.runtime.model.provider,

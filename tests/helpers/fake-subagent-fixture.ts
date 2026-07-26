@@ -44,7 +44,7 @@ export function fakeRequest(overrides: Partial<AgentRequest> = {}): AgentRequest
 		requestId: "request-1",
 		profileId: "worker",
 		input: { text: "Perform the delegated task." },
-		access: { level: "none", workspaces: [], network: "deny" },
+		access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
 		limits: {},
 		resultProjection: { maxChars: 4_000 },
 		parent: { depth: 0, maxDepth: 2 },
@@ -112,6 +112,7 @@ export function fakeAcceptedPreflight(input: {
 			version: "1.0.0",
 			capabilities: {
 				access: { ...ACCESS_CAPABILITIES },
+				executionBoundaries: ["isolated", "shared-user"],
 				limits: {
 					timeoutMs: ["backend-hard", "host-abort"],
 					maxTurns: ["backend-hard"],
@@ -184,6 +185,7 @@ function accessReceipt(request: AgentRequest): BackendPreflightAccepted["access"
 			: undefined,
 		network: request.access.network,
 		process: request.access.allowProcess === true,
+		executionBoundary: "isolated",
 		enforcement: { ...ACCESS_CAPABILITIES },
 	};
 }

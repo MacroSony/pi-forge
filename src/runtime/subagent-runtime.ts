@@ -26,7 +26,6 @@ import {
 	createAgentExecutionPlan,
 	hasSubagentErrors,
 	negotiateSubagentTools,
-	subagentPromptRuntimeFingerprint,
 	type AgentExecutionPlan,
 	type AgentRequest,
 	type AgentResponse,
@@ -35,7 +34,6 @@ import {
 	type SubagentDiagnostic,
 	type SubagentPreparedMessage,
 	type SubagentPreparationOutput,
-	type SubagentPreparationRuntime,
 } from "../subagent/contract.ts";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.ts";
 
@@ -152,6 +150,7 @@ export function createForgeSubagentRuntime(
 				workspaces: [{ handle: "project", mode: "read-only" }],
 				workingDirectory: { workspaceHandle: "project", path: "." },
 				network: "allow",
+				executionBoundary: "shared-user",
 			},
 			limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
 			resultProjection: { maxChars: 12_000 },
@@ -178,7 +177,7 @@ export function createForgeSubagentRuntime(
 							request,
 							snapshot,
 							preflight: hostCompilePreflight(request, intent),
-							runtime: preparationRuntimeFor(promptRuntime),
+							runtime: promptRuntime,
 						});
 						hostPreparation = output;
 						return {
@@ -208,7 +207,7 @@ export function createForgeSubagentRuntime(
 			snapshot,
 			preflight: preflightForHost(sealed.preflight),
 			preparation: hostPreparation,
-			runtime: preparationRuntimeFor(sealed.promptRuntime),
+			runtime: sealed.promptRuntime,
 		});
 		diagnostics.push(...planned.diagnostics);
 		if (!planned.plan || hasSubagentErrors(diagnostics)) {
@@ -318,6 +317,7 @@ function hostCompilePreflight(request: AgentRequest, intent: ExecutionIntent): B
 					processIsolation: false,
 					agentNetworkIsolation: false,
 				},
+				executionBoundaries: ["shared-user"],
 				limits: { timeoutMs: ["host-abort"], maxTurns: ["unsupported"], tokenBudget: ["unsupported"], maxOutputBytes: ["unsupported"] },
 				cancellation: true,
 				mediaMimeTypes: [],
@@ -357,17 +357,6 @@ function forgeToolCatalog(): BackendPreflightAccepted["toolCatalog"] {
 	})) as BackendPreflightAccepted["toolCatalog"];
 }
 
-function preparationRuntimeFor(runtime: PromptRuntime): SubagentPreparationRuntime {
-	const behavior: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> = {
-		baseSystemPrompt: runtime.baseSystemPrompt,
-		options: structuredClone(runtime.options) as SubagentPreparationRuntime["options"],
-		model: structuredClone(runtime.model),
-		preparedAt: runtime.preparedAt,
-		fidelity: runtime.fidelity,
-	};
-	return { ...behavior, promptRuntimeFingerprint: subagentPromptRuntimeFingerprint(behavior) };
-}
-
 function preflightForHost(preflight: import("@zihanw/pi-subagent-runtime").BackendPreflightAccepted): BackendPreflightAccepted {
 	return {
 		status: "accepted",
@@ -378,7 +367,7 @@ function preflightForHost(preflight: import("@zihanw/pi-subagent-runtime").Backe
 		toolCatalog: structuredClone(preflight.toolCatalog) as BackendPreflightAccepted["toolCatalog"],
 		access: structuredClone(preflight.access) as BackendPreflightAccepted["access"],
 		limits: structuredClone(preflight.limits) as BackendPreflightAccepted["limits"],
-		...(preflight.promptRuntime ? { promptRuntime: preparationRuntimeFor(preflight.promptRuntime) } : {}),
+		...(preflight.promptRuntime ? { promptRuntime: preflight.promptRuntime } : {}),
 		diagnostics: [...preflight.diagnostics].map((diagnostic) => ({ ...diagnostic })),
 	};
 }
@@ -389,6 +378,7 @@ function descriptorForHost(descriptor: import("@zihanw/pi-subagent-runtime").Bac
 		version: descriptor.version,
 		capabilities: {
 			access: structuredClone(descriptor.capabilities.access),
+			executionBoundaries: [...descriptor.capabilities.executionBoundaries],
 			limits: structuredClone(descriptor.capabilities.limits) as SubagentBackendDescriptor["capabilities"]["limits"],
 			cancellation: descriptor.capabilities.cancellation,
 			mediaMimeTypes: [...descriptor.capabilities.mediaMimeTypes],

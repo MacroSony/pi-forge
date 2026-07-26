@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createExecutionRuntime, } from "@zihanw/pi-subagent-runtime";
 import { PI_READ_ONLY_TOOL_CATALOG, PiSubprocessBackend, sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { PiRpcBackend, } from "@zihanw/pi-subagent-runtime/backends/rpc";
-import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, negotiateSubagentTools, subagentPromptRuntimeFingerprint, } from "../subagent/contract.js";
+import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, negotiateSubagentTools, } from "../subagent/contract.js";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.js";
 export function createForgeSubagentRuntime(state, options = {}) {
     let generation;
@@ -63,6 +63,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
                 workspaces: [{ handle: "project", mode: "read-only" }],
                 workingDirectory: { workspaceHandle: "project", path: "." },
                 network: "allow",
+                executionBoundary: "shared-user",
             },
             limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
             resultProjection: { maxChars: 12_000 },
@@ -88,7 +89,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
                         request,
                         snapshot,
                         preflight: hostCompilePreflight(request, intent),
-                        runtime: preparationRuntimeFor(promptRuntime),
+                        runtime: promptRuntime,
                     });
                     hostPreparation = output;
                     return {
@@ -116,7 +117,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
             snapshot,
             preflight: preflightForHost(sealed.preflight),
             preparation: hostPreparation,
-            runtime: preparationRuntimeFor(sealed.promptRuntime),
+            runtime: sealed.promptRuntime,
         });
         diagnostics.push(...planned.diagnostics);
         if (!planned.plan || hasSubagentErrors(diagnostics)) {
@@ -222,6 +223,7 @@ function hostCompilePreflight(request, intent) {
                     processIsolation: false,
                     agentNetworkIsolation: false,
                 },
+                executionBoundaries: ["shared-user"],
                 limits: { timeoutMs: ["host-abort"], maxTurns: ["unsupported"], tokenBudget: ["unsupported"], maxOutputBytes: ["unsupported"] },
                 cancellation: true,
                 mediaMimeTypes: [],
@@ -259,16 +261,6 @@ function forgeToolCatalog() {
         effects: [...tool.effects],
     }));
 }
-function preparationRuntimeFor(runtime) {
-    const behavior = {
-        baseSystemPrompt: runtime.baseSystemPrompt,
-        options: structuredClone(runtime.options),
-        model: structuredClone(runtime.model),
-        preparedAt: runtime.preparedAt,
-        fidelity: runtime.fidelity,
-    };
-    return { ...behavior, promptRuntimeFingerprint: subagentPromptRuntimeFingerprint(behavior) };
-}
 function preflightForHost(preflight) {
     return {
         status: "accepted",
@@ -279,7 +271,7 @@ function preflightForHost(preflight) {
         toolCatalog: structuredClone(preflight.toolCatalog),
         access: structuredClone(preflight.access),
         limits: structuredClone(preflight.limits),
-        ...(preflight.promptRuntime ? { promptRuntime: preparationRuntimeFor(preflight.promptRuntime) } : {}),
+        ...(preflight.promptRuntime ? { promptRuntime: preflight.promptRuntime } : {}),
         diagnostics: [...preflight.diagnostics].map((diagnostic) => ({ ...diagnostic })),
     };
 }
@@ -289,6 +281,7 @@ function descriptorForHost(descriptor) {
         version: descriptor.version,
         capabilities: {
             access: structuredClone(descriptor.capabilities.access),
+            executionBoundaries: [...descriptor.capabilities.executionBoundaries],
             limits: structuredClone(descriptor.capabilities.limits),
             cancellation: descriptor.capabilities.cancellation,
             mediaMimeTypes: [...descriptor.capabilities.mediaMimeTypes],

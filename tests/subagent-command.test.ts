@@ -17,6 +17,7 @@ const FAKE_DESCRIPTOR: SubagentBackendDescriptor = {
 			processIsolation: true,
 			agentNetworkIsolation: true,
 		},
+		executionBoundaries: ["isolated", "shared-user"],
 		limits: { timeoutMs: ["backend-hard"], maxTurns: ["backend-hard"], tokenBudget: ["backend-hard"], maxOutputBytes: ["backend-hard"] },
 		cancellation: true,
 		mediaMimeTypes: [],

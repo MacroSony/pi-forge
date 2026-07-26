@@ -108,7 +108,7 @@ function request(overrides: Partial<AgentRequest> = {}): AgentRequest {
 		requestId: "req-1",
 		profileId: "worker",
 		input: { text: "Do the task." },
-		access: { level: "none", workspaces: [], network: "deny" },
+		access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
 		limits: { timeoutMs: { value: 1_000, enforcement: "best-effort" } },
 		resultProjection: { maxChars: 4_000 },
 		parent: { depth: 0, maxDepth: 2 },
@@ -134,6 +134,7 @@ function preflight(overrides: Partial<BackendPreflightAccepted> = {}): BackendPr
 			version: "1.0.0",
 			capabilities: {
 				access: ACCESS_CAPABILITIES,
+				executionBoundaries: ["isolated", "shared-user"],
 				limits: {
 					timeoutMs: ["backend-hard", "host-abort"],
 					maxTurns: ["backend-hard"],
@@ -156,6 +157,7 @@ function preflight(overrides: Partial<BackendPreflightAccepted> = {}): BackendPr
 			mounts: [],
 			network: "deny",
 			process: false,
+			executionBoundary: "isolated",
 			enforcement: ACCESS_CAPABILITIES,
 		},
 		limits: { timeoutMs: { value: 1_000, enforcement: "host-abort" } },
@@ -258,6 +260,7 @@ test("request validation covers access, depth, task, media, and limit matrices",
 			workspaces: [{ handle: "workspace", mode: "read-write" }],
 			workingDirectory: { workspaceHandle: "missing", path: "../escape" },
 			network: "deny",
+			executionBoundary: "isolated",
 			allowProcess: true,
 		},
 		limits: { maxTurns: { value: 0, enforcement: "required" } },
@@ -282,6 +285,7 @@ test("tool negotiation intersects stack names with declared tool effects and acc
 		level: "read-only",
 		workspaces: [{ handle: "workspace", mode: "read-only" }],
 		network: "allow",
+		executionBoundary: "isolated",
 	});
 	assert.deepEqual(readOnly.effectiveToolNames, ["read", "paint_generate", "paint_validate"]);
 });
@@ -333,16 +337,16 @@ test("preflight validation separates remote egress, access isolation, media, and
 test("preflight accepts the complete access-level and required-limit matrices", () => {
 	const accessCases: Array<{ request: AgentRequest["access"]; receipt: BackendPreflightAccepted["access"] }> = [
 		{
-			request: { level: "none", workspaces: [], network: "deny" },
-			receipt: { level: "none", mounts: [], network: "deny", process: false, enforcement: ACCESS_CAPABILITIES },
+			request: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
+			receipt: { level: "none", mounts: [], network: "deny", process: false, executionBoundary: "isolated", enforcement: ACCESS_CAPABILITIES },
 		},
 		{
-			request: { level: "read-only", workspaces: [{ handle: "workspace", mode: "read-only" }], workingDirectory: { workspaceHandle: "workspace", path: "src" }, network: "deny" },
-			receipt: { level: "read-only", mounts: [{ workspaceHandle: "workspace", mountId: "mount", mode: "read-only" }], workingDirectory: { mountId: "mount", path: "src" }, network: "deny", process: false, enforcement: ACCESS_CAPABILITIES },
+			request: { level: "read-only", workspaces: [{ handle: "workspace", mode: "read-only" }], workingDirectory: { workspaceHandle: "workspace", path: "src" }, network: "deny", executionBoundary: "isolated" },
+			receipt: { level: "read-only", mounts: [{ workspaceHandle: "workspace", mountId: "mount", mode: "read-only" }], workingDirectory: { mountId: "mount", path: "src" }, network: "deny", process: false, executionBoundary: "isolated", enforcement: ACCESS_CAPABILITIES },
 		},
 		{
-			request: { level: "workspace-write", workspaces: [{ handle: "workspace", mode: "read-write" }], workingDirectory: { workspaceHandle: "workspace", path: "." }, network: "allow", allowProcess: true },
-			receipt: { level: "workspace-write", mounts: [{ workspaceHandle: "workspace", mountId: "mount", mode: "read-write" }], workingDirectory: { mountId: "mount", path: "." }, network: "allow", process: true, enforcement: ACCESS_CAPABILITIES },
+			request: { level: "workspace-write", workspaces: [{ handle: "workspace", mode: "read-write" }], workingDirectory: { workspaceHandle: "workspace", path: "." }, network: "allow", allowProcess: true, executionBoundary: "isolated" },
+			receipt: { level: "workspace-write", mounts: [{ workspaceHandle: "workspace", mountId: "mount", mode: "read-write" }], workingDirectory: { mountId: "mount", path: "." }, network: "allow", process: true, executionBoundary: "isolated", enforcement: ACCESS_CAPABILITIES },
 		},
 	];
 	for (const accessCase of accessCases) {
@@ -370,6 +374,7 @@ test("shared-user read-only receipts remain explicit without claiming OS isolati
 		workspaces: [{ handle: "workspace", mode: "read-only" }],
 		workingDirectory: { workspaceHandle: "workspace", path: "." },
 		network: "allow",
+		executionBoundary: "shared-user",
 	};
 	const receipt: BackendPreflightAccepted["access"] = {
 		level: "read-only",

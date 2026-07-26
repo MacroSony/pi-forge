@@ -1,10 +1,20 @@
 import type { AgentProfile } from "../agent-profile.ts";
 import type { PromptStack } from "../types.ts";
-import { type AgentExecutionPlan, type SubagentFingerprint, type SubagentPreparationRuntime } from "./types.ts";
-export declare function canonicalSubagentJson(value: unknown): string;
-export declare function subagentFingerprint(value: unknown): SubagentFingerprint;
-export declare function subagentSourceProfileFingerprint(profile: AgentProfile): SubagentFingerprint;
-export declare function subagentPromptStackFingerprint(stack: PromptStack): SubagentFingerprint;
-export declare function subagentPromptRuntimeFingerprint(runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> | SubagentPreparationRuntime): SubagentFingerprint;
-export declare function subagentExecutionFingerprint(plan: Omit<AgentExecutionPlan, "executionFingerprint"> | AgentExecutionPlan): SubagentFingerprint;
+import { type Fingerprint } from "@zihanw/pi-subagent-runtime";
+import type { AgentExecutionPlan, SubagentPreparationRuntime } from "./types.ts";
+/**
+ * Canonical serialization and fingerprints are owned by
+ * @zihanw/pi-subagent-runtime core. Forge re-exports them under the
+ * `Subagent`-prefixed names the 0.4 host contract always used, so callers
+ * stay source-compatible while the single portable definition lives in the
+ * runtime package. The exposed algorithms are identical, so existing
+ * fingerprint values are unchanged.
+ */
+export { canonicalJson as canonicalSubagentJson } from "@zihanw/pi-subagent-runtime";
+export { fingerprint as subagentFingerprint } from "@zihanw/pi-subagent-runtime";
+export { FINGERPRINT_PREFIX as SUBAGENT_FINGERPRINT_PREFIX } from "@zihanw/pi-subagent-runtime";
+export declare function subagentSourceProfileFingerprint(profile: AgentProfile): Fingerprint;
+export declare function subagentPromptStackFingerprint(stack: PromptStack): Fingerprint;
+export declare function subagentPromptRuntimeFingerprint(runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> | SubagentPreparationRuntime): Fingerprint;
+export declare function subagentExecutionFingerprint(plan: Omit<AgentExecutionPlan, "executionFingerprint"> | AgentExecutionPlan): Fingerprint;
 //# sourceMappingURL=canonical.d.ts.map

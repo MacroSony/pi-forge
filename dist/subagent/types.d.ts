@@ -1,23 +1,50 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AgentProfile, AgentProfileModelReference } from "../agent-profile.ts";
 import type { PromptStack } from "../types.ts";
+import type { AccessCapabilities, AccessLevel, AccessReceipt, AccessRequest, BackendCapabilities, BackendDescriptor, BackendTool, Diagnostic, DiagnosticLevel, EnforcedLimit, Fingerprint, LimitEnforcement, LimitName, LimitReceipt, LimitRequest, LimitRequirement, LimitRequirementLevel, MediaReference, MountMapping, NetworkPolicy, WorkspaceMode, WorkspaceRequest, WorkingDirectoryRequest, PreparedContentPart, PreparedMessage, PreparedMessageRole, PromptRuntime, PromptRuntimeOptions, PromptRuntimeSkill, RunError, RunUsage, ToolEffect, ExecutionBoundary } from "@zihanw/pi-subagent-runtime";
 export declare const SUBAGENT_CONTRACT_VERSION: 1;
-export declare const SUBAGENT_FINGERPRINT_PREFIX: "sha256:v1:";
-export type SubagentFingerprint = `${typeof SUBAGENT_FINGERPRINT_PREFIX}${string}`;
-export type SubagentDiagnosticLevel = "error" | "warning" | "info";
-export interface SubagentDiagnostic {
-    level: SubagentDiagnosticLevel;
-    code: string;
-    message: string;
-    path?: string;
-}
-export interface SubagentMediaReference {
-    id: string;
-    kind: "image";
-    mimeType: string;
-    digest: SubagentFingerprint;
-    resourceHandle: string;
-}
+export type SubagentFingerprint = Fingerprint;
+export { FINGERPRINT_PREFIX as SUBAGENT_FINGERPRINT_PREFIX } from "@zihanw/pi-subagent-runtime";
+export type SubagentDiagnosticLevel = DiagnosticLevel;
+export type SubagentDiagnostic = Diagnostic;
+export type SubagentMediaReference = MediaReference;
+export type SubagentAccessLevel = AccessLevel;
+export type SubagentWorkspaceMode = WorkspaceMode;
+export type SubagentNetworkPolicy = NetworkPolicy;
+export type SubagentExecutionBoundary = ExecutionBoundary;
+export type SubagentWorkspaceRequest = WorkspaceRequest;
+export type SubagentWorkingDirectoryRequest = WorkingDirectoryRequest;
+export type SubagentAccessRequest = AccessRequest;
+export type SubagentLimitName = LimitName;
+export type SubagentLimitEnforcementPreference = LimitRequirementLevel;
+export type SubagentLimitRequirement = LimitRequirement;
+export type SubagentLimitRequest = LimitRequest;
+export type SubagentToolEffect = ToolEffect;
+export type SubagentBackendTool = BackendTool;
+export type SubagentAccessCapabilities = AccessCapabilities;
+export type SubagentLimitEnforcement = LimitEnforcement;
+export type SubagentMountMapping = MountMapping;
+export type SubagentEnforcedLimit = EnforcedLimit;
+export type SubagentLimitReceipt = LimitReceipt;
+export type SubagentPreparedMessageRole = PreparedMessageRole;
+export type SubagentPreparedContentPart = PreparedContentPart;
+export type SubagentPromptRuntimeSkill = PromptRuntimeSkill;
+export type SubagentPromptRuntimeOptions = PromptRuntimeOptions;
+export type SubagentUsage = RunUsage;
+export type SubagentError = RunError;
+export type SubagentAccessReceipt = AccessReceipt;
+export type SubagentPreparationRuntime = PromptRuntime;
+export type SubagentBackendCapabilities = BackendCapabilities & {
+    traceInspection: boolean;
+    artifactRetention: boolean;
+};
+export type SubagentBackendDescriptor = Omit<BackendDescriptor, "capabilities"> & {
+    capabilities: SubagentBackendCapabilities;
+};
+export type SubagentPreparedMessage = PreparedMessage & {
+    protectedTask?: boolean;
+    source?: "selected-context" | "prompt-stack" | "delegated-task";
+};
 export interface SubagentTaskInput {
     text: string;
     media?: SubagentMediaReference[];
@@ -38,41 +65,6 @@ export interface SubagentSelectedContext {
     maxBytes: number;
     items: SubagentContextItem[];
 }
-export type SubagentAccessLevel = "none" | "read-only" | "workspace-write";
-export type SubagentWorkspaceMode = "read-only" | "read-write";
-export type SubagentNetworkPolicy = "deny" | "allow";
-/**
- * Describes the operating-system boundary behind an access receipt.
- *
- * `isolated` is the legacy/default contract: access levels are backed by the
- * isolation capabilities declared in `enforcement`. `shared-user` is an
- * explicitly unsafe boundary where the child process retains the invoking
- * user's OS permissions and the effective access level is constrained only by
- * the tools exposed to the model.
- */
-export type SubagentExecutionBoundary = "isolated" | "shared-user";
-export interface SubagentWorkspaceRequest {
-    handle: string;
-    mode: SubagentWorkspaceMode;
-}
-export interface SubagentWorkingDirectoryRequest {
-    workspaceHandle: string;
-    path: string;
-}
-export interface SubagentAccessRequest {
-    level: SubagentAccessLevel;
-    workspaces: SubagentWorkspaceRequest[];
-    workingDirectory?: SubagentWorkingDirectoryRequest;
-    network: SubagentNetworkPolicy;
-    allowProcess?: boolean;
-}
-export type SubagentLimitName = "timeoutMs" | "maxTurns" | "tokenBudget" | "maxOutputBytes";
-export type SubagentLimitEnforcementPreference = "required" | "best-effort";
-export interface SubagentLimitRequirement {
-    value: number;
-    enforcement: SubagentLimitEnforcementPreference;
-}
-export type SubagentLimitRequest = Partial<Record<SubagentLimitName, SubagentLimitRequirement>>;
 export interface AgentRequest {
     schemaVersion: typeof SUBAGENT_CONTRACT_VERSION;
     requestId: string;
@@ -108,61 +100,19 @@ export interface AgentProfileSnapshot {
     profileFingerprint: SubagentFingerprint;
     promptStackFingerprint: SubagentFingerprint | null;
 }
-export type SubagentToolEffect = "filesystem-read" | "filesystem-write" | "process" | "network";
-export interface SubagentBackendTool {
-    id: string;
-    name: string;
-    description?: string;
-    promptSnippet?: string;
-    effects: SubagentToolEffect[];
-    adapterMapping?: string;
+export interface SubagentToolNegotiationResult {
+    effectiveToolIds: string[];
+    effectiveToolNames: string[];
+    stackSelectedToolNames: string[];
+    unmatchedAllowPatterns: string[];
+    diagnostics: SubagentDiagnostic[];
 }
-export interface SubagentAccessCapabilities {
-    readOnlyMountIsolation: boolean;
-    readWriteMountIsolation: boolean;
-    symlinkSafeContainment: boolean;
-    processIsolation: boolean;
-    agentNetworkIsolation: boolean;
+export interface SubagentContextBudgetReceipt {
+    maxBytes: number;
+    includedBytes: number;
+    includedItemIds: string[];
+    omittedItemIds: string[];
 }
-export type SubagentLimitEnforcement = "backend-hard" | "host-abort" | "best-effort" | "unsupported";
-export interface SubagentBackendCapabilities {
-    access: SubagentAccessCapabilities;
-    limits: Record<SubagentLimitName, SubagentLimitEnforcement[]>;
-    cancellation: boolean;
-    mediaMimeTypes: string[];
-    traceInspection: boolean;
-    artifactRetention: boolean;
-    remoteTransport: boolean;
-    promptRuntimeFidelity: "exact-preflight" | "backend-assisted" | "partial";
-}
-export interface SubagentBackendDescriptor {
-    id: string;
-    version: string;
-    capabilities: SubagentBackendCapabilities;
-}
-export interface SubagentMountMapping {
-    workspaceHandle: string;
-    mountId: string;
-    mode: SubagentWorkspaceMode;
-}
-export interface SubagentAccessReceipt {
-    level: SubagentAccessLevel;
-    mounts: SubagentMountMapping[];
-    workingDirectory?: {
-        mountId: string;
-        path: string;
-    };
-    network: SubagentNetworkPolicy;
-    process: boolean;
-    /** Omitted receipts use the legacy `isolated` interpretation. */
-    executionBoundary?: SubagentExecutionBoundary;
-    enforcement: SubagentAccessCapabilities;
-}
-export interface SubagentEnforcedLimit {
-    value: number;
-    enforcement: Exclude<SubagentLimitEnforcement, "unsupported">;
-}
-export type SubagentLimitReceipt = Partial<Record<SubagentLimitName, SubagentEnforcedLimit>>;
 export interface BackendPreflightAccepted {
     status: "accepted";
     preflightId: string;
@@ -182,63 +132,6 @@ export interface BackendPreflightRejected {
     diagnostics: SubagentDiagnostic[];
 }
 export type BackendPreflightResult = BackendPreflightAccepted | BackendPreflightRejected;
-export interface SubagentToolNegotiationResult {
-    effectiveToolIds: string[];
-    effectiveToolNames: string[];
-    stackSelectedToolNames: string[];
-    unmatchedAllowPatterns: string[];
-    diagnostics: SubagentDiagnostic[];
-}
-export interface SubagentContextBudgetReceipt {
-    maxBytes: number;
-    includedBytes: number;
-    includedItemIds: string[];
-    omittedItemIds: string[];
-}
-export type SubagentPreparedMessageRole = "user" | "assistant" | "custom";
-export type SubagentPreparedContentPart = {
-    type: "text";
-    text: string;
-} | {
-    type: "media";
-    mediaId: string;
-    mimeType: string;
-    digest: SubagentFingerprint;
-    backendResourceId?: string;
-};
-export interface SubagentPreparedMessage {
-    role: SubagentPreparedMessageRole;
-    content: SubagentPreparedContentPart[];
-    protectedTask?: boolean;
-    source?: "selected-context" | "prompt-stack" | "delegated-task";
-}
-export interface SubagentPromptRuntimeSkill {
-    name: string;
-    description: string;
-    filePath: string;
-    disableModelInvocation: boolean;
-}
-export interface SubagentPromptRuntimeOptions {
-    customPrompt?: string;
-    selectedTools: string[];
-    toolSnippets: Record<string, string>;
-    promptGuidelines: string[];
-    appendSystemPrompt?: string;
-    cwd: string;
-    contextFiles: Array<{
-        path: string;
-        content: string;
-    }>;
-    skills: SubagentPromptRuntimeSkill[];
-}
-export interface SubagentPreparationRuntime {
-    baseSystemPrompt: string;
-    options: SubagentPromptRuntimeOptions;
-    model: AgentProfileModelReference;
-    preparedAt: string;
-    promptRuntimeFingerprint: SubagentFingerprint;
-    fidelity: "exact-preflight" | "backend-assisted";
-}
 export interface SubagentPreparationBaseInput {
     request: AgentRequest;
     snapshot: AgentProfileSnapshot;
@@ -294,23 +187,6 @@ export interface SubagentTraceReference {
     backendId: string;
     authorizationScope: string;
     expiresAt?: string;
-}
-export interface SubagentUsage {
-    tokens?: {
-        input: number;
-        output: number;
-        total: number;
-        tokenizer?: string;
-    };
-    cost?: {
-        amount: number;
-        currency: string;
-    };
-}
-export interface SubagentError {
-    code: string;
-    message: string;
-    retryable?: boolean;
 }
 export interface AgentResponseCommon {
     schemaVersion: typeof SUBAGENT_CONTRACT_VERSION;

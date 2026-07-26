@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the exact supported `@earendil-works/pi-agent-core`, `pi-ai`, `pi-coding-agent`, and `pi-tui` package set from 0.80.10 to 0.82.1. The full core, browser, type, generated-client, distribution, and package verification surface passes against Pi 0.82.1.
+
 ## [0.4.0-beta.1] - 2026-07-18
 
 ### Added
