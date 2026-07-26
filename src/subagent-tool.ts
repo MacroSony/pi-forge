@@ -8,13 +8,12 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadForgeSubagentSettings } from "./forge-config.ts";
-import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
+import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime, SubagentBackendExecutionUpdate } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
-import type { SubagentBackendExecutionUpdate } from "./subagent/backend-registry.ts";
 import {
 	sanitizePiSubprocessRunReport,
 	type PiSubprocessRunReport,
-} from "./subagent/pi-subprocess-backend.ts";
+} from "@zihanw/pi-subagent-runtime/backends/subprocess";
 
 const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";

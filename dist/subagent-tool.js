@@ -2,7 +2,7 @@ import { getMarkdownTheme, } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadForgeSubagentSettings } from "./forge-config.js";
-import { sanitizePiSubprocessRunReport, } from "./subagent/pi-subprocess-backend.js";
+import { sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";
 const REJECT = "Reject";

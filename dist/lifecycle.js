@@ -146,7 +146,7 @@ function isFreshStartupBranch(entries) {
             continue;
         return false;
     }
-    // Pi 0.80 writes the initial thinking level, and the model when one is
+    // Pi 0.82 writes the initial thinking level, and the model when one is
     // selected, before extensions receive the first startup event. A previously
     // opened empty session receives another bootstrap pair, so the count limits
     // above keep it from being mistaken for a newly created session.

@@ -19,9 +19,6 @@ export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePrevi
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 export * from "./subagent-contract.js";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "./subagent-host.js";
-export { SubagentBackendRegistry, SubagentBackendRegistryError, } from "./subagent/backend-registry.js";
-export { PI_SDK_ISOLATED_BACKEND_DESCRIPTOR, PI_SDK_ISOLATED_BACKEND_ID, PiSdkIsolatedBackend, } from "./subagent/pi-sdk-backend.js";
-export { PI_FORGE_SUBPROCESS_INPUT_ENV, PI_SUBPROCESS_READONLY_BACKEND_DESCRIPTOR, PI_SUBPROCESS_READONLY_BACKEND_ID, PiSubprocessBackend, } from "./subagent/pi-subprocess-backend.js";
 export default function piForge(pi) {
     const state = createRuntimeState();
     const toolPolicy = createToolPolicyRuntime(pi, state);

@@ -3,14 +3,32 @@ import test from "node:test";
 
 import { registerForgeSubagentCommand } from "../src/subagent-command.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
-import { PI_SDK_ISOLATED_BACKEND_DESCRIPTOR } from "../src/subagent/pi-sdk-backend.ts";
-import { createFakeExecutionPlan, DeterministicFakeSubagentBackend, deterministicRegistry } from "./helpers/fake-subagent-backend.ts";
+import type { SubagentBackendDescriptor } from "../src/subagent/contract.ts";
+import { createFakeExecutionPlan } from "./helpers/fake-subagent-fixture.ts";
+
+const FAKE_DESCRIPTOR: SubagentBackendDescriptor = {
+	id: "fake-backend",
+	version: "1.0.0",
+	capabilities: {
+		access: {
+			readOnlyMountIsolation: true,
+			readWriteMountIsolation: true,
+			symlinkSafeContainment: true,
+			processIsolation: true,
+			agentNetworkIsolation: true,
+		},
+		limits: { timeoutMs: ["backend-hard"], maxTurns: ["backend-hard"], tokenBudget: ["backend-hard"], maxOutputBytes: ["backend-hard"] },
+		cancellation: true,
+		mediaMimeTypes: [],
+		traceInspection: true,
+		artifactRetention: true,
+		remoteTransport: false,
+		promptRuntimeFidelity: "backend-assisted",
+	},
+};
 
 test("/forge-agent exposes backend/profile completions, dry planning, and explicit egress consent", async () => {
-	const registry = deterministicRegistry();
-	const fakeBackend = new DeterministicFakeSubagentBackend();
-	registry.register(fakeBackend);
-	const fixture = await createFakeExecutionPlan({ registry, backend: fakeBackend, runId: "command-run" });
+	const fixture = createFakeExecutionPlan({ runId: "command-run" });
 	const prepared: ForgeSubagentPreparedRun = {
 		request: fixture.request,
 		preflight: fixture.preflight,
@@ -19,7 +37,7 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	};
 	const calls = { prepare: 0, discard: 0, execute: 0 };
 	const runtime: ForgeSubagentRuntime = {
-		descriptors: () => [structuredClone(PI_SDK_ISOLATED_BACKEND_DESCRIPTOR)],
+		descriptors: () => [structuredClone(FAKE_DESCRIPTOR)],
 		prepare: async () => {
 			calls.prepare++;
 			return { ok: true, prepared };
@@ -54,7 +72,7 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 
 	const context = commandContext();
 	await command.handler("backends", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /pi-sdk-isolated/);
+	assert.match(context.editors.at(-1)?.text ?? "", /fake-backend/);
 
 	await command.handler("plan reviewer inspect this", context.ctx);
 	assert.equal(calls.prepare, 1);

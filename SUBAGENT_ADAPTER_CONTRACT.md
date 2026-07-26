@@ -1,6 +1,8 @@
 # Subagent Adapter Contract
 
-Status: exported pure contract, host-preparation utilities, optional backend registry, retained `pi-sdk-isolated` compatibility adapter, and a default-approval `pi-subprocess-readonly` foreground path for the 0.4 beta. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
+Status: exported pure contract and host-preparation utilities for the 0.4 beta. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
+
+> **Migration note (0.4):** execution ownership — backend registration, preflight binding, plan sealing, lifecycle arbitration, and the fresh-process backends — has moved to [`@zihanw/pi-subagent-runtime`](https://github.com/MacroSony/pi-subagent-runtime). Forge keeps the host surface described here (profiles, compilation, approval, plan/response product types); `SubagentBackendRegistry`, `PiSubprocessBackend`, and the retained `PiSdkIsolatedBackend` research adapter no longer ship in this package. Sections 8-9 below describe the superseded in-package design and remain as historical context.
 
 ## Public Surface
 
@@ -155,7 +157,7 @@ Access receipts may explicitly declare `executionBoundary: "shared-user"`. This 
 
 `PiSubprocessBackend` is the extension's deliberately narrow default adapter:
 
-- It resolves the exact profile model through Pi's existing `ModelRegistry`, reuses the parent Pi 0.80.10 `ModelRuntime` so preparation sees the same authentication, and prepares the exact prompt inside an in-process Pi session held behind a provider gate.
+- It resolves the exact profile model through Pi's existing `ModelRegistry`, reuses the parent Pi 0.82.1 `ModelRuntime` so preparation sees the same authentication, and prepares the exact prompt inside an in-process Pi session held behind a provider gate.
 - After approval, it disposes the preparation session and launches a fresh foreground Pi subprocess with the approved model, thinking level, system prompt, messages, and tool IDs. Pi's ordinary text stdout is drained separately from a dedicated newline-delimited report channel.
 - Its bridge preserves the exact prepared messages and rejects tools outside the approved allowlist. Candidate tools are limited to `read`, `grep`, `find`, and `ls`, then intersected with prompt-stack policy.
 - It loads no write/edit/shell tools, skills, prompt templates, context files, themes, or third-party Pi extensions and writes no child session file.

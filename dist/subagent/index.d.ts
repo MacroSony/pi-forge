@@ -4,10 +4,11 @@
  * The package root continues to re-export these names for 0.4 compatibility.
  * New adapter integrations should import from `@zihanw/pi-forge/subagent` so
  * they do not depend on the Pi extension composition entry point.
+ *
+ * Execution ownership (backend registry, sealing, lifecycle, process
+ * backends) now lives in `@zihanw/pi-subagent-runtime`; this surface keeps
+ * the Forge host contracts: profiles, compilation, approval, and reporting.
  */
 export * from "./contract.ts";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, type SubagentHostResolution, type SubagentPromptRegistration, type SubagentPromptRegistrationCatalog, } from "../subagent-host.ts";
-export { SubagentBackendRegistry, SubagentBackendRegistryError, type SubagentBackend, type SubagentBackendCancelInput, type SubagentBackendExecutionContext, type SubagentBackendExecutionResult, type SubagentBackendExecutionUpdate, type SubagentBackendPreparationContext, type SubagentBackendPreflightInput, type SubagentBackendRegistryOptions, type SubagentBackendTraceInput, type SubagentBackendTraceResult, type SubagentExecutionOptions, } from "./backend-registry.ts";
-export { PI_SDK_ISOLATED_BACKEND_DESCRIPTOR, PI_SDK_ISOLATED_BACKEND_ID, PiSdkIsolatedBackend, type PiSdkIsolatedBackendOptions, } from "./pi-sdk-backend.ts";
-export { PI_FORGE_SUBPROCESS_INPUT_ENV, PI_SUBPROCESS_READONLY_BACKEND_DESCRIPTOR, PI_SUBPROCESS_READONLY_BACKEND_ID, PiSubprocessBackend, type PiSubprocessBackendOptions, type PiSubprocessRunReport, type PiSubprocessUsage, } from "./pi-subprocess-backend.ts";
 //# sourceMappingURL=index.d.ts.map

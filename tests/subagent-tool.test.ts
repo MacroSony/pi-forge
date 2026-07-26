@@ -6,8 +6,8 @@ import test from "node:test";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
 import { registerForgeSubagentTool } from "../src/subagent-tool.ts";
 import type { AgentResponse } from "../src/subagent/contract.ts";
-import type { PiSubprocessRunReport } from "../src/subagent/pi-subprocess-backend.ts";
-import { createFakeExecutionPlan, DeterministicFakeSubagentBackend, deterministicRegistry } from "./helpers/fake-subagent-backend.ts";
+import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
+import { createFakeExecutionPlan } from "./helpers/fake-subagent-fixture.ts";
 
 test("forge_subagent prepares, previews the full prompt on demand, approves, streams, and returns a rich report", async () => {
 	const fixture = await toolFixture();
@@ -153,10 +153,7 @@ test("forge_subagent can run without per-invocation UI only after trusted-projec
 });
 
 async function toolFixture() {
-	const registry = deterministicRegistry();
-	const backend = new DeterministicFakeSubagentBackend();
-	registry.register(backend);
-	const fixture = await createFakeExecutionPlan({ registry, backend, runId: "tool-run" });
+	const fixture = createFakeExecutionPlan({ runId: "tool-run" });
 	return {
 		profileId: fixture.plan.profile.profile.id,
 		prepared: {
@@ -188,7 +185,7 @@ function completedResponse(prepared: ForgeSubagentPreparedRun, text: string): Ag
 
 function subprocessReport(prepared: ForgeSubagentPreparedRun, output: string): PiSubprocessRunReport {
 	return {
-		runId: prepared.plan.runId,
+		preparedRunId: prepared.plan.runId,
 		executionFingerprint: prepared.plan.executionFingerprint,
 		status: "completed",
 		startedAt: "2026-07-18T12:00:00.000Z",

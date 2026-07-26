@@ -109,36 +109,6 @@ export {
 	type SubagentPromptRegistration,
 	type SubagentPromptRegistrationCatalog,
 } from "./subagent-host.ts";
-export {
-	SubagentBackendRegistry,
-	SubagentBackendRegistryError,
-	type SubagentBackend,
-	type SubagentBackendCancelInput,
-	type SubagentBackendExecutionContext,
-	type SubagentBackendExecutionResult,
-	type SubagentBackendExecutionUpdate,
-	type SubagentBackendPreparationContext,
-	type SubagentBackendPreflightInput,
-	type SubagentBackendRegistryOptions,
-	type SubagentBackendTraceInput,
-	type SubagentBackendTraceResult,
-	type SubagentExecutionOptions,
-} from "./subagent/backend-registry.ts";
-export {
-	PI_SDK_ISOLATED_BACKEND_DESCRIPTOR,
-	PI_SDK_ISOLATED_BACKEND_ID,
-	PiSdkIsolatedBackend,
-	type PiSdkIsolatedBackendOptions,
-} from "./subagent/pi-sdk-backend.ts";
-export {
-	PI_FORGE_SUBPROCESS_INPUT_ENV,
-	PI_SUBPROCESS_READONLY_BACKEND_DESCRIPTOR,
-	PI_SUBPROCESS_READONLY_BACKEND_ID,
-	PiSubprocessBackend,
-	type PiSubprocessBackendOptions,
-	type PiSubprocessRunReport,
-	type PiSubprocessUsage,
-} from "./subagent/pi-subprocess-backend.ts";
 
 export default function piForge(pi: ExtensionAPI) {
 	const state = createRuntimeState();
