@@ -18,7 +18,6 @@ import {
 	negotiateSubagentTools,
 	prepareSubagentInitialMessages,
 	renderSubagentSelectedContext,
-	subagentExecutionFingerprint,
 	subagentFingerprint,
 	subagentPromptRuntimeFingerprint,
 	validateAgentExecutionPlan,
@@ -37,7 +36,7 @@ import {
 	type SubagentBackendTool,
 	type SubagentPreparedMessage,
 	type SubagentPreparationRuntime,
-} from "../src/subagent-contract.ts";
+} from "../src/subagent/contract.ts";
 import {
 	collectMacroCommandNames,
 	collectSubagentPromptDependencies,
@@ -46,6 +45,8 @@ import {
 import type { LoadedPromptStack, PromptStack } from "../src/types.ts";
 
 const DIGEST = subagentFingerprint("fixture");
+const CONVERSATION_DIGEST = subagentFingerprint("fixture-conversation");
+const EXECUTION_DIGEST = subagentFingerprint("fixture-execution");
 
 function preparationRuntime(fidelity: SubagentPreparationRuntime["fidelity"] = "backend-assisted"): SubagentPreparationRuntime {
 	const runtime: Omit<SubagentPreparationRuntime, "promptRuntimeFingerprint"> = {
@@ -393,7 +394,7 @@ test("shared-user read-only receipts remain explicit without claiming OS isolati
 		.some((item) => item.code === "access-receipt.shared-user-claim"));
 });
 
-test("execution plan creation requires the protected task and produces a tamper-evident fingerprint", () => {
+test("execution plan creation requires the protected task and carries runtime-issued fingerprints", () => {
 	const req = request();
 	const snap = snapshot();
 	const preparedMessages = appendProtectedSubagentTask([
@@ -411,20 +412,28 @@ test("execution plan creation requires the protected task and produces a tamper-
 			diagnostics: [],
 		},
 		runtime: preparationRuntime(),
+		conversationFingerprint: CONVERSATION_DIGEST,
+		executionFingerprint: EXECUTION_DIGEST,
 	});
 	assert.equal(hasSubagentErrors(result.diagnostics), false);
 	assert.equal(result.diagnostics.filter((item) => item.code === "tools.unmatched-allow").length, 2);
 	assert.ok(result.plan);
-	assert.equal(result.plan.executionFingerprint, subagentExecutionFingerprint(result.plan));
+	assert.equal(result.plan.conversationFingerprint, CONVERSATION_DIGEST);
+	assert.equal(result.plan.executionFingerprint, EXECUTION_DIGEST);
 	assert.deepEqual(validateAgentExecutionPlan(result.plan, req), []);
 
-	const tampered: AgentExecutionPlan = { ...structuredClone(result.plan), systemPrompt: "changed" };
-	assert.equal(validateAgentExecutionPlan(tampered, req).some((item) => item.code === "plan.execution-fingerprint"), true);
+	// The host validates fingerprint shape and internal consistency; detecting
+	// a substituted plan is the runtime's sealed-plan binding, not host-side
+	// recomputation, so a tampered prompt is caught only at execution binding.
+	const malformed: AgentExecutionPlan = { ...structuredClone(result.plan), executionFingerprint: "not-a-fingerprint" as never };
+	assert.equal(validateAgentExecutionPlan(malformed, req).some((item) => item.code === "fingerprint.invalid"), true);
 
 	const missingTask = createAgentExecutionPlan({
 		runId: "run-2", request: req, snapshot: snap, preflight: preflight(),
 		preparation: { systemPrompt: "compiled", messages: [], toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] }, diagnostics: [] },
 		runtime: preparationRuntime(),
+		conversationFingerprint: CONVERSATION_DIGEST,
+		executionFingerprint: EXECUTION_DIGEST,
 	});
 	assert.equal(missingTask.plan, undefined);
 	assert.equal(missingTask.diagnostics.some((item) => item.code === "plan.protected-task"), true);
@@ -443,6 +452,8 @@ test("response validation enforces every terminal status matrix", () => {
 		} }),
 		preparation: { systemPrompt: "system", messages: appendProtectedSubagentTask([], req.input), toolNegotiation: { effectiveToolIds: [], effectiveToolNames: [], stackSelectedToolNames: [], unmatchedAllowPatterns: [], diagnostics: [] }, diagnostics: [] },
 		runtime: preparationRuntime(),
+		conversationFingerprint: CONVERSATION_DIGEST,
+		executionFingerprint: EXECUTION_DIGEST,
 	});
 	const plan = planResult.plan!;
 	const common = {

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import * as rootSurface from "../src/index.ts";
-import * as compatibilityContract from "../src/subagent-contract.ts";
 import * as modularContract from "../src/subagent/contract.ts";
 import * as subagentSurface from "../src/subagent/index.ts";
 
@@ -19,7 +18,6 @@ const contractRuntimeExports = [
 	"negotiateSubagentTools",
 	"prepareSubagentInitialMessages",
 	"renderSubagentSelectedContext",
-	"subagentExecutionFingerprint",
 	"subagentFingerprint",
 	"subagentPromptRuntimeFingerprint",
 	"subagentPromptStackFingerprint",
@@ -35,9 +33,13 @@ const contractRuntimeExports = [
 	"validateSubagentTraceReference",
 ].sort();
 
-test("the legacy subagent contract path preserves the modular contract surface", () => {
+test("the modular subagent contract surface is complete and root-compatible", () => {
 	assert.deepEqual(Object.keys(modularContract).sort(), contractRuntimeExports);
-	assert.deepEqual(Object.keys(compatibilityContract).sort(), contractRuntimeExports);
+	const root = rootSurface as Record<string, unknown>;
+	const modular = modularContract as Record<string, unknown>;
+	for (const name of contractRuntimeExports) {
+		assert.equal(root[name], modular[name], name);
+	}
 });
 
 test("the dedicated subagent entry point preserves the package-root adapter surface", async () => {

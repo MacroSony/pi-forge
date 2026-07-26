@@ -95,7 +95,7 @@ export {
 	type PromptVariableScope,
 	type PromptWritableVariableScope,
 } from "./render-helpers.ts";
-export * from "./subagent-contract.ts";
+export * from "./subagent/contract.ts";
 export {
 	appendProtectedAgentTask,
 	collectMacroCommandNames,

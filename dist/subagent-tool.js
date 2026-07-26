@@ -3,6 +3,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadForgeSubagentSettings, resolveSubagentBackend } from "./forge-config.js";
 import { sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
+import { isRecord } from "@zihanw/pi-subagent-runtime";
 const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";
 const REJECT = "Reject";
@@ -185,6 +186,7 @@ export function summarizeForgeSubagentPlan(prepared, cwd) {
         messageCount: plan.messages.length,
         messageRoles: plan.messages.map((message) => message.role),
         promptRuntimeFingerprint: plan.promptRuntimeFingerprint,
+        conversationFingerprint: plan.conversationFingerprint,
         executionFingerprint: plan.executionFingerprint,
     };
 }
@@ -205,6 +207,7 @@ export function renderApprovalSummary(prepared, task, cwd) {
         `Working directory: ${summary.workingDirectory}`,
         `Boundary: ${summary.executionBoundary} (read-only tool policy; no OS sandbox)`,
         `Full payload: ${summary.systemPromptChars} system chars + ${summary.messageCount} messages`,
+        `Conversation fingerprint: ${summary.conversationFingerprint}`,
         `Execution fingerprint: ${summary.executionFingerprint}`,
         "",
         "The provider receives the compiled prompt and any files the read tools access.",
@@ -227,6 +230,7 @@ export function renderFullForgeSubagentPrompt(prepared) {
         `Provider/model: ${plan.model.provider}/${plan.model.id}`,
         `Thinking: ${plan.thinkingLevel}`,
         `Tools: ${toolNames(plan).join(", ") || "none"}`,
+        `Conversation fingerprint: ${plan.conversationFingerprint}`,
         `Execution fingerprint: ${plan.executionFingerprint}`,
         "",
         "## System prompt",
@@ -395,8 +399,5 @@ function truncate(text, maxChars) {
 }
 function truncateLines(text, maxLines, maxChars) {
     return truncate(text.split("\n").slice(0, maxLines).join("\n"), maxChars);
-}
-function isRecord(value) {
-    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 //# sourceMappingURL=subagent-tool.js.map

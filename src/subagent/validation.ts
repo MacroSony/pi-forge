@@ -1,14 +1,83 @@
-import { posix } from "node:path";
-import { subagentPromptRuntimeFingerprint } from "./canonical.ts";
-import type { SubagentAccessReceipt, SubagentAccessRequest, SubagentBackendTool, SubagentDiagnostic, SubagentFingerprint, SubagentLimitName, SubagentPreparationRuntime } from "./types.ts";
+import {
+	FINGERPRINT_PATTERN,
+	LIMIT_NAMES,
+	OPAQUE_ID_PATTERN,
+	error,
+	hasErrors,
+	isFingerprint,
+	isRecord,
+	isSafeRelativePath,
+	validateAccessEnforcement,
+	validateAccessRequest as validatePortableAccessRequest,
+	validateBackendDescriptor as validatePortableBackendDescriptor,
+	validateLimitReceipt as validatePortableLimitReceipt,
+	validateLimitRequest as validatePortableLimitRequest,
+	validatePromptRuntime as validatePortablePromptRuntime,
+	type Diagnostic,
+} from "@zihanw/pi-subagent-runtime";
+import type { SubagentDiagnostic, SubagentPreparationRuntime } from "./types.ts";
 
-export const SUBAGENT_LIMIT_NAMES: readonly SubagentLimitName[] = ["timeoutMs", "maxTurns", "tokenBudget", "maxOutputBytes"];
+// ---------------------------------------------------------------------------
+// Portable leaves owned by @zihanw/pi-subagent-runtime core.
+//
+// The runtime package is the single source of truth for validators over the
+// portable execution contract. This module re-exports the identical helpers
+// and adapts the runtime's returning-style validators to the collecting-style
+// signatures the 0.4 host contract always used. Only host-specific artifacts
+// (selected context, context budgets, media references, usage, artifacts,
+// traces, and the richer host access-receipt checks) keep local
+// implementations below.
+// ---------------------------------------------------------------------------
 
-export const OPAQUE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+export {
+	FINGERPRINT_PATTERN,
+	LIMIT_NAMES as SUBAGENT_LIMIT_NAMES,
+	OPAQUE_ID_PATTERN,
+	error,
+	hasErrors,
+	hasErrors as hasSubagentErrors,
+	isFingerprint,
+	isRecord,
+	isSafeRelativePath,
+	validateAccessEnforcement,
+};
 
 export const NAMESPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-export const FINGERPRINT_PATTERN = /^sha256:v1:[a-f0-9]{64}$/;
+export function validateAccessRequest(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
+	diagnostics.push(...validatePortableAccessRequest(value, path));
+}
+
+export function validateLimitRequest(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
+	diagnostics.push(...validatePortableLimitRequest(value, path));
+}
+
+export function validateLimitReceipt(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
+	diagnostics.push(...validatePortableLimitReceipt(value, path));
+}
+
+export function validateBackendDescriptor(value: Record<string, unknown>, path: string, diagnostics: SubagentDiagnostic[]): void {
+	diagnostics.push(...repath(validatePortableBackendDescriptor(value), path));
+	// Host-only capability booleans the portable descriptor does not carry.
+	if (isRecord(value.capabilities)) {
+		for (const field of ["traceInspection", "artifactRetention"] as const) {
+			if (typeof value.capabilities[field] !== "boolean") diagnostics.push(error("backend.boolean-capability", `${field} must be boolean.`, `${path}.capabilities.${field}`));
+		}
+	}
+}
+
+export function validatePreparationRuntime(
+	value: unknown,
+	path: string,
+	diagnostics: SubagentDiagnostic[],
+	expectedFidelity?: SubagentPreparationRuntime["fidelity"],
+): void {
+	diagnostics.push(...repath(validatePortablePromptRuntime(value, expectedFidelity), path));
+}
+
+// ---------------------------------------------------------------------------
+// Host-specific validators with no portable counterpart.
+// ---------------------------------------------------------------------------
 
 export function validateMediaReference(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
 	if (!isRecord(value)) {
@@ -50,82 +119,6 @@ export function validateSelectedContext(value: unknown, path: string, diagnostic
 	return diagnostics;
 }
 
-export function validateAccessRequest(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
-	if (!isRecord(value)) {
-		diagnostics.push(error("access.type", "access must be an object.", path));
-		return;
-	}
-	if (!["none", "read-only", "workspace-write"].includes(String(value.level))) diagnostics.push(error("access.level", "Unsupported access level.", `${path}.level`));
-	if (!Array.isArray(value.workspaces)) {
-		diagnostics.push(error("access.workspaces", "workspaces must be an array.", `${path}.workspaces`));
-		return;
-	}
-	const handles = new Set<string>();
-	let hasWritable = false;
-	value.workspaces.forEach((workspace, index) => {
-		if (!isRecord(workspace)) return diagnostics.push(error("access.workspace", "Workspace must be an object.", `${path}.workspaces[${index}]`));
-		validateOpaqueId(workspace.handle, `${path}.workspaces[${index}].handle`, diagnostics);
-		if (typeof workspace.handle === "string" && handles.has(workspace.handle)) diagnostics.push(error("access.duplicate-workspace", `Duplicate workspace handle: ${workspace.handle}`, `${path}.workspaces[${index}].handle`));
-		if (typeof workspace.handle === "string") handles.add(workspace.handle);
-		if (workspace.mode !== "read-only" && workspace.mode !== "read-write") diagnostics.push(error("access.workspace-mode", "Workspace mode must be read-only or read-write.", `${path}.workspaces[${index}].mode`));
-		if (workspace.mode === "read-write") hasWritable = true;
-	});
-	if (value.level === "none" && value.workspaces.length > 0) diagnostics.push(error("access.none-workspaces", "Access none cannot include workspaces.", `${path}.workspaces`));
-	if (value.level === "read-only" && hasWritable) diagnostics.push(error("access.read-only-write", "Read-only access cannot request a read-write workspace.", `${path}.workspaces`));
-	if (value.level === "workspace-write" && !hasWritable) diagnostics.push(error("access.write-missing", "workspace-write requires at least one read-write workspace.", `${path}.workspaces`));
-	if (value.network !== "deny" && value.network !== "allow") diagnostics.push(error("access.network", "network must be deny or allow.", `${path}.network`));
-	if (value.allowProcess !== undefined && typeof value.allowProcess !== "boolean") diagnostics.push(error("access.process", "allowProcess must be boolean.", `${path}.allowProcess`));
-	if (value.allowProcess === true && value.level !== "workspace-write") diagnostics.push(error("access.process-level", "Process access requires workspace-write.", `${path}.allowProcess`));
-	if (value.workingDirectory !== undefined) {
-		if (!isRecord(value.workingDirectory)) diagnostics.push(error("access.cwd", "workingDirectory must be an object.", `${path}.workingDirectory`));
-		else {
-			if (!handles.has(String(value.workingDirectory.workspaceHandle))) diagnostics.push(error("access.cwd-workspace", "workingDirectory must reference a requested workspace.", `${path}.workingDirectory.workspaceHandle`));
-			if (!isSafeRelativePath(value.workingDirectory.path, true)) diagnostics.push(error("access.cwd-path", "workingDirectory.path must be a normalized relative POSIX path.", `${path}.workingDirectory.path`));
-		}
-	}
-	if (value.level === "none" && value.workingDirectory !== undefined) diagnostics.push(error("access.none-cwd", "Access none cannot include a workingDirectory.", `${path}.workingDirectory`));
-}
-
-export function validateLimitRequest(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
-	if (!isRecord(value)) {
-		diagnostics.push(error("limits.type", "limits must be an object.", path));
-		return;
-	}
-	for (const [name, requirement] of Object.entries(value)) {
-		if (!SUBAGENT_LIMIT_NAMES.includes(name as SubagentLimitName)) {
-			diagnostics.push(error("limits.unknown", `Unknown limit: ${name}`, `${path}.${name}`));
-			continue;
-		}
-		if (!isRecord(requirement) || !isPositiveInteger(requirement.value) || !["required", "best-effort"].includes(String(requirement.enforcement))) {
-			diagnostics.push(error("limits.requirement", `${name} must contain a positive integer value and required/best-effort enforcement.`, `${path}.${name}`));
-		}
-	}
-}
-
-export function validateBackendDescriptor(value: Record<string, unknown>, path: string, diagnostics: SubagentDiagnostic[]): void {
-	validateOpaqueId(value.id, `${path}.id`, diagnostics);
-	if (typeof value.version !== "string" || !value.version.trim()) diagnostics.push(error("backend.version", "Backend version is required.", `${path}.version`));
-	if (!isRecord(value.capabilities)) {
-		diagnostics.push(error("backend.capabilities", "Backend capabilities are required.", `${path}.capabilities`));
-		return;
-	}
-	const capabilities = value.capabilities;
-	if (!isRecord(capabilities.access)) diagnostics.push(error("backend.access-capabilities", "Access capabilities are required.", `${path}.capabilities.access`));
-	else validateAccessCapabilities(capabilities.access, `${path}.capabilities.access`, diagnostics);
-	if (!isRecord(capabilities.limits)) diagnostics.push(error("backend.limit-capabilities", "Limit capabilities are required.", `${path}.capabilities.limits`));
-	else {
-		for (const name of SUBAGENT_LIMIT_NAMES) {
-			const supported = capabilities.limits[name];
-			if (!Array.isArray(supported) || supported.some((entry) => !["backend-hard", "host-abort", "best-effort", "unsupported"].includes(String(entry)))) diagnostics.push(error("backend.limit-capability", `Invalid limit capability list for ${name}.`, `${path}.capabilities.limits.${name}`));
-		}
-	}
-	for (const field of ["cancellation", "traceInspection", "artifactRetention", "remoteTransport"] as const) {
-		if (typeof capabilities[field] !== "boolean") diagnostics.push(error("backend.boolean-capability", `${field} must be boolean.`, `${path}.capabilities.${field}`));
-	}
-	if (!Array.isArray(capabilities.mediaMimeTypes) || capabilities.mediaMimeTypes.some((mime) => typeof mime !== "string" || !mime.includes("/"))) diagnostics.push(error("backend.media-capabilities", "mediaMimeTypes must be a MIME type array.", `${path}.capabilities.mediaMimeTypes`));
-	if (!["exact-preflight", "backend-assisted", "partial"].includes(String(capabilities.promptRuntimeFidelity))) diagnostics.push(error("backend.prompt-fidelity", "Invalid promptRuntimeFidelity.", `${path}.capabilities.promptRuntimeFidelity`));
-}
-
 export function validateToolCatalog(value: readonly unknown[], diagnostics: SubagentDiagnostic[]): void {
 	const ids = new Set<string>();
 	const names = new Set<string>();
@@ -141,63 +134,13 @@ export function validateToolCatalog(value: readonly unknown[], diagnostics: Suba
 	});
 }
 
-export function validatePreparationRuntime(
-	value: unknown,
-	path: string,
-	diagnostics: SubagentDiagnostic[],
-	expectedFidelity?: SubagentPreparationRuntime["fidelity"],
-): void {
-	if (!isRecord(value)) {
-		diagnostics.push(error("runtime.type", "Prompt runtime must be an object.", path));
-		return;
-	}
-	if (typeof value.baseSystemPrompt !== "string") diagnostics.push(error("runtime.base-prompt", "baseSystemPrompt must be a string.", `${path}.baseSystemPrompt`));
-	validateModelReference(value.model, `${path}.model`, diagnostics);
-	if (!isIsoDate(value.preparedAt)) diagnostics.push(error("runtime.prepared-at", "preparedAt must be a canonical ISO timestamp.", `${path}.preparedAt`));
-	if (value.fidelity !== "exact-preflight" && value.fidelity !== "backend-assisted") diagnostics.push(error("runtime.fidelity", "Runtime fidelity must be exact-preflight or backend-assisted.", `${path}.fidelity`));
-	else if (expectedFidelity && value.fidelity !== expectedFidelity) diagnostics.push(error("runtime.fidelity-mismatch", `Runtime fidelity must be ${expectedFidelity}.`, `${path}.fidelity`));
-	validateFingerprint(value.promptRuntimeFingerprint, `${path}.promptRuntimeFingerprint`, diagnostics);
-	validatePromptRuntimeOptions(value.options, `${path}.options`, diagnostics);
-	if (isFingerprint(value.promptRuntimeFingerprint)) {
-		try {
-			if (subagentPromptRuntimeFingerprint(value as unknown as SubagentPreparationRuntime) !== value.promptRuntimeFingerprint) {
-				diagnostics.push(error("runtime.fingerprint", "promptRuntimeFingerprint does not match the runtime snapshot.", `${path}.promptRuntimeFingerprint`));
-			}
-		} catch (fingerprintError) {
-			diagnostics.push(error("runtime.fingerprint-input", fingerprintError instanceof Error ? fingerprintError.message : String(fingerprintError), `${path}.promptRuntimeFingerprint`));
-		}
-	}
-}
-
-function validatePromptRuntimeOptions(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
-	if (!isRecord(value)) {
-		diagnostics.push(error("runtime.options", "Prompt runtime options must be an object.", path));
-		return;
-	}
-	if (value.customPrompt !== undefined && typeof value.customPrompt !== "string") diagnostics.push(error("runtime.custom-prompt", "customPrompt must be a string.", `${path}.customPrompt`));
-	if (value.appendSystemPrompt !== undefined && typeof value.appendSystemPrompt !== "string") diagnostics.push(error("runtime.append-prompt", "appendSystemPrompt must be a string.", `${path}.appendSystemPrompt`));
-	if (typeof value.cwd !== "string" || !value.cwd.trim()) diagnostics.push(error("runtime.cwd", "cwd must be a non-empty display path.", `${path}.cwd`));
-	for (const field of ["selectedTools", "promptGuidelines"] as const) {
-		if (!Array.isArray(value[field])) diagnostics.push(error("runtime.string-array", `${field} must be a string array.`, `${path}.${field}`));
-		else validateUniqueStringArray(value[field], `${path}.${field}`, diagnostics);
-	}
-	if (!isRecord(value.toolSnippets) || Object.values(value.toolSnippets).some((entry) => typeof entry !== "string")) diagnostics.push(error("runtime.tool-snippets", "toolSnippets must map tool names to strings.", `${path}.toolSnippets`));
-	if (!Array.isArray(value.contextFiles)) diagnostics.push(error("runtime.context-files", "contextFiles must be an array.", `${path}.contextFiles`));
-	else value.contextFiles.forEach((file, index) => {
-		if (!isRecord(file) || typeof file.path !== "string" || typeof file.content !== "string") diagnostics.push(error("runtime.context-file", "Context files require path and content strings.", `${path}.contextFiles[${index}]`));
-	});
-	if (!Array.isArray(value.skills)) diagnostics.push(error("runtime.skills", "skills must be an array.", `${path}.skills`));
-	else value.skills.forEach((skill, index) => {
-		if (!isRecord(skill)
-			|| typeof skill.name !== "string" || !skill.name.trim()
-			|| typeof skill.description !== "string"
-			|| typeof skill.filePath !== "string" || !skill.filePath.trim()
-			|| typeof skill.disableModelInvocation !== "boolean") {
-			diagnostics.push(error("runtime.skill", "Skills require name, description, filePath, and disableModelInvocation.", `${path}.skills[${index}]`));
-		}
-	});
-}
-
+/**
+ * Host access-receipt validation. The portable runtime validator intentionally
+ * checks less: the host additionally enforces mount uniqueness, access-level
+ * consistency, and the isolation claims a receipt may make for its execution
+ * boundary, because these cross-checks are the honesty terms of the host
+ * contract (a shared-user boundary must never claim OS isolation).
+ */
 export function validateAccessReceipt(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
 	if (!isRecord(value)) {
 		diagnostics.push(error("access-receipt.type", "Access receipt must be an object.", path));
@@ -258,46 +201,6 @@ export function validateAccessCapabilities(value: Record<string, unknown>, path:
 	] as const) {
 		if (typeof value[field] !== "boolean") diagnostics.push(error("access-capability.boolean", `${field} must be boolean.`, `${path}.${field}`));
 	}
-}
-
-export function validateLimitReceipt(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
-	if (!isRecord(value)) {
-		diagnostics.push(error("limit-receipt.type", "Limit receipt must be an object.", path));
-		return;
-	}
-	for (const [name, receipt] of Object.entries(value)) {
-		if (!SUBAGENT_LIMIT_NAMES.includes(name as SubagentLimitName) || !isRecord(receipt) || !isPositiveInteger(receipt.value) || !["backend-hard", "host-abort", "best-effort"].includes(String(receipt.enforcement))) {
-			diagnostics.push(error("limit-receipt.entry", `Invalid enforced limit receipt: ${name}`, `${path}.${name}`));
-		}
-	}
-}
-
-export function validateAccessEnforcement(request: SubagentAccessRequest, receipt: SubagentAccessReceipt): SubagentDiagnostic[] {
-	const diagnostics: SubagentDiagnostic[] = [];
-	const executionBoundary = receipt.executionBoundary ?? "isolated";
-	if (receipt.level !== request.level) diagnostics.push(error("preflight.access-level", "Access receipt level does not match request.", "access.level"));
-	if (receipt.network !== request.network) diagnostics.push(error("preflight.network", "Access receipt network policy does not match request.", "access.network"));
-	if (receipt.process !== (request.allowProcess === true)) diagnostics.push(error("preflight.process", "Access receipt process policy does not match request.", "access.process"));
-	if (executionBoundary === "isolated" && request.level === "read-only" && (!receipt.enforcement.readOnlyMountIsolation || !receipt.enforcement.symlinkSafeContainment)) diagnostics.push(error("preflight.read-isolation", "Isolated read-only access requires mount isolation and symlink-safe containment.", "access.enforcement"));
-	if (request.level === "workspace-write" && (!receipt.enforcement.readWriteMountIsolation || !receipt.enforcement.symlinkSafeContainment)) diagnostics.push(error("preflight.write-isolation", "Workspace-write access requires write isolation and symlink-safe containment.", "access.enforcement"));
-	if (request.allowProcess && !receipt.enforcement.processIsolation) diagnostics.push(error("preflight.process-isolation", "Process access requires process isolation.", "access.enforcement.processIsolation"));
-	if (request.network === "deny" && !receipt.enforcement.agentNetworkIsolation) diagnostics.push(error("preflight.network-isolation", "Denied agent network requires network isolation.", "access.enforcement.agentNetworkIsolation"));
-	const mapped = new Map(receipt.mounts.map((mount) => [mount.workspaceHandle, mount]));
-	for (const workspace of request.workspaces) {
-		const mount = mapped.get(workspace.handle);
-		if (!mount) diagnostics.push(error("preflight.mount-missing", `Missing mount mapping for ${workspace.handle}.`, "access.mounts"));
-		else if (mount.mode !== workspace.mode) diagnostics.push(error("preflight.mount-mode", `Mount mode mismatch for ${workspace.handle}.`, "access.mounts"));
-	}
-	for (const mount of receipt.mounts) {
-		if (!request.workspaces.some((workspace) => workspace.handle === mount.workspaceHandle)) diagnostics.push(error("preflight.mount-extra", `Unexpected mount mapping for ${mount.workspaceHandle}.`, "access.mounts"));
-	}
-	if (request.workingDirectory) {
-		const requestedMount = mapped.get(request.workingDirectory.workspaceHandle);
-		if (!receipt.workingDirectory || receipt.workingDirectory.mountId !== requestedMount?.mountId || receipt.workingDirectory.path !== request.workingDirectory.path) diagnostics.push(error("preflight.cwd", "Working-directory receipt does not match the request.", "access.workingDirectory"));
-	} else if (receipt.workingDirectory) {
-		diagnostics.push(error("preflight.cwd-extra", "Backend produced an unrequested working directory.", "access.workingDirectory"));
-	}
-	return diagnostics;
 }
 
 export function validatePreparedMessage(value: unknown, path: string, diagnostics: SubagentDiagnostic[]): void {
@@ -380,23 +283,8 @@ export function validateFingerprint(value: unknown, path: string, diagnostics: S
 	if (!isFingerprint(value)) diagnostics.push(error("fingerprint.invalid", "Expected sha256:v1 followed by 64 lowercase hex characters.", path));
 }
 
-export function isFingerprint(value: unknown): value is SubagentFingerprint {
-	return typeof value === "string" && FINGERPRINT_PATTERN.test(value);
-}
-
-export function isSafeRelativePath(value: unknown, allowDot = false): boolean {
-	if (typeof value !== "string" || value.includes("\\") || value.startsWith("/") || value.includes("\0")) return false;
-	if (allowDot && value === ".") return true;
-	if (!value || posix.normalize(value) !== value) return false;
-	return value.split("/").every((segment) => segment !== "." && segment !== "..");
-}
-
 export function isIsoDate(value: unknown): boolean {
 	return typeof value === "string" && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 export function isPositiveInteger(value: unknown): value is number {
@@ -411,10 +299,10 @@ export function isNonNegativeFinite(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-export function hasErrors(diagnostics: readonly SubagentDiagnostic[]): boolean {
-	return diagnostics.some((diagnostic) => diagnostic.level === "error");
-}
-
-export function error(code: string, message: string, path?: string): SubagentDiagnostic {
-	return { level: "error", code, message, path };
+/** Remap a runtime-core diagnostic rooted at "$" onto the caller's path. */
+function repath(diagnostics: readonly Diagnostic[], path: string): SubagentDiagnostic[] {
+	return diagnostics.map((diagnostic) => {
+		if (!diagnostic.path || !diagnostic.path.startsWith("$")) return diagnostic;
+		return { ...diagnostic, path: `${path}${diagnostic.path.slice(1)}` };
+	});
 }

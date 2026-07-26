@@ -11,10 +11,17 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Added
 
 - **Configurable subagent backend selection.** The execution backend is now layered configuration rather than a fixed default: `subagents.backend` in the user-owned `~/.pi/forge/config.json` sets the global default, a trusted project's `.pi/forge/config.json` overrides it, and `/forge-agent plan|run <profile> --backend <id>` or the interactive `forge_subagent` `backend` parameter overrides a single run. The experimental `pi-rpc-readonly` backend registered in the previous prerelease is now reachable from the product. There is deliberately no fallback to another backend when the selected one is unavailable; unattended `forge_subagent` invocation is pinned to the configured default and rejects per-call backend overrides. `forge_subagent_profiles` and `/forge-agent backends` report the resolved default backend, its source, and a warning when it names an unregistered backend.
+- **Conversation fingerprint visibility.** `AgentExecutionPlan` now carries the runtime-issued `conversationFingerprint` alongside the execution fingerprint. `/forge-agent plan`, the approval summary, the full-prompt viewer, and the `forge_subagent` plan details display it, so cross-backend prompt fidelity is observable (equal conversation fingerprints with backend-distinct execution fingerprints).
 
 ### Changed
 
+- **Runtime-issued plan fingerprints.** `createAgentExecutionPlan()` now requires the runtime-issued conversation and execution fingerprints as inputs instead of computing a host-side execution fingerprint. `validateAgentExecutionPlan()` validates fingerprint shape and internal consistency; substituted-plan detection is the runtime's sealed-plan binding, not host recomputation.
+- **Portable validators unified with the runtime core.** The subagent contract's access, limit, prompt-runtime, backend-descriptor, and access-enforcement validators are re-exported from `@zihanw/pi-subagent-runtime` (adapted to the host collecting style), removing the duplicated portable implementations. Host-specific artifacts (selected context, context budget, media, usage, artifacts, traces, and the richer host access-receipt cross-checks) keep their local validators.
 - Updated the exact supported `@earendil-works/pi-agent-core`, `pi-ai`, `pi-coding-agent`, and `pi-tui` package set from 0.80.10 to 0.82.1. The full core, browser, type, generated-client, distribution, and package verification surface passes against Pi 0.82.1.
+
+### Removed
+
+- **Breaking: legacy subagent compatibility surfaces.** Removed the `src/subagent-contract.ts` compatibility barrel (import the identical surface from `@zihanw/pi-forge/subagent` or the package root), the `subagentExecutionFingerprint` host fingerprint helper (execution fingerprints are runtime-issued), and the `scripts/subagent-sdk-spike*` diagnostic harness with its `spike:subagent` npm script and test. The spike's media-transport and trusted-extension preparation diagnostics are recorded as coverage debt in `NEXT_STEPS.md` and return with productized delegated media tasks.
 
 ## [0.4.0-beta.1] - 2026-07-18
 

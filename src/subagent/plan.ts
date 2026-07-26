@@ -1,10 +1,10 @@
-import { canonicalSubagentJson, subagentExecutionFingerprint } from "./canonical.ts";
+import { canonicalSubagentJson } from "./canonical.ts";
 import { budgetSubagentContext, isProtectedSubagentTaskPreserved, renderSubagentSelectedContext } from "./context.ts";
 import { validateBackendPreflight } from "./preflight.ts";
 import { validateAgentProfileSnapshot, validateAgentRequest } from "./request.ts";
 import { negotiateSubagentTools } from "./tools.ts";
-import { SUBAGENT_CONTRACT_VERSION, type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type BackendPreflightAccepted, type SubagentDiagnostic, type SubagentPreparationOutput, type SubagentPreparationRuntime, type SubagentPreparedMessage } from "./types.ts";
-import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.ts";
+import { SUBAGENT_CONTRACT_VERSION, type AgentExecutionPlan, type AgentProfileSnapshot, type AgentRequest, type BackendPreflightAccepted, type SubagentDiagnostic, type SubagentFingerprint, type SubagentPreparationOutput, type SubagentPreparationRuntime, type SubagentPreparedMessage } from "./types.ts";
+import { error, hasErrors, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.ts";
 
 export function createAgentExecutionPlan(input: {
 	runId: string;
@@ -13,6 +13,10 @@ export function createAgentExecutionPlan(input: {
 	preflight: BackendPreflightAccepted;
 	preparation: SubagentPreparationOutput;
 	runtime: SubagentPreparationRuntime;
+	/** Runtime-issued fingerprint of the sealed conversation. */
+	conversationFingerprint: SubagentFingerprint;
+	/** Runtime-issued fingerprint binding the sealed conversation to the backend execution. */
+	executionFingerprint: SubagentFingerprint;
 }): { plan?: AgentExecutionPlan; diagnostics: SubagentDiagnostic[] } {
 	const diagnostics = [
 		...validateAgentRequest(input.request),
@@ -23,6 +27,8 @@ export function createAgentExecutionPlan(input: {
 	];
 	validateOpaqueId(input.runId, "runId", diagnostics);
 	validatePreparationRuntime(input.runtime, "runtime", diagnostics, input.preflight.backend.capabilities.promptRuntimeFidelity === "partial" ? undefined : input.preflight.backend.capabilities.promptRuntimeFidelity);
+	validateFingerprint(input.conversationFingerprint, "conversationFingerprint", diagnostics);
+	validateFingerprint(input.executionFingerprint, "executionFingerprint", diagnostics);
 	if (input.runtime.model.provider !== input.preflight.model.provider || input.runtime.model.id !== input.preflight.model.id) diagnostics.push(error("plan.runtime-model", "Prompt runtime model does not match preflight model.", "runtime.model"));
 	if (input.request.profileId !== input.snapshot.profile.id) diagnostics.push(error("plan.profile-id", "Request profileId does not match the resolved snapshot.", "profileId"));
 	if (input.request.expectedProfileFingerprint && input.request.expectedProfileFingerprint !== input.snapshot.profileFingerprint) diagnostics.push(error("plan.profile-drift", "Resolved profile fingerprint does not match expectedProfileFingerprint.", "expectedProfileFingerprint"));
@@ -58,26 +64,30 @@ export function createAgentExecutionPlan(input: {
 	}
 	if (hasErrors(diagnostics)) return { diagnostics };
 
-	const partial: Omit<AgentExecutionPlan, "executionFingerprint"> = {
-		schemaVersion: SUBAGENT_CONTRACT_VERSION,
-		runId: input.runId,
-		requestId: input.request.requestId,
-		backendId: input.preflight.backend.id,
-		preflightId: input.preflight.preflightId,
-		preflight: structuredClone(input.preflight),
-		profile: structuredClone(input.snapshot),
-		model: structuredClone(input.preflight.model),
-		thinkingLevel: input.preflight.thinkingLevel,
-		systemPrompt: input.preparation.systemPrompt,
-		messages: structuredClone(input.preparation.messages),
-		effectiveToolIds: [...input.preparation.toolNegotiation.effectiveToolIds],
-		access: structuredClone(input.preflight.access),
-		limits: structuredClone(input.preflight.limits),
-		contextBudget: input.preparation.contextBudget ? structuredClone(input.preparation.contextBudget) : undefined,
-		resultProjection: structuredClone(input.request.resultProjection),
-		promptRuntimeFingerprint: input.runtime.promptRuntimeFingerprint,
+	return {
+		plan: {
+			schemaVersion: SUBAGENT_CONTRACT_VERSION,
+			runId: input.runId,
+			requestId: input.request.requestId,
+			backendId: input.preflight.backend.id,
+			preflightId: input.preflight.preflightId,
+			preflight: structuredClone(input.preflight),
+			profile: structuredClone(input.snapshot),
+			model: structuredClone(input.preflight.model),
+			thinkingLevel: input.preflight.thinkingLevel,
+			systemPrompt: input.preparation.systemPrompt,
+			messages: structuredClone(input.preparation.messages),
+			effectiveToolIds: [...input.preparation.toolNegotiation.effectiveToolIds],
+			access: structuredClone(input.preflight.access),
+			limits: structuredClone(input.preflight.limits),
+			contextBudget: input.preparation.contextBudget ? structuredClone(input.preparation.contextBudget) : undefined,
+			resultProjection: structuredClone(input.request.resultProjection),
+			promptRuntimeFingerprint: input.runtime.promptRuntimeFingerprint,
+			conversationFingerprint: input.conversationFingerprint,
+			executionFingerprint: input.executionFingerprint,
+		},
+		diagnostics,
 	};
-	return { plan: { ...partial, executionFingerprint: subagentExecutionFingerprint(partial) }, diagnostics };
 }
 
 export function validateAgentExecutionPlan(plan: unknown, request?: AgentRequest): SubagentDiagnostic[] {
@@ -95,6 +105,7 @@ export function validateAgentExecutionPlan(plan: unknown, request?: AgentRequest
 	if (typeof plan.thinkingLevel !== "string") diagnostics.push(error("plan.thinking", "thinkingLevel must be a string.", "thinkingLevel"));
 	if (typeof plan.systemPrompt !== "string") diagnostics.push(error("plan.system-prompt", "systemPrompt must be a string.", "systemPrompt"));
 	validateFingerprint(plan.promptRuntimeFingerprint, "promptRuntimeFingerprint", diagnostics);
+	validateFingerprint(plan.conversationFingerprint, "conversationFingerprint", diagnostics);
 	validateFingerprint(plan.executionFingerprint, "executionFingerprint", diagnostics);
 	if (!Array.isArray(plan.messages)) diagnostics.push(error("plan.messages", "messages must be an array.", "messages"));
 	else plan.messages.forEach((message, index) => validatePreparedMessage(message, `messages[${index}]`, diagnostics));
@@ -126,15 +137,6 @@ export function validateAgentExecutionPlan(plan: unknown, request?: AgentRequest
 	}
 	if (Array.isArray(plan.messages) && request && !isProtectedSubagentTaskPreserved(plan.messages as SubagentPreparedMessage[], request.input)) {
 		diagnostics.push(error("plan.protected-task", "The final plan message does not preserve the request task.", "messages"));
-	}
-	if (isFingerprint(plan.executionFingerprint)) {
-		try {
-			if (subagentExecutionFingerprint(plan as unknown as AgentExecutionPlan) !== plan.executionFingerprint) {
-				diagnostics.push(error("plan.execution-fingerprint", "executionFingerprint does not match the plan.", "executionFingerprint"));
-			}
-		} catch (fingerprintError) {
-			diagnostics.push(error("plan.fingerprint-input", fingerprintError instanceof Error ? fingerprintError.message : String(fingerprintError), "executionFingerprint"));
-		}
 	}
 	return diagnostics;
 }

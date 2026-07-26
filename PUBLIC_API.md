@@ -21,8 +21,7 @@ Experimental APIs are typed, tested, and documented, but may be revised before t
 ## Internal compatibility paths
 
 - `@zihanw/pi-forge/src/*` subpath exports exist for compatibility with earlier source-shaped imports. They resolve to compiled `dist` modules and are not a promise that every implementation module is a permanent public API.
-- `src/subagent-contract.ts` is a compatibility barrel over the focused contract modules; it does not contain a second implementation.
+- The package root re-exports `@zihanw/pi-forge/subagent` contract names directly from the focused contract modules. The former `src/subagent-contract.ts` compatibility barrel and the `scripts/subagent-sdk-spike*` diagnostic harness were removed in the 0.4 cleanup.
 - Physical `src/` files are not included in the npm tarball. Runtime installation and legacy `@zihanw/pi-forge/src/*` aliases use compiled `dist` modules; source inspection or modification requires a repository clone.
-- `scripts/subagent-sdk-spike*.ts` are diagnostic development interfaces, not a supported runner API.
 
 Before removing the compatibility subpaths, check known consumers, announce the change, and provide supported package entry points for legitimate integrations.

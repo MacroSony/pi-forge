@@ -17,7 +17,7 @@ import {
 	type SubagentBackendTool,
 	type SubagentPreparationOutput,
 	type SubagentPreparationRuntime,
-} from "../../src/subagent-contract.ts";
+} from "../../src/subagent/contract.ts";
 import type { PromptStack } from "../../src/types.ts";
 
 export const FAKE_DIGEST = subagentFingerprint("fake-subagent-fixture");
@@ -162,6 +162,11 @@ export function createFakeExecutionPlan(input: {
 		preflight,
 		preparation,
 		runtime: fakePromptRuntime("backend-assisted"),
+		conversationFingerprint: subagentFingerprint({
+			systemPrompt: preparation.systemPrompt,
+			messages: preparation.messages.map((message) => ({ role: message.role, content: message.content })),
+		}),
+		executionFingerprint: FAKE_DIGEST,
 	});
 	assert.ok(planned.plan, planned.diagnostics.map((item) => `${item.code}: ${item.message}`).join("; "));
 	return { request, snapshot, preflight, preparation, plan: planned.plan };

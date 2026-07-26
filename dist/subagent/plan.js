@@ -1,10 +1,10 @@
-import { canonicalSubagentJson, subagentExecutionFingerprint } from "./canonical.js";
+import { canonicalSubagentJson } from "./canonical.js";
 import { budgetSubagentContext, isProtectedSubagentTaskPreserved, renderSubagentSelectedContext } from "./context.js";
 import { validateBackendPreflight } from "./preflight.js";
 import { validateAgentProfileSnapshot, validateAgentRequest } from "./request.js";
 import { negotiateSubagentTools } from "./tools.js";
 import { SUBAGENT_CONTRACT_VERSION } from "./types.js";
-import { error, hasErrors, isFingerprint, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.js";
+import { error, hasErrors, isPositiveInteger, isRecord, validateAccessReceipt, validateContextBudgetReceipt, validateFingerprint, validateLimitReceipt, validateModelReference, validateOpaqueId, validatePreparationRuntime, validatePreparedMessage, validateUniqueStringArray } from "./validation.js";
 export function createAgentExecutionPlan(input) {
     const diagnostics = [
         ...validateAgentRequest(input.request),
@@ -15,6 +15,8 @@ export function createAgentExecutionPlan(input) {
     ];
     validateOpaqueId(input.runId, "runId", diagnostics);
     validatePreparationRuntime(input.runtime, "runtime", diagnostics, input.preflight.backend.capabilities.promptRuntimeFidelity === "partial" ? undefined : input.preflight.backend.capabilities.promptRuntimeFidelity);
+    validateFingerprint(input.conversationFingerprint, "conversationFingerprint", diagnostics);
+    validateFingerprint(input.executionFingerprint, "executionFingerprint", diagnostics);
     if (input.runtime.model.provider !== input.preflight.model.provider || input.runtime.model.id !== input.preflight.model.id)
         diagnostics.push(error("plan.runtime-model", "Prompt runtime model does not match preflight model.", "runtime.model"));
     if (input.request.profileId !== input.snapshot.profile.id)
@@ -60,26 +62,30 @@ export function createAgentExecutionPlan(input) {
     }
     if (hasErrors(diagnostics))
         return { diagnostics };
-    const partial = {
-        schemaVersion: SUBAGENT_CONTRACT_VERSION,
-        runId: input.runId,
-        requestId: input.request.requestId,
-        backendId: input.preflight.backend.id,
-        preflightId: input.preflight.preflightId,
-        preflight: structuredClone(input.preflight),
-        profile: structuredClone(input.snapshot),
-        model: structuredClone(input.preflight.model),
-        thinkingLevel: input.preflight.thinkingLevel,
-        systemPrompt: input.preparation.systemPrompt,
-        messages: structuredClone(input.preparation.messages),
-        effectiveToolIds: [...input.preparation.toolNegotiation.effectiveToolIds],
-        access: structuredClone(input.preflight.access),
-        limits: structuredClone(input.preflight.limits),
-        contextBudget: input.preparation.contextBudget ? structuredClone(input.preparation.contextBudget) : undefined,
-        resultProjection: structuredClone(input.request.resultProjection),
-        promptRuntimeFingerprint: input.runtime.promptRuntimeFingerprint,
+    return {
+        plan: {
+            schemaVersion: SUBAGENT_CONTRACT_VERSION,
+            runId: input.runId,
+            requestId: input.request.requestId,
+            backendId: input.preflight.backend.id,
+            preflightId: input.preflight.preflightId,
+            preflight: structuredClone(input.preflight),
+            profile: structuredClone(input.snapshot),
+            model: structuredClone(input.preflight.model),
+            thinkingLevel: input.preflight.thinkingLevel,
+            systemPrompt: input.preparation.systemPrompt,
+            messages: structuredClone(input.preparation.messages),
+            effectiveToolIds: [...input.preparation.toolNegotiation.effectiveToolIds],
+            access: structuredClone(input.preflight.access),
+            limits: structuredClone(input.preflight.limits),
+            contextBudget: input.preparation.contextBudget ? structuredClone(input.preparation.contextBudget) : undefined,
+            resultProjection: structuredClone(input.request.resultProjection),
+            promptRuntimeFingerprint: input.runtime.promptRuntimeFingerprint,
+            conversationFingerprint: input.conversationFingerprint,
+            executionFingerprint: input.executionFingerprint,
+        },
+        diagnostics,
     };
-    return { plan: { ...partial, executionFingerprint: subagentExecutionFingerprint(partial) }, diagnostics };
 }
 export function validateAgentExecutionPlan(plan, request) {
     const diagnostics = [];
@@ -97,6 +103,7 @@ export function validateAgentExecutionPlan(plan, request) {
     if (typeof plan.systemPrompt !== "string")
         diagnostics.push(error("plan.system-prompt", "systemPrompt must be a string.", "systemPrompt"));
     validateFingerprint(plan.promptRuntimeFingerprint, "promptRuntimeFingerprint", diagnostics);
+    validateFingerprint(plan.conversationFingerprint, "conversationFingerprint", diagnostics);
     validateFingerprint(plan.executionFingerprint, "executionFingerprint", diagnostics);
     if (!Array.isArray(plan.messages))
         diagnostics.push(error("plan.messages", "messages must be an array.", "messages"));
@@ -144,16 +151,6 @@ export function validateAgentExecutionPlan(plan, request) {
     }
     if (Array.isArray(plan.messages) && request && !isProtectedSubagentTaskPreserved(plan.messages, request.input)) {
         diagnostics.push(error("plan.protected-task", "The final plan message does not preserve the request task.", "messages"));
-    }
-    if (isFingerprint(plan.executionFingerprint)) {
-        try {
-            if (subagentExecutionFingerprint(plan) !== plan.executionFingerprint) {
-                diagnostics.push(error("plan.execution-fingerprint", "executionFingerprint does not match the plan.", "executionFingerprint"));
-            }
-        }
-        catch (fingerprintError) {
-            diagnostics.push(error("plan.fingerprint-input", fingerprintError instanceof Error ? fingerprintError.message : String(fingerprintError), "executionFingerprint"));
-        }
     }
     return diagnostics;
 }

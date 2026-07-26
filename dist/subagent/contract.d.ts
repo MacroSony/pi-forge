@@ -6,6 +6,5 @@ export * from "./tools.ts";
 export * from "./context.ts";
 export * from "./plan.ts";
 export * from "./response.ts";
-export * from "./diagnostics.ts";
-export { validatePreparationRuntime } from "./validation.ts";
+export { hasSubagentErrors, validatePreparationRuntime } from "./validation.ts";
 //# sourceMappingURL=contract.d.ts.map

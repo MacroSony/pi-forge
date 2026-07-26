@@ -24,6 +24,7 @@ export interface ForgeSubagentPlanSummary {
     messageCount: number;
     messageRoles: string[];
     promptRuntimeFingerprint: string;
+    conversationFingerprint: string;
     executionFingerprint: string;
 }
 export interface ForgeSubagentToolDetails {

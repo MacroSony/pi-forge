@@ -256,6 +256,14 @@ export interface AgentExecutionPlan {
 	contextBudget?: SubagentContextBudgetReceipt;
 	resultProjection: AgentRequest["resultProjection"];
 	promptRuntimeFingerprint: SubagentFingerprint;
+	/** Runtime-issued fingerprint of the sealed system prompt and ordered messages. */
+	conversationFingerprint: SubagentFingerprint;
+	/**
+	 * Runtime-issued fingerprint binding the sealed conversation to the
+	 * accepted backend, preflight, tools, and limits. The host never computes
+	 * this value; it displays and propagates the sealed fingerprint so approval
+	 * and execution stay bound to the exact plan the runtime sealed.
+	 */
 	executionFingerprint: SubagentFingerprint;
 }
 

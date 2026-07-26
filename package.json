@@ -90,7 +90,6 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:browser": "node --test tests-browser/*.test.ts",
-    "spike:subagent": "node scripts/subagent-sdk-spike.ts",
     "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:client && npm run check:dist && npm run check:package"
   },
   "files": [

@@ -2,11 +2,11 @@
 
 Status: exported pure contract and host-preparation utilities for the 0.4 beta. This is a narrow one-shot delegation boundary, not a background orchestration runner or an OS sandbox.
 
-> **Migration note (0.4):** execution ownership — backend registration, preflight binding, plan sealing, lifecycle arbitration, and the fresh-process backends — has moved to [`@zihanw/pi-subagent-runtime`](https://github.com/MacroSony/pi-subagent-runtime). Forge keeps the host surface described here (profiles, compilation, approval, plan/response product types); `SubagentBackendRegistry`, `PiSubprocessBackend`, and the retained `PiSdkIsolatedBackend` research adapter no longer ship in this package. Sections 8-9 below describe the superseded in-package design and remain as historical context.
+> **Migration note (0.4):** execution ownership — backend registration, preflight binding, plan sealing, conversation/execution fingerprint issuance, lifecycle arbitration, and both fresh-process backends (`pi-subprocess-readonly`, `pi-rpc-readonly`) — lives in [`@zihanw/pi-subagent-runtime`](https://github.com/MacroSony/pi-subagent-runtime). Forge keeps the host surface described here (profiles, compilation, approval, plan/response product types) and consumes the runtime through its public API. The former in-package `SubagentBackendRegistry`, `PiSubprocessBackend`, and `PiSdkIsolatedBackend` exports no longer ship. Sections 8-9 below describe the superseded in-package design and remain as historical context.
 
 ## Public Surface
 
-New integrations should import this experimental 0.4 surface from `@zihanw/pi-forge/subagent`. The package root retains the same exports through the 0.4 prereleases for compatibility. Stability classifications and compatibility-path policy are recorded in [`PUBLIC_API.md`](PUBLIC_API.md).
+New integrations should import this experimental 0.4 surface from `@zihanw/pi-forge/subagent`. The package root re-exports the same names through the 0.4 prereleases for compatibility. Stability classifications and compatibility-path policy are recorded in [`PUBLIC_API.md`](PUBLIC_API.md).
 
 The package root exports:
 
@@ -15,24 +15,27 @@ The package root exports:
 - Host resolution through `resolveSubagentHostProfile()`.
 - Tool negotiation through `negotiateSubagentTools()`.
 - Deterministic context preparation through `budgetSubagentContext()`, `renderSubagentSelectedContext()`, and `prepareSubagentInitialMessages()`.
-- Protected Pi-message helpers used by the SDK spike.
+- Protected Pi-message helpers.
 - Plan construction through `createAgentExecutionPlan()`.
-- Pure request, snapshot, preflight, plan, response, artifact, and trace validators.
-- Canonical `sha256:v1` profile, stack, and execution fingerprints.
-- Optional backend registration, validated dispatch, cancellation/timeout arbitration, response normalization, and authorization-scoped trace routing through `SubagentBackendRegistry`.
-- Experimental `PiSdkIsolatedBackend` compatibility adapter and the default `PiSubprocessBackend`, including their descriptors/IDs, report types, and host preparation through `prepareSubagentHostPlan()`.
+- Pure request, snapshot, preflight, plan, response, artifact, and trace validators. Portable leaf validators (access, limits, prompt runtime, descriptors, enforcement) are re-exported from the runtime core so one implementation serves both packages.
+- Canonical `sha256:v1` profile, stack, and prompt-runtime fingerprints.
+- Host preparation through `prepareSubagentHostPlan()`.
 
-The existing `agentProfileFingerprint()` remains unchanged. It is still the legacy JSON provenance value used for branch drift. New portable fingerprints use separately named functions and semantics.
+The existing `agentProfileFingerprint()` remains unchanged. It is still the legacy JSON provenance value used for branch drift. Portable fingerprints use separately named functions and semantics.
+
+Conversation and execution fingerprints are **not** host-computed: they are issued by `@zihanw/pi-subagent-runtime` when it seals a prepared plan and are passed into `createAgentExecutionPlan()` as required inputs. The host validates their shape and propagates them; substitution detection is the runtime's sealed-plan binding.
 
 ## Required Flow
 
 ```text
 AgentRequest
     -> resolveSubagentHostProfile
-    -> SubagentBackendRegistry discovery/preflight
-    -> registry-mediated exact or backend-assisted preparation
-    -> createAgentExecutionPlan
-    -> registry-validated backend execution
+    -> ExecutionRuntime.prepare (explicit backendId; backend preflight;
+       backend-assisted host compilation through the compile callback)
+    -> runtime sealing (conversation + execution fingerprints)
+    -> createAgentExecutionPlan (host plan carrying the sealed fingerprints)
+    -> host approval bound to the sealed fingerprints
+    -> ExecutionRuntime.execute
     -> validateAgentResponse
 ```
 
@@ -112,9 +115,9 @@ Backends such as Pi SDK may expose exact base-prompt runtime inputs only in a pr
 
 ### 6. Plan and fingerprints
 
-`createAgentExecutionPlan()` revalidates the request, snapshot, preflight, deterministic context receipt, tool negotiation, runtime fidelity, and protected final task. It creates the run ID correlation and execution fingerprint before provider transport.
+`createAgentExecutionPlan()` revalidates the request, snapshot, preflight, deterministic context receipt, tool negotiation, runtime fidelity, and protected final task. It carries the runtime-issued conversation and execution fingerprints as required inputs; the host never computes either value.
 
-The execution fingerprint covers all serialized plan fields except itself, including compiled system/messages, profile/stack/dependency provenance, the complete preflight receipt and adapter version, exact model/thinking, effective backend tool IDs, access and limit receipts, prompt-runtime fingerprint, context receipt, and result-projection bound.
+The runtime's conversation fingerprint binds the exact sealed system prompt and ordered messages, so equivalent conversations on different backends compare equal. Its execution fingerprint additionally binds the accepted backend, preflight, effective tools, access and limit receipts, and runtime inputs, so the same conversation on different backends produces different execution fingerprints. Approval displays both values and execution accepts only the runtime-bound prepared handle.
 
 Canonical serialization sorts object keys, omits undefined object fields, rejects cycles/non-finite numbers/non-JSON values, preserves array order, and normalizes negative zero.
 
@@ -187,15 +190,15 @@ The exported validators cannot create isolation. Every adapter remains responsib
 - Trace storage, authorization, redaction, pagination, and expiry.
 - Returning actual enforcement receipts rather than echoing request fields.
 
-An adapter must reject preflight when it cannot enforce a required field. The retained Pi SDK adapter can execute only access `none`; the subprocess adapter accepts shared-user read-only access and network allow. Both use best-effort host abort rather than a backend-hard timeout. Provider transport is always a separate, explicitly approved egress path.
+An adapter must reject preflight when it cannot enforce a required field. Both shipped process adapters accept shared-user read-only access and network allow, and use best-effort host abort rather than a backend-hard timeout. Provider transport is always a separate, explicitly approved egress path.
 
 ## Deliberately Not Included
 
-- Filesystem writes, process/shell tools, media input, background runs, or general backend selection/configuration in the shipped path.
+- Filesystem writes, process/shell tools, media input, or background runs in the shipped path.
 - OS-level filesystem, process, or network sandboxing for the shared-user subprocess.
 - Automatic parent-history/context selection; the delegated task is explicit and starts a clean conversation.
 - Session resume, retries, queues, chains, or pipelines.
 - Artifact/trace storage implementations.
-- Automatic provider fallback.
+- Automatic provider or backend fallback.
 
 Those belong to later iterations and cannot be inferred from these pure types alone.

@@ -1,6 +1,6 @@
 # Subagent Request/Response Design
 
-Status: implemented pure adapter contract, optional empty-by-default backend registry, retained `pi-sdk-isolated` compatibility backend, and an approval-gated model-callable foreground `pi-subprocess-readonly` path for the 0.4 development branch. The broader Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
+Status: implemented pure adapter contract and an approval-gated model-callable foreground subagent path for the 0.4 development branch. Execution ownership (backend registry, preflight binding, plan sealing, conversation/execution fingerprints, lifecycle, and the fresh-process `pi-subprocess-readonly`/`pi-rpc-readonly` backends) lives in `@zihanw/pi-subagent-runtime`; the former in-package registry and `pi-sdk-isolated` compatibility backend were removed in that migration. The broader Pi SDK spike is recorded in [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md) (harness since removed), and the concrete exported semantics are documented in [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md).
 
 ## Goals
 
@@ -91,7 +91,7 @@ Context budgeting uses a required character/byte ceiling in v1. Any optional tok
 
 ## Contract Artifacts
 
-The TypeScript shapes and pure validators for the following artifacts are exported. Each registry instance starts empty and dispatches only explicitly registered backends. The extension composition root registers local `forge_subagent_profiles` discovery and the experimental `pi-subprocess-readonly` backend for `forge_subagent` and `/forge-agent`; the older `pi-sdk-isolated` backend remains an exported compatibility adapter.
+The TypeScript shapes and pure validators for the following artifacts are exported. Backend registration, explicit backend selection, and execution lifecycle are owned by `@zihanw/pi-subagent-runtime`; the extension composition root registers local `forge_subagent_profiles` discovery and drives the runtime's `pi-subprocess-readonly` (default) and `pi-rpc-readonly` backends for `forge_subagent` and `/forge-agent`.
 
 ### AgentRequest
 
@@ -188,9 +188,9 @@ The human can expand the same tool result to inspect the plan summary, approval 
 
 ### Integration checkpoint: require a user-visible walking skeleton
 
-Fake-backend conformance proves contract and registry behavior, while the standalone SDK spike proves broader Pi provider behavior. The shipped walking skeleton now sends a human-requested task through the complete profile-resolution, registry-preflight, prompt-preparation, plan-validation, provider-execution, and response-projection path.
+Fake-backend conformance proves contract and registry behavior, while the standalone SDK spike proved broader Pi provider behavior. The shipped walking skeleton sends a human-requested task through the complete profile-resolution, runtime-preflight, prompt-preparation, plan-validation, provider-execution, and response-projection path.
 
-The first concrete integration was a pi-forge-owned `pi-sdk-isolated` adapter plus a human-operated plan/run command. The current integration retains that adapter for compatibility and uses a foreground `pi-subprocess-readonly` backend for the command and model-callable tool. It exposes only stack-filtered read/list/search tools, declares a shared-user boundary rather than filesystem isolation, requires explicit approval of an immutable plan, and returns bounded output plus expandable reports.
+The first concrete integration was a pi-forge-owned `pi-sdk-isolated` adapter plus a human-operated plan/run command. The current integration drives the runtime package's foreground `pi-subprocess-readonly` (default) and `pi-rpc-readonly` backends for the command and model-callable tool. It exposes only stack-filtered read/list/search tools, declares a shared-user boundary rather than filesystem isolation, requires explicit approval of an immutable plan bound to runtime-issued fingerprints, and returns bounded output plus expandable reports.
 
 This integration also exposed a contract seam hidden by the fake backend: backend-assisted preparation cannot require the caller to fabricate the prompt runtime that the backend is responsible for discovering. The backend must supply complete, canonical compiler inputs; the host must compile from them; and the registry must return the exact runtime/preparation pair used for execution-plan construction.
 
@@ -209,7 +209,7 @@ This integration also exposed a contract seam hidden by the fake backend: backen
 - Record actual SDK/runtime requirements and failure points.
 - Keep all spike types internal and expose no run tool.
 
-Implemented as the opt-in `scripts/subagent-sdk-spike.ts`; results and limitations are recorded in `SUBAGENT_SDK_SPIKE_FINDINGS.md`.
+Implemented as the opt-in `scripts/subagent-sdk-spike.ts` (removed in the 0.4 cleanup after its findings were productized in the runtime's shared preparation gate); results and limitations are recorded in `SUBAGENT_SDK_SPIKE_FINDINGS.md`.
 
 ### Iteration 3: Resolve/preflight/plan boundary (completed)
 

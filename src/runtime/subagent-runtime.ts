@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionContext, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
 	createExecutionRuntime,
+	error,
 	type ExecutionBackend,
 	type ExecutionIntent,
 	type ExecutionRuntime,
@@ -12,7 +13,6 @@ import {
 import {
 	PI_READ_ONLY_TOOL_CATALOG,
 	PiSubprocessBackend,
-	sanitizePiSubprocessRunReport,
 	type PiSubprocessBackendOptions,
 	type PiSubprocessRunReport,
 } from "@zihanw/pi-subagent-runtime/backends/subprocess";
@@ -214,15 +214,17 @@ export function createForgeSubagentRuntime(
 			preflight: preflightForHost(sealed.preflight),
 			preparation: hostPreparation,
 			runtime: sealed.promptRuntime,
+			conversationFingerprint: sealed.conversationFingerprint,
+			executionFingerprint: sealed.executionFingerprint,
 		});
 		diagnostics.push(...planned.diagnostics);
 		if (!planned.plan || hasSubagentErrors(diagnostics)) {
 			await handle.discard();
 			return { ok: false, diagnostics };
 		}
-		// The runtime owns the execution fingerprint; the sealed value is the
-		// single source of truth displayed for approval and bound to execution.
-		planned.plan.executionFingerprint = sealed.executionFingerprint;
+		// The runtime owns the conversation and execution fingerprints; the plan
+		// constructed above carries the sealed values that approval displays and
+		// execution binds to. The host never recomputes them.
 		prepared.set(handle.id, { generation: current, handle, backend });
 		return { ok: true, prepared: { request, preflight: planned.plan.preflight, plan: planned.plan, diagnostics } };
 	}
@@ -264,8 +266,8 @@ export function createForgeSubagentRuntime(
 		const location = reports.get(runId);
 		if (!location) return undefined;
 		reports.delete(runId);
-		const report = location.backend.takeReport(location.preparedRunId);
-		return report ? sanitizePiSubprocessRunReport(report) : undefined;
+		// Both process backends sanitize retained reports at the source.
+		return location.backend.takeReport(location.preparedRunId);
 	}
 
 	async function dispose(): Promise<void> {
@@ -481,8 +483,4 @@ async function prepareWithAbort(promise: Promise<PreparedRun>, signal?: AbortSig
 
 function cancelReason(signal: AbortSignal): string {
 	return typeof signal.reason === "string" && signal.reason ? signal.reason : "Subagent execution cancelled.";
-}
-
-function error(code: string, message: string): SubagentDiagnostic {
-	return { level: "error", code, message };
 }

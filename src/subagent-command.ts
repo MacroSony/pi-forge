@@ -168,6 +168,7 @@ function renderPlan(prepared: ForgeSubagentPreparedRun): string {
 		`System prompt: ${plan.systemPrompt.length} chars`,
 		`Messages: ${plan.messages.map((message) => `${message.role}${message.protectedTask ? " (protected task)" : ""}`).join(" -> ")}`,
 		`Runtime fingerprint: ${plan.promptRuntimeFingerprint}`,
+		`Conversation fingerprint: ${plan.conversationFingerprint}`,
 		`Execution fingerprint: ${plan.executionFingerprint}`,
 		"Provider transport: not started; dry plan discarded.",
 		"",

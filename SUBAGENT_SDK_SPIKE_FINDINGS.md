@@ -1,14 +1,10 @@
 # Pi SDK Subagent Spike Findings
 
-Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are implemented in the exported adapter boundary and retained `pi-sdk-isolated` compatibility backend. The runnable spike and backends migrated through Pi 0.80.10's `ModelRuntime` and now target Pi 0.82.1; the original 0.80.6 observations and terminology below remain a historical record. The extension now defaults to the later approval-gated `pi-subprocess-readonly` path, while the spike remains a broader live diagnostic for media and trusted-extension preparation.
+Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are productized in `@zihanw/pi-subagent-runtime`'s shared SDK preparation gate, which both fresh-process backends use. The spike harness (`scripts/subagent-sdk-spike*.ts`) was removed in the 0.4 cleanup; with it went the only live media-transport and trusted-extension preparation diagnostic, to be re-established when delegated media tasks are productized. The 0.80.6 observations and terminology below remain a historical record.
 
 ## Deliverable
 
-The opt-in spike is available through:
-
-```bash
-npm run spike:subagent -- --cwd /path/to/project --profile PROFILE_ID
-```
+The spike was available through `npm run spike:subagent -- --cwd /path/to/project --profile PROFILE_ID` before its removal in the 0.4 cleanup.
 
 Dry-run is the default. A provider call requires `--execute`; that explicit flag is also the spike's consent to transmit the supplied task/media to the selected provider. The other spike-only flags are:
 
