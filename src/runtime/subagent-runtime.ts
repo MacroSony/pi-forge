@@ -21,6 +21,7 @@ import {
 	type PiRpcBackendOptions,
 } from "@zihanw/pi-subagent-runtime/backends/rpc";
 import type { PiForgeRuntimeState } from "../runtime-state.ts";
+import { DEFAULT_SUBAGENT_BACKEND_ID } from "../forge-config.ts";
 import {
 	SUBAGENT_CONTRACT_VERSION,
 	createAgentExecutionPlan,
@@ -56,8 +57,10 @@ export interface SubagentBackendExecutionUpdate {
 }
 
 export interface ForgeSubagentRuntime {
+	/** Registered backend IDs, known without an extension context. */
+	backendIds(): string[];
 	descriptors(ctx: ExtensionContext): SubagentBackendDescriptor[];
-	prepare(profileId: string, task: string, ctx: ExtensionContext): Promise<ForgeSubagentPreparationResult>;
+	prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string }): Promise<ForgeSubagentPreparationResult>;
 	discard(prepared: ForgeSubagentPreparedRun): Promise<void>;
 	execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse>;
 	takeReport?(runId: string): PiSubprocessRunReport | undefined;
@@ -96,6 +99,9 @@ export function createForgeSubagentRuntime(
 	let generation: RuntimeGeneration | undefined;
 	const prepared = new Map<string, PreparedRecord>();
 	const reports = new Map<string, { backend: ReportCapableBackend; preparedRunId: string }>();
+	// Backend IDs are fixed at construction; keep them available without an
+	// extension context for command completions and settings validation.
+	const backendIds = ["pi-subprocess-readonly", "pi-rpc-readonly"];
 
 	function ensure(ctx: ExtensionContext): RuntimeGeneration {
 		if (generation && generation.modelRegistry === ctx.modelRegistry && generation.cwd === ctx.cwd) return generation;
@@ -127,7 +133,7 @@ export function createForgeSubagentRuntime(
 		return ensure(ctx).runtime.listBackends().map(descriptorForHost);
 	}
 
-	async function prepare(profileId: string, task: string, ctx: ExtensionContext): Promise<ForgeSubagentPreparationResult> {
+	async function prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string }): Promise<ForgeSubagentPreparationResult> {
 		const diagnostics: SubagentDiagnostic[] = [];
 		if (!ctx.isProjectTrusted()) return { ok: false, diagnostics: [error("host.trust", "Project is not trusted; subagent profiles remain disabled.")] };
 		const matches = state.profiles.filter((candidate) => candidate.profile.id === profileId);
@@ -160,7 +166,7 @@ export function createForgeSubagentRuntime(
 			remoteEgressConsent: true,
 		};
 		const current = ensure(ctx);
-		const backendId = options.backendId ?? "pi-subprocess-readonly";
+		const backendId = run?.backendId ?? options.backendId ?? DEFAULT_SUBAGENT_BACKEND_ID;
 		const backend = current.backends.get(backendId);
 		if (!backend) return { ok: false, diagnostics: [error("host.backend", `Backend is not registered: ${backendId}`)] };
 		const intent = executionIntentFor(request, snapshot);
@@ -271,7 +277,7 @@ export function createForgeSubagentRuntime(
 		generation = undefined;
 	}
 
-	return { descriptors, prepare, discard, execute, takeReport, dispose };
+	return { backendIds: () => [...backendIds], descriptors, prepare, discard, execute, takeReport, dispose };
 }
 
 function executionIntentFor(request: AgentRequest, snapshot: import("../subagent/contract.ts").AgentProfileSnapshot): ExecutionIntent {

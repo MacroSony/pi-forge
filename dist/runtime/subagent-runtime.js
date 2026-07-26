@@ -2,12 +2,16 @@ import { randomUUID } from "node:crypto";
 import { createExecutionRuntime, } from "@zihanw/pi-subagent-runtime";
 import { PI_READ_ONLY_TOOL_CATALOG, PiSubprocessBackend, sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { PiRpcBackend, } from "@zihanw/pi-subagent-runtime/backends/rpc";
+import { DEFAULT_SUBAGENT_BACKEND_ID } from "../forge-config.js";
 import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, negotiateSubagentTools, } from "../subagent/contract.js";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.js";
 export function createForgeSubagentRuntime(state, options = {}) {
     let generation;
     const prepared = new Map();
     const reports = new Map();
+    // Backend IDs are fixed at construction; keep them available without an
+    // extension context for command completions and settings validation.
+    const backendIds = ["pi-subprocess-readonly", "pi-rpc-readonly"];
     function ensure(ctx) {
         if (generation && generation.modelRegistry === ctx.modelRegistry && generation.cwd === ctx.cwd)
             return generation;
@@ -39,7 +43,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
     function descriptors(ctx) {
         return ensure(ctx).runtime.listBackends().map(descriptorForHost);
     }
-    async function prepare(profileId, task, ctx) {
+    async function prepare(profileId, task, ctx, run) {
         const diagnostics = [];
         if (!ctx.isProjectTrusted())
             return { ok: false, diagnostics: [error("host.trust", "Project is not trusted; subagent profiles remain disabled.")] };
@@ -73,7 +77,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
             remoteEgressConsent: true,
         };
         const current = ensure(ctx);
-        const backendId = options.backendId ?? "pi-subprocess-readonly";
+        const backendId = run?.backendId ?? options.backendId ?? DEFAULT_SUBAGENT_BACKEND_ID;
         const backend = current.backends.get(backendId);
         if (!backend)
             return { ok: false, diagnostics: [error("host.backend", `Backend is not registered: ${backendId}`)] };
@@ -183,7 +187,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
         await Promise.all([...generation.backends.values()].map((backend) => backend.dispose()));
         generation = undefined;
     }
-    return { descriptors, prepare, discard, execute, takeReport, dispose };
+    return { backendIds: () => [...backendIds], descriptors, prepare, discard, execute, takeReport, dispose };
 }
 function executionIntentFor(request, snapshot) {
     const negotiation = negotiateSubagentTools(forgeToolCatalog(), snapshot.promptStack?.tools, request.access);

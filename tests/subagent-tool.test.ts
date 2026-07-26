@@ -9,12 +9,16 @@ import type { AgentResponse } from "../src/subagent/contract.ts";
 import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { createFakeExecutionPlan } from "./helpers/fake-subagent-fixture.ts";
 
+// Keep global-config discovery hermetic; these tests exercise project config only.
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-subagent-tool-no-global.json");
+
 test("forge_subagent prepares, previews the full prompt on demand, approves, streams, and returns a rich report", async () => {
 	const fixture = await toolFixture();
 	const calls = { prepare: 0, discard: 0, execute: 0, takeReport: 0 };
 	const response = completedResponse(fixture.prepared, "Review complete with evidence.");
 	const report = subprocessReport(fixture.prepared, response.output!.text);
 	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
 		descriptors: () => [],
 		prepare: async () => {
 			calls.prepare++;
@@ -80,6 +84,7 @@ test("forge_subagent rejects a prepared plan without transport and fails closed 
 	const fixture = await toolFixture();
 	const calls = { prepare: 0, discard: 0, execute: 0 };
 	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
 		descriptors: () => [],
 		prepare: async () => {
 			calls.prepare++;
@@ -119,6 +124,7 @@ test("forge_subagent can run without per-invocation UI only after trusted-projec
 	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true } }), "utf8");
 	let executeCalls = 0;
 	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
 		descriptors: () => [],
 		prepare: async () => ({ ok: true, prepared: fixture.prepared }),
 		discard: async () => undefined,
@@ -150,6 +156,60 @@ test("forge_subagent can run without per-invocation UI only after trusted-projec
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}
+});
+
+test("forge_subagent pins unattended invocation to the configured backend and honors interactive overrides", async () => {
+	const fixture = await toolFixture();
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-backend-pinning-"));
+	const configDir = join(cwd, ".pi", "forge");
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true, backend: "configured-backend" } }), "utf8");
+	const prepareRuns: Array<{ backendId?: string } | undefined> = [];
+	let executeCalls = 0;
+	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => ["configured-backend", "other-backend"],
+		descriptors: () => [],
+		prepare: async (_profileId, _task, _ctx, run) => {
+			prepareRuns.push(run);
+			return { ok: true, prepared: fixture.prepared };
+		},
+		discard: async () => undefined,
+		execute: async () => {
+			executeCalls++;
+			return completedResponse(fixture.prepared, "done");
+		},
+		dispose: async () => undefined,
+	};
+	let tool: any;
+	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId]);
+	const context = toolContext(["Approve and run"]);
+	context.ctx.cwd = cwd;
+	try {
+		// Unattended: a diverging backend parameter fails closed before preparation.
+		const pinned = await tool.execute("pinned", { profileId: fixture.profileId, task: "Run unattended.", backend: "other-backend" }, undefined, undefined, context.ctx);
+		assert.equal(pinned.details.status, "failed");
+		assert.match(pinned.content[0].text, /pinned to the configured backend/);
+		assert.equal(prepareRuns.length, 0);
+		assert.equal(executeCalls, 0);
+
+		// Unattended: no override resolves to the configured project default.
+		const configured = await tool.execute("configured", { profileId: fixture.profileId, task: "Run unattended." }, undefined, undefined, context.ctx);
+		assert.equal(configured.details.status, "completed");
+		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend" });
+
+		// Unattended: explicitly naming the configured backend is accepted.
+		const matching = await tool.execute("matching", { profileId: fixture.profileId, task: "Run unattended.", backend: "configured-backend" }, undefined, undefined, context.ctx);
+		assert.equal(matching.details.status, "completed");
+		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend" });
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+
+	// Interactive approval honors an explicit per-run backend override.
+	const interactive = toolContext(["Approve and run"]);
+	const result = await tool.execute("interactive", { profileId: fixture.profileId, task: "Run interactively.", backend: "other-backend" }, undefined, undefined, interactive.ctx);
+	assert.equal(result.details.status, "completed");
+	assert.deepEqual(prepareRuns.at(-1), { backendId: "other-backend" });
 });
 
 async function toolFixture() {

@@ -6,6 +6,9 @@ import test from "node:test";
 import type { LoadedAgentProfile, ResolvedAgentProfile } from "../src/agent-profile.ts";
 import { registerForgeSubagentProfilesTool } from "../src/subagent-profile-tool.ts";
 
+// Keep global-config discovery hermetic; these tests exercise project config only.
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-profiles-tool-no-global.json");
+
 test("forge_subagent_profiles exposes ready profile descriptions and unavailable diagnostics without egress", async () => {
 	const reviewer = loadedProfile("reviewer", "Reviews code and architecture.", "Review specialist");
 	const broken = loadedProfile("broken", "Currently unavailable.");
@@ -35,6 +38,8 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 	assert.equal(result.details.status, "completed");
 	assert.equal(result.details.invocationToolAvailable, true);
 	assert.equal(result.details.approvalMode, "interactive");
+	assert.deepEqual(result.details.defaultBackend, { id: "pi-subprocess-readonly", source: "built-in" });
+	assert.match(result.content[0].text, /Default backend: pi-subprocess-readonly \(built-in\)/);
 	assert.equal(result.details.profiles[0].description, "Reviews code and architecture.");
 	assert.equal(result.details.profiles[0].status, "ready");
 	assert.equal(result.details.profiles[1].status, "unavailable");
@@ -91,6 +96,29 @@ test("forge_subagent_profiles exposes trusted-project unattended approval mode",
 		const result = await tool.execute("catalog", {}, undefined, undefined, { cwd, isProjectTrusted: () => true });
 		assert.equal(result.details.approvalMode, "unattended-config");
 		assert.match(result.content[0].text, /may contact the provider without per-run human approval/);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("forge_subagent_profiles reports a configured default backend", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-backend-profiles-"));
+	const configDir = join(cwd, ".pi", "forge");
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { backend: "pi-rpc-readonly" } }), "utf8");
+	let tool: any;
+	registerForgeSubagentProfilesTool(
+		{
+			registerTool: (definition: any) => { tool = definition; },
+			getActiveTools: () => ["forge_subagent_profiles", "forge_subagent"],
+		} as any,
+		() => [loadedProfile("reviewer", "Reviews code.")],
+		(loaded) => resolvedProfile(loaded),
+	);
+	try {
+		const result = await tool.execute("catalog", {}, undefined, undefined, { cwd, isProjectTrusted: () => true });
+		assert.deepEqual(result.details.defaultBackend, { id: "pi-rpc-readonly", source: "project" });
+		assert.match(result.content[0].text, /Default backend: pi-rpc-readonly \(project\)/);
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}

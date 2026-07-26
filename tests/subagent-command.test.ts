@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
+
+// Keep global-config discovery hermetic; these tests exercise project config only.
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-subagent-command-no-global.json");
 
 import { registerForgeSubagentCommand } from "../src/subagent-command.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
@@ -37,10 +42,13 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 		diagnostics: [],
 	};
 	const calls = { prepare: 0, discard: 0, execute: 0 };
+	const prepareRuns: Array<{ backendId?: string } | undefined> = [];
 	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [FAKE_DESCRIPTOR.id, "fake-rpc-backend"],
 		descriptors: () => [structuredClone(FAKE_DESCRIPTOR)],
-		prepare: async () => {
+		prepare: async (_profileId, _task, _ctx, run) => {
 			calls.prepare++;
+			prepareRuns.push(run);
 			return { ok: true, prepared };
 		},
 		discard: async () => { calls.discard++; },
@@ -70,10 +78,15 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	assert.ok(command);
 	assert.deepEqual(command.getArgumentCompletions("pl"), [{ value: "plan", label: "plan" }]);
 	assert.deepEqual(command.getArgumentCompletions("run im"), [{ value: "run image-viewer", label: "image-viewer" }]);
+	assert.deepEqual(command.getArgumentCompletions("run reviewer --b"), [{ value: "run reviewer --backend ", label: "--backend" }]);
+	assert.deepEqual(command.getArgumentCompletions("run reviewer --backend fake-r"), [
+		{ value: "run reviewer --backend fake-rpc-backend", label: "fake-rpc-backend" },
+	]);
 
 	const context = commandContext();
 	await command.handler("backends", context.ctx);
 	assert.match(context.editors.at(-1)?.text ?? "", /fake-backend/);
+	assert.match(context.editors.at(-1)?.text ?? "", /not registered/, "the built-in default is absent from this fake descriptor set");
 
 	await command.handler("plan reviewer inspect this", context.ctx);
 	assert.equal(calls.prepare, 1);
@@ -99,6 +112,16 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	assert.equal(calls.execute, 1);
 	assert.match(context.editors.at(-1)?.text ?? "", /command fixture complete/);
 	assert.equal(context.statuses["pi-forge-subagent"], undefined);
+
+	await command.handler("run reviewer --backend fake-rpc-backend inspect that", context.ctx);
+	assert.equal(calls.prepare, 4);
+	assert.deepEqual(prepareRuns.at(-1), { backendId: "fake-rpc-backend" }, "a per-run --backend flag overrides the configured default");
+
+	await command.handler("run reviewer --backend", context.ctx);
+	assert.match(context.notifications.at(-1)?.message ?? "", /--backend requires a backend id/);
+	await command.handler("run reviewer --nope inspect this", context.ctx);
+	assert.match(context.notifications.at(-1)?.message ?? "", /Unknown option/);
+	assert.equal(calls.prepare, 4, "option errors fail before preparation");
 });
 
 function commandContext() {
@@ -109,6 +132,8 @@ function commandContext() {
 	const ctx = {
 		hasUI: true,
 		signal: undefined,
+		cwd: "/workspace",
+		isProjectTrusted: () => true,
 		ui: {
 			theme: { fg: (_color: string, text: string) => text },
 			editor: async (title: string, text: string) => { editors.push({ title, text }); return text; },

@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { loadForgeSubagentSettings } from "./forge-config.ts";
+import { loadForgeSubagentSettings, resolveSubagentBackend } from "./forge-config.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime, SubagentBackendExecutionUpdate } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import {
@@ -29,6 +29,10 @@ const ForgeSubagentParameters = Type.Object({
 		minLength: 1,
 		description: "The focused task to delegate to the subagent.",
 	}),
+	backend: Type.Optional(Type.String({
+		minLength: 1,
+		description: "Backend ID to prepare and execute through (see /forge-agent backends). Honored only for interactively approved runs; trusted-project unattended invocation always uses the configured default backend.",
+	})),
 });
 
 export interface ForgeSubagentApprovalReceipt {
@@ -87,6 +91,7 @@ export function registerForgeSubagentTool(
 			"Use forge_subagent_profiles first when the user has not already specified a profile ID.",
 			"Runs require human approval after exact preparation unless the trusted project explicitly enables unattended agent invocation.",
 			"The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
+			"The optional backend parameter selects the execution backend for interactively approved runs; unattended invocation always uses the configured default backend.",
 			"Use the final report as evidence and do not repeatedly request the same rejected delegation.",
 		].join(" "),
 		parameters: ForgeSubagentParameters,
@@ -95,6 +100,22 @@ export function registerForgeSubagentTool(
 		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<ForgeSubagentToolDetails>> {
 			const settings = loadForgeSubagentSettings(ctx);
 			const approvalRequired = !settings.allowAgentInvocationWithoutApproval;
+			const configuredBackend = resolveSubagentBackend(settings);
+			if (!approvalRequired && params.backend && params.backend !== configuredBackend.id) {
+				return toolResult(
+					`Subagent invocation was not run: unattended invocation is pinned to the configured backend "${configuredBackend.id}". To use "${params.backend}", run interactively or change subagents.backend in the trusted project config.`,
+					{
+						status: "failed",
+						profileId: params.profileId,
+						task: params.task,
+						approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
+						diagnostics: settings.warnings.map((message): SubagentDiagnostic => ({ level: "warning", code: "host.config", message })),
+						progress: [],
+					},
+					true,
+				);
+			}
+			const backend = resolveSubagentBackend(settings, params.backend);
 			const configDiagnostics = settings.warnings.map((message): SubagentDiagnostic => ({ level: "warning", code: "host.config", message }));
 			const baseDetails: ForgeSubagentToolDetails = {
 				status: "preparing",
@@ -120,7 +141,7 @@ export function registerForgeSubagentTool(
 			onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
 			let prepared: ForgeSubagentPreparedRun | undefined;
 			try {
-				const preparation = await runtime.prepare(params.profileId, params.task, ctx);
+				const preparation = await runtime.prepare(params.profileId, params.task, ctx, { backendId: backend.id });
 				if (!preparation.ok) {
 					const diagnostics = [...configDiagnostics, ...preparation.diagnostics];
 					return toolResult(

@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable subagent backend selection.** The execution backend is now layered configuration rather than a fixed default: `subagents.backend` in the user-owned `~/.pi/forge/config.json` sets the global default, a trusted project's `.pi/forge/config.json` overrides it, and `/forge-agent plan|run <profile> --backend <id>` or the interactive `forge_subagent` `backend` parameter overrides a single run. The experimental `pi-rpc-readonly` backend registered in the previous prerelease is now reachable from the product. There is deliberately no fallback to another backend when the selected one is unavailable; unattended `forge_subagent` invocation is pinned to the configured default and rejects per-call backend overrides. `forge_subagent_profiles` and `/forge-agent backends` report the resolved default backend, its source, and a warning when it names an unregistered backend.
+
 ### Changed
 
 - Updated the exact supported `@earendil-works/pi-agent-core`, `pi-ai`, `pi-coding-agent`, and `pi-tui` package set from 0.80.10 to 0.82.1. The full core, browser, type, generated-client, distribution, and package verification surface passes against Pi 0.82.1.

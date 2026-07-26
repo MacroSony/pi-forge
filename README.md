@@ -117,7 +117,10 @@ The 0.4 beta can run a stored profile as a separate, clean, one-shot Pi subproce
 /forge-agent backends
 /forge-agent plan reviewer Review this API design for correctness.
 /forge-agent run reviewer Review this API design for correctness.
+/forge-agent run reviewer --backend pi-rpc-readonly Review this API design for correctness.
 ```
+
+Two experimental backends are registered: `pi-subprocess-readonly` (default; executes in a fresh `pi --mode text --print` subprocess) and `pi-rpc-readonly` (executes in a fresh `pi --mode rpc` process). Both compile the identical sealed prompt and enforce the same read-only shared-user boundary; they differ only in process protocol. Backend selection is configuration, not profile schema: set `subagents.backend` in `~/.pi/forge/config.json` for a user-level default, override it per trusted project in `.pi/forge/config.json`, and override either for one run with `--backend <id>` or the interactive `forge_subagent` `backend` parameter. `/forge-agent backends` marks the resolved default and warns when it names an unregistered backend. There is deliberately no fallback: if the selected backend is unavailable the run fails before provider transport. Unattended `forge_subagent` invocation is pinned to the configured default backend and rejects per-call overrides.
 
 `plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `/forge-agent run` and, by default, `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
 
@@ -306,9 +309,9 @@ Items are arranged in order. When the stack is active, pi-forge:
 
 | Command | What it does |
 |---------|-------------|
-| `/forge-agent backends` | Show the available experimental backend and its capabilities |
-| `/forge-agent plan <profile> <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
-| `/forge-agent run <profile> <task>` | Review the exact plan and run one foreground read-only text task after approval |
+| `/forge-agent backends` | Show registered experimental backends, capabilities, and the resolved default |
+| `/forge-agent plan <profile> [--backend <id>] <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
+| `/forge-agent run <profile> [--backend <id>] <task>` | Review the exact plan and run one foreground read-only text task after approval |
 
 The model-callable tools are `forge_subagent_profiles` for local metadata discovery and `forge_subagent` for execution. Discovery needs no approval and performs no provider request or subagent prompt preparation. Invocation requires the current main-agent tool policy to permit it; execution then requires either an interactive approval UI or the explicit trusted-project unattended option described above.
 

@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { loadForgeSubagentSettings } from "./forge-config.js";
+import { loadForgeSubagentSettings, resolveSubagentBackend } from "./forge-config.js";
 import { isResolvedAgentProfileUsable, } from "./agent-profile.js";
 const MAX_VISIBLE_DESCRIPTION_CHARS = 1_000;
 const ForgeSubagentProfilesParameters = Type.Object({});
@@ -8,7 +8,7 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
         name: "forge_subagent_profiles",
         label: "Forge Subagent Profiles",
         description: [
-            "List the currently loaded Pi Forge subagent profiles, descriptions, and active approval mode.",
+            "List the currently loaded Pi Forge subagent profiles, descriptions, default backend, and active approval mode.",
             "Use this before forge_subagent when the user has not already specified a profile ID.",
             "This reads only in-memory profile metadata and performs no provider request or subagent prompt preparation.",
         ].join(" "),
@@ -20,8 +20,9 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
             const invocationToolAvailable = pi.getActiveTools().includes("forge_subagent");
             const settings = loadForgeSubagentSettings(ctx);
             const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
+            const defaultBackend = resolveSubagentBackend(settings);
             const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
-            return result(renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings), { status: "completed", invocationToolAvailable, approvalMode, configWarnings: settings.warnings, profiles: summaries });
+            return result(renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend), { status: "completed", invocationToolAvailable, approvalMode, defaultBackend, configWarnings: settings.warnings, profiles: summaries });
         },
     });
 }
@@ -37,10 +38,11 @@ export function summarizeProfile(loaded, resolved) {
         diagnostics: structuredClone(resolved.diagnostics),
     };
 }
-export function renderProfileCatalog(profiles, invocationToolAvailable, approvalMode = "interactive", configWarnings = []) {
+export function renderProfileCatalog(profiles, invocationToolAvailable, approvalMode = "interactive", configWarnings = [], defaultBackend) {
     if (profiles.length === 0) {
         return [
             `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
+            ...(defaultBackend ? [`Default backend: ${defaultBackend.id} (${defaultBackend.source}).`] : []),
             ...configWarnings.map((warning) => `Configuration warning: ${warning}`),
         ].join("\n");
     }
@@ -53,6 +55,8 @@ export function renderProfileCatalog(profiles, invocationToolAvailable, approval
             ? "Approval mode: unattended-config; exact backend preflight still runs, but forge_subagent may contact the provider without per-run human approval."
             : "Approval mode: interactive; a ready profile still undergoes exact backend preflight and per-run human approval.",
     ];
+    if (defaultBackend)
+        lines.push(`Default backend: ${defaultBackend.id} (${defaultBackend.source}); the interactive forge_subagent backend parameter or /forge-agent --backend overrides it per run.`);
     if (configWarnings.length > 0)
         lines.push(...configWarnings.map((warning) => `Configuration warning: ${warning}`));
     if (ready.length > 0) {

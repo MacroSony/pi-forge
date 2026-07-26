@@ -3,7 +3,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { loadForgeSubagentSettings } from "../src/forge-config.ts";
+import { DEFAULT_SUBAGENT_BACKEND_ID, GLOBAL_FORGE_CONFIG_PATH_ENV, loadForgeSubagentSettings, resolveSubagentBackend } from "../src/forge-config.ts";
+
+// Hermetic default: no real user global config leaks into these tests.
+process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = join(tmpdir(), "pi-forge-config-test-no-global.json");
 
 test("subagent unattended invocation is explicit, trusted, and fail-closed", () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-config-"));
@@ -25,6 +28,58 @@ test("subagent unattended invocation is explicit, trusted, and fail-closed", () 
 		assert.match(malformed.warnings[0] ?? "", /must be boolean/);
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("subagent backend defaults layer global, trusted project, and explicit overrides", () => {
+	const root = mkdtempSync(join(tmpdir(), "pi-forge-backend-config-"));
+	const globalConfigPath = join(root, "global", "config.json");
+	const cwd = join(root, "project");
+	mkdirSync(join(cwd, ".pi", "forge"), { recursive: true });
+	mkdirSync(join(root, "global"), { recursive: true });
+	const previousEnv = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+	process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = globalConfigPath;
+	try {
+		// No config anywhere: built-in default, no warnings.
+		const bare = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(bare.backend, undefined);
+		assert.deepEqual(resolveSubagentBackend(bare), { id: DEFAULT_SUBAGENT_BACKEND_ID, source: "built-in" });
+
+		// Global config supplies the default for any project.
+		writeFileSync(globalConfigPath, JSON.stringify({ subagents: { backend: "global-backend" } }), "utf8");
+		const globalOnly = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(globalOnly.backend, "global-backend");
+		assert.equal(globalOnly.backendSource, "global");
+		assert.deepEqual(resolveSubagentBackend(globalOnly), { id: "global-backend", source: "global" });
+
+		// A trusted project config wins over the global config.
+		writeFileSync(join(cwd, ".pi", "forge", "config.json"), JSON.stringify({ subagents: { backend: "project-backend" } }), "utf8");
+		const project = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(project.backend, "project-backend");
+		assert.equal(project.backendSource, "project");
+		assert.deepEqual(resolveSubagentBackend(project), { id: "project-backend", source: "project" });
+
+		// An untrusted project config is ignored; the global default still applies.
+		const untrusted = loadForgeSubagentSettings(context(cwd, false));
+		assert.equal(untrusted.backend, "global-backend");
+		assert.equal(untrusted.allowAgentInvocationWithoutApproval, false);
+
+		// A per-run explicit override beats every configuration layer.
+		assert.deepEqual(resolveSubagentBackend(project, "run-backend"), { id: "run-backend", source: "explicit" });
+
+		// Malformed values warn and are ignored without discarding other layers.
+		writeFileSync(globalConfigPath, JSON.stringify({ subagents: { backend: 42 } }), "utf8");
+		const malformed = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(malformed.backend, "project-backend");
+		assert.match(malformed.warnings.join("\n"), /subagents\.backend must be a non-empty string/);
+		writeFileSync(join(cwd, ".pi", "forge", "config.json"), JSON.stringify({ subagents: { backend: "  " } }), "utf8");
+		const empty = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(empty.backend, undefined);
+		assert.match(empty.warnings.join("\n"), /subagents\.backend must be a non-empty string/);
+	} finally {
+		if (previousEnv === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousEnv;
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 

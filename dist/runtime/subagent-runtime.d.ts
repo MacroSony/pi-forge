@@ -23,8 +23,12 @@ export interface SubagentBackendExecutionUpdate {
     details?: unknown;
 }
 export interface ForgeSubagentRuntime {
+    /** Registered backend IDs, known without an extension context. */
+    backendIds(): string[];
     descriptors(ctx: ExtensionContext): SubagentBackendDescriptor[];
-    prepare(profileId: string, task: string, ctx: ExtensionContext): Promise<ForgeSubagentPreparationResult>;
+    prepare(profileId: string, task: string, ctx: ExtensionContext, run?: {
+        backendId?: string;
+    }): Promise<ForgeSubagentPreparationResult>;
     discard(prepared: ForgeSubagentPreparedRun): Promise<void>;
     execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse>;
     takeReport?(runId: string): PiSubprocessRunReport | undefined;

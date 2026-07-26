@@ -117,7 +117,10 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 /forge-agent backends
 /forge-agent plan reviewer 检查这个 API 设计是否正确。
 /forge-agent run reviewer 检查这个 API 设计是否正确。
+/forge-agent run reviewer --backend pi-rpc-readonly 检查这个 API 设计是否正确。
 ```
+
+目前注册了两个实验性 backend：`pi-subprocess-readonly`（默认；在全新的 `pi --mode text --print` 子进程中执行）和 `pi-rpc-readonly`（在全新的 `pi --mode rpc` 进程中执行）。两者编译完全相同的密封 prompt，并执行相同的只读 shared-user 边界，仅进程协议不同。Backend 选择属于配置而不是 profile schema：在 `~/.pi/forge/config.json` 中设置 `subagents.backend` 作为用户级默认值，在受信任项目的 `.pi/forge/config.json` 中覆盖它，并可用 `--backend <id>` 或交互模式下 `forge_subagent` 的 `backend` 参数对单次运行再次覆盖。`/forge-agent backends` 会标记解析出的默认 backend，并在其未注册时给出警告。系统故意不提供 fallback：如果所选 backend 不可用，运行会在 provider transport 之前失败。无人值守的 `forge_subagent` 调用固定使用配置的默认 backend，并拒绝单次调用的覆盖参数。
 
 `plan` 会解析 profile 和 stack、编译实际将发送给 provider 的 prompt、校验不可变执行计划，然后丢弃它，不会联系 provider。`/forge-agent run` 和默认配置下的 `forge_subagent` 会先准备完全相同的精确计划，再显示审批界面。默认界面显示 agent 任务、profile/stack、provider、模型、思考等级、最终工具、工作目录、安全边界、payload 大小和执行 fingerprint。选择 **View full prompt** 可以在批准前查看完整 system prompt 和按顺序排列的 provider-bound messages；在查看器中的编辑不会生效。
 
@@ -304,9 +307,9 @@ pi-forge 会把预设转换为 prompt stack，并生成迁移报告，标明哪�
 
 | 命令 | 作用 |
 |------|------|
-| `/forge-agent backends` | 显示实验性 backend 及其能力 |
-| `/forge-agent plan <profile> <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
-| `/forge-agent run <profile> <task>` | 审查精确计划并在批准后运行一个前台只读文本任务 |
+| `/forge-agent backends` | 显示已注册的实验性 backend、能力和解析出的默认 backend |
+| `/forge-agent plan <profile> [--backend <id>] <task>` | 不进行 provider transport，准备、校验、显示并丢弃精确执行计划 |
+| `/forge-agent run <profile> [--backend <id>] <task>` | 审查精确计划并在批准后运行一个前台只读文本任务 |
 
 模型可调用的工具包括用于本地元数据发现的 `forge_subagent_profiles`，以及用于执行的 `forge_subagent`。发现工具不需要审批，也不会请求 provider 或准备 subagent prompt。当前主 agent 工具策略必须允许执行工具；之后还必须存在交互式审批 UI，或者启用上文明确说明的受信任项目免审批选项，subagent 才可运行。
 
