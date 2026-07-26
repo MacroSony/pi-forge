@@ -48,6 +48,30 @@ Current boundary:
 - Let the main agent inspect loaded profile IDs/descriptions and current resolution status locally without approval, provider transport, or exact prompt preparation.
 - Return bounded model-visible output and expandable human-visible plan, approval, diagnostics, transcript, tool-event, usage, and response details. Advertise no artifact or contract trace storage until those implementations exist.
 
+## 0.4.0 Exit Plan (agreed 2026-07-26)
+
+Decisions and scope for taking 0.4.0 out of beta. This section supersedes older subagent-status prose elsewhere in this file (notably the retained `pi-sdk-isolated` wording, which no longer matches the code); aligning those documents is work item 4 below.
+
+### Decisions
+
+- **Backend selection is configuration, not profile schema.** Agent profiles remain execution-environment-agnostic personas (model, thinking level, prompt stack). The default backend is configured through `subagents.backend` in global `~/.pi/forge/config.json` with a trusted-project override in `.pi/forge/config.json`, and a per-run explicit override through `/forge-agent run <profile> --backend <id>`. The unattended model-callable tool path pins the configured default; the interactive approval dialog always displays the bound backend. There are no fallback chains: the runtime contract forbids silent fallback, and a fallback that downgrades the execution boundary would overstate enforcement.
+- **Depth over orchestration breadth.** pi-forge's delegation niche is policy-bound, reviewable execution: sealed exact prompts, fingerprint-bound approval, and honest enforcement receipts. Background agents, parallel fan-out, chains/pipelines, nested delegation, and inter-agent messaging stay deferred (see Deferred Product Backlog); general orchestration is deliberately left to dedicated packages. The runtime's run-handle model already permits host-composed concurrency, so a future parallel approval UX needs no runtime change.
+- **pi-forge 0.4.0 does not require pi-subagent-runtime 0.1-stable.** Pin an exact runtime version and keep the subagent surface labelled experimental per Milestone 3. The runtime's own stabilization still waits for a second consumer or backend author per its VISION.md.
+
+### Work items, in order
+
+1. **Finish the runtime integration in pi-forge.**
+   - Expose backend selection as decided above (`pi-rpc-readonly` is currently registered but unreachable from the product).
+   - Resolve the fingerprint-semantics contradiction: `createAgentExecutionPlan()` still computes a host-side execution fingerprint that the runtime path overwrites with the sealed value, while exported `validateAgentExecutionPlan()` still verifies the host-computed one. Declare the runtime-sealed fingerprint authoritative and fix or remove the host-side computation before the experimental surface freezes.
+   - Surface the sealed `conversationFingerprint` in plan summaries and approval UI so cross-backend prompt fidelity is observable.
+   - Deduplicate `src/subagent/validation.ts` and `src/subagent/preflight.ts` leaf validators toward the runtime core exports, keeping only host-specific artifacts (request, snapshot, plan, response, context budget, artifact/trace).
+2. **Land small runtime-side API additions** in `@zihanw/pi-subagent-runtime`: pass the accepted preflight (or effective tool catalog) to the host `compile` callback so `hostCompilePreflight()` can go away; accept an `AbortSignal` in `prepare()` so `prepareWithAbort` can go away. Media materialization in the bridge/backends is optional and only happens if delegated media tasks are taken into 0.4 scope.
+3. **Resolve the runtime publish story (release blocker).** `file:../pi-subagent-runtime` against a private `0.0.0` package cannot ship on npm. Either publish the runtime or vendor its compiled output into the pi-forge tarball.
+4. **Legacy cleanup and documentation alignment.** Decide removal of the SDK spike scripts/test (port media and trusted-extension coverage first), the `src/subagent-contract.ts` compatibility barrel, and the `src/subagent/canonical.ts` re-export shim. Fix stale `pi-sdk-isolated`/registry claims here and in `SUBAGENT_INTERFACE_DESIGN.md`, `SUBAGENT_ADAPTER_CONTRACT.md`, `SUBAGENT_SDK_SPIKE_FINDINGS.md`, and `FEATURES.md`; document `pi-rpc-readonly` and the backend-selection configuration; record the migration's removed exports as a breaking change in `CHANGELOG.md`; keep English and Chinese READMEs in parity.
+5. **Milestone 1 step 1 dogfooding** of the subprocess backend against representative providers, cancellation timing, long prompts, large read results, and rejection/full-prompt review flows. The bubblewrap sandbox evaluation and staged-write proposal remain Milestone 1 design work and do not gate 0.4.0; any sandbox backend lands as a separate runtime backend entry point with honest receipts.
+6. **Milestone 2: profile UI** in the browser editor, per its existing scope and done criteria.
+7. **Milestone 3: release readiness**, plus explicit release-note non-goals: no runner, no background execution, no chains, no profile schema expansion, no macro portability hints, no chat-history lifecycle controls.
+
 ## Milestone 1: Sandbox and Write-Safety Evaluation
 
 Goal: determine whether stronger isolation and useful write workflows can be added without obscuring the current honest shared-user boundary.
