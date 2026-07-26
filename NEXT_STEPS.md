@@ -61,7 +61,7 @@ Decisions and scope for taking 0.4.0 out of beta. This section supersedes older 
 ### Work items, in order
 
 1. **Finish the runtime integration in pi-forge.**
-   - Expose backend selection as decided above (`pi-rpc-readonly` is currently registered but unreachable from the product).
+   - ~~Expose backend selection as decided above~~ **(done 2026-07-26):** `subagents.backend` global/trusted-project config, `/forge-agent plan|run --backend <id>`, interactive `forge_subagent` `backend` parameter, unattended pinning to the configured default, default-backend reporting in `forge_subagent_profiles` and `/forge-agent backends`.
    - Resolve the fingerprint-semantics contradiction: `createAgentExecutionPlan()` still computes a host-side execution fingerprint that the runtime path overwrites with the sealed value, while exported `validateAgentExecutionPlan()` still verifies the host-computed one. Declare the runtime-sealed fingerprint authoritative and fix or remove the host-side computation before the experimental surface freezes.
    - Surface the sealed `conversationFingerprint` in plan summaries and approval UI so cross-backend prompt fidelity is observable.
    - Deduplicate `src/subagent/validation.ts` and `src/subagent/preflight.ts` leaf validators toward the runtime core exports, keeping only host-specific artifacts (request, snapshot, plan, response, context budget, artifact/trace).
