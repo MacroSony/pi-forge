@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +34,7 @@ test("forge subagent runtime prepares and executes through both migrated process
 	const { modelRegistry } = await fixtureModelRuntime(faux);
 
 	const subprocessArgs: string[][] = [];
+	const preparationController = new AbortController();
 	const runtime = createForgeSubagentRuntime(fixtureState(), {
 		subprocess: {
 			invocationFactory: (args) => {
@@ -50,7 +52,7 @@ test("forge subagent runtime prepares and executes through both migrated process
 			}),
 		},
 	});
-	const ctx = fixtureContext(modelRegistry, cwd);
+	const ctx = fixtureContext(modelRegistry, cwd, preparationController.signal);
 
 	try {
 		const descriptors = runtime.descriptors(ctx).map((descriptor) => descriptor.id).sort();
@@ -77,6 +79,7 @@ test("forge subagent runtime prepares and executes through both migrated process
 			});
 			const preparedResult = await scoped.prepare("fixture-worker", "Review the migration fixture.", ctx);
 			assert.equal(preparedResult.ok, true, preparedResult.ok === false ? preparedResult.diagnostics.map((item) => item.message).join("; ") : "");
+			assert.equal(getEventListeners(preparationController.signal, "abort").length, 0);
 			if (!preparedResult.ok) continue;
 			const { prepared } = preparedResult;
 
@@ -96,8 +99,10 @@ test("forge subagent runtime prepares and executes through both migrated process
 			assert.equal(prepared.plan.access.executionBoundary, "shared-user");
 
 			const updates: string[] = [];
-			const response = await scoped.execute(prepared, ctx, undefined, (update) => updates.push(`${update.phase}:${update.message}`));
+			const executionController = new AbortController();
+			const response = await scoped.execute(prepared, ctx, executionController.signal, (update) => updates.push(`${update.phase}:${update.message}`));
 			assert.equal(response.status, "completed", JSON.stringify(response));
+			assert.equal(getEventListeners(executionController.signal, "abort").length, 0);
 			if (response.status !== "completed") continue;
 			assert.equal(response.output?.text, `Fixture ${backendId} complete.`);
 			assert.equal(response.backendId, backendId);
@@ -162,13 +167,13 @@ function fixtureState(): PiForgeRuntimeState {
 	} as unknown as PiForgeRuntimeState;
 }
 
-function fixtureContext(modelRegistry: ModelRegistry, cwd: string): ExtensionContext {
+function fixtureContext(modelRegistry: ModelRegistry, cwd: string, signal?: AbortSignal): ExtensionContext {
 	return {
 		modelRegistry,
 		cwd,
 		isProjectTrusted: () => true,
 		sessionManager: { getSessionId: () => "migration-fixture-session" },
-		signal: undefined,
+		...(signal ? { signal } : {}),
 	} as unknown as ExtensionContext;
 }
 

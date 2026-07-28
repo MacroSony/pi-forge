@@ -85,14 +85,15 @@ export function createForgeSubagentRuntime(state, options = {}) {
         let hostPreparation;
         let handle;
         try {
-            handle = await prepareWithAbort(current.runtime.prepare({
+            handle = await current.runtime.prepare({
                 backendId,
                 intent,
-                compile: async (promptRuntime) => {
+                ...(ctx.signal ? { signal: ctx.signal } : {}),
+                compile: async (promptRuntime, acceptedPreflight) => {
                     const output = prepareSubagentHostPlan({
                         request,
                         snapshot,
-                        preflight: hostCompilePreflight(request, intent),
+                        preflight: preflightForHost(acceptedPreflight),
                         runtime: promptRuntime,
                     });
                     hostPreparation = output;
@@ -101,7 +102,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
                         messages: output.messages.map(portableMessage),
                     };
                 },
-            }), ctx.signal);
+            });
         }
         catch (prepareError) {
             diagnostics.push(error("host.preparation", prepareError instanceof Error ? prepareError.message : String(prepareError)));
@@ -162,15 +163,23 @@ export function createForgeSubagentRuntime(state, options = {}) {
                 });
             });
         }
+        let cancelOnAbort;
         if (signal) {
-            const cancel = () => { void run.cancel(cancelReason(signal)); };
+            cancelOnAbort = () => { void run.cancel(cancelReason(signal)); };
             if (signal.aborted)
-                cancel();
+                cancelOnAbort();
             else
-                signal.addEventListener("abort", cancel, { once: true });
+                signal.addEventListener("abort", cancelOnAbort, { once: true });
         }
-        const result = await run.result;
-        return responseForHost(preparedRun, result);
+        try {
+            const result = await run.result;
+            return responseForHost(preparedRun, result);
+        }
+        finally {
+            if (signal && cancelOnAbort) {
+                signal.removeEventListener("abort", cancelOnAbort);
+            }
+        }
     }
     function takeReport(runId) {
         const location = reports.get(runId);
@@ -211,54 +220,6 @@ function executionIntentFor(request, snapshot) {
             profileId: snapshot.profile.id,
             ...(snapshot.promptStackFingerprint ? { promptStack: snapshot.promptStackFingerprint } : {}),
         },
-    };
-}
-/** Minimal accepted preflight for the host compiler; only toolCatalog is read. */
-function hostCompilePreflight(request, intent) {
-    return {
-        status: "accepted",
-        preflightId: "host-compile",
-        backend: {
-            id: "host-compile",
-            version: "0",
-            capabilities: {
-                access: {
-                    readOnlyMountIsolation: false,
-                    readWriteMountIsolation: false,
-                    symlinkSafeContainment: false,
-                    processIsolation: false,
-                    agentNetworkIsolation: false,
-                },
-                executionBoundaries: ["shared-user"],
-                limits: { timeoutMs: ["host-abort"], maxTurns: ["unsupported"], tokenBudget: ["unsupported"], maxOutputBytes: ["unsupported"] },
-                cancellation: true,
-                mediaMimeTypes: [],
-                traceInspection: false,
-                artifactRetention: false,
-                remoteTransport: true,
-                promptRuntimeFidelity: "backend-assisted",
-            },
-        },
-        model: structuredClone(intent.model),
-        thinkingLevel: (intent.thinkingLevel ?? "medium"),
-        toolCatalog: forgeToolCatalog(),
-        access: {
-            level: request.access.level,
-            mounts: request.access.workspaces.map((workspace) => ({ workspaceHandle: workspace.handle, mountId: "host-workspace", mode: workspace.mode })),
-            ...(request.access.workingDirectory ? { workingDirectory: { mountId: "host-workspace", path: request.access.workingDirectory.path } } : {}),
-            network: request.access.network,
-            process: request.access.allowProcess === true,
-            executionBoundary: "shared-user",
-            enforcement: {
-                readOnlyMountIsolation: false,
-                readWriteMountIsolation: false,
-                symlinkSafeContainment: false,
-                processIsolation: false,
-                agentNetworkIsolation: false,
-            },
-        },
-        limits: {},
-        diagnostics: [],
     };
 }
 function forgeToolCatalog() {
@@ -353,28 +314,6 @@ function responseForHost(prepared, result) {
                 ...(partialOutput ? { output: partialOutput } : {}),
             };
     }
-}
-async function prepareWithAbort(promise, signal) {
-    if (!signal)
-        return promise;
-    if (signal.aborted) {
-        void promise.then((handle) => handle.discard()).catch(() => undefined);
-        throw new Error("Subagent preparation was cancelled.");
-    }
-    return new Promise((resolve, reject) => {
-        const onAbort = () => {
-            void promise.then((handle) => handle.discard()).catch(() => undefined);
-            reject(new Error("Subagent preparation was cancelled."));
-        };
-        signal.addEventListener("abort", onAbort, { once: true });
-        promise.then((handle) => {
-            signal.removeEventListener("abort", onAbort);
-            resolve(handle);
-        }, (prepareError) => {
-            signal.removeEventListener("abort", onAbort);
-            reject(prepareError);
-        });
-    });
 }
 function cancelReason(signal) {
     return typeof signal.reason === "string" && signal.reason ? signal.reason : "Subagent execution cancelled.";
