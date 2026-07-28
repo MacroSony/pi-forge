@@ -1,7 +1,12 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadForgeSubagentSettings, resolveSubagentBackend, type ForgeSubagentBackendSource } from "./forge-config.ts";
+import {
+	DEFAULT_SUBAGENT_TIMEOUT_MS,
+	loadForgeSubagentSettings,
+	resolveSubagentBackend,
+	type ForgeSubagentBackendSource,
+} from "./forge-config.ts";
 import {
 	isResolvedAgentProfileUsable,
 	type AgentProfileDiagnostic,
@@ -29,6 +34,7 @@ export interface ForgeSubagentProfilesToolDetails {
 	invocationToolAvailable: boolean;
 	approvalMode: "interactive" | "unattended-config";
 	defaultBackend?: { id: string; source: ForgeSubagentBackendSource };
+	timeout: { milliseconds: number; source: Exclude<ForgeSubagentBackendSource, "explicit"> };
 	configWarnings: string[];
 	profiles: ForgeSubagentProfileSummary[];
 }
@@ -52,7 +58,14 @@ export function registerForgeSubagentProfilesTool(
 			if (!ctx.isProjectTrusted()) {
 				return result(
 					"Subagent profile discovery is disabled because the project is not trusted.",
-					{ status: "disabled", invocationToolAvailable: false, approvalMode: "interactive", configWarnings: [], profiles: [] },
+					{
+						status: "disabled",
+						invocationToolAvailable: false,
+						approvalMode: "interactive",
+						timeout: { milliseconds: DEFAULT_SUBAGENT_TIMEOUT_MS, source: "built-in" },
+						configWarnings: [],
+						profiles: [],
+					},
 				);
 			}
 
@@ -61,9 +74,10 @@ export function registerForgeSubagentProfilesTool(
 			const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
 			const defaultBackend = resolveSubagentBackend(settings);
 			const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
+			const timeout = { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
 			return result(
-				renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend),
-				{ status: "completed", invocationToolAvailable, approvalMode, defaultBackend, configWarnings: settings.warnings, profiles: summaries },
+				renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend, timeout),
+				{ status: "completed", invocationToolAvailable, approvalMode, defaultBackend, timeout, configWarnings: settings.warnings, profiles: summaries },
 			);
 		},
 	});
@@ -91,11 +105,13 @@ export function renderProfileCatalog(
 	approvalMode: "interactive" | "unattended-config" = "interactive",
 	configWarnings: readonly string[] = [],
 	defaultBackend?: { id: string; source: ForgeSubagentBackendSource },
+	timeout?: { milliseconds: number; source: Exclude<ForgeSubagentBackendSource, "explicit"> },
 ): string {
 	if (profiles.length === 0) {
 		return [
 			`No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
 			...(defaultBackend ? [`Default backend: ${defaultBackend.id} (${defaultBackend.source}).`] : []),
+			...(timeout ? [`Timeout: ${timeout.milliseconds} ms (${timeout.source}; best-effort host abort).`] : []),
 			...configWarnings.map((warning) => `Configuration warning: ${warning}`),
 		].join("\n");
 	}
@@ -110,6 +126,7 @@ export function renderProfileCatalog(
 			: "Approval mode: interactive; a ready profile still undergoes exact backend preflight and per-run human approval.",
 	];
 	if (defaultBackend) lines.push(`Default backend: ${defaultBackend.id} (${defaultBackend.source}); the interactive forge_subagent backend parameter or /forge-agent --backend overrides it per run.`);
+	if (timeout) lines.push(`Timeout: ${timeout.milliseconds} ms (${timeout.source}; best-effort host abort).`);
 	if (configWarnings.length > 0) lines.push(...configWarnings.map((warning) => `Configuration warning: ${warning}`));
 
 	if (ready.length > 0) {

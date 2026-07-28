@@ -28,6 +28,7 @@ export interface ForgeSubagentRuntime {
     descriptors(ctx: ExtensionContext): SubagentBackendDescriptor[];
     prepare(profileId: string, task: string, ctx: ExtensionContext, run?: {
         backendId?: string;
+        timeoutMs?: number;
     }): Promise<ForgeSubagentPreparationResult>;
     discard(prepared: ForgeSubagentPreparedRun): Promise<void>;
     execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse>;

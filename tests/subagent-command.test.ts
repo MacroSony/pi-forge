@@ -87,6 +87,7 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	await command.handler("backends", context.ctx);
 	assert.match(context.editors.at(-1)?.text ?? "", /fake-backend/);
 	assert.match(context.editors.at(-1)?.text ?? "", /not registered/, "the built-in default is absent from this fake descriptor set");
+	assert.match(context.editors.at(-1)?.text ?? "", /Configured timeout: 60000 ms \(built-in; best-effort host abort\)/);
 
 	await command.handler("plan reviewer inspect this", context.ctx);
 	assert.equal(calls.prepare, 1);
@@ -115,7 +116,11 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 
 	await command.handler("run reviewer --backend fake-rpc-backend inspect that", context.ctx);
 	assert.equal(calls.prepare, 4);
-	assert.deepEqual(prepareRuns.at(-1), { backendId: "fake-rpc-backend" }, "a per-run --backend flag overrides the configured default");
+	assert.deepEqual(
+		prepareRuns.at(-1),
+		{ backendId: "fake-rpc-backend", timeoutMs: 60_000 },
+		"a per-run --backend flag overrides the configured default while preserving the timeout",
+	);
 
 	await command.handler("run reviewer --backend", context.ctx);
 	assert.match(context.notifications.at(-1)?.message ?? "", /--backend requires a backend id/);

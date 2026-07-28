@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createExecutionRuntime, error, } from "@zihanw/pi-subagent-runtime";
 import { PI_READ_ONLY_TOOL_CATALOG, PiSubprocessBackend, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { PiRpcBackend, } from "@zihanw/pi-subagent-runtime/backends/rpc";
-import { DEFAULT_SUBAGENT_BACKEND_ID } from "../forge-config.js";
+import { DEFAULT_SUBAGENT_BACKEND_ID, DEFAULT_SUBAGENT_TIMEOUT_MS, MAX_SUBAGENT_TIMEOUT_MS, MIN_SUBAGENT_TIMEOUT_MS, isValidSubagentTimeoutMs, } from "../forge-config.js";
 import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, negotiateSubagentTools, } from "../subagent/contract.js";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.js";
 export function createForgeSubagentRuntime(state, options = {}) {
@@ -47,6 +47,13 @@ export function createForgeSubagentRuntime(state, options = {}) {
         const diagnostics = [];
         if (!ctx.isProjectTrusted())
             return { ok: false, diagnostics: [error("host.trust", "Project is not trusted; subagent profiles remain disabled.")] };
+        const timeoutMs = run?.timeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
+        if (!isValidSubagentTimeoutMs(timeoutMs)) {
+            return {
+                ok: false,
+                diagnostics: [error("host.timeout", `Subagent timeout must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} milliseconds.`)],
+            };
+        }
         const matches = state.profiles.filter((candidate) => candidate.profile.id === profileId);
         if (matches.length !== 1) {
             return { ok: false, diagnostics: [error(matches.length === 0 ? "host.profile-missing" : "host.profile-ambiguous", matches.length === 0 ? `Unknown agent profile: ${profileId}` : `Agent profile id is ambiguous: ${profileId}`)] };
@@ -69,7 +76,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
                 network: "allow",
                 executionBoundary: "shared-user",
             },
-            limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
+            limits: { timeoutMs: { value: timeoutMs, enforcement: "best-effort" } },
             resultProjection: { maxChars: 12_000 },
             parent: { sessionId: ctx.sessionManager.getSessionId(), depth: 0, maxDepth: 1 },
             // The command layer obtains explicit user consent before execution. A dry plan

@@ -23,6 +23,8 @@ export interface ForgeSubagentPlanSummary {
     systemPromptChars: number;
     messageCount: number;
     messageRoles: string[];
+    timeoutMs?: number;
+    timeoutEnforcement?: string;
     promptRuntimeFingerprint: string;
     conversationFingerprint: string;
     executionFingerprint: string;

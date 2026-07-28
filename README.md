@@ -122,6 +122,16 @@ The 0.4 beta can run a stored profile as a separate, clean, one-shot Pi subproce
 
 Two experimental backends are registered: `pi-subprocess-readonly` (default; executes in a fresh `pi --mode text --print` subprocess) and `pi-rpc-readonly` (executes in a fresh `pi --mode rpc` process). Both compile the identical sealed prompt and enforce the same read-only shared-user boundary; they differ only in process protocol. Backend selection is configuration, not profile schema: set `subagents.backend` in `~/.pi/forge/config.json` for a user-level default, override it per trusted project in `.pi/forge/config.json`, and override either for one run with `--backend <id>` or the interactive `forge_subagent` `backend` parameter. `/forge-agent backends` marks the resolved default and warns when it names an unregistered backend. There is deliberately no fallback: if the selected backend is unavailable the run fails before provider transport. Unattended `forge_subagent` invocation is pinned to the configured default backend and rejects per-call overrides.
 
+Foreground runs default to a 60-second best-effort timeout. Slower models and larger reviews can raise it from 1 second through 1 hour with `subagents.timeoutMs`. The user-level value applies everywhere, while a trusted-project value overrides it; invalid values are ignored with a warning. The effective timeout is included in profile discovery, backend output, dry plans, and approval details.
+
+```json
+{
+  "subagents": {
+    "timeoutMs": 300000
+  }
+}
+```
+
 `plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `/forge-agent run` and, by default, `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
 
 To deliberately let the parent agent invoke `forge_subagent` without per-run approval, set the following trusted-project option in `.pi/forge/config.json`:

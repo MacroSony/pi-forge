@@ -22,6 +22,10 @@ export interface ForgeSubagentProfilesToolDetails {
         id: string;
         source: ForgeSubagentBackendSource;
     };
+    timeout: {
+        milliseconds: number;
+        source: Exclude<ForgeSubagentBackendSource, "explicit">;
+    };
     configWarnings: string[];
     profiles: ForgeSubagentProfileSummary[];
 }
@@ -30,5 +34,8 @@ export declare function summarizeProfile(loaded: LoadedAgentProfile, resolved: R
 export declare function renderProfileCatalog(profiles: readonly ForgeSubagentProfileSummary[], invocationToolAvailable: boolean, approvalMode?: "interactive" | "unattended-config", configWarnings?: readonly string[], defaultBackend?: {
     id: string;
     source: ForgeSubagentBackendSource;
+}, timeout?: {
+    milliseconds: number;
+    source: Exclude<ForgeSubagentBackendSource, "explicit">;
 }): string;
 //# sourceMappingURL=subagent-profile-tool.d.ts.map

@@ -25,6 +25,7 @@ export function registerForgeSubagentCommand(pi, runtime, profileIds) {
                 if (!descriptors.some((descriptor) => descriptor.id === resolved.id)) {
                     lines.push(`Configured default backend "${resolved.id}" (${backendSourceLabel(resolved)}) is not registered.`);
                 }
+                lines.push(`Configured timeout: ${settings.timeoutMs} ms (${settings.timeoutSource}; best-effort host abort).`);
                 for (const warning of settings.warnings)
                     lines.push(`Configuration warning: ${warning}`);
                 await showText(ctx, "pi-forge subagent backends", lines.join("\n\n") || "No subagent backends registered.");
@@ -38,6 +39,8 @@ export function registerForgeSubagentCommand(pi, runtime, profileIds) {
                 ctx.ui.notify(`Usage: /forge-agent ${parsed.command} <profile> [--backend <id>] <task>`, "warning");
                 return;
             }
+            for (const warning of settings.warnings)
+                ctx.ui.notify(warning, "warning");
             if (parsed.command === "run" && !ctx.hasUI) {
                 ctx.ui.notify("pi-forge: subagent execution requires interactive provider-egress confirmation; use /forge-agent plan in non-UI mode.", "error");
                 return;
@@ -46,7 +49,10 @@ export function registerForgeSubagentCommand(pi, runtime, profileIds) {
             let prepared;
             try {
                 const backend = resolveSubagentBackend(settings, parsed.backend);
-                const result = await runtime.prepare(parsed.profileId, parsed.task, ctx, { backendId: backend.id });
+                const result = await runtime.prepare(parsed.profileId, parsed.task, ctx, {
+                    backendId: backend.id,
+                    timeoutMs: settings.timeoutMs,
+                });
                 if (!result.ok) {
                     await showText(ctx, "pi-forge subagent diagnostics", renderDiagnostics(result.diagnostics));
                     return;
@@ -162,6 +168,7 @@ function renderPlan(prepared) {
         `Profile: ${plan.profile.profile.id}`,
         `Prompt stack: ${plan.profile.promptStack?.id ?? "none"}`,
         `Access: ${plan.access.level}; network ${plan.access.network}; process ${plan.access.process ? "allowed" : "denied"}`,
+        `Timeout: ${plan.limits.timeoutMs ? `${plan.limits.timeoutMs.value} ms (${plan.limits.timeoutMs.enforcement})` : "none"}`,
         `Effective tools: ${plan.effectiveToolIds.join(", ") || "none"}`,
         `System prompt: ${plan.systemPrompt.length} chars`,
         `Messages: ${plan.messages.map((message) => `${message.role}${message.protectedTask ? " (protected task)" : ""}`).join(" -> ")}`,
@@ -212,6 +219,7 @@ function helpText() {
         "Backend selection: --backend overrides one run. Set subagents.backend in .pi/forge/config.json",
         "(trusted project) or ~/.pi/forge/config.json (global default; project wins). There is no fallback:",
         "if the selected backend is unavailable the run fails before provider transport.",
+        "Set subagents.timeoutMs in the same config locations to an integer from 1000 to 3600000.",
     ].join("\n");
 }
 //# sourceMappingURL=subagent-command.js.map

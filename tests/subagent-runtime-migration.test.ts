@@ -57,6 +57,9 @@ test("forge subagent runtime prepares and executes through both migrated process
 	try {
 		const descriptors = runtime.descriptors(ctx).map((descriptor) => descriptor.id).sort();
 		assert.deepEqual(descriptors, ["pi-rpc-readonly", "pi-subprocess-readonly"]);
+		const invalidTimeout = await runtime.prepare("fixture-worker", "Reject an invalid timeout.", ctx, { timeoutMs: 999 });
+		assert.equal(invalidTimeout.ok, false);
+		assert.equal(invalidTimeout.ok ? undefined : invalidTimeout.diagnostics[0]?.code, "host.timeout");
 
 		for (const backendId of ["pi-subprocess-readonly", "pi-rpc-readonly"] as const) {
 			const scoped = createForgeSubagentRuntime(fixtureState(), {
@@ -77,7 +80,7 @@ test("forge subagent runtime prepares and executes through both migrated process
 					}),
 				},
 			});
-			const preparedResult = await scoped.prepare("fixture-worker", "Review the migration fixture.", ctx);
+			const preparedResult = await scoped.prepare("fixture-worker", "Review the migration fixture.", ctx, { timeoutMs: 300_000 });
 			assert.equal(preparedResult.ok, true, preparedResult.ok === false ? preparedResult.diagnostics.map((item) => item.message).join("; ") : "");
 			assert.equal(getEventListeners(preparationController.signal, "abort").length, 0);
 			if (!preparedResult.ok) continue;
@@ -97,6 +100,8 @@ test("forge subagent runtime prepares and executes through both migrated process
 			assert.match(prepared.plan.executionFingerprint, /^sha256:v1:/);
 			assert.match(prepared.plan.promptRuntimeFingerprint, /^sha256:v1:/);
 			assert.equal(prepared.plan.access.executionBoundary, "shared-user");
+			assert.equal(prepared.request.limits.timeoutMs?.value, 300_000);
+			assert.equal(prepared.plan.limits.timeoutMs?.value, 300_000);
 
 			const updates: string[] = [];
 			const executionController = new AbortController();

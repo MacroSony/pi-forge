@@ -58,6 +58,8 @@ export interface ForgeSubagentPlanSummary {
 	systemPromptChars: number;
 	messageCount: number;
 	messageRoles: string[];
+	timeoutMs?: number;
+	timeoutEnforcement?: string;
 	promptRuntimeFingerprint: string;
 	conversationFingerprint: string;
 	executionFingerprint: string;
@@ -143,7 +145,10 @@ export function registerForgeSubagentTool(
 			onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
 			let prepared: ForgeSubagentPreparedRun | undefined;
 			try {
-				const preparation = await runtime.prepare(params.profileId, params.task, ctx, { backendId: backend.id });
+				const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
+					backendId: backend.id,
+					timeoutMs: settings.timeoutMs,
+				});
 				if (!preparation.ok) {
 					const diagnostics = [...configDiagnostics, ...preparation.diagnostics];
 					return toolResult(
@@ -276,6 +281,10 @@ export function summarizeForgeSubagentPlan(prepared: ForgeSubagentPreparedRun, c
 		systemPromptChars: plan.systemPrompt.length,
 		messageCount: plan.messages.length,
 		messageRoles: plan.messages.map((message) => message.role),
+		...(plan.limits.timeoutMs ? {
+			timeoutMs: plan.limits.timeoutMs.value,
+			timeoutEnforcement: plan.limits.timeoutMs.enforcement,
+		} : {}),
 		promptRuntimeFingerprint: plan.promptRuntimeFingerprint,
 		conversationFingerprint: plan.conversationFingerprint,
 		executionFingerprint: plan.executionFingerprint,
@@ -298,6 +307,7 @@ export function renderApprovalSummary(prepared: ForgeSubagentPreparedRun, task: 
 		`Tools: ${toolNames(plan).join(", ") || "none"}`,
 		`Working directory: ${summary.workingDirectory}`,
 		`Boundary: ${summary.executionBoundary} (read-only tool policy; no OS sandbox)`,
+		...(summary.timeoutMs === undefined ? [] : [`Timeout: ${summary.timeoutMs} ms (${summary.timeoutEnforcement ?? "unknown enforcement"})`]),
 		`Full payload: ${summary.systemPromptChars} system chars + ${summary.messageCount} messages`,
 		`Conversation fingerprint: ${summary.conversationFingerprint}`,
 		`Execution fingerprint: ${summary.executionFingerprint}`,
@@ -323,6 +333,7 @@ export function renderFullForgeSubagentPrompt(prepared: ForgeSubagentPreparedRun
 		`Provider/model: ${plan.model.provider}/${plan.model.id}`,
 		`Thinking: ${plan.thinkingLevel}`,
 		`Tools: ${toolNames(plan).join(", ") || "none"}`,
+		`Timeout: ${plan.limits.timeoutMs ? `${plan.limits.timeoutMs.value} ms (${plan.limits.timeoutMs.enforcement})` : "none"}`,
 		`Conversation fingerprint: ${plan.conversationFingerprint}`,
 		`Execution fingerprint: ${plan.executionFingerprint}`,
 		"",
@@ -367,6 +378,7 @@ function renderExpandedResult(
 		container.addChild(new Text([
 			`${theme.fg("muted", "Model:")} ${details.plan.provider}/${details.plan.model} (${details.plan.thinkingLevel})`,
 			`${theme.fg("muted", "Boundary:")} ${details.plan.executionBoundary}; read-only model tools`,
+			...(details.plan.timeoutMs === undefined ? [] : [`${theme.fg("muted", "Timeout:")} ${details.plan.timeoutMs} ms (${details.plan.timeoutEnforcement ?? "unknown"})`]),
 			`${theme.fg("muted", "Tools:")} ${details.plan.effectiveToolIds.join(", ") || "none"}`,
 			`${theme.fg("muted", "Fingerprint:")} ${details.plan.executionFingerprint}`,
 			`${theme.fg("muted", "Approval:")} ${approvalText(details.approval)}`,
@@ -501,4 +513,3 @@ function truncate(text: string, maxChars: number): string {
 function truncateLines(text: string, maxLines: number, maxChars: number): string {
 	return truncate(text.split("\n").slice(0, maxLines).join("\n"), maxChars);
 }
-

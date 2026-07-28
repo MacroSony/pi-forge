@@ -7,7 +7,11 @@ import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runt
 import { registerForgeSubagentTool } from "../src/subagent-tool.ts";
 import type { AgentResponse } from "../src/subagent/contract.ts";
 import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
-import { createFakeExecutionPlan } from "./helpers/fake-subagent-fixture.ts";
+import {
+	createFakeExecutionPlan,
+	fakeAcceptedPreflight,
+	fakeRequest,
+} from "./helpers/fake-subagent-fixture.ts";
 
 // Keep global-config discovery hermetic; these tests exercise project config only.
 process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-subagent-tool-no-global.json");
@@ -65,6 +69,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.ok(updates.length >= 4);
 	assert.match(context.selectTitles[0] ?? "", /Agent prompt:/);
 	assert.match(context.selectTitles[0] ?? "", new RegExp(fixture.prepared.plan.model.provider));
+	assert.match(context.selectTitles[0] ?? "", /Timeout: \d+ ms/);
 	assert.match(context.selectTitles[0] ?? "", /Execution fingerprint:/);
 	assert.equal(context.editors.length, 1);
 	assert.match(context.editors[0]?.text ?? "", /# Exact provider-bound subagent prompt/);
@@ -163,8 +168,12 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-backend-pinning-"));
 	const configDir = join(cwd, ".pi", "forge");
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true, backend: "configured-backend" } }), "utf8");
-	const prepareRuns: Array<{ backendId?: string } | undefined> = [];
+	writeFileSync(
+		join(configDir, "config.json"),
+		JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true, backend: "configured-backend", timeoutMs: 240_000 } }),
+		"utf8",
+	);
+	const prepareRuns: Array<{ backendId?: string; timeoutMs?: number } | undefined> = [];
 	let executeCalls = 0;
 	const runtime: ForgeSubagentRuntime = {
 		backendIds: () => ["configured-backend", "other-backend"],
@@ -195,12 +204,12 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 		// Unattended: no override resolves to the configured project default.
 		const configured = await tool.execute("configured", { profileId: fixture.profileId, task: "Run unattended." }, undefined, undefined, context.ctx);
 		assert.equal(configured.details.status, "completed");
-		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend" });
+		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend", timeoutMs: 240_000 });
 
 		// Unattended: explicitly naming the configured backend is accepted.
 		const matching = await tool.execute("matching", { profileId: fixture.profileId, task: "Run unattended.", backend: "configured-backend" }, undefined, undefined, context.ctx);
 		assert.equal(matching.details.status, "completed");
-		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend" });
+		assert.deepEqual(prepareRuns.at(-1), { backendId: "configured-backend", timeoutMs: 240_000 });
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}
@@ -209,11 +218,16 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 	const interactive = toolContext(["Approve and run"]);
 	const result = await tool.execute("interactive", { profileId: fixture.profileId, task: "Run interactively.", backend: "other-backend" }, undefined, undefined, interactive.ctx);
 	assert.equal(result.details.status, "completed");
-	assert.deepEqual(prepareRuns.at(-1), { backendId: "other-backend" });
+	assert.deepEqual(prepareRuns.at(-1), { backendId: "other-backend", timeoutMs: 60_000 });
 });
 
 async function toolFixture() {
-	const fixture = createFakeExecutionPlan({ runId: "tool-run" });
+	const request = fakeRequest({
+		limits: { timeoutMs: { value: 300_000, enforcement: "best-effort" } },
+	});
+	const preflight = fakeAcceptedPreflight({ request });
+	preflight.limits.timeoutMs = { value: 300_000, enforcement: "host-abort" };
+	const fixture = createFakeExecutionPlan({ request, preflight, runId: "tool-run" });
 	return {
 		profileId: fixture.plan.profile.profile.id,
 		prepared: {

@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { DEFAULT_SUBAGENT_BACKEND_ID, GLOBAL_FORGE_CONFIG_PATH_ENV, loadForgeSubagentSettings, resolveSubagentBackend } from "../src/forge-config.ts";
+import {
+	DEFAULT_SUBAGENT_BACKEND_ID,
+	DEFAULT_SUBAGENT_TIMEOUT_MS,
+	GLOBAL_FORGE_CONFIG_PATH_ENV,
+	isValidSubagentTimeoutMs,
+	loadForgeSubagentSettings,
+	resolveSubagentBackend,
+} from "../src/forge-config.ts";
 
 // Hermetic default: no real user global config leaks into these tests.
 process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = join(tmpdir(), "pi-forge-config-test-no-global.json");
@@ -80,6 +87,49 @@ test("subagent backend defaults layer global, trusted project, and explicit over
 		if (previousEnv === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
 		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousEnv;
 		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("subagent timeout config layers global, trusted-project, and validated fallback values", () => {
+	assert.equal(isValidSubagentTimeoutMs(1_000), true);
+	assert.equal(isValidSubagentTimeoutMs(3_600_000), true);
+	assert.equal(isValidSubagentTimeoutMs(999), false);
+	assert.equal(isValidSubagentTimeoutMs(3_600_001), false);
+	assert.equal(isValidSubagentTimeoutMs(60_000.5), false);
+
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-timeout-config-"));
+	const globalConfigPath = join(cwd, "global-config.json");
+	const projectConfigDir = join(cwd, ".pi", "forge");
+	const projectConfigPath = join(projectConfigDir, "config.json");
+	const previousGlobalPath = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+	process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = globalConfigPath;
+	mkdirSync(projectConfigDir, { recursive: true });
+
+	try {
+		const defaults = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(defaults.timeoutMs, DEFAULT_SUBAGENT_TIMEOUT_MS);
+		assert.equal(defaults.timeoutSource, "built-in");
+
+		writeFileSync(globalConfigPath, JSON.stringify({ subagents: { timeoutMs: 300_000 } }), "utf8");
+		writeFileSync(projectConfigPath, JSON.stringify({ subagents: { timeoutMs: 600_000 } }), "utf8");
+
+		const trusted = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(trusted.timeoutMs, 600_000);
+		assert.equal(trusted.timeoutSource, "project");
+
+		const untrusted = loadForgeSubagentSettings(context(cwd, false));
+		assert.equal(untrusted.timeoutMs, 300_000);
+		assert.equal(untrusted.timeoutSource, "global");
+
+		writeFileSync(projectConfigPath, JSON.stringify({ subagents: { timeoutMs: 999 } }), "utf8");
+		const invalidProject = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(invalidProject.timeoutMs, 300_000);
+		assert.equal(invalidProject.timeoutSource, "global");
+		assert.match(invalidProject.warnings[0] ?? "", /timeoutMs must be an integer from 1000 to 3600000/);
+	} finally {
+		if (previousGlobalPath === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousGlobalPath;
+		rmSync(cwd, { recursive: true, force: true });
 	}
 });
 

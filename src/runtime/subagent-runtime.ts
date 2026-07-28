@@ -21,7 +21,13 @@ import {
 	type PiRpcBackendOptions,
 } from "@zihanw/pi-subagent-runtime/backends/rpc";
 import type { PiForgeRuntimeState } from "../runtime-state.ts";
-import { DEFAULT_SUBAGENT_BACKEND_ID } from "../forge-config.ts";
+import {
+	DEFAULT_SUBAGENT_BACKEND_ID,
+	DEFAULT_SUBAGENT_TIMEOUT_MS,
+	MAX_SUBAGENT_TIMEOUT_MS,
+	MIN_SUBAGENT_TIMEOUT_MS,
+	isValidSubagentTimeoutMs,
+} from "../forge-config.ts";
 import {
 	SUBAGENT_CONTRACT_VERSION,
 	createAgentExecutionPlan,
@@ -60,7 +66,7 @@ export interface ForgeSubagentRuntime {
 	/** Registered backend IDs, known without an extension context. */
 	backendIds(): string[];
 	descriptors(ctx: ExtensionContext): SubagentBackendDescriptor[];
-	prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string }): Promise<ForgeSubagentPreparationResult>;
+	prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string; timeoutMs?: number }): Promise<ForgeSubagentPreparationResult>;
 	discard(prepared: ForgeSubagentPreparedRun): Promise<void>;
 	execute(prepared: ForgeSubagentPreparedRun, ctx: ExtensionContext, signal?: AbortSignal, onUpdate?: (update: SubagentBackendExecutionUpdate) => void): Promise<AgentResponse>;
 	takeReport?(runId: string): PiSubprocessRunReport | undefined;
@@ -133,9 +139,16 @@ export function createForgeSubagentRuntime(
 		return ensure(ctx).runtime.listBackends().map(descriptorForHost);
 	}
 
-	async function prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string }): Promise<ForgeSubagentPreparationResult> {
+	async function prepare(profileId: string, task: string, ctx: ExtensionContext, run?: { backendId?: string; timeoutMs?: number }): Promise<ForgeSubagentPreparationResult> {
 		const diagnostics: SubagentDiagnostic[] = [];
 		if (!ctx.isProjectTrusted()) return { ok: false, diagnostics: [error("host.trust", "Project is not trusted; subagent profiles remain disabled.")] };
+		const timeoutMs = run?.timeoutMs ?? DEFAULT_SUBAGENT_TIMEOUT_MS;
+		if (!isValidSubagentTimeoutMs(timeoutMs)) {
+			return {
+				ok: false,
+				diagnostics: [error("host.timeout", `Subagent timeout must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} milliseconds.`)],
+			};
+		}
 		const matches = state.profiles.filter((candidate) => candidate.profile.id === profileId);
 		if (matches.length !== 1) {
 			return { ok: false, diagnostics: [error(matches.length === 0 ? "host.profile-missing" : "host.profile-ambiguous", matches.length === 0 ? `Unknown agent profile: ${profileId}` : `Agent profile id is ambiguous: ${profileId}`)] };
@@ -158,7 +171,7 @@ export function createForgeSubagentRuntime(
 				network: "allow",
 				executionBoundary: "shared-user",
 			},
-			limits: { timeoutMs: { value: 60_000, enforcement: "best-effort" } },
+			limits: { timeoutMs: { value: timeoutMs, enforcement: "best-effort" } },
 			resultProjection: { maxChars: 12_000 },
 			parent: { sessionId: ctx.sessionManager.getSessionId(), depth: 0, maxDepth: 1 },
 			// The command layer obtains explicit user consent before execution. A dry plan

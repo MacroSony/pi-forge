@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { loadForgeSubagentSettings, resolveSubagentBackend } from "./forge-config.js";
+import { DEFAULT_SUBAGENT_TIMEOUT_MS, loadForgeSubagentSettings, resolveSubagentBackend, } from "./forge-config.js";
 import { isResolvedAgentProfileUsable, } from "./agent-profile.js";
 const MAX_VISIBLE_DESCRIPTION_CHARS = 1_000;
 const ForgeSubagentProfilesParameters = Type.Object({});
@@ -15,14 +15,22 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
         parameters: ForgeSubagentProfilesParameters,
         async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
             if (!ctx.isProjectTrusted()) {
-                return result("Subagent profile discovery is disabled because the project is not trusted.", { status: "disabled", invocationToolAvailable: false, approvalMode: "interactive", configWarnings: [], profiles: [] });
+                return result("Subagent profile discovery is disabled because the project is not trusted.", {
+                    status: "disabled",
+                    invocationToolAvailable: false,
+                    approvalMode: "interactive",
+                    timeout: { milliseconds: DEFAULT_SUBAGENT_TIMEOUT_MS, source: "built-in" },
+                    configWarnings: [],
+                    profiles: [],
+                });
             }
             const invocationToolAvailable = pi.getActiveTools().includes("forge_subagent");
             const settings = loadForgeSubagentSettings(ctx);
             const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
             const defaultBackend = resolveSubagentBackend(settings);
             const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
-            return result(renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend), { status: "completed", invocationToolAvailable, approvalMode, defaultBackend, configWarnings: settings.warnings, profiles: summaries });
+            const timeout = { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
+            return result(renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend, timeout), { status: "completed", invocationToolAvailable, approvalMode, defaultBackend, timeout, configWarnings: settings.warnings, profiles: summaries });
         },
     });
 }
@@ -38,11 +46,12 @@ export function summarizeProfile(loaded, resolved) {
         diagnostics: structuredClone(resolved.diagnostics),
     };
 }
-export function renderProfileCatalog(profiles, invocationToolAvailable, approvalMode = "interactive", configWarnings = [], defaultBackend) {
+export function renderProfileCatalog(profiles, invocationToolAvailable, approvalMode = "interactive", configWarnings = [], defaultBackend, timeout) {
     if (profiles.length === 0) {
         return [
             `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
             ...(defaultBackend ? [`Default backend: ${defaultBackend.id} (${defaultBackend.source}).`] : []),
+            ...(timeout ? [`Timeout: ${timeout.milliseconds} ms (${timeout.source}; best-effort host abort).`] : []),
             ...configWarnings.map((warning) => `Configuration warning: ${warning}`),
         ].join("\n");
     }
@@ -57,6 +66,8 @@ export function renderProfileCatalog(profiles, invocationToolAvailable, approval
     ];
     if (defaultBackend)
         lines.push(`Default backend: ${defaultBackend.id} (${defaultBackend.source}); the interactive forge_subagent backend parameter or /forge-agent --backend overrides it per run.`);
+    if (timeout)
+        lines.push(`Timeout: ${timeout.milliseconds} ms (${timeout.source}; best-effort host abort).`);
     if (configWarnings.length > 0)
         lines.push(...configWarnings.map((warning) => `Configuration warning: ${warning}`));
     if (ready.length > 0) {

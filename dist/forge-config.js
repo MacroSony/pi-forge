@@ -3,6 +3,10 @@ import { join } from "node:path";
 import { globalForgeDir } from "./storage.js";
 /** Backend used when neither a per-run override nor a configured default applies. */
 export const DEFAULT_SUBAGENT_BACKEND_ID = "pi-subprocess-readonly";
+/** Preserve the original foreground-run timeout unless the user configures one. */
+export const DEFAULT_SUBAGENT_TIMEOUT_MS = 60_000;
+export const MIN_SUBAGENT_TIMEOUT_MS = 1_000;
+export const MAX_SUBAGENT_TIMEOUT_MS = 3_600_000;
 /**
  * Development/test override for the global config location. Keeps automated
  * tests hermetic regardless of the developer's real ~/.pi/forge/config.json.
@@ -27,17 +31,22 @@ export function loadForgeSubagentSettings(ctx) {
     const globalConfigPath = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] ?? join(globalForgeDir(), "config.json");
     const settings = {
         allowAgentInvocationWithoutApproval: false,
+        timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
+        timeoutSource: "built-in",
         configPath,
         globalConfigPath,
         warnings: [],
     };
     // The global config is user-owned and always applies. The project config is
     // honored only for trusted projects and overrides global values.
-    applyBackend(readSubagentsSection(globalConfigPath, settings.warnings), globalConfigPath, "global", settings);
+    const globalSection = readSubagentsSection(globalConfigPath, settings.warnings);
+    applyBackend(globalSection, globalConfigPath, "global", settings);
+    applyTimeout(globalSection, globalConfigPath, "global", settings);
     if (!ctx.isProjectTrusted())
         return settings;
     const projectSection = readSubagentsSection(configPath, settings.warnings);
     applyBackend(projectSection, configPath, "project", settings);
+    applyTimeout(projectSection, configPath, "project", settings);
     applyUnattended(projectSection, configPath, settings);
     return settings;
 }
@@ -75,6 +84,17 @@ function applyBackend(section, configPath, source, settings) {
     settings.backend = value;
     settings.backendSource = source;
 }
+function applyTimeout(section, configPath, source, settings) {
+    if (!section || section.timeoutMs === undefined)
+        return;
+    const value = section.timeoutMs;
+    if (!isValidSubagentTimeoutMs(value)) {
+        settings.warnings.push(`pi-forge: ${configPath} subagents.timeoutMs must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS}; the configured value is ignored.`);
+        return;
+    }
+    settings.timeoutMs = value;
+    settings.timeoutSource = source;
+}
 function applyUnattended(section, configPath, settings) {
     if (!section || section.allowAgentInvocationWithoutApproval === undefined)
         return;
@@ -84,6 +104,11 @@ function applyUnattended(section, configPath, settings) {
         return;
     }
     settings.allowAgentInvocationWithoutApproval = value;
+}
+export function isValidSubagentTimeoutMs(value) {
+    return Number.isSafeInteger(value)
+        && value >= MIN_SUBAGENT_TIMEOUT_MS
+        && value <= MAX_SUBAGENT_TIMEOUT_MS;
 }
 function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);

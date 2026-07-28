@@ -39,7 +39,9 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 	assert.equal(result.details.invocationToolAvailable, true);
 	assert.equal(result.details.approvalMode, "interactive");
 	assert.deepEqual(result.details.defaultBackend, { id: "pi-subprocess-readonly", source: "built-in" });
+	assert.deepEqual(result.details.timeout, { milliseconds: 60_000, source: "built-in" });
 	assert.match(result.content[0].text, /Default backend: pi-subprocess-readonly \(built-in\)/);
+	assert.match(result.content[0].text, /Timeout: 60000 ms \(built-in; best-effort host abort\)/);
 	assert.equal(result.details.profiles[0].description, "Reviews code and architecture.");
 	assert.equal(result.details.profiles[0].status, "ready");
 	assert.equal(result.details.profiles[1].status, "unavailable");
@@ -105,7 +107,7 @@ test("forge_subagent_profiles reports a configured default backend", async () =>
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-backend-profiles-"));
 	const configDir = join(cwd, ".pi", "forge");
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { backend: "pi-rpc-readonly" } }), "utf8");
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { backend: "pi-rpc-readonly", timeoutMs: 300_000 } }), "utf8");
 	let tool: any;
 	registerForgeSubagentProfilesTool(
 		{
@@ -118,7 +120,9 @@ test("forge_subagent_profiles reports a configured default backend", async () =>
 	try {
 		const result = await tool.execute("catalog", {}, undefined, undefined, { cwd, isProjectTrusted: () => true });
 		assert.deepEqual(result.details.defaultBackend, { id: "pi-rpc-readonly", source: "project" });
+		assert.deepEqual(result.details.timeout, { milliseconds: 300_000, source: "project" });
 		assert.match(result.content[0].text, /Default backend: pi-rpc-readonly \(project\)/);
+		assert.match(result.content[0].text, /Timeout: 300000 ms \(project; best-effort host abort\)/);
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}
