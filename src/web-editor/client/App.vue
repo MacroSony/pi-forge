@@ -83,12 +83,7 @@ onUnmounted(() => {
 					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
 				</div>
 				<section id="metadataPanel" class="metadata-panel">
-					<div class="metadata-head">
-						<button id="metadataToggleBtn" data-icon="▾" title="Show or hide stack metadata">Hide metadata</button>
-						<div class="metadata-title">Stack metadata</div>
-						<div id="metadataSummary" class="metadata-summary"></div>
-					</div>
-					<div id="settings" class="settings"></div>
+					<div id="metadataHost"></div>
 				</section>
 				<nav class="view-tabs" aria-label="Stack editor sections">
 					<button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>

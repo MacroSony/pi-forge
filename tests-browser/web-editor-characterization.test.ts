@@ -562,12 +562,22 @@ async function withBrowserEditor(
 			else browserErrors.push(text);
 		});
 
-		await run({
-			cwd,
-			editorUrl,
-			expectBrowserError: (pattern) => expectedBrowserErrors.push({ pattern, matched: false }),
-			page,
-		});
+		try {
+			await run({
+				cwd,
+				editorUrl,
+				expectBrowserError: (pattern) => expectedBrowserErrors.push({ pattern, matched: false }),
+				page,
+			});
+		} catch (error) {
+			const detail = browserErrors.length ? `\nBrowser errors:\n${browserErrors.join("\n")}` : "";
+			const statusText = await page.locator("#status").textContent().catch(() => "(missing)");
+			const stackRows = await page.locator(".stack-row").count().catch(() => -1);
+			throw new Error(
+				`${error instanceof Error ? error.stack ?? error.message : String(error)}${detail}\nEditor status: ${statusText}\nStack rows: ${stackRows}`,
+				{ cause: error },
+			);
+		}
 		assert.equal(
 			expectedBrowserErrors.every((candidate) => candidate.matched),
 			true,

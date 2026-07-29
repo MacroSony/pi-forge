@@ -2,6 +2,7 @@
 import { createEditorApi, EditorApiError } from "./api.ts";
 import { attr, el, escapeHtml, eventElement, query, queryAll, type EditorElement } from "./dom.ts";
 import { createInspector } from "./inspector.ts";
+import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import type {
   EditorPromptStack,
@@ -62,6 +63,16 @@ const vueTabHost = createVueTabHost({
   validateStack: () => run(validateStack),
   applyStack: applyStackFromVue,
   copyText: copyTextToClipboard,
+});
+const vueMetadataHost = createVueMetadataHost({
+  getStack: () => currentStack,
+  getFilePath: () => currentFilePath,
+  getCollapsed: () => metadataCollapsed,
+  setCollapsed: (collapsed) => {
+    metadataCollapsed = collapsed;
+  },
+  markDirty,
+  setStatus,
 });
 
 const slotNames = [
@@ -124,7 +135,7 @@ function renderDirtyState() {
 
 function updateActionState() {
   const hasStack = !!currentStack;
-  for (const id of ["activateBtn", "saveBtn", "validateBtn", "previewBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn", "metadataToggleBtn"]) {
+  for (const id of ["activateBtn", "saveBtn", "validateBtn", "previewBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
     const button = el(id);
     if (button) button.disabled = !hasStack;
   }
@@ -259,43 +270,12 @@ function normalizeResourceList(value: any) {
 }
 
 function renderSettings() {
-  const settings = el("settings");
   if (!currentStack) {
-    settings.innerHTML = "";
-    el("metadataSummary").textContent = "";
+    vueMetadataHost.unmount();
     return;
   }
-  const stack = currentStack;
   el("metadataPanel").style.display = "";
-  el("metadataSummary").textContent = [
-    currentStack.id || "(no id)",
-    currentStack.name || "(unnamed)",
-    currentStack.mode || "replace",
-    currentFilePath || "",
-  ].filter(Boolean).join(" | ");
-  settings.style.display = metadataCollapsed ? "none" : "grid";
-  el("metadataToggleBtn").textContent = metadataCollapsed ? "Show metadata" : "Hide metadata";
-  el("metadataToggleBtn").dataset.icon = metadataCollapsed ? "▸" : "▾";
-  settings.innerHTML = [
-    field("Stack ID", '<input id="stackId" value="' + attr(stack.id) + '" readonly title="Stack IDs are immutable; use Fork to create a new ID.">'),
-    field("Name", '<input id="stackName" value="' + attr(stack.name || "") + '">'),
-    field("Mode", '<select id="stackMode"><option value="replace">replace</option><option value="append">append</option><option value="prepend">prepend</option></select>'),
-    field("Auto activate", '<label class="checkline"><input id="stackAuto" type="checkbox"> enabled</label>'),
-    field("Description", '<textarea id="stackDescription" class="wide">' + escapeHtml(stack.description || "") + '</textarea>', "wide"),
-    field("File", '<input value="' + attr(currentFilePath) + '" disabled>', "wide"),
-  ].join("");
-  el("stackMode").value = stack.mode || "replace";
-  el("stackAuto").checked = stack.autoActivate === true;
-  el("stackName").oninput = (event: any) => { setOptionalString(stack, "name", event.target.value); markDirty(); };
-  el("stackMode").onchange = (event: any) => { stack.mode = event.target.value; markDirty(); };
-  el("stackAuto").onchange = (event: any) => { stack.autoActivate = event.target.checked; markDirty(); };
-  el("stackDescription").oninput = (event: any) => { setOptionalString(stack, "description", event.target.value); markDirty(); };
-}
-
-function toggleMetadata() {
-  metadataCollapsed = !metadataCollapsed;
-  renderSettings();
-  setStatus(metadataCollapsed ? "Stack metadata hidden" : "Stack metadata shown");
+  vueMetadataHost.mount(el("metadataHost"));
 }
 
 function renderItemList() {
@@ -1142,7 +1122,7 @@ function renderEmpty() {
   });
   el("workspace").style.display = "";
   el("metadataPanel").style.display = "none";
-  el("settings").innerHTML = "";
+  vueMetadataHost.unmount();
   el("itemCount").textContent = "";
   el("itemList").innerHTML = "";
   el("itemEditor").innerHTML =
@@ -1279,7 +1259,6 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("validateBtn").onclick = () => run(validateStack);
   el("previewBtn").onclick = () => run(previewStack);
   el("payloadBtn").onclick = () => run(openPayloadCapture);
-  el("metadataToggleBtn").onclick = toggleMetadata;
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.onclick = () => {
       activeTab = button.dataset.tab || "items";
@@ -1326,6 +1305,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     window.removeEventListener("pi-forge:profile-applied", handleProfileApplied);
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();
+    vueMetadataHost.unmount();
     editorIsActive = () => true;
   };
 }
