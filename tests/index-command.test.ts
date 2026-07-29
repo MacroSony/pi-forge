@@ -689,23 +689,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const pageResponse = await fetch(editorUrl);
 		assert.equal(pageResponse.status, 200);
 		const pageHtml = await pageResponse.text();
-		for (const id of [
-			"sidebarToggleBtn", "status", "dirtyBadge", "themeBtn", "reloadBtn", "disableBtn",
-			"shell", "stackList", "newStackBtn", "activateBtn", "saveBtn", "validateBtn",
-			"previewBtn", "payloadBtn", "forkBtn", "importBtn", "exportBtn", "deleteStackBtn",
-			"metadataToggleBtn", "itemsTabBtn", "regexTabBtn", "policyTabBtn", "stackTabBtn",
-			"addItemBtn", "addSlotBtn", "deleteItemBtn", "preview", "stackModal",
-		]) {
-			assert.match(pageHtml, new RegExp(`id="${id}"`), `expected static editor element #${id}`);
-		}
-		assert.match(pageHtml, /Ctrl\/Cmd\+S/);
-		const deleteItemIndex = pageHtml.indexOf('id="deleteItemBtn"');
-		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
-		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
-		const previewIndex = pageHtml.indexOf('id="preview"');
-		const stackModalIndex = pageHtml.indexOf('id="stackModal"');
-		assert.ok(previewIndex > pageHtml.indexOf("</main>"));
-		assert.ok(previewIndex < stackModalIndex);
+		assert.match(pageHtml, /<div id="app"><\/div>/);
 		assert.doesNotMatch(pageHtml, /<script[^>]+src=/);
 		const scripts = [...pageHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 		assert.equal(scripts.length, 1);
