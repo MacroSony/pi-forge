@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { DEFAULT_SUBAGENT_TIMEOUT_MS, loadForgeSubagentSettings, resolveSubagentBackend, } from "./forge-config.js";
+import { DEFAULT_SUBAGENT_TIMEOUT_MS, loadForgeSubagentSettings, resolveSubagentBackend, resolveSubagentProfilePolicy, } from "./forge-config.js";
 import { isResolvedAgentProfileUsable, } from "./agent-profile.js";
 const MAX_VISIBLE_DESCRIPTION_CHARS = 1_000;
 const ForgeSubagentProfilesParameters = Type.Object({});
@@ -8,7 +8,7 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
         name: "forge_subagent_profiles",
         label: "Forge Subagent Profiles",
         description: [
-            "List the currently loaded Pi Forge subagent profiles, descriptions, default backend, and active approval mode.",
+            "List Pi Forge agent profiles explicitly enabled for subagent delegation, with descriptions, execution settings, and active approval mode.",
             "Use this before forge_subagent when the user has not already specified a profile ID.",
             "This reads only in-memory profile metadata and performs no provider request or subagent prompt preparation.",
         ].join(" "),
@@ -28,13 +28,16 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
             const settings = loadForgeSubagentSettings(ctx);
             const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
             const defaultBackend = resolveSubagentBackend(settings);
-            const summaries = profiles().map((loaded) => summarizeProfile(loaded, resolveProfile(loaded, ctx)));
+            const summaries = profiles().flatMap((loaded) => {
+                const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+                return policy.enabled ? [summarizeProfile(loaded, resolveProfile(loaded, ctx), policy)] : [];
+            });
             const timeout = { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
             return result(renderProfileCatalog(summaries, invocationToolAvailable, approvalMode, settings.warnings, defaultBackend, timeout), { status: "completed", invocationToolAvailable, approvalMode, defaultBackend, timeout, configWarnings: settings.warnings, profiles: summaries });
         },
     });
 }
-export function summarizeProfile(loaded, resolved) {
+export function summarizeProfile(loaded, resolved, policy) {
     return {
         id: loaded.profile.id,
         name: loaded.profile.name,
@@ -42,6 +45,8 @@ export function summarizeProfile(loaded, resolved) {
         model: structuredClone(loaded.profile.model),
         thinkingLevel: loaded.profile.thinkingLevel,
         promptStack: loaded.profile.promptStack,
+        backend: structuredClone(policy.backend),
+        timeout: structuredClone(policy.timeout),
         status: isResolvedAgentProfileUsable(resolved) ? "ready" : "unavailable",
         diagnostics: structuredClone(resolved.diagnostics),
     };
@@ -49,7 +54,8 @@ export function summarizeProfile(loaded, resolved) {
 export function renderProfileCatalog(profiles, invocationToolAvailable, approvalMode = "interactive", configWarnings = [], defaultBackend, timeout) {
     if (profiles.length === 0) {
         return [
-            `No Pi Forge subagent profiles are currently loaded. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
+            `No Pi Forge agent profiles are enabled for subagent delegation. Parent invocation tool: ${invocationToolAvailable ? "active" : "inactive"}. Approval mode: ${approvalMode}.`,
+            "Enable a profile explicitly with subagents.profiles.<id>.enabled: true.",
             ...(defaultBackend ? [`Default backend: ${defaultBackend.id} (${defaultBackend.source}).`] : []),
             ...(timeout ? [`Timeout: ${timeout.milliseconds} ms (${timeout.source}; best-effort host abort).`] : []),
             ...configWarnings.map((warning) => `Configuration warning: ${warning}`),
@@ -89,12 +95,22 @@ function renderProfile(profile, includeErrors = false) {
         title,
         `  Description: ${description}`,
         `  Model: ${profile.model.provider}/${profile.model.id}; thinking: ${profile.thinkingLevel}; stack: ${profile.promptStack ?? "none"}`,
+        `  Execution: backend ${profile.backend.id} (${settingSourceLabel(profile.backend.source)}); timeout ${profile.timeout.milliseconds} ms (${settingSourceLabel(profile.timeout.source)}; best-effort host abort)`,
     ];
     if (includeErrors) {
         const errors = profile.diagnostics.filter((diagnostic) => diagnostic.level === "error");
         lines.push(`  Unavailable because: ${errors.map((diagnostic) => diagnostic.message).join("; ") || "profile resolution failed"}`);
     }
     return lines;
+}
+function settingSourceLabel(source) {
+    switch (source) {
+        case "explicit": return "per-run override";
+        case "project-profile": return "project profile override";
+        case "project": return "project config";
+        case "global": return "global config";
+        default: return "built-in";
+    }
 }
 function result(text, details) {
     return { content: [{ type: "text", text }], details: structuredClone(details) };

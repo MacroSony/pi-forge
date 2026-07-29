@@ -1,7 +1,7 @@
 import { getMarkdownTheme, } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { loadForgeSubagentSettings, resolveSubagentBackend } from "./forge-config.js";
+import { loadForgeSubagentSettings, resolveSubagentProfilePolicy } from "./forge-config.js";
 import { sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { isRecord } from "@zihanw/pi-subagent-runtime";
 const APPROVE = "Approve and run";
@@ -11,7 +11,7 @@ const MAX_PROGRESS_ITEMS = 100;
 const ForgeSubagentParameters = Type.Object({
     profileId: Type.String({
         minLength: 1,
-        description: "ID of a loaded Pi Forge agent profile.",
+        description: "ID of a Pi Forge agent profile explicitly enabled for subagent delegation.",
     }),
     task: Type.String({
         minLength: 1,
@@ -27,7 +27,7 @@ export function registerForgeSubagentTool(pi, runtime, profileIds) {
         name: "forge_subagent",
         label: "Forge Subagent",
         description: [
-            "Delegate one foreground task to a loaded Pi Forge agent profile.",
+            "Delegate one foreground task to a Pi Forge agent profile explicitly enabled in subagents.profiles.",
             "Use forge_subagent_profiles first when the user has not already specified a profile ID.",
             "Runs require human approval after exact preparation unless the trusted project explicitly enables unattended agent invocation.",
             "The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
@@ -39,18 +39,6 @@ export function registerForgeSubagentTool(pi, runtime, profileIds) {
         async execute(_toolCallId, params, signal, onUpdate, ctx) {
             const settings = loadForgeSubagentSettings(ctx);
             const approvalRequired = !settings.allowAgentInvocationWithoutApproval;
-            const configuredBackend = resolveSubagentBackend(settings);
-            if (!approvalRequired && params.backend && params.backend !== configuredBackend.id) {
-                return toolResult(`Subagent invocation was not run: unattended invocation is pinned to the configured backend "${configuredBackend.id}". To use "${params.backend}", run interactively or change subagents.backend in the trusted project config.`, {
-                    status: "failed",
-                    profileId: params.profileId,
-                    task: params.task,
-                    approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
-                    diagnostics: settings.warnings.map((message) => ({ level: "warning", code: "host.config", message })),
-                    progress: [],
-                }, true);
-            }
-            const backend = resolveSubagentBackend(settings, params.backend);
             const configDiagnostics = settings.warnings.map((message) => ({ level: "warning", code: "host.config", message }));
             const baseDetails = {
                 status: "preparing",
@@ -65,19 +53,34 @@ export function registerForgeSubagentTool(pi, runtime, profileIds) {
                 diagnostics: configDiagnostics,
                 progress: [],
             };
+            const knownProfileIds = profileIds();
+            const enabledProfileIds = knownProfileIds.filter((profileId) => resolveSubagentProfilePolicy(settings, profileId).enabled);
+            if (!knownProfileIds.includes(params.profileId)) {
+                const available = enabledProfileIds.join(", ") || "none";
+                return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Enabled subagent profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
+            }
+            const configuredPolicy = resolveSubagentProfilePolicy(settings, params.profileId);
+            if (!configuredPolicy.enabled) {
+                return toolResult(`Pi Forge agent profile "${params.profileId}" is not enabled for subagent delegation. Use forge_subagent_profiles to discover enabled profiles.`, { ...baseDetails, status: "failed" }, true);
+            }
+            const configuredBackend = configuredPolicy.backend;
+            if (!approvalRequired && params.backend && params.backend !== configuredBackend.id) {
+                return toolResult(`Subagent invocation was not run: unattended invocation is pinned to the configured backend "${configuredBackend.id}". To use "${params.backend}", run interactively or change the trusted subagent configuration.`, {
+                    ...baseDetails,
+                    status: "failed",
+                    approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
+                }, true);
+            }
+            const runPolicy = resolveSubagentProfilePolicy(settings, params.profileId, approvalRequired ? params.backend : undefined);
             if (approvalRequired && !ctx.hasUI) {
                 return toolResult("Subagent invocation was not run: interactive human approval is unavailable.", { ...baseDetails, status: "cancelled" });
-            }
-            if (!profileIds().includes(params.profileId)) {
-                const available = profileIds().join(", ") || "none";
-                return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Available profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
             }
             onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
             let prepared;
             try {
                 const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
-                    backendId: backend.id,
-                    timeoutMs: settings.timeoutMs,
+                    backendId: runPolicy.backend.id,
+                    timeoutMs: runPolicy.timeout.milliseconds,
                 });
                 if (!preparation.ok) {
                     const diagnostics = [...configDiagnostics, ...preparation.diagnostics];

@@ -1,10 +1,27 @@
 import assert from "node:assert/strict";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-// Keep global-config discovery hermetic; these tests exercise project config only.
-process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-subagent-command-no-global.json");
+// Keep global-config discovery hermetic; delegation policy is project-only.
+const GLOBAL_CONFIG_PATH = join(tmpdir(), `pi-forge-subagent-command-${process.pid}.json`);
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH;
+const TEST_CWD = join(tmpdir(), `pi-forge-subagent-command-project-${process.pid}`);
+const TEST_CONFIG_DIR = join(TEST_CWD, ".pi", "forge");
+mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+writeFileSync(join(TEST_CONFIG_DIR, "config.json"), JSON.stringify({
+	subagents: {
+		profiles: {
+			reviewer: { enabled: true },
+			"image-viewer": { enabled: true },
+		},
+	},
+}), "utf8");
+test.after(() => {
+	rmSync(GLOBAL_CONFIG_PATH, { force: true });
+	rmSync(TEST_CWD, { recursive: true, force: true });
+});
 
 import { registerForgeSubagentCommand } from "../src/subagent-command.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
@@ -73,7 +90,7 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 		dispose: async () => undefined,
 	};
 	const commands: Record<string, any> = {};
-	registerForgeSubagentCommand({ registerCommand: (name: string, command: unknown) => { commands[name] = command; } } as any, runtime, () => ["reviewer", "image-viewer"]);
+	registerForgeSubagentCommand({ registerCommand: (name: string, command: unknown) => { commands[name] = command; } } as any, runtime, () => ["reviewer", "image-viewer", "hidden"]);
 	const command = commands["forge-agent"];
 	assert.ok(command);
 	assert.deepEqual(command.getArgumentCompletions("pl"), [{ value: "plan", label: "plan" }]);
@@ -88,6 +105,11 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 	assert.match(context.editors.at(-1)?.text ?? "", /fake-backend/);
 	assert.match(context.editors.at(-1)?.text ?? "", /not registered/, "the built-in default is absent from this fake descriptor set");
 	assert.match(context.editors.at(-1)?.text ?? "", /Configured timeout: 60000 ms \(built-in; best-effort host abort\)/);
+	assert.match(context.editors.at(-1)?.text ?? "", /reviewer: backend pi-subprocess-readonly/);
+
+	await command.handler("plan hidden inspect this", context.ctx);
+	assert.equal(calls.prepare, 0);
+	assert.match(context.notifications.at(-1)?.message ?? "", /not enabled for subagent delegation/);
 
 	await command.handler("plan reviewer inspect this", context.ctx);
 	assert.equal(calls.prepare, 1);
@@ -137,7 +159,7 @@ function commandContext() {
 	const ctx = {
 		hasUI: true,
 		signal: undefined,
-		cwd: "/workspace",
+		cwd: TEST_CWD,
 		isProjectTrusted: () => true,
 		ui: {
 			theme: { fg: (_color: string, text: string) => text },

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -23,6 +23,15 @@ const API = "pi-forge-migration-api";
  */
 test("forge subagent runtime prepares and executes through both migrated process backends", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-migration-"));
+	const configDir = join(cwd, ".pi", "forge");
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({
+		subagents: {
+			profiles: {
+				"fixture-worker": { enabled: true },
+			},
+		},
+	}), "utf8");
 	const faux = createFauxCore({
 		api: API,
 		provider: PROVIDER,
@@ -60,6 +69,9 @@ test("forge subagent runtime prepares and executes through both migrated process
 		const invalidTimeout = await runtime.prepare("fixture-worker", "Reject an invalid timeout.", ctx, { timeoutMs: 999 });
 		assert.equal(invalidTimeout.ok, false);
 		assert.equal(invalidTimeout.ok ? undefined : invalidTimeout.diagnostics[0]?.code, "host.timeout");
+		const disabled = await runtime.prepare("disabled-worker", "Reject a disabled profile.", ctx);
+		assert.equal(disabled.ok, false);
+		assert.equal(disabled.ok ? undefined : disabled.diagnostics[0]?.code, "host.profile-disabled");
 
 		for (const backendId of ["pi-subprocess-readonly", "pi-rpc-readonly"] as const) {
 			const scoped = createForgeSubagentRuntime(fixtureState(), {
@@ -160,9 +172,13 @@ function fixtureState(): PiForgeRuntimeState {
 		filePath: "/fixture/worker.profile.md",
 		diagnostics: [],
 	};
+	const disabledProfile: LoadedAgentProfile = {
+		...structuredClone(profile),
+		profile: { ...structuredClone(profile.profile), id: "disabled-worker" },
+	};
 	return {
 		stacks: [stack],
-		profiles: [profile],
+		profiles: [profile, disabledProfile],
 		contextRewritePending: false,
 		sessionVariables: {},
 		latestCompileDiagnostics: [],

@@ -247,8 +247,9 @@ Implemented as the exported experimental `PiSdkIsolatedBackend` and `/forge-agen
 
 ### Iteration 7: Foreground parent integration (completed)
 
-- Added no-egress `forge_subagent_profiles` discovery so the main agent can select from current profile IDs and descriptions rather than guessing.
+- Added no-egress `forge_subagent_profiles` discovery so the main agent can select only from profile IDs explicitly enabled by trusted-project delegation policy rather than guessing.
 - Added the sequential `forge_subagent` tool on the shared command/runtime path rather than creating a second runner.
+- Added project-only `subagents.profiles.<id>` policy so ordinary profiles remain portable and independently usable while delegation eligibility, backend, and timeout are resolved per profile; global config remains limited to general defaults until global profile and stack storage have explicit scope semantics.
 - Resolve the profile and prepare the exact immutable plan before asking for interactive approval or permitting provider transport.
 - Show a compact default review, with full prompt inspection on demand, and bind approval to the execution fingerprint.
 - Insert only bounded response text into parent context while retaining complete transcript/tool-event details for expanded human inspection.

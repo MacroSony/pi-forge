@@ -111,7 +111,7 @@ A profile can also be written directly:
 
 ### Experimental foreground subagent
 
-The 0.4 beta can run a stored profile as a separate, clean, one-shot Pi subprocess. The no-egress `forge_subagent_profiles` tool lets the main agent discover the currently loaded profile IDs, names, descriptions, declared model/thinking/stack, current resolution status, and approval mode. It should call that first when the user has not specified a profile, then invoke `forge_subagent`. A restrictive main-agent prompt stack must permit both tool names. The same execution path remains available to a human through commands:
+The 0.4 beta can run an explicitly enabled stored profile as a separate, clean, one-shot Pi subprocess. The no-egress `forge_subagent_profiles` tool lets the main agent discover only profiles enabled for delegation, including their names, descriptions, declared model/thinking/stack, effective backend/timeout, current resolution status, and approval mode. It should call that first when the user has not specified a profile, then invoke `forge_subagent`. A restrictive main-agent prompt stack must permit both tool names. The same execution path remains available to a human through commands:
 
 ```text
 /forge-agent backends
@@ -120,17 +120,33 @@ The 0.4 beta can run a stored profile as a separate, clean, one-shot Pi subproce
 /forge-agent run reviewer --backend pi-rpc-readonly Review this API design for correctness.
 ```
 
-Two experimental backends are registered: `pi-subprocess-readonly` (default; executes in a fresh `pi --mode text --print` subprocess) and `pi-rpc-readonly` (executes in a fresh `pi --mode rpc` process). Both compile the identical sealed prompt and enforce the same read-only shared-user boundary; they differ only in process protocol. Backend selection is configuration, not profile schema: set `subagents.backend` in `~/.pi/forge/config.json` for a user-level default, override it per trusted project in `.pi/forge/config.json`, and override either for one run with `--backend <id>` or the interactive `forge_subagent` `backend` parameter. `/forge-agent backends` marks the resolved default and warns when it names an unregistered backend. There is deliberately no fallback: if the selected backend is unavailable the run fails before provider transport. Unattended `forge_subagent` invocation is pinned to the configured default backend and rejects per-call overrides.
+Two experimental backends are registered: `pi-subprocess-readonly` (default; executes in a fresh `pi --mode text --print` subprocess) and `pi-rpc-readonly` (executes in a fresh `pi --mode rpc` process). Both compile the identical sealed prompt and enforce the same read-only shared-user boundary; they differ only in process protocol. Backend selection is configuration, not profile schema: set `subagents.backend` in `~/.pi/forge/config.json` for a user-level default, override it per trusted project in `.pi/forge/config.json`, and override either for one interactive run with `--backend <id>` or the `forge_subagent` `backend` parameter. There is deliberately no fallback: if the selected backend is unavailable the run fails before provider transport. Unattended `forge_subagent` invocation is pinned to the effective configured backend and rejects per-call overrides.
 
-Foreground runs default to a 60-second best-effort timeout. Slower models and larger reviews can raise it from 1 second through 1 hour with `subagents.timeoutMs`. The user-level value applies everywhere, while a trusted-project value overrides it; invalid values are ignored with a warning. The effective timeout is included in profile discovery, backend output, dry plans, and approval details.
+Agent profiles are not delegatable by default. Add an entry under `subagents.profiles` in the trusted project's `.pi/forge/config.json` with `enabled: true`; ordinary `/profile` listing, application, and auto-activation remain independent. Disabled and unlisted profiles are hidden from `forge_subagent_profiles` and rejected by both model-callable and `/forge-agent` execution even when their IDs are guessed.
+
+Foreground runs default to a 60-second best-effort timeout. Slower models and larger reviews can raise it from 1 second through 1 hour with `subagents.timeoutMs`. Each enabled profile can override `backend` and `timeoutMs` in the project config without putting host-specific runner policy into the portable profile JSON:
 
 ```json
 {
   "subagents": {
-    "timeoutMs": 300000
+    "backend": "pi-subprocess-readonly",
+    "timeoutMs": 60000,
+    "profiles": {
+      "reviewer": {
+        "enabled": true,
+        "timeoutMs": 300000
+      },
+      "image-viewer": {
+        "enabled": true,
+        "backend": "pi-rpc-readonly",
+        "timeoutMs": 180000
+      }
+    }
   }
 }
 ```
+
+Profile delegation policy is project-only because profiles and prompt stacks are currently project-local. Global `~/.pi/forge/config.json` may set only the general `subagents.backend` and `subagents.timeoutMs` defaults; a `subagents.profiles` entry there warns and is ignored. A trusted project's `.pi/forge/config.json` owns enablement and per-profile overrides. Resolution order is an interactive per-run backend override, a project per-profile value, the project default, the global default, and finally the built-in default. Timeout follows the same order without a per-run override. Invalid fields warn and fall back to the applicable general default. `/forge-agent backends`, discovery, dry plans, and approval details show the effective settings and their sources.
 
 `plan` resolves the profile and stack, compiles the exact provider-bound prompt, validates an immutable execution plan, and then discards it without contacting the provider. `/forge-agent run` and, by default, `forge_subagent` prepare that same exact plan before showing an approval screen. The default screen shows the agent task, profile/stack, provider, model, thinking level, effective tools, working directory, security boundary, payload size, and execution fingerprint. Choose **View full prompt** to inspect the complete system prompt and ordered provider-bound messages before approving; any editor changes are ignored.
 
@@ -320,8 +336,8 @@ Items are arranged in order. When the stack is active, pi-forge:
 | Command | What it does |
 |---------|-------------|
 | `/forge-agent backends` | Show registered experimental backends, capabilities, and the resolved default |
-| `/forge-agent plan <profile> [--backend <id>] <task>` | Prepare, validate, display, and discard an exact plan without provider transport |
-| `/forge-agent run <profile> [--backend <id>] <task>` | Review the exact plan and run one foreground read-only text task after approval |
+| `/forge-agent plan <profile> [--backend <id>] <task>` | For an enabled delegation profile, prepare, validate, display, and discard an exact plan without provider transport |
+| `/forge-agent run <profile> [--backend <id>] <task>` | For an enabled delegation profile, review the exact plan and run one foreground read-only text task after approval |
 
 The model-callable tools are `forge_subagent_profiles` for local metadata discovery and `forge_subagent` for execution. Discovery needs no approval and performs no provider request or subagent prompt preparation. Invocation requires the current main-agent tool policy to permit it; execution then requires either an interactive approval UI or the explicit trusted-project unattended option described above.
 

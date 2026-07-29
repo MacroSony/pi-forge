@@ -10,6 +10,7 @@ import {
 	isValidSubagentTimeoutMs,
 	loadForgeSubagentSettings,
 	resolveSubagentBackend,
+	resolveSubagentProfilePolicy,
 } from "../src/forge-config.ts";
 
 // Hermetic default: no real user global config leaks into these tests.
@@ -130,6 +131,105 @@ test("subagent timeout config layers global, trusted-project, and validated fall
 		if (previousGlobalPath === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
 		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousGlobalPath;
 		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("subagent profiles are trusted-project-only opt-ins with backend and timeout overrides", () => {
+	const root = mkdtempSync(join(tmpdir(), "pi-forge-profile-policy-"));
+	const globalConfigPath = join(root, "global", "config.json");
+	const cwd = join(root, "project");
+	const projectConfigPath = join(cwd, ".pi", "forge", "config.json");
+	const previousGlobalPath = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+	process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = globalConfigPath;
+	mkdirSync(join(root, "global"), { recursive: true });
+	mkdirSync(join(cwd, ".pi", "forge"), { recursive: true });
+
+	try {
+		const defaults = loadForgeSubagentSettings(context(cwd, true));
+		assert.deepEqual(resolveSubagentProfilePolicy(defaults, "reviewer"), {
+			profileId: "reviewer",
+			enabled: false,
+			enabledSource: "built-in",
+			backend: { id: DEFAULT_SUBAGENT_BACKEND_ID, source: "built-in" },
+			timeout: { milliseconds: DEFAULT_SUBAGENT_TIMEOUT_MS, source: "built-in" },
+		});
+
+		writeFileSync(globalConfigPath, JSON.stringify({
+			subagents: {
+				backend: "global-default",
+				timeoutMs: 90_000,
+				profiles: {
+					reviewer: { enabled: true, backend: "global-reviewer", timeoutMs: 300_000 },
+					"image-viewer": { enabled: true, timeoutMs: 180_000 },
+				},
+			},
+		}), "utf8");
+		writeFileSync(projectConfigPath, JSON.stringify({
+			subagents: {
+				backend: "project-default",
+				timeoutMs: 120_000,
+				profiles: {
+					reviewer: { enabled: true, backend: "project-reviewer", timeoutMs: 300_000 },
+					"image-viewer": { enabled: false },
+				},
+			},
+		}), "utf8");
+
+		const layered = loadForgeSubagentSettings(context(cwd, true));
+		assert.deepEqual(resolveSubagentProfilePolicy(layered, "reviewer"), {
+			profileId: "reviewer",
+			enabled: true,
+			enabledSource: "project-profile",
+			backend: { id: "project-reviewer", source: "project-profile" },
+			timeout: { milliseconds: 300_000, source: "project-profile" },
+		});
+		assert.deepEqual(resolveSubagentProfilePolicy(layered, "reviewer", "one-run"), {
+			profileId: "reviewer",
+			enabled: true,
+			enabledSource: "project-profile",
+			backend: { id: "one-run", source: "explicit" },
+			timeout: { milliseconds: 300_000, source: "project-profile" },
+		});
+		assert.equal(resolveSubagentProfilePolicy(layered, "image-viewer").enabled, false);
+		assert.equal(resolveSubagentProfilePolicy(layered, "unknown").enabled, false);
+		assert.match(layered.warnings.join("\n"), /subagents\.profiles is project-only and ignored/);
+
+		const untrusted = loadForgeSubagentSettings(context(cwd, false));
+		assert.equal(resolveSubagentProfilePolicy(untrusted, "image-viewer").enabled, false);
+		assert.deepEqual(resolveSubagentProfilePolicy(untrusted, "image-viewer").backend, {
+			id: "global-default",
+			source: "global",
+		});
+		assert.deepEqual(resolveSubagentProfilePolicy(untrusted, "image-viewer").timeout, {
+			milliseconds: 90_000,
+			source: "global",
+		});
+		assert.match(untrusted.warnings.join("\n"), /subagents\.profiles is project-only and ignored/);
+
+		writeFileSync(projectConfigPath, JSON.stringify({
+			subagents: {
+				backend: "project-default",
+				timeoutMs: 120_000,
+				profiles: {
+					reviewer: { enabled: "yes", backend: "", timeoutMs: 999, extra: true },
+					"bad id": true,
+				},
+			},
+		}), "utf8");
+		const malformed = loadForgeSubagentSettings(context(cwd, true));
+		const reviewer = resolveSubagentProfilePolicy(malformed, "reviewer");
+		assert.equal(reviewer.enabled, false);
+		assert.deepEqual(reviewer.backend, { id: "project-default", source: "project" });
+		assert.deepEqual(reviewer.timeout, { milliseconds: 120_000, source: "project" });
+		assert.match(malformed.warnings.join("\n"), /enabled must be boolean/);
+		assert.match(malformed.warnings.join("\n"), /backend must be a non-empty string/);
+		assert.match(malformed.warnings.join("\n"), /timeoutMs must be an integer/);
+		assert.match(malformed.warnings.join("\n"), /extra is unsupported/);
+		assert.match(malformed.warnings.join("\n"), /invalid profile id/);
+	} finally {
+		if (previousGlobalPath === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousGlobalPath;
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 

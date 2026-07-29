@@ -6,13 +6,30 @@ import test from "node:test";
 import type { LoadedAgentProfile, ResolvedAgentProfile } from "../src/agent-profile.ts";
 import { registerForgeSubagentProfilesTool } from "../src/subagent-profile-tool.ts";
 
-// Keep global-config discovery hermetic; these tests exercise project config only.
-process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-profiles-tool-no-global.json");
+// Keep global-config discovery hermetic; delegation policy is project-only.
+const GLOBAL_CONFIG_PATH = join(tmpdir(), `pi-forge-profiles-tool-${process.pid}.json`);
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH;
+const TEST_CWD = join(tmpdir(), `pi-forge-profiles-tool-project-${process.pid}`);
+const TEST_CONFIG_DIR = join(TEST_CWD, ".pi", "forge");
+mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+writeFileSync(join(TEST_CONFIG_DIR, "config.json"), JSON.stringify({
+	subagents: {
+		profiles: {
+			reviewer: { enabled: true },
+			broken: { enabled: true },
+		},
+	},
+}), "utf8");
+test.after(() => {
+	rmSync(GLOBAL_CONFIG_PATH, { force: true });
+	rmSync(TEST_CWD, { recursive: true, force: true });
+});
 
 test("forge_subagent_profiles exposes ready profile descriptions and unavailable diagnostics without egress", async () => {
 	const reviewer = loadedProfile("reviewer", "Reviews code and architecture.", "Review specialist");
 	const broken = loadedProfile("broken", "Currently unavailable.");
-	const profiles = [reviewer, broken];
+	const hidden = loadedProfile("hidden", "Must not be exposed.");
+	const profiles = [reviewer, broken, hidden];
 	let resolveCalls = 0;
 	let invocationActive = true;
 	const registered: Record<string, any> = {};
@@ -45,11 +62,13 @@ test("forge_subagent_profiles exposes ready profile descriptions and unavailable
 	assert.equal(result.details.profiles[0].description, "Reviews code and architecture.");
 	assert.equal(result.details.profiles[0].status, "ready");
 	assert.equal(result.details.profiles[1].status, "unavailable");
+	assert.equal(result.details.profiles.some((profile: any) => profile.id === "hidden"), false);
 	assert.match(result.content[0].text, /reviewer — Review specialist/);
 	assert.match(result.content[0].text, /Description: Reviews code and architecture\./);
 	assert.match(result.content[0].text, /Parent invocation tool: active/);
 	assert.match(result.content[0].text, /test-provider\/test-model; thinking: high; stack: reviewer-stack/);
 	assert.match(result.content[0].text, /Unavailable because: Model authentication is missing\./);
+	assert.match(result.content[0].text, /Execution: backend pi-subprocess-readonly \(built-in\); timeout 60000 ms/);
 
 	invocationActive = false;
 	const policyBlocked = await tool.execute("catalog", {}, undefined, undefined, trustedContext());
@@ -84,7 +103,12 @@ test("forge_subagent_profiles exposes trusted-project unattended approval mode",
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-unattended-profiles-"));
 	const configDir = join(cwd, ".pi", "forge");
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true } }), "utf8");
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({
+		subagents: {
+			allowAgentInvocationWithoutApproval: true,
+			profiles: { reviewer: { enabled: true } },
+		},
+	}), "utf8");
 	let tool: any;
 	registerForgeSubagentProfilesTool(
 		{
@@ -103,11 +127,17 @@ test("forge_subagent_profiles exposes trusted-project unattended approval mode",
 	}
 });
 
-test("forge_subagent_profiles reports a configured default backend", async () => {
+test("forge_subagent_profiles reports per-profile backend and timeout overrides", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-backend-profiles-"));
 	const configDir = join(cwd, ".pi", "forge");
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { backend: "pi-rpc-readonly", timeoutMs: 300_000 } }), "utf8");
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({
+		subagents: {
+			profiles: {
+				reviewer: { enabled: true, backend: "pi-rpc-readonly", timeoutMs: 300_000 },
+			},
+		},
+	}), "utf8");
 	let tool: any;
 	registerForgeSubagentProfilesTool(
 		{
@@ -119,10 +149,11 @@ test("forge_subagent_profiles reports a configured default backend", async () =>
 	);
 	try {
 		const result = await tool.execute("catalog", {}, undefined, undefined, { cwd, isProjectTrusted: () => true });
-		assert.deepEqual(result.details.defaultBackend, { id: "pi-rpc-readonly", source: "project" });
-		assert.deepEqual(result.details.timeout, { milliseconds: 300_000, source: "project" });
-		assert.match(result.content[0].text, /Default backend: pi-rpc-readonly \(project\)/);
-		assert.match(result.content[0].text, /Timeout: 300000 ms \(project; best-effort host abort\)/);
+		assert.deepEqual(result.details.defaultBackend, { id: "pi-subprocess-readonly", source: "built-in" });
+		assert.deepEqual(result.details.timeout, { milliseconds: 60_000, source: "built-in" });
+		assert.deepEqual(result.details.profiles[0].backend, { id: "pi-rpc-readonly", source: "project-profile" });
+		assert.deepEqual(result.details.profiles[0].timeout, { milliseconds: 300_000, source: "project-profile" });
+		assert.match(result.content[0].text, /Execution: backend pi-rpc-readonly \(project profile override\); timeout 300000 ms \(project profile override/);
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}
@@ -156,5 +187,5 @@ function resolvedProfile(loaded: LoadedAgentProfile, error?: string): ResolvedAg
 }
 
 function trustedContext(trusted = true) {
-	return { cwd: "/workspace", isProjectTrusted: () => trusted } as any;
+	return { cwd: TEST_CWD, isProjectTrusted: () => trusted } as any;
 }

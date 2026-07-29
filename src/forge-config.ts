@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isValidAgentProfileId } from "./agent-profile.ts";
 import { globalForgeDir } from "./storage.ts";
 
 /** Backend used when neither a per-run override nor a configured default applies. */
@@ -17,16 +18,34 @@ export const MAX_SUBAGENT_TIMEOUT_MS = 3_600_000;
  */
 export const GLOBAL_FORGE_CONFIG_PATH_ENV = "PI_FORGE_GLOBAL_CONFIG_PATH";
 
-export type ForgeSubagentBackendSource = "explicit" | "project" | "global" | "built-in";
+export type ForgeSubagentBackendSource =
+	| "explicit"
+	| "project-profile"
+	| "project"
+	| "global"
+	| "built-in";
+export type ForgeSubagentConfigSource = "project" | "global";
+export type ForgeSubagentProfileSource = "project-profile";
+
+export interface ForgeSubagentProfileSettings {
+	enabled?: boolean;
+	enabledSource?: ForgeSubagentProfileSource;
+	backend?: string;
+	backendSource?: ForgeSubagentProfileSource;
+	timeoutMs?: number;
+	timeoutSource?: ForgeSubagentProfileSource;
+}
 
 export interface ForgeSubagentSettings {
 	allowAgentInvocationWithoutApproval: boolean;
 	/** Configured default backend ID; a trusted project config wins over the global config. */
 	backend?: string;
-	backendSource?: Exclude<ForgeSubagentBackendSource, "explicit" | "built-in">;
+	backendSource?: ForgeSubagentConfigSource;
 	/** Best-effort foreground timeout; a trusted project config wins over the global config. */
 	timeoutMs: number;
-	timeoutSource: Exclude<ForgeSubagentBackendSource, "explicit">;
+	timeoutSource: ForgeSubagentConfigSource | "built-in";
+	/** Per-profile delegation allowlist and execution overrides. Unlisted profiles are not delegatable. */
+	profiles: Record<string, ForgeSubagentProfileSettings>;
 	configPath: string;
 	globalConfigPath: string;
 	warnings: string[];
@@ -37,16 +56,58 @@ export interface ResolvedSubagentBackend {
 	source: ForgeSubagentBackendSource;
 }
 
+export interface ResolvedSubagentTimeout {
+	milliseconds: number;
+	source: Exclude<ForgeSubagentBackendSource, "explicit">;
+}
+
+export interface ResolvedSubagentProfilePolicy {
+	profileId: string;
+	enabled: boolean;
+	enabledSource: ForgeSubagentProfileSource | "built-in";
+	backend: ResolvedSubagentBackend;
+	timeout: ResolvedSubagentTimeout;
+}
+
 /**
- * Resolve the effective backend for one run: explicit per-run override, then a
- * trusted project config default, then the user-owned global config default,
- * then the built-in subprocess backend. There is deliberately no fallback to
- * another backend when the resolved one is missing or rejects the intent.
+ * Resolve the effective backend for one run: explicit per-run override, then
+ * a trusted-project per-profile override, then trusted-project/global defaults,
+ * then the built-in subprocess backend. There is deliberately no fallback when
+ * the resolved backend is missing or rejects the intent.
  */
-export function resolveSubagentBackend(settings: ForgeSubagentSettings, explicitBackend?: string): ResolvedSubagentBackend {
+export function resolveSubagentBackend(
+	settings: ForgeSubagentSettings,
+	explicitBackend?: string,
+	profileId?: string,
+): ResolvedSubagentBackend {
 	if (explicitBackend) return { id: explicitBackend, source: "explicit" };
+	const profile = profileId ? configuredProfile(settings, profileId) : undefined;
+	if (profile?.backend) return { id: profile.backend, source: profile.backendSource ?? "project-profile" };
 	if (settings.backend) return { id: settings.backend, source: settings.backendSource ?? "global" };
 	return { id: DEFAULT_SUBAGENT_BACKEND_ID, source: "built-in" };
+}
+
+export function resolveSubagentTimeout(settings: ForgeSubagentSettings, profileId?: string): ResolvedSubagentTimeout {
+	const profile = profileId ? configuredProfile(settings, profileId) : undefined;
+	if (profile?.timeoutMs !== undefined) {
+		return { milliseconds: profile.timeoutMs, source: profile.timeoutSource ?? "project-profile" };
+	}
+	return { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
+}
+
+export function resolveSubagentProfilePolicy(
+	settings: ForgeSubagentSettings,
+	profileId: string,
+	explicitBackend?: string,
+): ResolvedSubagentProfilePolicy {
+	const profile = configuredProfile(settings, profileId);
+	return {
+		profileId,
+		enabled: profile?.enabled === true,
+		enabledSource: profile?.enabledSource ?? "built-in",
+		backend: resolveSubagentBackend(settings, explicitBackend, profileId),
+		timeout: resolveSubagentTimeout(settings, profileId),
+	};
 }
 
 export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentSettings {
@@ -56,6 +117,7 @@ export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentS
 		allowAgentInvocationWithoutApproval: false,
 		timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
 		timeoutSource: "built-in",
+		profiles: Object.create(null) as Record<string, ForgeSubagentProfileSettings>,
 		configPath,
 		globalConfigPath,
 		warnings: [],
@@ -66,10 +128,12 @@ export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentS
 	const globalSection = readSubagentsSection(globalConfigPath, settings.warnings);
 	applyBackend(globalSection, globalConfigPath, "global", settings);
 	applyTimeout(globalSection, globalConfigPath, "global", settings);
+	warnIgnoredGlobalProfiles(globalSection, globalConfigPath, settings);
 	if (!ctx.isProjectTrusted()) return settings;
 	const projectSection = readSubagentsSection(configPath, settings.warnings);
 	applyBackend(projectSection, configPath, "project", settings);
 	applyTimeout(projectSection, configPath, "project", settings);
+	applyProjectProfiles(projectSection, configPath, settings);
 	applyUnattended(projectSection, configPath, settings);
 	return settings;
 }
@@ -98,7 +162,7 @@ function readSubagentsSection(configPath: string, warnings: string[]): Record<st
 function applyBackend(
 	section: Record<string, unknown> | undefined,
 	configPath: string,
-	source: "global" | "project",
+	source: ForgeSubagentConfigSource,
 	settings: ForgeSubagentSettings,
 ): void {
 	if (!section || section.backend === undefined) return;
@@ -114,7 +178,7 @@ function applyBackend(
 function applyTimeout(
 	section: Record<string, unknown> | undefined,
 	configPath: string,
-	source: "global" | "project",
+	source: ForgeSubagentConfigSource,
 	settings: ForgeSubagentSettings,
 ): void {
 	if (!section || section.timeoutMs === undefined) return;
@@ -127,6 +191,73 @@ function applyTimeout(
 	}
 	settings.timeoutMs = value;
 	settings.timeoutSource = source;
+}
+
+function warnIgnoredGlobalProfiles(
+	section: Record<string, unknown> | undefined,
+	configPath: string,
+	settings: ForgeSubagentSettings,
+): void {
+	if (!section || section.profiles === undefined) return;
+	settings.warnings.push(
+		`pi-forge: ${configPath} subagents.profiles is project-only and ignored; configure profile delegation in the trusted project's .pi/forge/config.json.`,
+	);
+}
+
+function applyProjectProfiles(
+	section: Record<string, unknown> | undefined,
+	configPath: string,
+	settings: ForgeSubagentSettings,
+): void {
+	if (!section || section.profiles === undefined) return;
+	if (!isPlainObject(section.profiles)) {
+		settings.warnings.push(`pi-forge: ${configPath} subagents.profiles must be a JSON object; its per-profile settings are ignored.`);
+		return;
+	}
+	for (const [profileId, rawProfile] of Object.entries(section.profiles)) {
+		const path = `subagents.profiles.${profileId}`;
+		if (!isValidAgentProfileId(profileId)) {
+			settings.warnings.push(`pi-forge: ${configPath} ${path} has an invalid profile id; the entry is ignored.`);
+			continue;
+		}
+		if (!isPlainObject(rawProfile)) {
+			settings.warnings.push(`pi-forge: ${configPath} ${path} must be a JSON object; the entry is ignored.`);
+			continue;
+		}
+		for (const field of Object.keys(rawProfile)) {
+			if (field === "enabled" || field === "backend" || field === "timeoutMs") continue;
+			settings.warnings.push(`pi-forge: ${configPath} ${path}.${field} is unsupported and ignored.`);
+		}
+		const target = configuredProfile(settings, profileId) ?? {};
+		const profileSource: ForgeSubagentProfileSource = "project-profile";
+		if (rawProfile.enabled !== undefined) {
+			if (typeof rawProfile.enabled !== "boolean") {
+				settings.warnings.push(`pi-forge: ${configPath} ${path}.enabled must be boolean; the configured value is ignored.`);
+			} else {
+				target.enabled = rawProfile.enabled;
+				target.enabledSource = profileSource;
+			}
+		}
+		if (rawProfile.backend !== undefined) {
+			if (typeof rawProfile.backend !== "string" || !rawProfile.backend.trim()) {
+				settings.warnings.push(`pi-forge: ${configPath} ${path}.backend must be a non-empty string; the configured value is ignored.`);
+			} else {
+				target.backend = rawProfile.backend;
+				target.backendSource = profileSource;
+			}
+		}
+		if (rawProfile.timeoutMs !== undefined) {
+			if (!isValidSubagentTimeoutMs(rawProfile.timeoutMs)) {
+				settings.warnings.push(
+					`pi-forge: ${configPath} ${path}.timeoutMs must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS}; the configured value is ignored.`,
+				);
+			} else {
+				target.timeoutMs = rawProfile.timeoutMs;
+				target.timeoutSource = profileSource;
+			}
+		}
+		if (Object.keys(target).length > 0) settings.profiles[profileId] = target;
+	}
 }
 
 function applyUnattended(
@@ -147,6 +278,10 @@ export function isValidSubagentTimeoutMs(value: unknown): value is number {
 	return Number.isSafeInteger(value)
 		&& (value as number) >= MIN_SUBAGENT_TIMEOUT_MS
 		&& (value as number) <= MAX_SUBAGENT_TIMEOUT_MS;
+}
+
+function configuredProfile(settings: ForgeSubagentSettings, profileId: string): ForgeSubagentProfileSettings | undefined {
+	return Object.hasOwn(settings.profiles, profileId) ? settings.profiles[profileId] : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -1,5 +1,10 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { loadForgeSubagentSettings, resolveSubagentBackend, type ResolvedSubagentBackend } from "./forge-config.ts";
+import {
+	loadForgeSubagentSettings,
+	resolveSubagentBackend,
+	resolveSubagentProfilePolicy,
+	type ResolvedSubagentBackend,
+} from "./forge-config.ts";
 import { showText } from "./preview.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import { requestForgeSubagentApproval } from "./subagent-tool.ts";
@@ -19,6 +24,7 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 			if (parsed.command === "backends") {
 				const resolved = resolveSubagentBackend(settings);
 				const descriptors = runtime.descriptors(ctx);
+				const loadedProfileIds = profileIds();
 				const lines = descriptors.map((descriptor) => [
 					`${descriptor.id} @ ${descriptor.version}${descriptor.id === resolved.id ? ` (default: ${backendSourceLabel(resolved)})` : ""}`,
 					`  default boundary: shared-user subprocess with read-only model tools`,
@@ -30,6 +36,17 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 					lines.push(`Configured default backend "${resolved.id}" (${backendSourceLabel(resolved)}) is not registered.`);
 				}
 				lines.push(`Configured timeout: ${settings.timeoutMs} ms (${settings.timeoutSource}; best-effort host abort).`);
+				const enabledPolicies = loadedProfileIds
+					.map((profileId) => resolveSubagentProfilePolicy(settings, profileId))
+					.filter((policy) => policy.enabled);
+				lines.push(enabledPolicies.length === 0
+					? "Enabled subagent profiles: none. Add subagents.profiles.<id>.enabled: true to the trusted project's .pi/forge/config.json."
+					: [
+						"Enabled subagent profiles:",
+						...enabledPolicies.map((policy) =>
+							`  ${policy.profileId}: backend ${policy.backend.id} (${backendSourceLabel(policy.backend)}${descriptors.some((descriptor) => descriptor.id === policy.backend.id) ? "" : "; not registered"}); timeout ${policy.timeout.milliseconds} ms (${policy.timeout.source}).`
+						),
+					].join("\n"));
 				for (const warning of settings.warnings) lines.push(`Configuration warning: ${warning}`);
 				await showText(ctx, "pi-forge subagent backends", lines.join("\n\n") || "No subagent backends registered.");
 				return;
@@ -43,6 +60,15 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 				return;
 			}
 			for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
+			if (!profileIds().includes(parsed.profileId)) {
+				ctx.ui.notify(`pi-forge: unknown agent profile: ${parsed.profileId}`, "error");
+				return;
+			}
+			const policy = resolveSubagentProfilePolicy(settings, parsed.profileId, parsed.backend);
+			if (!policy.enabled) {
+				ctx.ui.notify(`pi-forge: agent profile "${parsed.profileId}" is not enabled for subagent delegation in subagents.profiles.`, "error");
+				return;
+			}
 			if (parsed.command === "run" && !ctx.hasUI) {
 				ctx.ui.notify("pi-forge: subagent execution requires interactive provider-egress confirmation; use /forge-agent plan in non-UI mode.", "error");
 				return;
@@ -50,10 +76,9 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 			ctx.ui.setStatus("pi-forge-subagent", ctx.ui.theme.fg("accent", parsed.command === "plan" ? "agent:preparing" : "agent:running"));
 			let prepared: ForgeSubagentPreparedRun | undefined;
 			try {
-				const backend = resolveSubagentBackend(settings, parsed.backend);
 				const result = await runtime.prepare(parsed.profileId, parsed.task, ctx, {
-					backendId: backend.id,
-					timeoutMs: settings.timeoutMs,
+					backendId: policy.backend.id,
+					timeoutMs: policy.timeout.milliseconds,
 				});
 				if (!result.ok) {
 					await showText(ctx, "pi-forge subagent diagnostics", renderDiagnostics(result.diagnostics));
@@ -154,6 +179,7 @@ function completeForgeAgentArguments(prefix: string, profileIds: string[], backe
 function backendSourceLabel(backend: ResolvedSubagentBackend): string {
 	switch (backend.source) {
 		case "explicit": return "per-run override";
+		case "project-profile": return "project profile override";
 		case "project": return "project config";
 		case "global": return "global config";
 		default: return "built-in";
@@ -219,5 +245,7 @@ function helpText(): string {
 		"(trusted project) or ~/.pi/forge/config.json (global default; project wins). There is no fallback:",
 		"if the selected backend is unavailable the run fails before provider transport.",
 		"Set subagents.timeoutMs in the same config locations to an integer from 1000 to 3600000.",
+		"Profiles are not delegatable by default. Enable and optionally override one with",
+		"subagents.profiles.<id>.enabled, backend, and timeoutMs.",
 	].join("\n");
 }

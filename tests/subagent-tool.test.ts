@@ -13,8 +13,23 @@ import {
 	fakeRequest,
 } from "./helpers/fake-subagent-fixture.ts";
 
-// Keep global-config discovery hermetic; these tests exercise project config only.
-process.env.PI_FORGE_GLOBAL_CONFIG_PATH = join(tmpdir(), "pi-forge-subagent-tool-no-global.json");
+// Keep global-config discovery hermetic; delegation policy is project-only.
+const GLOBAL_CONFIG_PATH = join(tmpdir(), `pi-forge-subagent-tool-${process.pid}.json`);
+process.env.PI_FORGE_GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH;
+const TEST_CWD = join(tmpdir(), `pi-forge-subagent-tool-project-${process.pid}`);
+const TEST_CONFIG_DIR = join(TEST_CWD, ".pi", "forge");
+mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+writeFileSync(join(TEST_CONFIG_DIR, "config.json"), JSON.stringify({
+	subagents: {
+		profiles: {
+			worker: { enabled: true },
+		},
+	},
+}), "utf8");
+test.after(() => {
+	rmSync(GLOBAL_CONFIG_PATH, { force: true });
+	rmSync(TEST_CWD, { recursive: true, force: true });
+});
 
 test("forge_subagent prepares, previews the full prompt on demand, approves, streams, and returns a rich report", async () => {
 	const fixture = await toolFixture();
@@ -119,6 +134,13 @@ test("forge_subagent rejects a prepared plan without transport and fails closed 
 	assert.equal(unavailable.details.status, "cancelled");
 	assert.match(unavailable.content[0].text, /approval is unavailable/);
 	assert.equal(calls.prepare, 1);
+
+	let filteredTool: any;
+	registerForgeSubagentTool({ registerTool: (definition: any) => { filteredTool = definition; } } as any, runtime, () => [fixture.profileId, "hidden"]);
+	const hidden = await filteredTool.execute("hidden", { profileId: "hidden", task: "Must not prepare." }, undefined, undefined, rejected.ctx);
+	assert.equal(hidden.details.status, "failed");
+	assert.match(hidden.content[0].text, /not enabled for subagent delegation/);
+	assert.equal(calls.prepare, 1);
 });
 
 test("forge_subagent can run without per-invocation UI only after trusted-project opt-in", async () => {
@@ -126,7 +148,12 @@ test("forge_subagent can run without per-invocation UI only after trusted-projec
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-unattended-tool-"));
 	const configDir = join(cwd, ".pi", "forge");
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(join(configDir, "config.json"), JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true } }), "utf8");
+	writeFileSync(join(configDir, "config.json"), JSON.stringify({
+		subagents: {
+			allowAgentInvocationWithoutApproval: true,
+			profiles: { worker: { enabled: true } },
+		},
+	}), "utf8");
 	let executeCalls = 0;
 	const runtime: ForgeSubagentRuntime = {
 		backendIds: () => [],
@@ -170,7 +197,16 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 	mkdirSync(configDir, { recursive: true });
 	writeFileSync(
 		join(configDir, "config.json"),
-		JSON.stringify({ subagents: { allowAgentInvocationWithoutApproval: true, backend: "configured-backend", timeoutMs: 240_000 } }),
+		JSON.stringify({
+			subagents: {
+				allowAgentInvocationWithoutApproval: true,
+				backend: "project-default",
+				timeoutMs: 90_000,
+				profiles: {
+					worker: { enabled: true, backend: "configured-backend", timeoutMs: 240_000 },
+				},
+			},
+		}),
 		"utf8",
 	);
 	const prepareRuns: Array<{ backendId?: string; timeoutMs?: number } | undefined> = [];
@@ -296,7 +332,7 @@ function toolContext(selections: string[]) {
 	return {
 		ctx: {
 			hasUI: true,
-			cwd: "/workspace",
+			cwd: TEST_CWD,
 			isProjectTrusted: () => true,
 			ui: {
 				select: async (title: string) => {
