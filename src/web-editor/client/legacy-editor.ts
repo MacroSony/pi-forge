@@ -4,7 +4,6 @@ import { attr, el, escapeHtml, eventElement, query, queryAll, type EditorElement
 import { createInspector } from "./inspector.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import type {
-  EditorJsonObject,
   EditorPromptStack,
   PromptStackDiagnostic,
   WebEditorPolicyResource,
@@ -31,7 +30,6 @@ let sidebarCollapsed = false;
 let slotOptionsMode: "form" | "json" = "form";
 let policyResources: { tools: WebEditorPolicyResource[]; skills: WebEditorPolicyResource[] } = { tools: [], skills: [] };
 let latestDiagnostics: PromptStackDiagnostic[] = [];
-let stackVariablesError = "";
 let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
@@ -61,6 +59,8 @@ const vueTabHost = createVueTabHost({
   markDirty,
   setStatus,
   validateStack: () => run(validateStack),
+  applyStack: applyStackFromVue,
+  copyText: copyTextToClipboard,
 });
 
 const slotNames = [
@@ -161,7 +161,6 @@ async function selectStack(id: any, options: any = {}) {
   selectedItemIndex = loadedStack.items.length ? 0 : -1;
   dirty = false;
   optionsError = "";
-  stackVariablesError = "";
   vueTabHost.resetErrors();
   renderDirtyState();
   renderAll(data.diagnostics || []);
@@ -197,7 +196,7 @@ function renderActiveTab() {
   panel.classList.add("open");
   if (activeTab === "regex") vueTabHost.mountRegex(panel);
   else if (activeTab === "policy") vueTabHost.mountPolicy(panel);
-  else if (activeTab === "stack") renderStackTab();
+  else if (activeTab === "stack") vueTabHost.mountStack(panel);
 }
 
 function renderStackList() {
@@ -683,210 +682,16 @@ function closeStackModal() {
   pane.innerHTML = "";
 }
 
-function openContextEditor() {
-  if (!currentStack) return;
-  showStackModal(
-    "Context options",
-    "Stack-level behavior for how pi-forge rewrites Pi conversation context.",
-    '<div class="modal-toolbar"><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
-      '<div class="data-table">' +
-      '<div class="data-row">' +
-      '<label class="checkline" title="Allow multiple enabled chat-history slots. When off, only the first enabled chat-history slot is expanded.">' +
-      '<input id="allowDuplicateChatHistoryInput" type="checkbox" ' + (currentStack.context?.allowDuplicateChatHistory === true ? "checked" : "") + '> Allow duplicate chat-history slots</label>' +
-      '<div class="option-note">Keep this off unless you intentionally want the same conversation history injected more than once.</div>' +
-      '</div>' +
-      '</div>',
-  );
-  el("allowDuplicateChatHistoryInput").onchange = (event: any) => {
-    setContextOption("allowDuplicateChatHistory", event.target.checked, false);
-    markDirty();
-  };
-}
-
-function setContextOption(key: any, value: any, defaultValue: any) {
-  const stack = currentStack!;
-  const context: EditorJsonObject = { ...(stack.context || {}) };
-  if (value === defaultValue || value === undefined) delete context[key];
-  else context[key] = value;
-  if (Object.keys(context).length) stack.context = context;
-  else delete stack.context;
-}
-
-function renderStackTab() {
-  if (!currentStack) return;
-  const json = JSON.stringify(stackForDisplay(), null, 2);
-  const variableRows = Object.entries(currentStack.variables || {})
-    .sort(([a]: any, [b]: any) => a.localeCompare(b))
-    .map(([name, value]: any) => variableRowHtml(name, value))
-    .join("");
-  el("tabPanel").innerHTML =
-    '<div class="tab-section">' +
-    '<div class="tab-section-title">Context options</div>' +
-    '<div class="tab-section-meta">Stack-level behavior for how pi-forge rewrites Pi conversation context.</div>' +
-    '<label class="checkline" title="Allow multiple enabled chat-history slots. When off, only the first enabled chat-history slot is expanded.">' +
-    '<input id="allowDuplicateChatHistoryInput" type="checkbox" ' + (currentStack.context?.allowDuplicateChatHistory === true ? "checked" : "") + '> Allow duplicate chat-history slots</label>' +
-    '<div class="option-note">Keep this off unless you intentionally want the same conversation history injected more than once.</div>' +
-    '</div>' +
-    '<div class="tab-section">' +
-    '<div class="tab-section-title">Stack variables</div>' +
-    '<div class="tab-section-meta">Static string variables available to template macros and variables slots.</div>' +
-    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Saved in stack.variables.</span></div>' +
-    '<div class="data-table" id="variablesRows">' +
-    '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
-    variableRows +
-    '</div></div>' +
-    '<div class="tab-section">' +
-    '<div class="tab-section-title">Stack JSON</div>' +
-    '<div class="tab-section-meta">Raw recovery view for advanced fields. Apply updates the editor; Save writes to disk.</div>' +
-    '<div class="modal-toolbar">' +
-    '<button id="copyStackJsonBtn" data-icon="□" title="Copy this JSON to the clipboard">Copy</button>' +
-    '<button id="applyStackJsonBtn" class="primary" data-icon="✓" title="Apply this JSON to the editor without saving">Apply to editor</button>' +
-    '<span class="modal-spacer"></span><span id="stackJsonStatus" class="modal-meta">Unsaved stack JSON draft.</span>' +
-    '</div>' +
-    '<textarea id="stackJsonText" class="raw-json-editor" spellcheck="false">' + escapeHtml(json) + '</textarea>' +
-    '</div>';
-  el("allowDuplicateChatHistoryInput").onchange = (event: any) => {
-    setContextOption("allowDuplicateChatHistory", event.target.checked, false);
-    markDirty();
-  };
-  bindVariablesEditor();
-  el("copyStackJsonBtn").onclick = () => run(copyRawStackJson);
-  el("applyStackJsonBtn").onclick = () => run(applyRawStackJson);
-}
-
-function openRawStackJsonEditor() {
-  if (!currentStack) return;
-  const json = JSON.stringify(stackForDisplay(), null, 2);
-  showStackModal(
-    "Stack JSON",
-    "Raw recovery view for advanced fields. Apply updates the editor; Save writes to disk.",
-    '<div class="modal-toolbar">' +
-      '<button id="copyStackJsonBtn" data-icon="□" title="Copy this JSON to the clipboard">Copy</button>' +
-      '<button id="applyStackJsonBtn" class="primary" data-icon="✓" title="Apply this JSON to the editor without saving">Apply to editor</button>' +
-      '<span class="modal-spacer"></span><span id="stackJsonStatus" class="modal-meta">Unsaved stack JSON draft.</span>' +
-      '</div>' +
-      '<textarea id="stackJsonText" class="raw-json-editor" spellcheck="false">' + escapeHtml(json) + '</textarea>',
-    { bodyClass: "json-modal" },
-  );
-  el("copyStackJsonBtn").onclick = () => run(copyRawStackJson);
-  el("applyStackJsonBtn").onclick = () => run(applyRawStackJson);
-}
-
-function stackForDisplay() {
-  if (!currentStack) throw new Error("No stack selected.");
-  const clone = structuredClone(currentStack);
-  if (!clone.type) clone.type = "pi-forge.prompt-stack";
-  if (!clone.schemaVersion) clone.schemaVersion = 1;
-  return clone;
-}
-
-async function copyRawStackJson() {
-  await copyTextToClipboard(el("stackJsonText").value);
-  el("stackJsonStatus").textContent = "Copied JSON.";
-  setStatus("Copied stack JSON", "success");
-}
-
-async function applyRawStackJson() {
-  const text = el("stackJsonText").value;
-  const parsed = JSON.parse(text);
-  validateRawStackJson(parsed);
-  const stack = parsed as EditorPromptStack;
+function applyStackFromVue(stack: EditorPromptStack) {
   currentStack = stack;
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   selectedItemIndex = stack.items.length ? Math.min(Math.max(selectedItemIndex, 0), stack.items.length - 1) : -1;
   optionsError = "";
-  stackVariablesError = "";
   vueTabHost.resetErrors();
-  closeStackModal();
   markDirty();
   renderAll(latestDiagnostics);
   setStatus("Applied stack JSON to editor", "success");
-}
-
-function validateRawStackJson(stack: any) {
-  if (!stack || typeof stack !== "object" || Array.isArray(stack)) throw new Error("Stack JSON must be an object.");
-  if (typeof stack.id !== "string" || !stack.id.trim()) throw new Error("Stack JSON needs a non-empty string id.");
-  if (!Array.isArray(stack.items)) throw new Error("Stack JSON needs an items array.");
-  stack.items.forEach((item: any, index: any) => {
-    const label = "Item " + (index + 1);
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(label + " must be an object.");
-    if (item.kind !== "block" && item.kind !== "slot") throw new Error(label + " kind must be block or slot.");
-    if (typeof item.id !== "string" || !item.id.trim()) throw new Error(label + " needs a non-empty string id.");
-    if (item.kind === "block" && typeof item.content !== "string") throw new Error(label + " block content must be a string.");
-    if (item.kind === "slot" && typeof item.slot !== "string") throw new Error(label + " slot must be a string.");
-  });
-}
-
-function openVariablesEditor() {
-  if (!currentStack) return;
-  const rows = Object.entries(currentStack.variables || {})
-    .sort(([a]: any, [b]: any) => a.localeCompare(b))
-    .map(([name, value]: any) => variableRowHtml(name, value))
-    .join("");
-  showStackModal(
-    "Stack variables",
-    "Static string variables available to macros and variables slots.",
-    '<div class="modal-toolbar"><button id="addVariableBtn" data-icon="+" title="Add a static stack variable">Add variable</button><span class="modal-spacer"></span><span class="modal-meta">Save writes these changes to the stack JSON.</span></div>' +
-      '<div class="data-table" id="variablesRows">' +
-      '<div class="data-row header variable-row"><div>Name</div><div>Value</div><div></div></div>' +
-      rows +
-      '</div>',
-  );
-  bindVariablesEditor();
-}
-
-function variableRowHtml(name: any = "", value: any = "") {
-  return '<div class="data-row variable-row" data-var-row>' +
-    '<input data-var-name value="' + attr(name) + '" placeholder="char">' +
-    '<input data-var-value value="' + attr(value) + '" placeholder="泉此方">' +
-    '<button type="button" class="danger" data-delete-row="true" data-icon="×" title="Delete this stack variable">Delete</button>' +
-    '</div>';
-}
-
-function bindVariablesEditor() {
-  el("addVariableBtn").onclick = () => {
-    el("variablesRows").insertAdjacentHTML("beforeend", variableRowHtml(uniqueVariableName()));
-    bindVariablesEditor();
-    syncVariablesFromModal();
-  };
-  document.querySelectorAll("[data-var-row] input").forEach((input: any) => {
-    input.oninput = () => syncVariablesFromModal();
-  });
-  document.querySelectorAll("[data-var-row] [data-delete-row]").forEach((button: any) => {
-    button.onclick = (event: any) => {
-      event.target.closest("[data-var-row]").remove();
-      syncVariablesFromModal();
-    };
-  });
-}
-
-function uniqueVariableName() {
-  const existing = new Set(Object.keys(currentStack?.variables || {}));
-  let index = existing.size + 1;
-  let name = "var" + index;
-  while (existing.has(name)) name = "var" + (++index);
-  return name;
-}
-
-function syncVariablesFromModal() {
-  if (!currentStack) return;
-  const variables: Record<string, string> = {};
-  const seen = new Set();
-  let duplicate = false;
-  document.querySelectorAll("[data-var-row]").forEach((row: any) => {
-    const name = row.querySelector("[data-var-name]").value.trim();
-    const value = row.querySelector("[data-var-value]").value;
-    if (!name) return;
-    if (seen.has(name)) duplicate = true;
-    seen.add(name);
-    variables[name] = value;
-  });
-  if (Object.keys(variables).length) currentStack.variables = variables;
-  else delete currentStack.variables;
-  stackVariablesError = duplicate ? "Duplicate stack variable names." : "";
-  markDirty();
-  if (duplicate) setStatus(stackVariablesError, "error");
 }
 
 function addItem(kind: any) {
@@ -1278,7 +1083,8 @@ async function reloadFromDisk() {
 function stackForSubmit() {
   if (!currentStack) throw new Error("No stack selected.");
   if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
-  if (stackVariablesError) throw new Error(stackVariablesError);
+  const stackError = vueTabHost.getError("stack");
+  if (stackError) throw new Error(stackError);
   const regexError = vueTabHost.getError("regex");
   if (regexError) throw new Error(regexError);
   const policyError = vueTabHost.getError("policy");
@@ -1518,7 +1324,6 @@ function resetEditorState(): void {
   slotOptionsMode = "form";
   policyResources = { tools: [], skills: [] };
   latestDiagnostics = [];
-  stackVariablesError = "";
   activeTab = "items";
   metadataCollapsed = true;
   currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");

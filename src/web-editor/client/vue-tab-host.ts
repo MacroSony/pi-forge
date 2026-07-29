@@ -2,12 +2,13 @@ import { createApp, type App } from "vue";
 
 import PolicyEditor from "./components/PolicyEditor.vue";
 import RegexEditor from "./components/RegexEditor.vue";
+import StackEditor from "./components/StackEditor.vue";
 import type {
 	EditorPromptStack,
 	WebEditorPolicyResource,
 } from "./types.ts";
 
-type VueTabKind = "policy" | "regex";
+type VueTabKind = "policy" | "regex" | "stack";
 
 export interface VueTabHostDependencies {
 	getStack(): EditorPromptStack | null;
@@ -18,6 +19,8 @@ export interface VueTabHostDependencies {
 	markDirty(): void;
 	setStatus(text: string, tone?: string): void;
 	validateStack(): void | Promise<void>;
+	applyStack(stack: EditorPromptStack): void;
+	copyText(text: string): void | Promise<void>;
 }
 
 export function createVueTabHost(deps: VueTabHostDependencies) {
@@ -26,6 +29,7 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 	const errors: Record<VueTabKind, string> = {
 		policy: "",
 		regex: "",
+		stack: "",
 	};
 
 	function mount(kind: VueTabKind, root: Element): void {
@@ -49,11 +53,23 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 				onStatus: deps.setStatus,
 			});
 		} else {
-			app = createApp(RegexEditor, {
-				stack: draft,
-				onChange,
-				onValidate: deps.validateStack,
-			});
+			if (kind === "regex") {
+				app = createApp(RegexEditor, {
+					stack: draft,
+					onChange,
+					onValidate: deps.validateStack,
+				});
+			} else {
+				app = createApp(StackEditor, {
+					stack: draft,
+					copyText: deps.copyText,
+					onApply: () => {
+						if (draft) deps.applyStack(cloneJson(draft));
+					},
+					onChange,
+					onStatus: deps.setStatus,
+				});
+			}
 		}
 
 		app.mount(root);
@@ -68,6 +84,7 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 	function resetErrors(): void {
 		errors.policy = "";
 		errors.regex = "";
+		errors.stack = "";
 	}
 
 	function getError(kind: VueTabKind): string {
@@ -81,14 +98,18 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 		if (kind === "policy") {
 			copyOptionalField(stack, plainDraft, "tools");
 			copyOptionalField(stack, plainDraft, "skills");
-		} else {
+		} else if (kind === "regex") {
 			copyOptionalField(stack, plainDraft, "regex");
+		} else {
+			copyOptionalField(stack, plainDraft, "context");
+			copyOptionalField(stack, plainDraft, "variables");
 		}
 	}
 
 	return {
 		mountPolicy: (root: Element) => mount("policy", root),
 		mountRegex: (root: Element) => mount("regex", root),
+		mountStack: (root: Element) => mount("stack", root),
 		unmount,
 		resetErrors,
 		getError,
@@ -99,10 +120,10 @@ function cloneJson<T>(value: T): T {
 	return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function copyOptionalField(
+function copyOptionalField<K extends "tools" | "skills" | "regex" | "context" | "variables">(
 	target: EditorPromptStack,
 	source: EditorPromptStack,
-	key: "tools" | "skills" | "regex",
+	key: K,
 ): void {
 	if (key in source) target[key] = source[key];
 	else delete target[key];

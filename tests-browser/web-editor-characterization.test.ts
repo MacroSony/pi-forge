@@ -121,7 +121,7 @@ test("web editor transitions between populated and empty stack states", { timeou
 	});
 });
 
-test("Vue policy and regex tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }, async (t) => {
+test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", {
 			...stackFixture("default", "Vue tab stack", true),
@@ -148,8 +148,31 @@ test("Vue policy and regex tabs preserve drafts, errors, and unknown fields", { 
 		await page.locator(".stack-row.selected").waitFor();
 
 		await page.locator("#stackTabBtn").click();
+		await page.locator("#metadataToggleBtn").click();
+		await page.locator("#stackName").fill("Vue tabs edited");
+		await page.locator("#allowDuplicateChatHistoryInput").check();
+		await page.locator("#addVariableBtn").click();
+		await page.locator("#addVariableBtn").click();
+		const variableRows = page.locator("[data-var-row]");
+		await variableRows.nth(0).locator("[data-var-value]").fill("first");
+		await variableRows.nth(1).locator("[data-var-name]").fill("var1");
+		await variableRows.nth(1).locator("[data-var-value]").fill("second");
+		assert.equal(await page.locator("#status").textContent(), "Duplicate stack variable names.");
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#stackTabBtn").click();
+		await page.locator("#saveBtn").click();
+		await page.locator("#status")
+			.filter({ hasText: "Duplicate stack variable names." })
+			.waitFor();
+		assert.equal(await page.locator("[data-var-row]").count(), 1);
+		await page.locator("[data-var-row] [data-var-value]").fill("resolved");
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#stackTabBtn").click();
+
 		const rawStack = JSON.parse(await page.locator("#stackJsonText").inputValue()) as {
+			context?: Record<string, unknown>;
 			tools?: Record<string, unknown>;
+			variables?: Record<string, unknown>;
 		};
 		assert.ok(rawStack.tools);
 		rawStack.tools.futurePolicyField = { preserve: true };
@@ -193,13 +216,19 @@ test("Vue policy and regex tabs preserve drafts, errors, and unknown fields", { 
 		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
 
 		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			context?: Record<string, unknown>;
+			name?: string;
 			tools?: Record<string, unknown>;
 			regex?: { rules?: Array<Record<string, unknown>> };
+			variables?: Record<string, unknown>;
 		};
+		assert.equal(saved.context?.allowDuplicateChatHistory, true);
+		assert.equal(saved.name, "Vue tabs edited");
 		assert.deepEqual(saved.tools?.futurePolicyField, { preserve: true });
 		assert.deepEqual(saved.regex?.rules?.[0]?.futureRuleField, { preserve: true });
 		assert.deepEqual(saved.tools?.allow, ["read"]);
 		assert.equal(saved.regex?.rules?.[0]?.maxMessages, 2);
+		assert.deepEqual(saved.variables, { var1: "resolved" });
 
 		await page.locator(".stack-row", { hasText: "alternate" }).click();
 		await page.locator("#status").filter({ hasText: "Loaded alternate" }).waitFor();
