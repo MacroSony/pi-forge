@@ -17,10 +17,10 @@ export function renderEditorHtml() {
 </body>
 </html>`;
 }
-function inlineScript(source) {
+export function inlineScript(source) {
     return source.replace(/<\/script/gi, "<\\/script");
 }
-function inlineStyle(source) {
+export function inlineStyle(source) {
     return source.replace(/<\/style/gi, "<\\/style");
 }
 //# sourceMappingURL=page.js.map

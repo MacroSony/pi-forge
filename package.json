@@ -33,6 +33,7 @@
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     },
+    "./src/web-editor/client/*": null,
     "./examples/*": "./examples/*"
   },
   "keywords": [

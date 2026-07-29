@@ -36,6 +36,16 @@ for (const key of ["./src/*.ts", "./src/*.js", "./src/*"]) {
 	}
 }
 
+if (packageJson.exports?.["./src/web-editor/client/*"] !== null) {
+	failures.push("browser-only authored client modules must be explicitly blocked from compatibility imports");
+}
+
+for (const path of paths) {
+	if (path.startsWith("dist/web-editor/client/")) {
+		failures.push(`browser-only authored client module leaked into npm tarball: ${path}`);
+	}
+}
+
 if (failures.length > 0) {
 	console.error("npm package layout is invalid:");
 	for (const failure of failures) console.error(`  - ${failure}`);

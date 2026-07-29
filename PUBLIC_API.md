@@ -21,6 +21,7 @@ Experimental APIs are typed, tested, and documented, but may be revised before t
 ## Internal compatibility paths
 
 - `@zihanw/pi-forge/src/*` subpath exports exist for compatibility with earlier source-shaped imports. They resolve to compiled `dist` modules and are not a promise that every implementation module is a permanent public API.
+- Browser-only `@zihanw/pi-forge/src/web-editor/client/*` implementation paths are explicitly blocked. The editor is distributed only through its generated embedded assets; these authored modules have never been a runtime integration surface.
 - The package root re-exports `@zihanw/pi-forge/subagent` contract names directly from the focused contract modules. The former `src/subagent-contract.ts` compatibility barrel and the `scripts/subagent-sdk-spike*` diagnostic harness were removed in the 0.4 cleanup.
 - Physical `src/` files are not included in the npm tarball. Runtime installation and legacy `@zihanw/pi-forge/src/*` aliases use compiled `dist` modules; source inspection or modification requires a repository clone.
 

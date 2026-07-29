@@ -46,6 +46,7 @@ let stackVariablesError = "";
 let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
+let editorStarted = false;
 
 const policyEditor = createPolicyEditor({
   getStack: () => currentStack,
@@ -103,8 +104,6 @@ function toggleTheme() {
   setStatus(next === "dark" ? "Dark theme enabled" : "Light theme enabled", "success");
 }
 
-applyTheme(currentTheme);
-
 function readStoredTheme(): "light" | "dark" | "" {
   try {
     const theme = localStorage.getItem("pi-forge-theme");
@@ -158,6 +157,7 @@ async function loadStacks(preferId: any = selectedId) {
     api("/api/stacks"),
     api("/api/resources"),
   ]);
+  if (!editorStarted) return;
   stacks = data.stacks || [];
   policyResources = normalizePolicyResources(resources);
   cwd = data.cwd || "";
@@ -171,6 +171,7 @@ async function loadStacks(preferId: any = selectedId) {
 async function selectStack(id: any, options: any = {}) {
   if (dirty && !options.keepDirty && !confirm("Discard unsaved changes?")) return;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
+  if (!editorStarted) return;
   selectedId = id;
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
@@ -1394,35 +1395,13 @@ function toggleSidebar() {
   setStatus(sidebarCollapsed ? "Prompt stacks sidebar hidden" : "Prompt stacks sidebar shown");
 }
 
-el("sidebarToggleBtn").onclick = toggleSidebar;
-el("themeBtn").onclick = toggleTheme;
-el("newStackBtn").onclick = () => run(createNewStack);
-el("reloadBtn").onclick = () => run(reloadFromDisk);
-el("disableBtn").onclick = () => run(disableStacks);
-el("activateBtn").onclick = () => run(activateStack);
-el("saveBtn").onclick = () => run(saveStack);
-el("validateBtn").onclick = () => run(validateStack);
-el("previewBtn").onclick = () => run(previewStack);
-el("payloadBtn").onclick = () => run(openPayloadCapture);
-el("metadataToggleBtn").onclick = toggleMetadata;
-document.querySelectorAll("[data-tab]").forEach((button: any) => {
-  button.onclick = () => {
-    activeTab = button.dataset.tab || "items";
-    renderActiveTab();
-    hidePreview();
-  };
-});
-el("forkBtn").onclick = () => run(forkStack);
-el("importBtn").onclick = () => run(importStackJson);
-el("exportBtn").onclick = () => run(exportStackJson);
-el("importFileInput").onchange = (event: any) => run(() => handleImportFile(event));
-el("deleteStackBtn").onclick = () => run(deleteCurrentStack);
-el("stackModal").onclick = (event: any) => {
+function handleStackModalClick(event: any) {
   if (event.target === el("stackModal") || event.target.closest?.("[data-modal-close]")) {
     closeStackModal();
   }
-};
-el("preview").onclick = (event: any) => {
+}
+
+function handlePreviewClick(event: any) {
   if (event.target === el("preview") || event.target.closest?.("[data-preview-close]")) {
     hidePreview();
     return;
@@ -1444,14 +1423,7 @@ el("preview").onclick = (event: any) => {
   event.preventDefault();
   event.stopPropagation();
   run(() => copyPreviewText(Number(button.dataset.copyIndex)));
-};
-el("addItemBtn").onclick = () => addItem("block");
-el("addSlotBtn").onclick = () => addItem("slot");
-el("deleteItemBtn").onclick = deleteSelectedItem;
-document.addEventListener("dragover", handleDocumentItemDragOver);
-document.addEventListener("drop", handleDocumentItemDrop);
-window.onbeforeunload = () => dirty ? "Unsaved changes" : undefined;
-window.addEventListener("keydown", handleEditorShortcut);
+}
 
 function handleEditorShortcut(event: any) {
   if (event.key === "Escape") {
@@ -1485,8 +1457,92 @@ function handleEditorShortcut(event: any) {
   }
 }
 
-run(async () => {
-  await loadStacks();
-  await refreshPayloadCapture();
-  setInterval(() => run(() => refreshPayloadCapture({ autoOpen: true })), 2000);
-});
+export function startLegacyEditor(): () => void {
+  resetEditorState();
+  editorStarted = true;
+  applyTheme(currentTheme);
+
+  el("sidebarToggleBtn").onclick = toggleSidebar;
+  el("themeBtn").onclick = toggleTheme;
+  el("newStackBtn").onclick = () => run(createNewStack);
+  el("reloadBtn").onclick = () => run(reloadFromDisk);
+  el("disableBtn").onclick = () => run(disableStacks);
+  el("activateBtn").onclick = () => run(activateStack);
+  el("saveBtn").onclick = () => run(saveStack);
+  el("validateBtn").onclick = () => run(validateStack);
+  el("previewBtn").onclick = () => run(previewStack);
+  el("payloadBtn").onclick = () => run(openPayloadCapture);
+  el("metadataToggleBtn").onclick = toggleMetadata;
+  document.querySelectorAll("[data-tab]").forEach((button: any) => {
+    button.onclick = () => {
+      activeTab = button.dataset.tab || "items";
+      renderActiveTab();
+      hidePreview();
+    };
+  });
+  el("forkBtn").onclick = () => run(forkStack);
+  el("importBtn").onclick = () => run(importStackJson);
+  el("exportBtn").onclick = () => run(exportStackJson);
+  el("importFileInput").onchange = (event: any) => run(() => handleImportFile(event));
+  el("deleteStackBtn").onclick = () => run(deleteCurrentStack);
+  el("stackModal").onclick = handleStackModalClick;
+  el("preview").onclick = handlePreviewClick;
+  el("addItemBtn").onclick = () => addItem("block");
+  el("addSlotBtn").onclick = () => addItem("slot");
+  el("deleteItemBtn").onclick = deleteSelectedItem;
+
+  document.addEventListener("dragover", handleDocumentItemDragOver);
+  document.addEventListener("drop", handleDocumentItemDrop);
+  window.addEventListener("keydown", handleEditorShortcut);
+  const previousBeforeUnload = window.onbeforeunload;
+  const beforeUnload = () => dirty ? "Unsaved changes" : undefined;
+  window.onbeforeunload = beforeUnload;
+  let payloadPoll: number | undefined;
+
+  void run(async () => {
+    await loadStacks();
+    if (!editorStarted) return;
+    await refreshPayloadCapture();
+    if (!editorStarted) return;
+    payloadPoll = window.setInterval(() => run(() => refreshPayloadCapture({ autoOpen: true })), 2000);
+  });
+
+  return () => {
+    if (!editorStarted) return;
+    editorStarted = false;
+    if (payloadPoll !== undefined) window.clearInterval(payloadPoll);
+    finishItemDrag();
+    document.removeEventListener("dragover", handleDocumentItemDragOver);
+    document.removeEventListener("drop", handleDocumentItemDrop);
+    window.removeEventListener("keydown", handleEditorShortcut);
+    if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
+  };
+}
+
+function resetEditorState(): void {
+  if (dragScrollFrame) cancelAnimationFrame(dragScrollFrame);
+  stacks = [];
+  cwd = "";
+  selectedId = "";
+  currentStack = null;
+  currentFilePath = "";
+  selectedItemIndex = -1;
+  dirty = false;
+  dragIndex = -1;
+  dragDropIndex = -1;
+  dragScrollFrame = 0;
+  dragScrollSpeed = 0;
+  dragClientY = 0;
+  optionsText = "";
+  optionsError = "";
+  sidebarCollapsed = false;
+  slotOptionsMode = "form";
+  policyResources = { tools: [], skills: [] };
+  latestDiagnostics = [];
+  stackVariablesError = "";
+  activeTab = "items";
+  metadataCollapsed = true;
+  currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
+  regexEditor.reset();
+  policyEditor.reset();
+}

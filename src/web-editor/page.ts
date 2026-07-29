@@ -19,10 +19,10 @@ export function renderEditorHtml(): string {
 </html>`;
 }
 
-function inlineScript(source: string): string {
+export function inlineScript(source: string): string {
 	return source.replace(/<\/script/gi, "<\\/script");
 }
 
-function inlineStyle(source: string): string {
+export function inlineStyle(source: string): string {
 	return source.replace(/<\/style/gi, "<\\/style");
 }

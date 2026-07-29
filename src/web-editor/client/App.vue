@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, onUnmounted } from "vue";
+
+let stopLegacyEditor: (() => void) | undefined;
 
 onMounted(async () => {
 	try {
-		await import("./legacy-editor.ts");
+		const { startLegacyEditor } = await import("./legacy-editor.ts");
+		stopLegacyEditor = startLegacyEditor();
 	} catch (error) {
 		const status = document.getElementById("status");
 		if (status) {
@@ -12,6 +15,10 @@ onMounted(async () => {
 		}
 		throw error;
 	}
+});
+
+onUnmounted(() => {
+	stopLegacyEditor?.();
 });
 </script>
 
