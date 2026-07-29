@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -102,6 +102,13 @@ test("profile repository writes, protects, and deletes project-local profiles", 
 	assert.deepEqual(deleteAgentProfile(cwd, loaded), { ok: true, filePath });
 	assert.equal(existsSync(filePath), false);
 	assert.equal(deleteAgentProfile(cwd, loaded).ok, false);
+
+	const outsideTarget = join(cwd, "outside-target.json");
+	writeFileSync(outsideTarget, "outside\n");
+	symlinkSync(outsideTarget, filePath);
+	const symlinkOverwrite = writeAgentProfile(cwd, changed, { filePath, overwrite: true });
+	assert.deepEqual(symlinkOverwrite.ok ? undefined : symlinkOverwrite.reason, "invalid-path");
+	assert.equal(readFileSync(outsideTarget, "utf8"), "outside\n");
 });
 
 test("profile service returns immutable typed preview and drift status", () => {

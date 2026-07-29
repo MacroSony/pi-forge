@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, } from "../agent-profile.js";
 import { convertSillyTavernPreset } from "../sillytavern-importer.js";
 import { renderEditorHtml } from "./page.js";
 // Port 0 asks Node to bind any available localhost port.
@@ -68,6 +69,35 @@ async function handleRequest(host, token, req, res) {
     }
     if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "reload" && parts.length === 3) {
         sendOperation(res, await host.reloadProfiles());
+        return;
+    }
+    if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "validate" && parts.length === 3) {
+        const body = await readJsonBody(req);
+        const parsed = readProfilePayload(body);
+        if (!parsed.ok) {
+            sendJson(res, 400, { error: parsed.error });
+            return;
+        }
+        const existingId = isPlainObject(body) && typeof body.existingId === "string" ? body.existingId : undefined;
+        sendJson(res, 200, host.validateProfile(parsed.profile, existingId));
+        return;
+    }
+    if (req.method === "POST" && parts[1] === "profiles" && parts.length === 2) {
+        const parsed = readProfilePayload(await readJsonBody(req));
+        if (!parsed.ok) {
+            sendJson(res, 400, { error: parsed.error });
+            return;
+        }
+        sendOperation(res, await host.createProfile(parsed.profile));
+        return;
+    }
+    if (req.method === "PUT" && parts[1] === "profiles" && parts.length === 3) {
+        const parsed = readProfilePayload(await readJsonBody(req));
+        if (!parsed.ok) {
+            sendJson(res, 400, { error: parsed.error });
+            return;
+        }
+        sendOperation(res, await host.saveProfile(parts[2], parsed.profile));
         return;
     }
     if (req.method === "GET" && parts[1] === "resources" && parts.length === 2) {
@@ -210,6 +240,71 @@ function readStackPayload(body) {
             return { ok: false, error: `Slot item ${item.id} slot must be a string.` };
     }
     return { ok: true, stack: rawStack };
+}
+function readProfilePayload(body) {
+    const raw = isPlainObject(body) && "profile" in body ? body.profile : body;
+    if (!isPlainObject(raw))
+        return { ok: false, error: "Profile payload must be a JSON object." };
+    const allowedFields = new Set([
+        "schemaVersion",
+        "type",
+        "id",
+        "name",
+        "description",
+        "autoActivate",
+        "model",
+        "thinkingLevel",
+        "promptStack",
+    ]);
+    const unsupported = Object.keys(raw).find((field) => !allowedFields.has(field));
+    if (unsupported)
+        return { ok: false, error: `Unsupported profile field: ${unsupported}` };
+    if (raw.schemaVersion !== 1)
+        return { ok: false, error: "Profile schemaVersion must be 1." };
+    if (raw.type !== AGENT_PROFILE_TYPE)
+        return { ok: false, error: `Profile type must be "${AGENT_PROFILE_TYPE}".` };
+    if (typeof raw.id !== "string")
+        return { ok: false, error: "Profile id must be a string." };
+    if (raw.name !== undefined && typeof raw.name !== "string")
+        return { ok: false, error: "Profile name must be a string when provided." };
+    if (raw.description !== undefined && typeof raw.description !== "string") {
+        return { ok: false, error: "Profile description must be a string when provided." };
+    }
+    if (raw.autoActivate !== undefined && typeof raw.autoActivate !== "boolean") {
+        return { ok: false, error: "Profile autoActivate must be a boolean when provided." };
+    }
+    if (!isPlainObject(raw.model))
+        return { ok: false, error: "Profile model must be an object." };
+    const unsupportedModelField = Object.keys(raw.model).find((field) => field !== "provider" && field !== "id");
+    if (unsupportedModelField)
+        return { ok: false, error: `Unsupported profile model field: ${unsupportedModelField}` };
+    if (typeof raw.model.provider !== "string" || typeof raw.model.id !== "string") {
+        return { ok: false, error: "Profile model provider and id must be strings." };
+    }
+    if (typeof raw.thinkingLevel !== "string"
+        || !AGENT_PROFILE_THINKING_LEVELS.includes(raw.thinkingLevel)) {
+        return { ok: false, error: `Unsupported profile thinkingLevel: ${String(raw.thinkingLevel)}` };
+    }
+    if (raw.promptStack !== null && typeof raw.promptStack !== "string") {
+        return { ok: false, error: "Profile promptStack must be a string or null." };
+    }
+    return {
+        ok: true,
+        profile: {
+            schemaVersion: 1,
+            type: AGENT_PROFILE_TYPE,
+            id: raw.id,
+            name: raw.name,
+            description: raw.description,
+            autoActivate: raw.autoActivate,
+            model: {
+                provider: raw.model.provider,
+                id: raw.model.id,
+            },
+            thinkingLevel: raw.thinkingLevel,
+            promptStack: raw.promptStack,
+        },
+    };
 }
 function isSillyTavernPresetPayload(value) {
     return Array.isArray(value.prompts) && !Array.isArray(value.items);

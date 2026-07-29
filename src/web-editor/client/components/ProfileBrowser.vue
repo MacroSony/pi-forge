@@ -2,7 +2,12 @@
 import { computed, onMounted, ref } from "vue";
 
 import { createEditorApi } from "../api.ts";
-import type { WebEditorProfileCollection, WebEditorProfileEntry } from "../types.ts";
+import type {
+	WebEditorProfileCollection,
+	WebEditorProfileEntry,
+	WebEditorProfileMutation,
+} from "../types.ts";
+import ProfileEditor from "./ProfileEditor.vue";
 
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
@@ -10,6 +15,8 @@ const collection = ref<WebEditorProfileCollection>();
 const selectedPath = ref("");
 const loadError = ref("");
 const loading = ref(false);
+const editorMode = ref<"create" | "edit">();
+const profileActionStatus = ref("");
 
 const selected = computed<WebEditorProfileEntry | undefined>(() => {
 	const entries = collection.value?.profiles || [];
@@ -23,6 +30,7 @@ onMounted(() => {
 async function loadProfiles(reloadFromDisk = false): Promise<void> {
 	loading.value = true;
 	loadError.value = "";
+	profileActionStatus.value = "";
 	try {
 		const next = await api<WebEditorProfileCollection>(
 			reloadFromDisk ? "/api/profiles/reload" : "/api/profiles",
@@ -32,11 +40,26 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 		if (!next.profiles.some((entry) => entry.filePath === selectedPath.value)) {
 			selectedPath.value = next.profiles[0]?.filePath || "";
 		}
+		if (reloadFromDisk) editorMode.value = undefined;
 	} catch (error) {
 		loadError.value = error instanceof Error ? error.message : String(error);
 	} finally {
 		loading.value = false;
 	}
+}
+
+function selectProfile(entry: WebEditorProfileEntry): void {
+	selectedPath.value = entry.filePath;
+	editorMode.value = undefined;
+	profileActionStatus.value = "";
+}
+
+function handleProfileSaved(mutation: WebEditorProfileMutation): void {
+	collection.value = mutation.collection;
+	selectedPath.value = mutation.selectedPath;
+	const saved = mutation.collection.profiles.find((entry) => entry.filePath === mutation.selectedPath);
+	profileActionStatus.value = `${editorMode.value === "create" ? "Created" : "Saved"} ${saved?.profile.id || "profile"}`;
+	editorMode.value = undefined;
 }
 
 function modelLabel(model: { provider: string; id: string } | null): string {
@@ -69,9 +92,18 @@ function driftLabel(changed: boolean): string {
 			</div>
 			<span class="action-spacer"></span>
 			<span id="profilesStatus" class="status">
-				{{ loading ? "Loading profiles" : loadError || `${collection?.profiles.length || 0} profile(s)` }}
+				{{ loading ? "Loading profiles" : loadError || profileActionStatus || `${collection?.profiles.length || 0} profile(s)` }}
 			</span>
-			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading" @click="loadProfiles(true)">
+			<button
+				id="profileNewBtn"
+				data-icon="+"
+				type="button"
+				:disabled="loading || !!editorMode || !collection?.trusted"
+				@click="editorMode = 'create'"
+			>
+				New profile
+			</button>
+			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || !!editorMode" @click="loadProfiles(true)">
 				Refresh
 			</button>
 		</header>
@@ -93,9 +125,10 @@ function driftLabel(changed: boolean): string {
 						type="button"
 						class="profile-row"
 						:class="{ selected: selected?.filePath === entry.filePath }"
+						:disabled="!!editorMode"
 						data-profile-row
 						:data-profile-id="entry.profile.id"
-						@click="selectedPath = entry.filePath"
+						@click="selectProfile(entry)"
 					>
 						<span class="profile-row-title">
 							{{ entry.profile.id }}
@@ -120,18 +153,32 @@ function driftLabel(changed: boolean): string {
 			</aside>
 
 			<main class="profile-main">
-				<template v-if="selected">
+				<ProfileEditor
+					v-if="editorMode"
+					:key="`${editorMode}-${selected?.filePath || 'new'}`"
+					:mode="editorMode"
+					:collection="collection"
+					:source="editorMode === 'edit' ? selected?.profile : undefined"
+					@cancel="editorMode = undefined"
+					@saved="handleProfileSaved"
+				/>
+				<template v-else-if="selected">
 					<section class="profile-card profile-summary-card">
 						<div>
 							<div class="profile-title">{{ selected.profile.name || selected.profile.id }}</div>
 							<div class="profile-path">{{ selected.filePath }}</div>
 						</div>
-						<span
-							class="profile-applicability"
-							:class="{ ready: selected.preview.applicable, error: !selected.preview.applicable }"
-						>
-							{{ selected.preview.applicable ? "Ready to apply" : "Preflight failed" }}
-						</span>
+						<div class="profile-summary-actions">
+							<span
+								class="profile-applicability"
+								:class="{ ready: selected.preview.applicable, error: !selected.preview.applicable }"
+							>
+								{{ selected.preview.applicable ? "Ready to apply" : "Preflight failed" }}
+							</span>
+							<button id="profileEditBtn" data-icon="✎" type="button" @click="editorMode = 'edit'">
+								Edit
+							</button>
+						</div>
 						<p v-if="selected.profile.description" class="profile-description">
 							{{ selected.profile.description }}
 						</p>
@@ -178,8 +225,8 @@ function driftLabel(changed: boolean): string {
 					</section>
 				</template>
 
-				<section v-else class="profile-card profile-empty">
-					Create a project profile with <code>/profile save &lt;id&gt;</code>; browser editing will be added on this profile surface.
+				<section v-else-if="!editorMode" class="profile-card profile-empty">
+					Create a project profile here or capture the current runtime with <code>/profile save &lt;id&gt;</code>.
 				</section>
 
 				<section class="profile-card profile-runtime-card">
@@ -350,6 +397,12 @@ function driftLabel(changed: boolean): string {
 
 .profile-applicability {
 	font-weight: 650;
+}
+
+.profile-summary-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 .profile-description {

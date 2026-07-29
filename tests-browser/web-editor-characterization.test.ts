@@ -13,6 +13,7 @@ import {
 	writeProfile,
 	writeStack,
 } from "../tests/helpers/index-command-harness.ts";
+import { agentProfilePath } from "../src/agent-profile.ts";
 import { promptStacksDir } from "../src/loader.ts";
 
 test("web editor preserves its shell and guarded editing state", { timeout: 20_000 }, async (t) => {
@@ -187,6 +188,72 @@ test("web editor navigates project profile resolution without losing stack state
 		await page.locator("#profileRefreshBtn").click();
 		await page.locator(".profile-title").filter({ hasText: "Reviewer refreshed" }).waitFor();
 
+		await page.locator("#profileNewBtn").click();
+		await page.locator("#profileId").fill("scout");
+		await page.locator("#profileName").fill("Scout");
+		await page.locator("#profileDescription").fill("Explore a focused change.");
+		await page.locator("#profileModelProvider").fill("test");
+		await page.locator("#profileModelId").fill("target");
+		await page.locator("#profileThinkingLevel").selectOption("medium");
+		await page.locator("#profilePromptStack").selectOption("default");
+		await page.locator("#profileValidateBtn").click();
+		await page.locator("#profileEditorStatus").filter({ hasText: "Valid and ready to apply" }).waitFor();
+		assert.match(await page.locator(".profile-editor-validation").textContent() ?? "", /No diagnostics/);
+		await page.locator("#profileSaveBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Created scout" }).waitFor();
+		assert.equal(await page.locator("[data-profile-row]").count(), 3);
+		assert.equal(
+			JSON.parse(readFileSync(agentProfilePath(cwd, "scout"), "utf8")).description,
+			"Explore a focused change.",
+		);
+
+		await page.locator("#profileEditBtn").click();
+		assert.equal(await page.locator("#profileId").isEditable(), false);
+		await page.locator("#profileName").fill("Scout updated");
+		await page.locator("#profileSaveBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Saved scout" }).waitFor();
+		assert.equal(JSON.parse(readFileSync(agentProfilePath(cwd, "scout"), "utf8")).name, "Scout updated");
+
+		await page.locator("#profileEditBtn").click();
+		await page.locator("#profileModelId").fill("missing");
+		await page.locator("#profileValidateBtn").click();
+		await page.locator("#profileEditorStatus").filter({ hasText: "validation error" }).waitFor();
+		assert.match(await page.locator(".profile-editor-validation").textContent() ?? "", /Unknown model: test\/missing/);
+		page.once("dialog", async (dialog) => {
+			assert.match(dialog.message(), /Discard unsaved agent-profile changes/);
+			await dialog.dismiss();
+		});
+		await page.locator("#profileCancelBtn").click();
+		assert.equal(await page.locator("#profileEditorStatus").isVisible(), true);
+		page.once("dialog", async (dialog) => {
+			await dialog.accept();
+		});
+		await page.locator("#profileCancelBtn").click();
+
+		writeProfile(cwd, "occupied.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "different-internal-id",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "medium",
+			promptStack: "default",
+		});
+		const occupiedValidation = await page.request.post(new URL("/api/profiles/validate", editorUrl).href, {
+			headers: { "x-pi-forge-token": editorUrl.searchParams.get("token")! },
+			data: {
+				profile: {
+					schemaVersion: 1,
+					type: "pi-forge.agent-profile",
+					id: "occupied",
+					model: { provider: "test", id: "target" },
+					thinkingLevel: "medium",
+					promptStack: "default",
+				},
+			},
+		});
+		assert.equal(occupiedValidation.status(), 200);
+		assert.match(await occupiedValidation.text(), /Profile file already exists/);
+
 		await page.locator('[data-profile-row][data-profile-id="broken"]').click();
 		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
 		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown model: missing\/model/);
@@ -198,7 +265,7 @@ test("web editor navigates project profile resolution without losing stack state
 		assert.equal(await page.locator("#itemContent").inputValue(), "Hidden dirty content.");
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator("[data-profile-row]").first().waitFor();
-		assert.equal(await page.locator("[data-profile-row]").count(), 2);
+		assert.equal(await page.locator("[data-profile-row]").count(), 3);
 		assert.equal(
 			await page.locator("[data-profile-row].selected").getAttribute("data-profile-id"),
 			"reviewer",

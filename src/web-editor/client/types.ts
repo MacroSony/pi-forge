@@ -10,6 +10,9 @@ import type {
 	WebEditorPolicyResource,
 	WebEditorProfileCollection,
 	WebEditorProfileEntry,
+	WebEditorProfileModelOption,
+	WebEditorProfileMutation,
+	WebEditorProfileValidation,
 	WebEditorStackSummary,
 } from "../types.ts";
 
@@ -81,5 +84,8 @@ export type {
 	WebEditorPolicyResource,
 	WebEditorProfileCollection,
 	WebEditorProfileEntry,
+	WebEditorProfileModelOption,
+	WebEditorProfileMutation,
+	WebEditorProfileValidation,
 	WebEditorStackSummary,
 };

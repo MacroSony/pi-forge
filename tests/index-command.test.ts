@@ -954,6 +954,52 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 	assert.equal(statuses["pi-forge-editor"], undefined);
 });
 
+test("/preset ui profile mutations remain token-gated and fail closed for untrusted projects", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const harness = createHarness();
+	const context = createContext(cwd, [], { trusted: false });
+	const profile = {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "blocked",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	};
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const profilesUrl = new URL("/api/profiles", editorUrl);
+
+		const missingToken = await fetch(profilesUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(missingToken.status, 403);
+
+		const createResponse = await fetch(profilesUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(createResponse.status, 403);
+		assert.match(await createResponse.text(), /not trusted/i);
+
+		const reloadResponse = await fetch(new URL("/api/profiles/reload", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(reloadResponse.status, 403);
+		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "blocked.json")), false);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
 	const lifecycle = { ...ctx };
 	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];

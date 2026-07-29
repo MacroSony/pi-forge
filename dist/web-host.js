@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { agentProfilesDir } from "./agent-profile.js";
+import { agentProfilePath, agentProfilesDir, validateAgentProfile, } from "./agent-profile.js";
 import { isInsidePromptStackStorage, promptStackPath, validatePromptStack, } from "./loader.js";
-import { createAgentProfilePreview, getAgentProfileRuntimeStatus, } from "./profile-service.js";
+import { createAgentProfilePreview, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
@@ -15,6 +15,9 @@ export function createWebEditorHost(ctx, runtime) {
             await runtime.reloadProfiles();
             return { ok: true, ...profileCollection(ctx, runtime) };
         },
+        validateProfile: (profile, existingId) => profileValidation(ctx, runtime, profile, existingId),
+        createProfile: (profile) => createProfileFile(ctx, runtime, profile),
+        saveProfile: (id, profile) => saveProfileFile(ctx, runtime, id, profile),
         listResources: () => runtime.getPolicyResources(),
         getStack: (id) => {
             const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
@@ -54,6 +57,7 @@ function profileCollection(ctx, runtime) {
     const profiles = runtime.getProfiles();
     const current = runtime.getCurrentProfileRuntime();
     const lastApplied = runtime.getLastAppliedProfile();
+    const availableModels = new Set(ctx.modelRegistry.getAvailable().map((model) => modelKey(model.provider, model.id)));
     return {
         trusted: ctx.isProjectTrusted(),
         profileDirectory: agentProfilesDir(ctx.cwd),
@@ -73,7 +77,121 @@ function profileCollection(ctx, runtime) {
             };
         }),
         status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
+        models: ctx.modelRegistry.getAll().map((model) => ({
+            provider: model.provider,
+            id: model.id,
+            name: model.name,
+            available: availableModels.has(modelKey(model.provider, model.id)),
+        })),
+        promptStacks: runtime.getStacks().map((loaded) => ({
+            id: loaded.stack.id,
+            name: loaded.stack.name,
+        })),
     };
+}
+function profileValidation(ctx, runtime, profile, existingId) {
+    const profiles = runtime.getProfiles();
+    const existingMatches = existingId
+        ? profiles.filter((loaded) => loaded.profile.id === existingId)
+        : [];
+    const existing = existingMatches.length === 1 ? existingMatches[0] : undefined;
+    const filePath = existing?.filePath ?? agentProfilePath(ctx.cwd, profile.id);
+    const diagnostics = validateAgentProfile(profile);
+    const otherProfiles = existing
+        ? profiles.filter((loaded) => loaded.filePath !== filePath)
+        : profiles;
+    if (otherProfiles.some((loaded) => loaded.profile.id === profile.id)) {
+        diagnostics.push({
+            level: "error",
+            field: "id",
+            message: `Duplicate profile id: ${profile.id} already exists in another file.`,
+        });
+    }
+    if (!existing && existsSync(filePath)) {
+        diagnostics.push({
+            level: "error",
+            field: "id",
+            message: `Profile file already exists: ${filePath}`,
+        });
+    }
+    if (profile.autoActivate && otherProfiles.some((loaded) => loaded.profile.autoActivate === true)) {
+        diagnostics.push({
+            level: "error",
+            field: "autoActivate",
+            message: "Multiple profiles request auto-activation; exactly one is allowed.",
+        });
+    }
+    const resolved = runtime.resolveProfile({ profile, filePath, diagnostics });
+    const targetEffectiveTools = resolved.promptStack || profile.promptStack === null
+        ? runtime.previewToolNames(resolved.promptStack?.stack)
+        : [];
+    const preview = createAgentProfilePreview(resolved, runtime.getCurrentProfileRuntime(), targetEffectiveTools);
+    return {
+        preview,
+        diagnostics: preview.diagnostics,
+        errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
+        warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
+    };
+}
+async function createProfileFile(ctx, runtime, profile) {
+    if (!ctx.isProjectTrusted()) {
+        return { ok: false, status: 403, error: "Project is not trusted; refusing to create agent profiles." };
+    }
+    if (runtime.getProfiles().some((loaded) => loaded.profile.id === profile.id)) {
+        return { ok: false, status: 409, error: `Agent profile already exists: ${profile.id}` };
+    }
+    const result = writeAgentProfile(ctx.cwd, profile);
+    if (!result.ok)
+        return profileWriteError(profile.id, result);
+    await runtime.reloadProfiles();
+    return {
+        ok: true,
+        collection: profileCollection(ctx, runtime),
+        selectedPath: result.filePath,
+    };
+}
+async function saveProfileFile(ctx, runtime, id, profile) {
+    if (!ctx.isProjectTrusted()) {
+        return { ok: false, status: 403, error: "Project is not trusted; refusing to save agent profiles." };
+    }
+    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    if (matches.length === 0)
+        return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
+    if (matches.length > 1) {
+        return { ok: false, status: 409, error: `Cannot save agent profile ${id} while duplicate profile ids exist.` };
+    }
+    if (profile.id !== id) {
+        return { ok: false, status: 400, error: "Profile id is immutable during save; create a new profile to use a different id." };
+    }
+    const result = writeAgentProfile(ctx.cwd, profile, {
+        filePath: matches[0].filePath,
+        overwrite: true,
+    });
+    if (!result.ok)
+        return profileWriteError(id, result);
+    await runtime.reloadProfiles();
+    return {
+        ok: true,
+        collection: profileCollection(ctx, runtime),
+        selectedPath: result.filePath,
+    };
+}
+function profileWriteError(id, result) {
+    if (result.reason === "exists")
+        return { ok: false, status: 409, error: `Agent profile already exists: ${id}` };
+    if (result.reason === "invalid-path")
+        return { ok: false, status: 403, error: result.error ?? "Refusing to write outside agent-profile storage." };
+    if (result.reason === "validation") {
+        return {
+            ok: false,
+            status: 400,
+            error: result.diagnostics.map((diagnostic) => diagnostic.message).join(" "),
+        };
+    }
+    return { ok: false, status: 500, error: result.error ?? `Failed to write agent profile ${id}.` };
+}
+function modelKey(provider, id) {
+    return `${provider}\0${id}`;
 }
 export function stackSummary(loaded, active) {
     const errors = loaded.diagnostics.filter((d) => d.level === "error").length;

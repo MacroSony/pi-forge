@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, hasAgentProfileErrors, isResolvedAgentProfileUsable, validateAgentProfile, } from "./agent-profile.js";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.js";
-import { isInsideAgentProfileStorage } from "./storage.js";
+import { isInsideAgentProfileStorage, isSafeAgentProfileWritePath } from "./storage.js";
 export function captureAgentProfile(id, runtime, existing) {
     if (!runtime.model) {
         return {
@@ -31,12 +31,12 @@ export function writeAgentProfile(cwd, profile, options = {}) {
     if (hasAgentProfileErrors(diagnostics))
         return { ok: false, reason: "validation", diagnostics };
     const filePath = options.filePath ?? agentProfilePath(cwd, profile.id);
-    if (!isInsideAgentProfileStorage(cwd, filePath)) {
+    if (!isSafeAgentProfileWritePath(cwd, filePath)) {
         return {
             ok: false,
             reason: "invalid-path",
             diagnostics,
-            error: `Profile path is outside project agent-profile storage: ${filePath}`,
+            error: `Profile path is outside project agent-profile storage or traverses a symbolic link: ${filePath}`,
         };
     }
     if (existsSync(filePath) && !options.overwrite)

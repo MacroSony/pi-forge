@@ -1,4 +1,4 @@
-import type { AgentProfile } from "../agent-profile.ts";
+import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
@@ -18,6 +18,9 @@ export interface WebEditorHost {
     listStacks(): WebEditorStackSummary[];
     listProfiles(): WebEditorProfileCollection;
     reloadProfiles(): Promise<WebEditorOperationResult<WebEditorProfileCollection>>;
+    validateProfile(profile: AgentProfile, existingId?: string): WebEditorProfileValidation;
+    createProfile(profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     listResources(): WebEditorPolicyResources;
     getStack(id: string): {
         stack: PromptStack;
@@ -71,6 +74,27 @@ export interface WebEditorProfileCollection {
     profileDirectory: string;
     profiles: WebEditorProfileEntry[];
     status: AgentProfileRuntimeStatus;
+    models: WebEditorProfileModelOption[];
+    promptStacks: Array<{
+        id: string;
+        name?: string;
+    }>;
+}
+export interface WebEditorProfileModelOption {
+    provider: string;
+    id: string;
+    name?: string;
+    available: boolean;
+}
+export interface WebEditorProfileValidation {
+    preview: AgentProfilePreview;
+    diagnostics: AgentProfileDiagnostic[];
+    errors: number;
+    warnings: number;
+}
+export interface WebEditorProfileMutation {
+    collection: WebEditorProfileCollection;
+    selectedPath: string;
 }
 export interface WebEditorPreviewSection {
     id: string;

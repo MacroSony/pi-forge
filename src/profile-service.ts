@@ -17,7 +17,7 @@ import {
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.ts";
-import { isInsideAgentProfileStorage } from "./storage.ts";
+import { isInsideAgentProfileStorage, isSafeAgentProfileWritePath } from "./storage.ts";
 import type { LoadedPromptStack, PromptResourcePolicy } from "./types.ts";
 
 export interface AgentProfileCurrentRuntime {
@@ -133,12 +133,12 @@ export function writeAgentProfile(
 	if (hasAgentProfileErrors(diagnostics)) return { ok: false, reason: "validation", diagnostics };
 
 	const filePath = options.filePath ?? agentProfilePath(cwd, profile.id);
-	if (!isInsideAgentProfileStorage(cwd, filePath)) {
+	if (!isSafeAgentProfileWritePath(cwd, filePath)) {
 		return {
 			ok: false,
 			reason: "invalid-path",
 			diagnostics,
-			error: `Profile path is outside project agent-profile storage: ${filePath}`,
+			error: `Profile path is outside project agent-profile storage or traverses a symbolic link: ${filePath}`,
 		};
 	}
 	if (existsSync(filePath) && !options.overwrite) return { ok: false, reason: "exists", diagnostics };
