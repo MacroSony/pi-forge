@@ -48,5 +48,6 @@ export declare function registerForgeSubagentTool(pi: ExtensionAPI, runtime: For
 export declare function requestForgeSubagentApproval(prepared: ForgeSubagentPreparedRun, task: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<ForgeSubagentApprovalResult>;
 export declare function summarizeForgeSubagentPlan(prepared: ForgeSubagentPreparedRun, cwd: string): ForgeSubagentPlanSummary;
 export declare function renderApprovalSummary(prepared: ForgeSubagentPreparedRun, task: string, cwd: string): string;
+export declare function renderApprovalDetails(prepared: ForgeSubagentPreparedRun, task: string, cwd: string): string;
 export declare function renderFullForgeSubagentPrompt(prepared: ForgeSubagentPreparedRun): string;
 //# sourceMappingURL=subagent-tool.d.ts.map

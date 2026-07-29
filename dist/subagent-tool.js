@@ -8,6 +8,10 @@ const APPROVE = "Approve and run";
 const VIEW_FULL_PROMPT = "View full prompt";
 const REJECT = "Reject";
 const MAX_PROGRESS_ITEMS = 100;
+const MAX_APPROVAL_TASK_PREVIEW_CHARS = 48;
+const MAX_APPROVAL_EXECUTION_PREVIEW_CHARS = 44;
+const MAX_APPROVAL_PATH_PREVIEW_CHARS = 44;
+const MAX_APPROVAL_FINGERPRINT_PREVIEW_CHARS = 24;
 const ForgeSubagentParameters = Type.Object({
     profileId: Type.String({
         minLength: 1,
@@ -169,7 +173,11 @@ export async function requestForgeSubagentApproval(prepared, task, ctx, signal) 
         const choice = await ctx.ui.select(renderApprovalSummary(prepared, task, ctx.cwd), [APPROVE, VIEW_FULL_PROMPT, REJECT], { signal });
         if (choice === VIEW_FULL_PROMPT) {
             viewedFullPrompt = true;
-            await ctx.ui.editor(`Exact subagent prompt: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`, renderFullForgeSubagentPrompt(prepared));
+            await ctx.ui.editor(`Subagent approval details: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`, [
+                renderApprovalDetails(prepared, task, ctx.cwd),
+                "",
+                renderFullForgeSubagentPrompt(prepared),
+            ].join("\n"));
             continue;
         }
         return { approved: choice === APPROVE, viewedFullPrompt };
@@ -203,12 +211,32 @@ export function summarizeForgeSubagentPlan(prepared, cwd) {
 export function renderApprovalSummary(prepared, task, cwd) {
     const plan = prepared.plan;
     const summary = summarizeForgeSubagentPlan(prepared, cwd);
+    const timeout = summary.timeoutMs === undefined
+        ? "none"
+        : `${summary.timeoutMs} ms ${summary.timeoutEnforcement ?? "unknown enforcement"}`;
     return [
-        `Run foreground subagent ${summary.profileId}?`,
+        `Run foreground subagent ${oneLinePreview(summary.profileId, MAX_APPROVAL_EXECUTION_PREVIEW_CHARS)}?`,
+        `Task: ${oneLinePreview(task, MAX_APPROVAL_TASK_PREVIEW_CHARS)}`,
+        `Backend: ${oneLinePreview(summary.backendId, MAX_APPROVAL_EXECUTION_PREVIEW_CHARS)}`,
+        `Model: ${oneLinePreview(`${summary.provider}/${summary.model} · thinking ${summary.thinkingLevel}`, MAX_APPROVAL_EXECUTION_PREVIEW_CHARS)}`,
+        `Stack/tools: ${oneLinePreview(`${summary.promptStackId ?? "none"} · ${toolNames(plan).join(", ") || "none"}`, MAX_APPROVAL_EXECUTION_PREVIEW_CHARS)}`,
+        `Directory: ${oneLinePreview(summary.workingDirectory, MAX_APPROVAL_PATH_PREVIEW_CHARS)}`,
+        `Boundary: ${oneLinePreview(summary.executionBoundary, 16)} · ${timeout}`,
+        `Payload: ${summary.systemPromptChars} system chars + ${summary.messageCount} messages`,
+        `Execution: ${compactIdentifier(summary.executionFingerprint, MAX_APPROVAL_FINGERPRINT_PREVIEW_CHARS)} (see full prompt)`,
+        "No OS sandbox; provider gets prompt/files read by agent.",
+    ].join("\n");
+}
+export function renderApprovalDetails(prepared, task, cwd) {
+    const plan = prepared.plan;
+    const summary = summarizeForgeSubagentPlan(prepared, cwd);
+    return [
+        "# Subagent approval details",
         "",
         "Agent prompt:",
         indent(truncate(task, 2_000)),
         "",
+        `Backend: ${summary.backendId}`,
         `Provider: ${summary.provider}`,
         `Model: ${summary.model}`,
         `Thinking: ${summary.thinkingLevel}`,
@@ -218,6 +246,7 @@ export function renderApprovalSummary(prepared, task, cwd) {
         `Boundary: ${summary.executionBoundary} (read-only tool policy; no OS sandbox)`,
         ...(summary.timeoutMs === undefined ? [] : [`Timeout: ${summary.timeoutMs} ms (${summary.timeoutEnforcement ?? "unknown enforcement"})`]),
         `Full payload: ${summary.systemPromptChars} system chars + ${summary.messageCount} messages`,
+        `Prompt runtime fingerprint: ${summary.promptRuntimeFingerprint}`,
         `Conversation fingerprint: ${summary.conversationFingerprint}`,
         `Execution fingerprint: ${summary.executionFingerprint}`,
         "",
@@ -409,6 +438,17 @@ function indent(text) {
 }
 function truncate(text, maxChars) {
     return text.length <= maxChars ? text : `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+}
+function oneLinePreview(text, maxChars) {
+    return truncate(text.replace(/\s+/g, " ").trim(), maxChars);
+}
+function compactIdentifier(value, maxChars) {
+    if (value.length <= maxChars)
+        return value;
+    const visibleChars = Math.max(2, maxChars - 3);
+    const startChars = Math.ceil(visibleChars / 2);
+    const endChars = Math.floor(visibleChars / 2);
+    return `${value.slice(0, startChars)}...${value.slice(-endChars)}`;
 }
 function truncateLines(text, maxLines, maxChars) {
     return truncate(text.split("\n").slice(0, maxLines).join("\n"), maxChars);

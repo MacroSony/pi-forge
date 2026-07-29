@@ -3,8 +3,9 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { Text } from "@earendil-works/pi-tui";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
-import { registerForgeSubagentTool } from "../src/subagent-tool.ts";
+import { registerForgeSubagentTool, renderApprovalSummary } from "../src/subagent-tool.ts";
 import type { AgentResponse } from "../src/subagent/contract.ts";
 import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import {
@@ -82,11 +83,14 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.doesNotMatch(retainedDetails, /fixture-image-base64/);
 	assert.match(retainedDetails, /"dataOmitted":true/);
 	assert.ok(updates.length >= 4);
-	assert.match(context.selectTitles[0] ?? "", /Agent prompt:/);
+	assert.match(context.selectTitles[0] ?? "", /Task: Inspect this code carefully\./);
 	assert.match(context.selectTitles[0] ?? "", new RegExp(fixture.prepared.plan.model.provider));
-	assert.match(context.selectTitles[0] ?? "", /Timeout: \d+ ms/);
-	assert.match(context.selectTitles[0] ?? "", /Execution fingerprint:/);
+	assert.match(context.selectTitles[0] ?? "", /Boundary:.*\d+ ms/);
+	assert.match(context.selectTitles[0] ?? "", /Execution:/);
 	assert.equal(context.editors.length, 1);
+	assert.match(context.editors[0]?.text ?? "", /# Subagent approval details/);
+	assert.match(context.editors[0]?.text ?? "", /Agent prompt:\n  Inspect this code carefully\./);
+	assert.match(context.editors[0]?.text ?? "", new RegExp(fixture.prepared.plan.executionFingerprint));
 	assert.match(context.editors[0]?.text ?? "", /# Exact provider-bound subagent prompt/);
 	assert.match(context.editors[0]?.text ?? "", /## System prompt/);
 	assert.match(context.editors[0]?.text ?? "", /protected delegated task/);
@@ -98,6 +102,21 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.match(expandedText, /Subagent transcript/);
 	assert.match(expandedText, /read/);
 	assert.match(expandedText, /Image data omitted/);
+});
+
+test("subagent approval selector stays compact for long multiline tasks", async () => {
+	const fixture = await toolFixture();
+	const task = Array.from({ length: 80 }, (_, index) => `Review requirement ${index} with supporting evidence.`).join("\n");
+	const summary = renderApprovalSummary(fixture.prepared, task, `/workspace/${"nested/".repeat(30)}project`);
+	const lines = summary.split("\n");
+
+	assert.equal(lines.length, 10);
+	assert.ok(lines.every((line) => line.length <= 180), lines.join("\n"));
+	assert.match(lines[1] ?? "", /^Task: Review requirement 0 .*\.\.\.$/);
+	assert.doesNotMatch(summary, /Review requirement 10/);
+	assert.match(summary, /see full prompt/);
+	assert.doesNotMatch(summary, new RegExp(fixture.prepared.plan.executionFingerprint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	assert.ok(new Text(summary, 1, 0).render(60).length <= 10, "the selector title should remain compact at 60 columns");
 });
 
 test("forge_subagent rejects a prepared plan without transport and fails closed without UI", async () => {
