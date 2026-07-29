@@ -2,22 +2,11 @@
 import { createEditorApi, EditorApiError } from "./api.ts";
 import { attr, el, escapeHtml, eventElement, query, queryAll, type EditorElement } from "./dom.ts";
 import { createInspector } from "./inspector.ts";
-import { createPolicyEditor } from "./policy-editor.ts";
-import { createRegexEditor } from "./regex-editor.ts";
+import { createVueTabHost } from "./vue-tab-host.ts";
 import type {
-  EditorCreateOptions,
-  EditorImportReport,
   EditorJsonObject,
-  EditorModalOptions,
-  EditorPayloadRefreshOptions,
   EditorPromptStack,
-  EditorPromptStackItem,
-  EditorRegexRule,
-  EditorSelectOptions,
-  PromptRegexRule,
-  PromptResourcePolicy,
   PromptStackDiagnostic,
-  WebEditorPayloadSnapshot,
   WebEditorPolicyResource,
   WebEditorStackSummary,
 } from "./types.ts";
@@ -48,12 +37,6 @@ let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 let editorStarted = false;
 
-const policyEditor = createPolicyEditor({
-  getStack: () => currentStack,
-  getResources: () => policyResources,
-  markDirty,
-  setStatus,
-});
 const {
   validateStack,
   previewStack,
@@ -72,13 +55,12 @@ const {
   renderItemList,
   setStatus,
 });
-const regexEditor = createRegexEditor({
+const vueTabHost = createVueTabHost({
   getStack: () => currentStack,
+  getResources: () => policyResources,
   markDirty,
   setStatus,
-  showModal: showStackModal,
-  run,
-  validateStack,
+  validateStack: () => run(validateStack),
 });
 
 const slotNames = [
@@ -180,8 +162,7 @@ async function selectStack(id: any, options: any = {}) {
   dirty = false;
   optionsError = "";
   stackVariablesError = "";
-  regexEditor.reset();
-  policyEditor.reset();
+  vueTabHost.resetErrors();
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + loadedStack.id);
@@ -198,6 +179,7 @@ function renderAll(diagnostics: any = []) {
 }
 
 function renderActiveTab() {
+  vueTabHost.unmount();
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.classList.toggle("active", button.dataset.tab === activeTab);
   });
@@ -213,8 +195,8 @@ function renderActiveTab() {
   }
   workspace.style.display = "none";
   panel.classList.add("open");
-  if (activeTab === "regex") renderRegexTab();
-  else if (activeTab === "policy") policyEditor.renderTab();
+  if (activeTab === "regex") vueTabHost.mountRegex(panel);
+  else if (activeTab === "policy") vueTabHost.mountPolicy(panel);
   else if (activeTab === "stack") renderStackTab();
 }
 
@@ -730,12 +712,6 @@ function setContextOption(key: any, value: any, defaultValue: any) {
   else delete stack.context;
 }
 
-function renderRegexTab() {
-  if (!currentStack) return;
-  el("tabPanel").innerHTML = '<div class="tab-section">' + regexEditor.renderBody() + '</div>';
-  regexEditor.bind();
-}
-
 function renderStackTab() {
   if (!currentStack) return;
   const json = JSON.stringify(stackForDisplay(), null, 2);
@@ -821,8 +797,7 @@ async function applyRawStackJson() {
   selectedItemIndex = stack.items.length ? Math.min(Math.max(selectedItemIndex, 0), stack.items.length - 1) : -1;
   optionsError = "";
   stackVariablesError = "";
-  regexEditor.reset();
-  policyEditor.reset();
+  vueTabHost.resetErrors();
   closeStackModal();
   markDirty();
   renderAll(latestDiagnostics);
@@ -1304,8 +1279,10 @@ function stackForSubmit() {
   if (!currentStack) throw new Error("No stack selected.");
   if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
   if (stackVariablesError) throw new Error(stackVariablesError);
-  if (regexEditor.getError()) throw new Error(regexEditor.getError());
-  if (policyEditor.getError()) throw new Error(policyEditor.getError());
+  const regexError = vueTabHost.getError("regex");
+  if (regexError) throw new Error(regexError);
+  const policyError = vueTabHost.getError("policy");
+  if (policyError) throw new Error(policyError);
   const clone = structuredClone(currentStack);
   if (!clone.type) clone.type = "pi-forge.prompt-stack";
   if (!clone.schemaVersion) clone.schemaVersion = 1;
@@ -1327,11 +1304,12 @@ function renderDiagnostics(diagnostics: any) {
 }
 
 function renderEmpty() {
+  vueTabHost.unmount();
   currentStack = null;
   selectedId = "";
   dirty = false;
   activeTab = "items";
-  policyEditor.reset();
+  vueTabHost.resetErrors();
   renderDirtyState();
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.classList.toggle("active", button.dataset.tab === activeTab);
@@ -1516,6 +1494,7 @@ export function startLegacyEditor(): () => void {
     document.removeEventListener("drop", handleDocumentItemDrop);
     window.removeEventListener("keydown", handleEditorShortcut);
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
+    vueTabHost.unmount();
   };
 }
 
@@ -1543,6 +1522,5 @@ function resetEditorState(): void {
   activeTab = "items";
   metadataCollapsed = true;
   currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
-  regexEditor.reset();
-  policyEditor.reset();
+  vueTabHost.resetErrors();
 }

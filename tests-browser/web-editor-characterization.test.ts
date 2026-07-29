@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -92,6 +92,8 @@ test("web editor transitions between populated and empty stack states", { timeou
 	}, async ({ cwd, editorUrl, page }) => {
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#addRegexRuleBtn").waitFor();
 
 		page.once("dialog", async (dialog) => {
 			assert.match(dialog.message(), /Delete prompt stack 'only'/);
@@ -116,6 +118,95 @@ test("web editor transitions between populated and empty stack states", { timeou
 		assert.equal(await page.locator("#saveBtn").isEnabled(), true);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
 		assert.deepEqual(promptAnswers, []);
+	});
+});
+
+test("Vue policy and regex tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", {
+			...stackFixture("default", "Vue tab stack", true),
+			tools: {
+				allow: ["*"],
+			},
+			regex: {
+				schemaVersion: 1,
+				rules: [{
+					id: "existing",
+					enabled: true,
+					stage: "compiled",
+					effect: "outgoing",
+					targets: ["messages"],
+					pattern: "Content",
+					replace: "Text",
+					futureRuleField: { preserve: true },
+				}],
+			},
+		});
+		writeStack(cwd, "alternate.json", stackFixture("alternate", "Alternate stack"));
+	}, async ({ cwd, editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+
+		await page.locator("#stackTabBtn").click();
+		const rawStack = JSON.parse(await page.locator("#stackJsonText").inputValue()) as {
+			tools?: Record<string, unknown>;
+		};
+		assert.ok(rawStack.tools);
+		rawStack.tools.futurePolicyField = { preserve: true };
+		await page.locator("#stackJsonText").fill(JSON.stringify(rawStack));
+		await page.locator("#applyStackJsonBtn").click();
+		await page.locator("#status").filter({ hasText: "Applied stack JSON to editor" }).waitFor();
+
+		await page.locator("#regexTabBtn").click();
+		const regexRow = page.locator("[data-regex-row]").first();
+		await regexRow.locator("[data-regex-max-messages]").fill("0");
+		assert.match(
+			await page.locator("#status").textContent() ?? "",
+			/maxMessages must be a positive integer/,
+		);
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#saveBtn").click();
+		await page.locator("#status")
+			.filter({ hasText: "maxMessages must be a positive integer" })
+			.waitFor();
+		await page.locator("#dirtyBadge.visible").waitFor();
+
+		await page.locator("#regexTabBtn").click();
+		await page.locator("[data-regex-row]").first().locator("[data-regex-max-messages]").fill("2");
+		await page.locator("#policyTabBtn").click();
+		const toolsPolicy = page.locator('[data-policy-row][data-policy-kind="tools"]');
+		await toolsPolicy.locator("[data-policy-patterns]").fill("read\nread");
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#saveBtn").click();
+		await page.locator("#status")
+			.filter({ hasText: "tools.allow has duplicate pattern: read" })
+			.waitFor();
+
+		await page.locator("#policyTabBtn").click();
+		await page.locator('[data-policy-row][data-policy-kind="tools"] [data-policy-patterns]').fill("read");
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#policyTabBtn").click();
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#saveBtn").click();
+		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
+
+		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			tools?: Record<string, unknown>;
+			regex?: { rules?: Array<Record<string, unknown>> };
+		};
+		assert.deepEqual(saved.tools?.futurePolicyField, { preserve: true });
+		assert.deepEqual(saved.regex?.rules?.[0]?.futureRuleField, { preserve: true });
+		assert.deepEqual(saved.tools?.allow, ["read"]);
+		assert.equal(saved.regex?.rules?.[0]?.maxMessages, 2);
+
+		await page.locator(".stack-row", { hasText: "alternate" }).click();
+		await page.locator("#status").filter({ hasText: "Loaded alternate" }).waitFor();
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#reloadBtn").click();
+		await page.locator("#status").filter({ hasText: "Reloaded from disk" }).waitFor();
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "alternate");
 	});
 });
 
