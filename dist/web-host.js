@@ -1,10 +1,20 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { agentProfilesDir } from "./agent-profile.js";
 import { isInsidePromptStackStorage, promptStackPath, validatePromptStack, } from "./loader.js";
+import { createAgentProfilePreview, getAgentProfileRuntimeStatus, } from "./profile-service.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
         listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
+        listProfiles: () => profileCollection(ctx, runtime),
+        reloadProfiles: async () => {
+            if (!ctx.isProjectTrusted()) {
+                return { ok: false, status: 403, error: "Project is not trusted; refusing to reload agent profiles." };
+            }
+            await runtime.reloadProfiles();
+            return { ok: true, ...profileCollection(ctx, runtime) };
+        },
         listResources: () => runtime.getPolicyResources(),
         getStack: (id) => {
             const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
@@ -38,6 +48,31 @@ export function createWebEditorHost(ctx, runtime) {
             await runtime.reloadStacks(runtime.getSelectedActiveId());
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
+    };
+}
+function profileCollection(ctx, runtime) {
+    const profiles = runtime.getProfiles();
+    const current = runtime.getCurrentProfileRuntime();
+    const lastApplied = runtime.getLastAppliedProfile();
+    return {
+        trusted: ctx.isProjectTrusted(),
+        profileDirectory: agentProfilesDir(ctx.cwd),
+        profiles: profiles.map((loaded) => {
+            const resolved = runtime.resolveProfile(loaded);
+            const targetEffectiveTools = resolved.promptStack || resolved.loaded.profile.promptStack === null
+                ? runtime.previewToolNames(resolved.promptStack?.stack)
+                : [];
+            const preview = createAgentProfilePreview(resolved, current, targetEffectiveTools);
+            return {
+                profile: structuredClone(loaded.profile),
+                filePath: loaded.filePath,
+                preview,
+                errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
+                warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
+                lastApplied: lastApplied?.sourcePath === loaded.filePath,
+            };
+        }),
+        status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
     };
 }
 export function stackSummary(loaded, active) {

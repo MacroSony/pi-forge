@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
+
+import ProfileBrowser from "./components/ProfileBrowser.vue";
 
 let stopLegacyEditor: (() => void) | undefined;
+const activeSurface = ref<"stacks" | "profiles">("stacks");
 
 onMounted(async () => {
 	try {
 		const { startLegacyEditor } = await import("./legacy-editor.ts");
-		stopLegacyEditor = startLegacyEditor();
+		stopLegacyEditor = startLegacyEditor({
+			isActive: () => activeSurface.value === "stacks",
+		});
 	} catch (error) {
 		const status = document.getElementById("status");
 		if (status) {
@@ -23,7 +28,28 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div v-once class="legacy-editor-root">
+	<div class="app-root">
+		<nav class="surface-nav" aria-label="Pi Forge editor sections">
+			<div class="surface-brand">Pi Forge</div>
+			<button
+				id="stacksSurfaceBtn"
+				type="button"
+				:class="{ active: activeSurface === 'stacks' }"
+				@click="activeSurface = 'stacks'"
+			>
+				Prompt stacks
+			</button>
+			<button
+				id="profilesSurfaceBtn"
+				type="button"
+				:class="{ active: activeSurface === 'profiles' }"
+				@click="activeSurface = 'profiles'"
+			>
+				Agent profiles
+			</button>
+		</nav>
+		<section v-show="activeSurface === 'stacks'" class="editor-surface">
+			<div v-once class="legacy-editor-root">
 		<header class="topbar">
 			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle prompt stacks sidebar" aria-label="Toggle prompt stacks sidebar"></button>
 			<div class="brand">pi-forge stack editor</div>
@@ -94,11 +120,56 @@ onUnmounted(() => {
 		</div>
 		<div id="preview" class="preview"></div>
 		<div id="stackModal" class="modal"></div>
+			</div>
+		</section>
+		<ProfileBrowser v-show="activeSurface === 'profiles'" />
 	</div>
 </template>
 
 <style>
+.app-root {
+	height: 100%;
+	min-height: 0;
+}
+
+.surface-nav {
+	height: 44px;
+	padding: 5px 10px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border-bottom: 1px solid var(--line);
+	background: var(--pane);
+}
+
+.surface-brand {
+	margin-right: 8px;
+	font-weight: 750;
+	letter-spacing: .02em;
+}
+
+.surface-nav button {
+	min-height: 32px;
+	border-color: transparent;
+	background: transparent;
+}
+
+.surface-nav button.active {
+	border-color: var(--accent);
+	background: var(--accent-bg);
+	color: var(--accent);
+}
+
+.editor-surface {
+	height: calc(100% - 44px);
+	min-height: 0;
+}
+
 .legacy-editor-root {
 	height: 100%;
+}
+
+.editor-surface .shell {
+	height: calc(100% - 48px);
 }
 </style>

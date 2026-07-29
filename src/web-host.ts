@@ -1,11 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { agentProfilesDir, type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
 import {
 	isInsidePromptStackStorage,
 	promptStackPath,
 	validatePromptStack,
 } from "./loader.ts";
+import {
+	createAgentProfilePreview,
+	getAgentProfileRuntimeStatus,
+	type AgentProfileCurrentRuntime,
+} from "./profile-service.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type {
 	WebEditorCreateStackOptions,
@@ -14,6 +20,7 @@ import type {
 	WebEditorPayloadSnapshot,
 	WebEditorPolicyResources,
 	WebEditorPreview,
+	WebEditorProfileCollection,
 	WebEditorStackSummary,
 } from "./web-editor/index.ts";
 
@@ -30,6 +37,12 @@ export interface WebHostRuntime {
 		diagnostics: PromptStackDiagnostic[];
 	};
 	getPolicyResources(): WebEditorPolicyResources;
+	getProfiles(): LoadedAgentProfile[];
+	getLastAppliedProfile(): AgentProfileProvenance | undefined;
+	getCurrentProfileRuntime(): AgentProfileCurrentRuntime;
+	resolveProfile(target: LoadedAgentProfile): ResolvedAgentProfile;
+	previewToolNames(stack: PromptStack | undefined): string[];
+	reloadProfiles(): void | Promise<void>;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -39,6 +52,14 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 	return {
 		cwd: ctx.cwd,
 		listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
+		listProfiles: () => profileCollection(ctx, runtime),
+		reloadProfiles: async () => {
+			if (!ctx.isProjectTrusted()) {
+				return { ok: false, status: 403, error: "Project is not trusted; refusing to reload agent profiles." };
+			}
+			await runtime.reloadProfiles();
+			return { ok: true, ...profileCollection(ctx, runtime) };
+		},
 		listResources: () => runtime.getPolicyResources(),
 		getStack: (id) => {
 			const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
@@ -70,6 +91,32 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 			await runtime.reloadStacks(runtime.getSelectedActiveId());
 			return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 		},
+	};
+}
+
+function profileCollection(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorProfileCollection {
+	const profiles = runtime.getProfiles();
+	const current = runtime.getCurrentProfileRuntime();
+	const lastApplied = runtime.getLastAppliedProfile();
+	return {
+		trusted: ctx.isProjectTrusted(),
+		profileDirectory: agentProfilesDir(ctx.cwd),
+		profiles: profiles.map((loaded) => {
+			const resolved = runtime.resolveProfile(loaded);
+			const targetEffectiveTools = resolved.promptStack || resolved.loaded.profile.promptStack === null
+				? runtime.previewToolNames(resolved.promptStack?.stack)
+				: [];
+			const preview = createAgentProfilePreview(resolved, current, targetEffectiveTools);
+			return {
+				profile: structuredClone(loaded.profile),
+				filePath: loaded.filePath,
+				preview,
+				errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
+				warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
+				lastApplied: lastApplied?.sourcePath === loaded.filePath,
+			};
+		}),
+		status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
 	};
 }
 

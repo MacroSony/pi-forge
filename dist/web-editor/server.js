@@ -62,6 +62,14 @@ async function handleRequest(host, token, req, res) {
         sendJson(res, 200, { stacks: host.listStacks(), cwd: host.cwd });
         return;
     }
+    if (req.method === "GET" && parts[1] === "profiles" && parts.length === 2) {
+        sendJson(res, 200, host.listProfiles());
+        return;
+    }
+    if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "reload" && parts.length === 3) {
+        sendOperation(res, await host.reloadProfiles());
+        return;
+    }
     if (req.method === "GET" && parts[1] === "resources" && parts.length === 2) {
         sendJson(res, 200, host.listResources());
         return;

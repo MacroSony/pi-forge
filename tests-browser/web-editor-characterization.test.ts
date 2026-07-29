@@ -10,6 +10,7 @@ import {
 	createHarness,
 	latestEditorUrl,
 	startSession,
+	writeProfile,
 	writeStack,
 } from "../tests/helpers/index-command-harness.ts";
 import { promptStacksDir } from "../src/loader.ts";
@@ -27,7 +28,7 @@ test("web editor preserves its shell and guarded editing state", { timeout: 20_0
 
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
-		assert.equal(await page.title(), "pi-forge stack editor");
+		assert.equal(await page.title(), "pi-forge editor");
 		assert.equal(await page.locator(".brand").textContent(), "pi-forge stack editor");
 		assert.equal(await page.locator(".stack-row").count(), 2);
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
@@ -118,6 +119,96 @@ test("web editor transitions between populated and empty stack states", { timeou
 		assert.equal(await page.locator("#saveBtn").isEnabled(), true);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
 		assert.deepEqual(promptAnswers, []);
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator(".profile-empty").filter({ hasText: "No project agent profiles found." }).waitFor();
+	});
+});
+
+test("web editor navigates project profile resolution without losing stack state", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Profile stack", true));
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			name: "Reviewer",
+			description: "Review project changes.",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+		writeProfile(cwd, "broken.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "broken",
+			name: "Broken",
+			model: { provider: "missing", id: "model" },
+			thinkingLevel: "medium",
+			promptStack: "missing-stack",
+		});
+	}, async ({ cwd, editorUrl, page }) => {
+		const unauthorizedProfilesUrl = new URL("/api/profiles", editorUrl);
+		const unauthorized = await page.request.get(unauthorizedProfilesUrl.href);
+		assert.equal(unauthorized.status(), 403);
+
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "defaultactive");
+		await page.locator("#itemContent").fill("Hidden dirty content.");
+
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator("[data-profile-row]").first().waitFor();
+		assert.equal(await page.locator("[data-profile-row]").count(), 2);
+		await page.keyboard.press("Control+s");
+		assert.equal(
+			JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")).items[0].content,
+			"Content for default.",
+		);
+
+		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
+		await page.locator(".profile-applicability").filter({ hasText: "Ready to apply" }).waitFor();
+		assert.match(await page.locator(".profile-main").textContent() ?? "", /test\/current/);
+		assert.match(await page.locator(".profile-main").textContent() ?? "", /test\/target/);
+		assert.match(await page.locator(".profile-main").textContent() ?? "", /default/);
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /No diagnostics/);
+
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			name: "Reviewer refreshed",
+			description: "Review project changes.",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+		await page.locator("#profileRefreshBtn").click();
+		await page.locator(".profile-title").filter({ hasText: "Reviewer refreshed" }).waitFor();
+
+		await page.locator('[data-profile-row][data-profile-id="broken"]').click();
+		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown model: missing\/model/);
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown prompt stack: missing-stack/);
+
+		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
+		await page.locator("#stacksSurfaceBtn").click();
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "defaultactive");
+		assert.equal(await page.locator("#itemContent").inputValue(), "Hidden dirty content.");
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator("[data-profile-row]").first().waitFor();
+		assert.equal(await page.locator("[data-profile-row]").count(), 2);
+		assert.equal(
+			await page.locator("[data-profile-row].selected").getAttribute("data-profile-id"),
+			"reviewer",
+		);
+		assert.equal(await page.locator(".profile-title").textContent(), "Reviewer refreshed");
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+		thinkingLevel: "low",
 	});
 });
 
@@ -258,6 +349,7 @@ async function withBrowserEditor(
 	t: TestContext,
 	prepare: (cwd: string) => void,
 	run: (fixture: { cwd: string; editorUrl: URL; page: Page }) => Promise<void>,
+	harnessOptions: Parameters<typeof createHarness>[0] = {},
 ): Promise<void> {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
 		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
@@ -269,8 +361,13 @@ async function withBrowserEditor(
 
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-browser-characterization-"));
 	prepare(cwd);
-	const harness = createHarness();
-	const context = createContext(cwd);
+	const harness = createHarness(harnessOptions);
+	const context = createContext(cwd, [], {
+		modelRuntime: {
+			getCurrentModel: harness.getCurrentModel,
+			modelRegistry: harness.modelRegistry,
+		},
+	});
 	await startSession(harness, context.ctx);
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 	let editorStarted = false;
@@ -298,6 +395,21 @@ async function withBrowserEditor(
 		await browser?.close();
 		if (editorStarted) await harness.commands.preset.handler("ui stop", context.ctx);
 	}
+}
+
+function browserModel(provider: string, id: string) {
+	return {
+		api: "openai-completions",
+		provider,
+		id,
+		name: id,
+		baseUrl: "http://localhost.invalid",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 128_000,
+		maxTokens: 8_192,
+	};
 }
 
 function findChromeExecutable(): string | undefined {

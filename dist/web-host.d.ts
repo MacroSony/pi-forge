@@ -1,5 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
+import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
+import { type AgentProfileCurrentRuntime } from "./profile-service.ts";
+import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
 export interface WebHostRuntime {
     getStacks(): LoadedPromptStack[];
@@ -14,6 +16,12 @@ export interface WebHostRuntime {
         diagnostics: PromptStackDiagnostic[];
     };
     getPolicyResources(): WebEditorPolicyResources;
+    getProfiles(): LoadedAgentProfile[];
+    getLastAppliedProfile(): AgentProfileProvenance | undefined;
+    getCurrentProfileRuntime(): AgentProfileCurrentRuntime;
+    resolveProfile(target: LoadedAgentProfile): ResolvedAgentProfile;
+    previewToolNames(stack: PromptStack | undefined): string[];
+    reloadProfiles(): void | Promise<void>;
     getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;

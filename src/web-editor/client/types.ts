@@ -8,6 +8,8 @@ import type {
 import type {
 	WebEditorPayloadSnapshot,
 	WebEditorPolicyResource,
+	WebEditorProfileCollection,
+	WebEditorProfileEntry,
 	WebEditorStackSummary,
 } from "../types.ts";
 
@@ -71,4 +73,13 @@ export interface EditorImportReport {
 	[key: string]: unknown;
 }
 
-export type { PromptRegexRule, PromptResourcePolicy, PromptStackDiagnostic, WebEditorPayloadSnapshot, WebEditorPolicyResource, WebEditorStackSummary };
+export type {
+	PromptRegexRule,
+	PromptResourcePolicy,
+	PromptStackDiagnostic,
+	WebEditorPayloadSnapshot,
+	WebEditorPolicyResource,
+	WebEditorProfileCollection,
+	WebEditorProfileEntry,
+	WebEditorStackSummary,
+};

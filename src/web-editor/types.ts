@@ -1,3 +1,5 @@
+import type { AgentProfile } from "../agent-profile.ts";
+import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 
 export interface WebEditorStackSummary {
@@ -16,6 +18,8 @@ export interface WebEditorStackSummary {
 export interface WebEditorHost {
 	cwd: string;
 	listStacks(): WebEditorStackSummary[];
+	listProfiles(): WebEditorProfileCollection;
+	reloadProfiles(): Promise<WebEditorOperationResult<WebEditorProfileCollection>>;
 	listResources(): WebEditorPolicyResources;
 	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[] } | undefined;
 	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
@@ -29,6 +33,22 @@ export interface WebEditorHost {
 	activateStack(id: string): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	disableStacks(): WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>;
 	reloadStacks(): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
+}
+
+export interface WebEditorProfileEntry {
+	profile: AgentProfile;
+	filePath: string;
+	preview: AgentProfilePreview;
+	errors: number;
+	warnings: number;
+	lastApplied: boolean;
+}
+
+export interface WebEditorProfileCollection {
+	trusted: boolean;
+	profileDirectory: string;
+	profiles: WebEditorProfileEntry[];
+	status: AgentProfileRuntimeStatus;
 }
 
 export interface WebEditorPreviewSection {

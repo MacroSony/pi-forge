@@ -34,6 +34,7 @@ let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 let editorStarted = false;
+let editorIsActive = () => true;
 
 const {
   validateStack,
@@ -1210,6 +1211,8 @@ function handlePreviewClick(event: any) {
 }
 
 function handleEditorShortcut(event: any) {
+  if (!editorIsActive()) return;
+
   if (event.key === "Escape") {
     if (el("preview").classList.contains("open")) hidePreview();
     else if (el("stackModal").classList.contains("open")) closeStackModal();
@@ -1241,8 +1244,9 @@ function handleEditorShortcut(event: any) {
   }
 }
 
-export function startLegacyEditor(): () => void {
+export function startLegacyEditor(options: { isActive?: () => boolean } = {}): () => void {
   resetEditorState();
+  editorIsActive = options.isActive ?? (() => true);
   editorStarted = true;
   applyTheme(currentTheme);
 
@@ -1301,6 +1305,7 @@ export function startLegacyEditor(): () => void {
     window.removeEventListener("keydown", handleEditorShortcut);
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();
+    editorIsActive = () => true;
   };
 }
 

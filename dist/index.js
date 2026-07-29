@@ -41,6 +41,17 @@ export default function piForge(pi) {
         reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
         buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(promptOptions, target.stack)),
         getPolicyResources: () => toolPolicy.policyResources(promptOptions),
+        getProfiles: () => state.profiles,
+        getLastAppliedProfile: () => state.lastAppliedProfile,
+        getCurrentProfileRuntime: () => ({
+            model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
+            thinkingLevel: pi.getThinkingLevel(),
+            promptStack: state.active?.stack.id ?? null,
+            effectiveTools: pi.getActiveTools(),
+        }),
+        resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
+        previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
+        reloadProfiles: () => profileRuntime.reloadProfiles(ctx),
         getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
         armPayload: (savePath) => {
             armPayloadIntercept(state, ctx, savePath, "web");

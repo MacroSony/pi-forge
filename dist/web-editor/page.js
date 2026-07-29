@@ -8,7 +8,7 @@ export function renderEditorHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>pi-forge stack editor</title>
+<title>pi-forge editor</title>
 <style>${inlineStyle(`${EDITOR_STYLES}\n${EDITOR_CLIENT_STYLES}`)}</style>
 </head>
 <body>
