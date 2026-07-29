@@ -76,9 +76,12 @@
     "@earendil-works/pi-ai": "0.82.1",
     "@earendil-works/pi-coding-agent": "0.82.1",
     "@types/node": "22.20.1",
-    "esbuild": "^0.28.1",
+    "@vitejs/plugin-vue": "6.0.8",
     "playwright-core": "1.61.1",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vite": "8.1.5",
+    "vue": "3.5.40",
+    "vue-tsc": "3.3.8"
   },
   "scripts": {
     "build": "npm run build:client && tsc -p tsconfig.build.json",
@@ -87,7 +90,7 @@
     "check:dist": "node scripts/check-dist.mjs",
     "check:package": "node scripts/check-package.mjs",
     "prepack": "npm run build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && vue-tsc --noEmit -p tsconfig.web.json",
     "test": "node --test tests/*.test.ts",
     "test:browser": "node --test tests-browser/*.test.ts",
     "verify": "npm test && npm run test:browser && npm run typecheck && npm run check:client && npm run check:dist && npm run check:package"

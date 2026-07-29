@@ -689,69 +689,28 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const pageResponse = await fetch(editorUrl);
 		assert.equal(pageResponse.status, 200);
 		const pageHtml = await pageResponse.text();
-		assert.match(pageHtml, /sidebarToggleBtn/);
-		assert.match(pageHtml, /newStackBtn/);
-		assert.match(pageHtml, /createNewStack/);
-		assert.match(pageHtml, /Default Pi Prompt Mirror/);
-		assert.match(pageHtml, /tool-guidelines/);
-		assert.match(pageHtml, /pi-docs/);
-		assert.match(pageHtml, /emptyNewStackBtn/);
-		assert.match(pageHtml, /handleEditorShortcut/);
+		for (const id of [
+			"sidebarToggleBtn", "status", "dirtyBadge", "themeBtn", "reloadBtn", "disableBtn",
+			"shell", "stackList", "newStackBtn", "activateBtn", "saveBtn", "validateBtn",
+			"previewBtn", "payloadBtn", "forkBtn", "importBtn", "exportBtn", "deleteStackBtn",
+			"metadataToggleBtn", "itemsTabBtn", "regexTabBtn", "policyTabBtn", "stackTabBtn",
+			"addItemBtn", "addSlotBtn", "deleteItemBtn", "preview", "stackModal",
+		]) {
+			assert.match(pageHtml, new RegExp(`id="${id}"`), `expected static editor element #${id}`);
+		}
 		assert.match(pageHtml, /Ctrl\/Cmd\+S/);
-			assert.match(pageHtml, /slotOptionsFormBtn/);
-			assert.match(pageHtml, /stripAssistantThinking/);
-			assert.match(pageHtml, /includeSummaries/);
-			assert.match(pageHtml, /toolMode/);
-			assert.match(pageHtml, /forkBtn/);
-		assert.match(pageHtml, /importBtn/);
-		assert.match(pageHtml, /exportBtn/);
-		assert.match(pageHtml, /deleteStackBtn/);
 		const deleteItemIndex = pageHtml.indexOf('id="deleteItemBtn"');
 		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
 		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
-		assert.match(pageHtml, /metadataToggleBtn/);
-		assert.match(pageHtml, /id="stackId"[^>]*readonly/);
-		assert.doesNotMatch(pageHtml, /stack\.id = event\.target\.value/);
-		assert.match(pageHtml, /itemsTabBtn/);
-		assert.doesNotMatch(pageHtml, /stateTabBtn/);
-		assert.match(pageHtml, /regexTabBtn/);
-		assert.match(pageHtml, /policyTabBtn/);
-		assert.match(pageHtml, /stackTabBtn/);
-		assert.match(pageHtml, /addItemBtn/);
-		assert.match(pageHtml, /addSlotBtn/);
-			assert.match(pageHtml, /regexRows/);
-			assert.match(pageHtml, /data-regex-row/);
-			assert.match(pageHtml, /data-regex-trim-strings/);
-			assert.match(pageHtml, /data-regex-min-depth/);
-			assert.match(pageHtml, /data-regex-max-depth/);
-			assert.match(pageHtml, /syncRegexRulesFromModal/);
-		assert.match(pageHtml, /data-policy-row/);
-		assert.match(pageHtml, /data-policy-mode-option/);
-		assert.match(pageHtml, /resourcePickerHtml/);
-		assert.match(pageHtml, /data-resource-name/);
-		assert.match(pageHtml, /data-remove-policy-pattern/);
-		assert.match(pageHtml, /data-resource-filter/);
-		assert.match(pageHtml, /policyResourceAutocompleteValue/);
-		assert.match(pageHtml, /syncResourcePolicyFromTab/);
-		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
-		assert.match(pageHtml, /payloadBtn/);
 		const previewIndex = pageHtml.indexOf('id="preview"');
 		const stackModalIndex = pageHtml.indexOf('id="stackModal"');
 		assert.ok(previewIndex > pageHtml.indexOf("</main>"));
 		assert.ok(previewIndex < stackModalIndex);
-		assert.match(pageHtml, /drop-before/);
-		assert.match(pageHtml, /updateItemDragAutoScroll/);
-		assert.match(pageHtml, /handleDocumentItemDragOver/);
-		assert.match(pageHtml, /nextNumericItemId/);
-		assert.match(pageHtml, /themeBtn/);
-		assert.match(pageHtml, /dirtyBadge/);
-		assert.match(pageHtml, /copyImportReportBtn/);
-		assert.match(pageHtml, /data-icon/);
-		assert.match(pageHtml, /validateRawStackJson/);
-		assert.match(pageHtml, /\["xml", "plain"\]/);
-		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
-		assert.ok(scriptMatch?.[1]);
-		assert.doesNotThrow(() => new Function(scriptMatch[1]!));
+		assert.doesNotMatch(pageHtml, /<script[^>]+src=/);
+		const scripts = [...pageHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+		assert.equal(scripts.length, 1);
+		assert.ok(scripts[0]?.[1]);
+		assert.doesNotThrow(() => new Function(scripts[0]![1]));
 
 		const rejected = await fetch(apiUrl);
 		assert.equal(rejected.status, 403);

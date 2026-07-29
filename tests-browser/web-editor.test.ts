@@ -65,6 +65,7 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
 
 		await page.locator("#metadataToggleBtn").click();
+		assert.equal(await page.locator("#stackId").isEditable(), false);
 		await page.locator("#stackName").fill("Browser Smoke Edited");
 		await page.locator("#dirtyBadge.visible").waitFor();
 
