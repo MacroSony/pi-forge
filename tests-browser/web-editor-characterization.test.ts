@@ -130,6 +130,10 @@ test("web editor navigates project profile resolution without losing stack state
 	const targetModel = browserModel("test", "target");
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Profile stack", true));
+		writeStack(cwd, "alternate.json", {
+			...stackFixture("alternate", "Alternate profile stack"),
+			tools: { allow: ["read"] },
+		});
 		writeProfile(cwd, "reviewer.json", {
 			schemaVersion: 1,
 			type: "pi-forge.agent-profile",
@@ -149,7 +153,7 @@ test("web editor navigates project profile resolution without losing stack state
 			thinkingLevel: "medium",
 			promptStack: "missing-stack",
 		});
-	}, async ({ cwd, editorUrl, page }) => {
+	}, async ({ cwd, editorUrl, expectBrowserError, page }) => {
 		const unauthorizedProfilesUrl = new URL("/api/profiles", editorUrl);
 		const unauthorized = await page.request.get(unauthorizedProfilesUrl.href);
 		assert.equal(unauthorized.status(), 403);
@@ -158,6 +162,7 @@ test("web editor navigates project profile resolution without losing stack state
 		await page.locator(".stack-row.selected").waitFor();
 		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "defaultactive");
 		await page.locator("#itemContent").fill("Hidden dirty content.");
+		await page.locator("#policyTabBtn").click();
 
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator("[data-profile-row]").first().waitFor();
@@ -195,7 +200,7 @@ test("web editor navigates project profile resolution without losing stack state
 		await page.locator("#profileModelProvider").fill("test");
 		await page.locator("#profileModelId").fill("target");
 		await page.locator("#profileThinkingLevel").selectOption("medium");
-		await page.locator("#profilePromptStack").selectOption("default");
+		await page.locator("#profilePromptStack").selectOption("alternate");
 		await page.locator("#profileValidateBtn").click();
 		await page.locator("#profileEditorStatus").filter({ hasText: "Valid and ready to apply" }).waitFor();
 		assert.match(await page.locator(".profile-editor-validation").textContent() ?? "", /No diagnostics/);
@@ -230,6 +235,46 @@ test("web editor navigates project profile resolution without losing stack state
 		});
 		await page.locator("#profileCancelBtn").click();
 
+		await page.locator("#profileApplyBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Applied scout once" }).waitFor();
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*alternate/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Last applied\s*scout/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Source definition\s*unchanged/);
+		assert.match(
+			await page.locator('[data-profile-row][data-profile-id="scout"]').textContent() ?? "",
+			/last applied/,
+		);
+
+		page.once("dialog", async (dialog) => {
+			await dialog.dismiss();
+		});
+		await page.locator("#profileDeleteBtn").click();
+		assert.equal(existsSync(agentProfilePath(cwd, "scout")), true);
+
+		const externallyChangedScout = JSON.parse(readFileSync(agentProfilePath(cwd, "scout"), "utf8"));
+		externallyChangedScout.name = "Scout externally changed";
+		writeProfile(cwd, "scout.json", externallyChangedScout);
+		page.once("dialog", async (dialog) => {
+			assert.match(dialog.message(), /Delete agent profile scout/);
+			await dialog.accept();
+		});
+		expectBrowserError(/Failed to load resource: the server responded with a status of 409/);
+		await page.locator("#profileDeleteBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "changed on disk" }).waitFor();
+		assert.equal(existsSync(agentProfilePath(cwd, "scout")), true);
+		await page.locator("#profileRefreshBtn").click();
+		await page.locator(".profile-title").filter({ hasText: "Scout externally changed" }).waitFor();
+
+		page.once("dialog", async (dialog) => {
+			await dialog.accept();
+		});
+		await page.locator("#profileDeleteBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Deleted scout" }).waitFor();
+		assert.equal(existsSync(agentProfilePath(cwd, "scout")), false);
+		assert.equal(await page.locator("[data-profile-row]").count(), 2);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Last applied\s*scout/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Source definition\s*missing/);
+
 		writeProfile(cwd, "occupied.json", {
 			schemaVersion: 1,
 			type: "pi-forge.agent-profile",
@@ -256,16 +301,29 @@ test("web editor navigates project profile resolution without losing stack state
 
 		await page.locator('[data-profile-row][data-profile-id="broken"]').click();
 		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
+		assert.equal(await page.locator("#profileApplyBtn").isDisabled(), true);
 		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown model: missing\/model/);
 		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown prompt stack: missing-stack/);
+		const invalidApply = await page.request.post(new URL("/api/profiles/broken/apply", editorUrl).href, {
+			headers: { "x-pi-forge-token": editorUrl.searchParams.get("token")! },
+		});
+		assert.equal(invalidApply.status(), 400);
+		assert.match(await invalidApply.text(), /failed preflight/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*alternate/);
 
 		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
 		await page.locator("#stacksSurfaceBtn").click();
-		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "defaultactive");
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "default");
+		assert.equal(await page.locator(".stack-row.active .stack-name").textContent(), "alternateactive");
+		assert.equal(
+			await page.locator('[data-policy-kind="tools"] [data-resource-name="bash"]').getAttribute("class"),
+			"resource-chip",
+		);
+		await page.locator("#itemsTabBtn").click();
 		assert.equal(await page.locator("#itemContent").inputValue(), "Hidden dirty content.");
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator("[data-profile-row]").first().waitFor();
-		assert.equal(await page.locator("[data-profile-row]").count(), 3);
+		assert.equal(await page.locator("[data-profile-row]").count(), 2);
 		assert.equal(
 			await page.locator("[data-profile-row].selected").getAttribute("data-profile-id"),
 			"reviewer",
@@ -276,6 +334,44 @@ test("web editor navigates project profile resolution without losing stack state
 		models: [currentModel, targetModel],
 		availableModels: [currentModel, targetModel],
 		thinkingLevel: "low",
+	});
+});
+
+test("web editor refreshes runtime state after a failed profile application", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Rollback stack", true));
+		writeProfile(cwd, "rollback.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "rollback",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+	}, async ({ editorUrl, expectBrowserError, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator('[data-profile-row][data-profile-id="rollback"]').click();
+		await page.locator(".profile-applicability").filter({ hasText: "Ready to apply" }).waitFor();
+
+		expectBrowserError(/Failed to load resource: the server responded with a status of 500/);
+		await page.locator("#profileApplyBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "instead of high" }).waitFor();
+		assert.match(
+			await page.locator(".profile-runtime-card").textContent() ?? "",
+			/test\/current ·\s*low ·\s*default/,
+		);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /No profile has been applied/);
+		await page.locator("#stacksSurfaceBtn").click();
+		assert.equal(await page.locator(".stack-row.active .stack-name").textContent(), "defaultactive");
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+		thinkingLevel: "low",
+		resolveThinkingLevel: (_model, requested) => requested === "high" ? "low" : requested,
 	});
 });
 
@@ -415,7 +511,12 @@ function stackFixture(id: string, name: string, autoActivate = false) {
 async function withBrowserEditor(
 	t: TestContext,
 	prepare: (cwd: string) => void,
-	run: (fixture: { cwd: string; editorUrl: URL; page: Page }) => Promise<void>,
+	run: (fixture: {
+		cwd: string;
+		editorUrl: URL;
+		expectBrowserError(pattern: RegExp): void;
+		page: Page;
+	}) => Promise<void>,
 	harnessOptions: Parameters<typeof createHarness>[0] = {},
 ): Promise<void> {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
@@ -439,6 +540,7 @@ async function withBrowserEditor(
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 	let editorStarted = false;
 	const browserErrors: string[] = [];
+	const expectedBrowserErrors: Array<{ pattern: RegExp; matched: boolean }> = [];
 
 	try {
 		await harness.commands.preset.handler("ui", context.ctx);
@@ -453,10 +555,24 @@ async function withBrowserEditor(
 		page.setDefaultTimeout(5_000);
 		page.on("pageerror", (error) => browserErrors.push(error.message));
 		page.on("console", (message) => {
-			if (message.type() === "error") browserErrors.push(message.text());
+			if (message.type() !== "error") return;
+			const text = message.text();
+			const expected = expectedBrowserErrors.find((candidate) => !candidate.matched && candidate.pattern.test(text));
+			if (expected) expected.matched = true;
+			else browserErrors.push(text);
 		});
 
-		await run({ cwd, editorUrl, page });
+		await run({
+			cwd,
+			editorUrl,
+			expectBrowserError: (pattern) => expectedBrowserErrors.push({ pattern, matched: false }),
+			page,
+		});
+		assert.equal(
+			expectedBrowserErrors.every((candidate) => candidate.matched),
+			true,
+			"Every expected browser error should be observed.",
+		);
 		assert.deepEqual(browserErrors, []);
 	} finally {
 		await browser?.close();

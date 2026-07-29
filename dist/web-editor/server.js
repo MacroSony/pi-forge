@@ -100,6 +100,14 @@ async function handleRequest(host, token, req, res) {
         sendOperation(res, await host.saveProfile(parts[2], parsed.profile));
         return;
     }
+    if (req.method === "POST" && parts[1] === "profiles" && parts[3] === "apply" && parts.length === 4) {
+        sendOperation(res, await host.applyProfile(parts[2]));
+        return;
+    }
+    if (req.method === "DELETE" && parts[1] === "profiles" && parts.length === 3) {
+        sendOperation(res, await host.deleteProfile(parts[2]));
+        return;
+    }
     if (req.method === "GET" && parts[1] === "resources" && parts.length === 2) {
         sendJson(res, 200, host.listResources());
         return;

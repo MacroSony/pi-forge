@@ -21,6 +21,8 @@ export interface WebEditorHost {
     validateProfile(profile: AgentProfile, existingId?: string): WebEditorProfileValidation;
     createProfile(profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     listResources(): WebEditorPolicyResources;
     getStack(id: string): {
         stack: PromptStack;

@@ -151,6 +151,25 @@ async function loadStacks(preferId: any = selectedId) {
   else renderEmpty();
 }
 
+async function refreshStackRuntimeState() {
+  const [data, resources] = await Promise.all([
+    api("/api/stacks"),
+    api("/api/resources"),
+  ]);
+  if (!editorStarted) return;
+  stacks = data.stacks || [];
+  policyResources = normalizePolicyResources(resources);
+  cwd = data.cwd || "";
+  el("cwd").textContent = cwd;
+  renderStackList();
+  updateActionState();
+  if (activeTab === "policy") renderActiveTab();
+}
+
+function handleProfileApplied() {
+  run(refreshStackRuntimeState);
+}
+
 async function selectStack(id: any, options: any = {}) {
   if (dirty && !options.keepDirty && !confirm("Discard unsaved changes?")) return;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
@@ -1282,6 +1301,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   document.addEventListener("dragover", handleDocumentItemDragOver);
   document.addEventListener("drop", handleDocumentItemDrop);
   window.addEventListener("keydown", handleEditorShortcut);
+  window.addEventListener("pi-forge:profile-applied", handleProfileApplied);
   const previousBeforeUnload = window.onbeforeunload;
   const beforeUnload = () => dirty ? "Unsaved changes" : undefined;
   window.onbeforeunload = beforeUnload;
@@ -1303,6 +1323,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     document.removeEventListener("dragover", handleDocumentItemDragOver);
     document.removeEventListener("drop", handleDocumentItemDrop);
     window.removeEventListener("keydown", handleEditorShortcut);
+    window.removeEventListener("pi-forge:profile-applied", handleProfileApplied);
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();
     editorIsActive = () => true;

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, hasAgentProfileErrors, isResolvedAgentProfileUsable, validateAgentProfile, } from "./agent-profile.js";
+import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, hasAgentProfileErrors, isResolvedAgentProfileUsable, loadAgentProfileFile, validateAgentProfile, } from "./agent-profile.js";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.js";
-import { isInsideAgentProfileStorage, isSafeAgentProfileWritePath } from "./storage.js";
+import { isSafeAgentProfileMutationPath } from "./storage.js";
 export function captureAgentProfile(id, runtime, existing) {
     if (!runtime.model) {
         return {
@@ -31,7 +31,7 @@ export function writeAgentProfile(cwd, profile, options = {}) {
     if (hasAgentProfileErrors(diagnostics))
         return { ok: false, reason: "validation", diagnostics };
     const filePath = options.filePath ?? agentProfilePath(cwd, profile.id);
-    if (!isSafeAgentProfileWritePath(cwd, filePath)) {
+    if (!isSafeAgentProfileMutationPath(cwd, filePath)) {
         return {
             ok: false,
             reason: "invalid-path",
@@ -55,10 +55,15 @@ export function writeAgentProfile(cwd, profile, options = {}) {
 }
 export function deleteAgentProfile(cwd, loaded) {
     const filePath = loaded.filePath;
-    if (!isInsideAgentProfileStorage(cwd, filePath))
+    if (!isSafeAgentProfileMutationPath(cwd, filePath))
         return { ok: false, reason: "invalid-path", filePath };
     if (!existsSync(filePath))
         return { ok: false, reason: "missing", filePath };
+    const current = loadAgentProfileFile(filePath);
+    if (current.profile.id !== loaded.profile.id
+        || agentProfileFingerprint(current.profile) !== agentProfileFingerprint(loaded.profile)) {
+        return { ok: false, reason: "changed", filePath };
+    }
     try {
         unlinkSync(filePath);
         return { ok: true, filePath };

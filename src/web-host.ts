@@ -4,6 +4,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentProfilePath,
 	agentProfilesDir,
+	isResolvedAgentProfileUsable,
 	validateAgentProfile,
 	type AgentProfile,
 	type AgentProfileProvenance,
@@ -17,8 +18,10 @@ import {
 } from "./loader.ts";
 import {
 	createAgentProfilePreview,
+	deleteAgentProfile,
 	getAgentProfileRuntimeStatus,
 	writeAgentProfile,
+	type AgentProfileApplicationResult,
 	type AgentProfileCurrentRuntime,
 } from "./profile-service.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
@@ -54,6 +57,8 @@ export interface WebHostRuntime {
 	resolveProfile(target: LoadedAgentProfile): ResolvedAgentProfile;
 	previewToolNames(stack: PromptStack | undefined): string[];
 	reloadProfiles(): void | Promise<void>;
+	isIdle(): boolean;
+	applyProfile(target: ResolvedAgentProfile): Promise<AgentProfileApplicationResult>;
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
@@ -74,6 +79,8 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		validateProfile: (profile, existingId) => profileValidation(ctx, runtime, profile, existingId),
 		createProfile: (profile) => createProfileFile(ctx, runtime, profile),
 		saveProfile: (id, profile) => saveProfileFile(ctx, runtime, id, profile),
+		applyProfile: (id) => applyProfileRuntime(ctx, runtime, id),
+		deleteProfile: (id) => deleteProfileFile(ctx, runtime, id),
 		listResources: () => runtime.getPolicyResources(),
 		getStack: (id) => {
 			const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
@@ -247,6 +254,73 @@ async function saveProfileFile(
 		ok: true,
 		collection: profileCollection(ctx, runtime),
 		selectedPath: result.filePath,
+	};
+}
+
+async function applyProfileRuntime(
+	ctx: ExtensionContext,
+	runtime: WebHostRuntime,
+	id: string,
+): Promise<WebEditorOperationResult<WebEditorProfileMutation>> {
+	if (!ctx.isProjectTrusted()) {
+		return { ok: false, status: 403, error: "Project is not trusted; refusing to apply agent profiles." };
+	}
+	if (!runtime.isIdle()) {
+		return { ok: false, status: 409, error: "Wait for the current agent operation to finish before applying a profile." };
+	}
+	const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+	if (matches.length === 0) return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
+	if (matches.length > 1) {
+		return { ok: false, status: 409, error: `Cannot apply agent profile ${id} while duplicate profile ids exist.` };
+	}
+
+	const resolved = runtime.resolveProfile(matches[0]!);
+	if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
+		return { ok: false, status: 400, error: `Agent profile ${id} failed preflight; runtime state was not changed.` };
+	}
+	const result = await runtime.applyProfile(resolved);
+	if (!result.ok) {
+		const rollback = result.rollbackErrors.length
+			? ` Rollback problems: ${result.rollbackErrors.join("; ")}.`
+			: " Previous runtime state was restored.";
+		return { ok: false, status: 500, error: `${result.detail}${result.detail.endsWith(".") ? "" : "."}${rollback}` };
+	}
+	return {
+		ok: true,
+		collection: profileCollection(ctx, runtime),
+		selectedPath: matches[0]!.filePath,
+	};
+}
+
+async function deleteProfileFile(
+	ctx: ExtensionContext,
+	runtime: WebHostRuntime,
+	id: string,
+): Promise<WebEditorOperationResult<WebEditorProfileMutation>> {
+	if (!ctx.isProjectTrusted()) {
+		return { ok: false, status: 403, error: "Project is not trusted; refusing to delete agent profiles." };
+	}
+	const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+	if (matches.length === 0) return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
+	if (matches.length > 1) {
+		return { ok: false, status: 409, error: `Cannot delete agent profile ${id} while duplicate profile ids exist.` };
+	}
+
+	const result = deleteAgentProfile(ctx.cwd, matches[0]!);
+	if (!result.ok) {
+		if (result.reason === "invalid-path") return { ok: false, status: 403, error: "Refusing to delete outside agent-profile storage." };
+		if (result.reason === "missing") return { ok: false, status: 404, error: `Agent profile file is missing: ${result.filePath}` };
+		if (result.reason === "changed") {
+			return { ok: false, status: 409, error: `Agent profile ${id} changed on disk; refresh before deleting it.` };
+		}
+		return { ok: false, status: 500, error: result.error ?? `Failed to delete agent profile ${id}.` };
+	}
+	await runtime.reloadProfiles();
+	const collection = profileCollection(ctx, runtime);
+	return {
+		ok: true,
+		collection,
+		selectedPath: collection.profiles[0]?.filePath ?? "",
 	};
 }
 

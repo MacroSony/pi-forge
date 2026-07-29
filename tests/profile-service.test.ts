@@ -99,6 +99,11 @@ test("profile repository writes, protects, and deletes project-local profiles", 
 	assert.deepEqual(outside.ok ? undefined : outside.reason, "invalid-path");
 
 	const loaded = loadAgentProfiles(cwd)[0]!;
+	writeFileSync(filePath, JSON.stringify({ ...loaded.profile, name: "Externally replaced" }, null, 2));
+	const staleDelete = deleteAgentProfile(cwd, loaded);
+	assert.deepEqual(staleDelete.ok ? undefined : staleDelete.reason, "changed");
+	assert.equal(existsSync(filePath), true);
+	writeFileSync(filePath, JSON.stringify(loaded.profile, null, 2));
 	assert.deepEqual(deleteAgentProfile(cwd, loaded), { ok: true, filePath });
 	assert.equal(existsSync(filePath), false);
 	assert.equal(deleteAgentProfile(cwd, loaded).ok, false);
@@ -108,6 +113,8 @@ test("profile repository writes, protects, and deletes project-local profiles", 
 	symlinkSync(outsideTarget, filePath);
 	const symlinkOverwrite = writeAgentProfile(cwd, changed, { filePath, overwrite: true });
 	assert.deepEqual(symlinkOverwrite.ok ? undefined : symlinkOverwrite.reason, "invalid-path");
+	assert.equal(readFileSync(outsideTarget, "utf8"), "outside\n");
+	assert.deepEqual(deleteAgentProfile(cwd, { ...loaded, filePath }).ok, false);
 	assert.equal(readFileSync(outsideTarget, "utf8"), "outside\n");
 });
 

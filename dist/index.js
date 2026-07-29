@@ -3,6 +3,7 @@ import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadInter
 import { buildPreview } from "./preview.js";
 import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
+import { applyResolvedAgentProfile } from "./profile-service.js";
 import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.js";
 import { registerForgeSubagentCommand } from "./subagent-command.js";
 import { registerForgeSubagentTool } from "./subagent-tool.js";
@@ -52,6 +53,8 @@ export default function piForge(pi) {
         resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
         previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
         reloadProfiles: () => profileRuntime.reloadProfiles(ctx),
+        isIdle: () => typeof ctx.isIdle === "function" && ctx.isIdle(),
+        applyProfile: (resolved) => applyResolvedAgentProfile(pi, state, { setActive: (id) => stackRuntime.setActive(id, ctx) }, resolved, ctx),
         getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
         armPayload: (savePath) => {
             armPayloadIntercept(state, ctx, savePath, "web");

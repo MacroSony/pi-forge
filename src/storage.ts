@@ -18,7 +18,7 @@ export function isInsideAgentProfileStorage(cwd: string, filePath: string): bool
 	return isInsideDir(agentProfilesDir(cwd), filePath);
 }
 
-export function isSafeAgentProfileWritePath(cwd: string, filePath: string): boolean {
+export function isSafeAgentProfileMutationPath(cwd: string, filePath: string): boolean {
 	if (!isInsideAgentProfileStorage(cwd, filePath)) return false;
 	const root = resolve(cwd);
 	const target = resolve(filePath);

@@ -13,7 +13,7 @@ export function agentProfilePath(cwd, id) {
 export function isInsideAgentProfileStorage(cwd, filePath) {
     return isInsideDir(agentProfilesDir(cwd), filePath);
 }
-export function isSafeAgentProfileWritePath(cwd, filePath) {
+export function isSafeAgentProfileMutationPath(cwd, filePath) {
     if (!isInsideAgentProfileStorage(cwd, filePath))
         return false;
     const root = resolve(cwd);

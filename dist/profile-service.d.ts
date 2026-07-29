@@ -36,7 +36,7 @@ export type AgentProfileDeleteResult = {
     filePath: string;
 } | {
     ok: false;
-    reason: "missing" | "invalid-path" | "io";
+    reason: "missing" | "invalid-path" | "changed" | "io";
     filePath: string;
     error?: string;
 };

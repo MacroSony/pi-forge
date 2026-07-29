@@ -181,6 +181,7 @@ export function createHarness(options: {
 
 export function createContext(cwd: string, entries: unknown[] = [], options: {
 	trusted?: boolean;
+	idle?: boolean;
 	leafId?: string | null;
 	modelRuntime?: { getCurrentModel(): any; modelRegistry: any };
 } = {}) {
@@ -239,7 +240,7 @@ export function createContext(cwd: string, entries: unknown[] = [], options: {
 			confirm: async () => confirmResult,
 		},
 		isProjectTrusted: () => options.trusted ?? true,
-		isIdle: () => true,
+		isIdle: () => options.idle ?? true,
 		hasPendingMessages: () => false,
 		abort: () => undefined,
 		shutdown: () => undefined,

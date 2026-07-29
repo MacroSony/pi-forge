@@ -8,6 +8,7 @@ import {
 	agentProfilePath,
 	hasAgentProfileErrors,
 	isResolvedAgentProfileUsable,
+	loadAgentProfileFile,
 	validateAgentProfile,
 	type AgentProfile,
 	type AgentProfileDiagnostic,
@@ -17,7 +18,7 @@ import {
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.ts";
-import { isInsideAgentProfileStorage, isSafeAgentProfileWritePath } from "./storage.ts";
+import { isSafeAgentProfileMutationPath } from "./storage.ts";
 import type { LoadedPromptStack, PromptResourcePolicy } from "./types.ts";
 
 export interface AgentProfileCurrentRuntime {
@@ -43,7 +44,7 @@ export type AgentProfileWriteResult =
 
 export type AgentProfileDeleteResult =
 	| { ok: true; filePath: string }
-	| { ok: false; reason: "missing" | "invalid-path" | "io"; filePath: string; error?: string };
+	| { ok: false; reason: "missing" | "invalid-path" | "changed" | "io"; filePath: string; error?: string };
 
 export interface AgentProfileApplicationState {
 	active?: LoadedPromptStack;
@@ -133,7 +134,7 @@ export function writeAgentProfile(
 	if (hasAgentProfileErrors(diagnostics)) return { ok: false, reason: "validation", diagnostics };
 
 	const filePath = options.filePath ?? agentProfilePath(cwd, profile.id);
-	if (!isSafeAgentProfileWritePath(cwd, filePath)) {
+	if (!isSafeAgentProfileMutationPath(cwd, filePath)) {
 		return {
 			ok: false,
 			reason: "invalid-path",
@@ -156,8 +157,15 @@ export function writeAgentProfile(
 
 export function deleteAgentProfile(cwd: string, loaded: LoadedAgentProfile): AgentProfileDeleteResult {
 	const filePath = loaded.filePath;
-	if (!isInsideAgentProfileStorage(cwd, filePath)) return { ok: false, reason: "invalid-path", filePath };
+	if (!isSafeAgentProfileMutationPath(cwd, filePath)) return { ok: false, reason: "invalid-path", filePath };
 	if (!existsSync(filePath)) return { ok: false, reason: "missing", filePath };
+	const current = loadAgentProfileFile(filePath);
+	if (
+		current.profile.id !== loaded.profile.id
+		|| agentProfileFingerprint(current.profile) !== agentProfileFingerprint(loaded.profile)
+	) {
+		return { ok: false, reason: "changed", filePath };
+	}
 
 	try {
 		unlinkSync(filePath);

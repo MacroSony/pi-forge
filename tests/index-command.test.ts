@@ -15,6 +15,7 @@ import {
 	writeForgeExtension,
 	writeGlobalForgeExtension,
 	writeLegacyStack,
+	writeProfile,
 	writePreset,
 	writeStack,
 } from "./helpers/index-command-harness.ts";
@@ -994,7 +995,48 @@ test("/preset ui profile mutations remain token-gated and fail closed for untrus
 			headers: { "x-pi-forge-token": token },
 		});
 		assert.equal(reloadResponse.status, 403);
+
+		const applyResponse = await fetch(new URL("/api/profiles/blocked/apply", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(applyResponse.status, 403);
+
+		const deleteResponse = await fetch(new URL("/api/profiles/blocked", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(deleteResponse.status, 403);
 		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "blocked.json")), false);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("/preset ui refuses profile application while the agent is busy", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeProfile(cwd, "busy.json", {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "busy",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd, [], { idle: false });
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const response = await fetch(new URL("/api/profiles/busy/apply", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": editorUrl.searchParams.get("token")! },
+		});
+		assert.equal(response.status, 409);
+		assert.match(await response.text(), /current agent operation/);
+		assert.equal(harness.setModelCalls.length, 0);
 	} finally {
 		await harness.commands.preset.handler("ui stop", context.ctx);
 	}

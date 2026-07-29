@@ -17,6 +17,8 @@ const loadError = ref("");
 const loading = ref(false);
 const editorMode = ref<"create" | "edit">();
 const profileActionStatus = ref("");
+const profileActionError = ref("");
+const profileActionBusy = ref(false);
 
 const selected = computed<WebEditorProfileEntry | undefined>(() => {
 	const entries = collection.value?.profiles || [];
@@ -31,6 +33,7 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 	loading.value = true;
 	loadError.value = "";
 	profileActionStatus.value = "";
+	profileActionError.value = "";
 	try {
 		const next = await api<WebEditorProfileCollection>(
 			reloadFromDisk ? "/api/profiles/reload" : "/api/profiles",
@@ -52,6 +55,7 @@ function selectProfile(entry: WebEditorProfileEntry): void {
 	selectedPath.value = entry.filePath;
 	editorMode.value = undefined;
 	profileActionStatus.value = "";
+	profileActionError.value = "";
 }
 
 function handleProfileSaved(mutation: WebEditorProfileMutation): void {
@@ -59,7 +63,63 @@ function handleProfileSaved(mutation: WebEditorProfileMutation): void {
 	selectedPath.value = mutation.selectedPath;
 	const saved = mutation.collection.profiles.find((entry) => entry.filePath === mutation.selectedPath);
 	profileActionStatus.value = `${editorMode.value === "create" ? "Created" : "Saved"} ${saved?.profile.id || "profile"}`;
+	profileActionError.value = "";
 	editorMode.value = undefined;
+}
+
+async function applySelectedProfile(): Promise<void> {
+	const target = selected.value;
+	if (!target) return;
+	profileActionBusy.value = true;
+	profileActionStatus.value = "";
+	profileActionError.value = "";
+	try {
+		const result = await api<{ ok: true } & WebEditorProfileMutation>(
+			`/api/profiles/${encodeURIComponent(target.profile.id)}/apply`,
+			{ method: "POST" },
+		);
+		collection.value = result.collection;
+		selectedPath.value = result.selectedPath;
+		profileActionStatus.value = `Applied ${target.profile.id} once`;
+		window.dispatchEvent(new Event("pi-forge:profile-applied"));
+	} catch (error) {
+		profileActionError.value = error instanceof Error ? error.message : String(error);
+		try {
+			const refreshed = await api<WebEditorProfileCollection>("/api/profiles");
+			collection.value = refreshed;
+			if (!refreshed.profiles.some((entry) => entry.filePath === selectedPath.value)) {
+				selectedPath.value = refreshed.profiles[0]?.filePath || "";
+			}
+		} catch (refreshError) {
+			const detail = refreshError instanceof Error ? refreshError.message : String(refreshError);
+			profileActionError.value += ` Runtime refresh failed: ${detail}`;
+		}
+		window.dispatchEvent(new Event("pi-forge:profile-applied"));
+	} finally {
+		profileActionBusy.value = false;
+	}
+}
+
+async function deleteSelectedProfile(): Promise<void> {
+	const target = selected.value;
+	if (!target) return;
+	if (!window.confirm(`Delete agent profile ${target.profile.id}?\n\n${target.filePath}`)) return;
+	profileActionBusy.value = true;
+	profileActionStatus.value = "";
+	profileActionError.value = "";
+	try {
+		const result = await api<{ ok: true } & WebEditorProfileMutation>(
+			`/api/profiles/${encodeURIComponent(target.profile.id)}`,
+			{ method: "DELETE" },
+		);
+		collection.value = result.collection;
+		selectedPath.value = result.selectedPath;
+		profileActionStatus.value = `Deleted ${target.profile.id}`;
+	} catch (error) {
+		profileActionError.value = error instanceof Error ? error.message : String(error);
+	} finally {
+		profileActionBusy.value = false;
+	}
 }
 
 function modelLabel(model: { provider: string; id: string } | null): string {
@@ -92,18 +152,18 @@ function driftLabel(changed: boolean): string {
 			</div>
 			<span class="action-spacer"></span>
 			<span id="profilesStatus" class="status">
-				{{ loading ? "Loading profiles" : loadError || profileActionStatus || `${collection?.profiles.length || 0} profile(s)` }}
+				{{ loading || profileActionBusy ? "Working" : loadError || profileActionError || profileActionStatus || `${collection?.profiles.length || 0} profile(s)` }}
 			</span>
 			<button
 				id="profileNewBtn"
 				data-icon="+"
 				type="button"
-				:disabled="loading || !!editorMode || !collection?.trusted"
+				:disabled="loading || profileActionBusy || !!editorMode || !collection?.trusted"
 				@click="editorMode = 'create'"
 			>
 				New profile
 			</button>
-			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || !!editorMode" @click="loadProfiles(true)">
+			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="loadProfiles(true)">
 				Refresh
 			</button>
 		</header>
@@ -125,7 +185,7 @@ function driftLabel(changed: boolean): string {
 						type="button"
 						class="profile-row"
 						:class="{ selected: selected?.filePath === entry.filePath }"
-						:disabled="!!editorMode"
+						:disabled="profileActionBusy || !!editorMode"
 						data-profile-row
 						:data-profile-id="entry.profile.id"
 						@click="selectProfile(entry)"
@@ -177,6 +237,27 @@ function driftLabel(changed: boolean): string {
 							</span>
 							<button id="profileEditBtn" data-icon="✎" type="button" @click="editorMode = 'edit'">
 								Edit
+							</button>
+							<button
+								id="profileApplyBtn"
+								class="primary"
+								data-icon="▶"
+								type="button"
+								:disabled="profileActionBusy || !selected.preview.applicable"
+								:title="selected.preview.applicable ? 'Apply this profile once' : 'Resolve preflight errors before applying'"
+								@click="applySelectedProfile"
+							>
+								Apply once
+							</button>
+							<button
+								id="profileDeleteBtn"
+								class="danger"
+								data-icon="×"
+								type="button"
+								:disabled="profileActionBusy"
+								@click="deleteSelectedProfile"
+							>
+								Delete
 							</button>
 						</div>
 						<p v-if="selected.profile.description" class="profile-description">
