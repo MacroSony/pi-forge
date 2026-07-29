@@ -1,0 +1,195 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test, { type TestContext } from "node:test";
+import { chromium, type Page } from "playwright-core";
+
+import {
+	createContext,
+	createHarness,
+	latestEditorUrl,
+	startSession,
+	writeStack,
+} from "../tests/helpers/index-command-harness.ts";
+import { promptStacksDir } from "../src/loader.ts";
+
+test("web editor preserves its shell and guarded editing state", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeStack(cwd, "alternate.json", stackFixture("alternate", "Alternate stack"));
+	}, async ({ editorUrl, page }) => {
+		const unauthorizedUrl = new URL(editorUrl);
+		unauthorizedUrl.search = "";
+		const unauthorized = await page.request.get(unauthorizedUrl.href);
+		assert.equal(unauthorized.status(), 403);
+		assert.equal(await unauthorized.text(), "Invalid pi-forge editor token.");
+
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		assert.equal(await page.title(), "pi-forge stack editor");
+		assert.equal(await page.locator(".brand").textContent(), "pi-forge stack editor");
+		assert.equal(await page.locator(".stack-row").count(), 2);
+		assert.equal(await page.locator("#status").textContent(), "Loaded default");
+		assert.equal(await page.locator("#itemContent").inputValue(), "Content for default.");
+		assert.equal(await page.locator("#settings").isVisible(), false);
+
+		const initialTheme = await page.locator("body").getAttribute("data-theme");
+		assert.ok(initialTheme === "light" || initialTheme === "dark");
+		await page.locator("#themeBtn").click();
+		const toggledTheme = initialTheme === "light" ? "dark" : "light";
+		assert.equal(await page.locator("body").getAttribute("data-theme"), toggledTheme);
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		assert.equal(await page.locator("body").getAttribute("data-theme"), toggledTheme);
+
+		await page.locator("#sidebarToggleBtn").click();
+		assert.equal(await page.locator("#shell").getAttribute("class"), "shell sidebar-collapsed");
+		assert.equal(await page.locator("#status").textContent(), "Prompt stacks sidebar hidden");
+		await page.locator("#sidebarToggleBtn").click();
+		assert.equal(await page.locator("#shell").getAttribute("class"), "shell");
+
+		await page.locator("#itemContent").fill("Unsaved content.");
+		await page.locator("#dirtyBadge.visible").waitFor();
+
+		page.once("dialog", async (dialog) => {
+			assert.equal(dialog.type(), "confirm");
+			assert.equal(dialog.message(), "Discard unsaved changes?");
+			await dialog.dismiss();
+		});
+		await page.locator(".stack-row", { hasText: "alternate" }).click();
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "defaultactive");
+		assert.equal(await page.locator("#itemContent").inputValue(), "Unsaved content.");
+
+		page.once("dialog", async (dialog) => {
+			assert.equal(dialog.message(), "Discard unsaved changes?");
+			await dialog.accept();
+		});
+		await page.locator(".stack-row", { hasText: "alternate" }).click();
+		await page.locator("#status").filter({ hasText: "Loaded alternate" }).waitFor();
+		assert.equal(await page.locator("#itemContent").inputValue(), "Content for alternate.");
+
+		await page.locator("#stackTabBtn").click();
+		const rawStack = JSON.parse(await page.locator("#stackJsonText").inputValue()) as Record<string, unknown>;
+		await page.locator("#stackJsonText").fill(JSON.stringify({ id: "alternate" }));
+		await page.locator("#applyStackJsonBtn").click();
+		assert.equal(await page.locator("#status").textContent(), "Stack JSON needs an items array.");
+
+		rawStack.name = "Raw JSON edit";
+		rawStack.items = [{ kind: "block", id: "raw", role: "system", content: "Raw content." }];
+		await page.locator("#stackJsonText").fill(JSON.stringify(rawStack));
+		await page.locator("#applyStackJsonBtn").click();
+		await page.locator("#status").filter({ hasText: "Applied stack JSON to editor" }).waitFor();
+		await page.locator("#dirtyBadge.visible").waitFor();
+		await page.locator("#itemsTabBtn").click();
+		assert.equal(await page.locator("#itemContent").inputValue(), "Raw content.");
+	});
+});
+
+test("web editor transitions between populated and empty stack states", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "only.json", stackFixture("only", "Only stack", true));
+	}, async ({ cwd, editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+
+		page.once("dialog", async (dialog) => {
+			assert.match(dialog.message(), /Delete prompt stack 'only'/);
+			await dialog.accept();
+		});
+		await page.locator("#deleteStackBtn").click();
+		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
+		assert.equal(await page.locator("#saveBtn").isDisabled(), true);
+		assert.equal(await page.locator("#metadataPanel").isVisible(), false);
+		assert.equal(existsSync(join(promptStacksDir(cwd), "only.json")), false);
+
+		const promptAnswers = ["replacement", "Replacement stack"];
+		page.on("dialog", async (dialog) => {
+			assert.equal(dialog.type(), "prompt");
+			const answer = promptAnswers.shift();
+			assert.notEqual(answer, undefined);
+			await dialog.accept(answer);
+		});
+		await page.locator("#emptyNewStackBtn").click();
+		await page.locator("#status").filter({ hasText: "Created replacement" }).waitFor();
+		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "replacementactive");
+		assert.equal(await page.locator("#saveBtn").isEnabled(), true);
+		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
+		assert.deepEqual(promptAnswers, []);
+	});
+});
+
+function stackFixture(id: string, name: string, autoActivate = false) {
+	return {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id,
+		name,
+		autoActivate,
+		mode: "replace",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: `Content for ${id}.` },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	};
+}
+
+async function withBrowserEditor(
+	t: TestContext,
+	prepare: (cwd: string) => void,
+	run: (fixture: { cwd: string; editorUrl: URL; page: Page }) => Promise<void>,
+): Promise<void> {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-browser-characterization-"));
+	prepare(cwd);
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	let editorStarted = false;
+	const browserErrors: string[] = [];
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		editorStarted = true;
+		const editorUrl = latestEditorUrl(context.editors);
+		browser = await chromium.launch({
+			executablePath,
+			headless: true,
+			args: process.platform === "linux" ? ["--no-sandbox"] : [],
+		});
+		const page = await browser.newPage();
+		page.setDefaultTimeout(5_000);
+		page.on("pageerror", (error) => browserErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error") browserErrors.push(message.text());
+		});
+
+		await run({ cwd, editorUrl, page });
+		assert.deepEqual(browserErrors, []);
+	} finally {
+		await browser?.close();
+		if (editorStarted) await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+}
+
+function findChromeExecutable(): string | undefined {
+	const candidates = [
+		process.env.CHROME_PATH,
+		"/usr/bin/google-chrome",
+		"/usr/bin/google-chrome-stable",
+		"/usr/bin/chromium",
+		"/usr/bin/chromium-browser",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe") : undefined,
+		process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe") : undefined,
+	].filter((candidate): candidate is string => !!candidate);
+	return candidates.find(existsSync);
+}
