@@ -270,4 +270,10 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
+- Top-level navigation between prompt stacks and project agent profiles; stack drafts, selection, and active state survive surface switches.
+- Profile list shows ID, name, model/thinking/stack targets, validation state, `autoActivate` and last-applied badges, and a `subagent` badge for delegation-enabled profiles.
+- Profile create, edit, validate, save, one-shot apply, and delete reuse the shared resolver, transactional application service, and guarded repository; save rejects a second auto-activation profile and on-disk conflicts.
+- Profile form populates provider/model choices from the model registry and stack choices from the shared stack repository, and shows resolution diagnostics for missing models, authentication, unsupported thinking levels, invalid stacks, and unmatched tool policy.
+- A runtime/provenance card distinguishes current runtime, last-applied provenance, source-definition state, and per-field runtime drift after external model, thinking-level, or stack changes.
+- Per-profile delegation card toggles the trusted project's `subagents.profiles.<id>` opt-in with backend and timeout overrides, writing `.pi/forge/config.json` while preserving unrelated keys and removing emptied entries; the card reports the effective backend/timeout and source, warns about unregistered backends, and keeps project defaults and the unattended-invocation setting read-only.
 - Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.

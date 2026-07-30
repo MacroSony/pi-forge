@@ -7,6 +7,7 @@ import type {
 	WebEditorProfileEntry,
 	WebEditorProfileMutation,
 } from "../types.ts";
+import ProfileDelegation from "./ProfileDelegation.vue";
 import ProfileEditor from "./ProfileEditor.vue";
 
 const token = new URLSearchParams(location.search).get("token") || "";
@@ -98,6 +99,18 @@ async function applySelectedProfile(): Promise<void> {
 	} finally {
 		profileActionBusy.value = false;
 	}
+}
+
+function handleDelegationSaved(mutation: WebEditorProfileMutation, message: string): void {
+	collection.value = mutation.collection;
+	selectedPath.value = mutation.selectedPath;
+	profileActionStatus.value = message;
+	profileActionError.value = "";
+}
+
+function handleDelegationFailed(message: string): void {
+	profileActionStatus.value = "";
+	profileActionError.value = message;
 }
 
 async function deleteSelectedProfile(): Promise<void> {
@@ -193,6 +206,7 @@ function driftLabel(changed: boolean): string {
 						<span class="profile-row-title">
 							{{ entry.profile.id }}
 							<span v-if="entry.profile.autoActivate" class="badge">auto</span>
+							<span v-if="entry.subagent.enabled" class="badge">subagent</span>
 							<span v-if="entry.lastApplied" class="badge">last applied</span>
 						</span>
 						<span class="profile-row-name">{{ entry.profile.name || "(unnamed)" }}</span>
@@ -304,6 +318,15 @@ function driftLabel(changed: boolean): string {
 							</div>
 						</div>
 					</section>
+
+					<ProfileDelegation
+						:entry="selected"
+						:summary="collection.subagents"
+						:busy="profileActionBusy"
+						@update:busy="profileActionBusy = $event"
+						@saved="handleDelegationSaved"
+						@failed="handleDelegationFailed"
+					/>
 				</template>
 
 				<section v-else-if="!editorMode" class="profile-card profile-empty">

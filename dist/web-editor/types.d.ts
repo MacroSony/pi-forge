@@ -23,6 +23,7 @@ export interface WebEditorHost {
     saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    updateSubagentPolicy(id: string, update: WebEditorSubagentPolicyUpdate): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     listResources(): WebEditorPolicyResources;
     getStack(id: string): {
         stack: PromptStack;
@@ -70,6 +71,39 @@ export interface WebEditorProfileEntry {
     errors: number;
     warnings: number;
     lastApplied: boolean;
+    subagent: WebEditorSubagentProfilePolicy;
+}
+export interface WebEditorSubagentBackendOption {
+    id: string;
+    version: string;
+}
+export interface WebEditorSubagentProfilePolicy {
+    enabled: boolean;
+    enabledSource: "project-profile" | "built-in";
+    backend: string;
+    backendSource: string;
+    backendRegistered: boolean;
+    timeoutMs: number;
+    timeoutSource: string;
+    configured: {
+        enabled?: boolean;
+        backend?: string;
+        timeoutMs?: number;
+    };
+}
+export interface WebEditorSubagentSummary {
+    defaultBackend: string;
+    defaultBackendSource: string;
+    timeoutMs: number;
+    timeoutSource: string;
+    allowAgentInvocationWithoutApproval: boolean;
+    backends: WebEditorSubagentBackendOption[];
+    warnings: string[];
+}
+export interface WebEditorSubagentPolicyUpdate {
+    enabled?: boolean;
+    backend?: string | null;
+    timeoutMs?: number | null;
 }
 export interface WebEditorProfileCollection {
     trusted: boolean;
@@ -81,6 +115,7 @@ export interface WebEditorProfileCollection {
         id: string;
         name?: string;
     }>;
+    subagents: WebEditorSubagentSummary;
 }
 export interface WebEditorProfileModelOption {
     provider: string;

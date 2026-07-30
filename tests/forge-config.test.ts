@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
 	loadForgeSubagentSettings,
 	resolveSubagentBackend,
 	resolveSubagentProfilePolicy,
+	updateForgeSubagentProfileConfig,
 } from "../src/forge-config.ts";
 
 // Hermetic default: no real user global config leaks into these tests.
@@ -236,3 +237,98 @@ test("subagent profiles are trusted-project-only opt-ins with backend and timeou
 function context(cwd: string, trusted: boolean) {
 	return { cwd, isProjectTrusted: () => trusted } as any;
 }
+
+test("updateForgeSubagentProfileConfig writes, preserves, and removes per-profile delegation", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-config-write-"));
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+	const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
+	try {
+		// Creates the file and parent directories on first write.
+		const created = updateForgeSubagentProfileConfig(cwd, "reviewer", { enabled: true });
+		assert.equal(created.ok, true);
+		assert.deepEqual(readConfig(), { subagents: { profiles: { reviewer: { enabled: true } } } });
+
+		// Unknown top-level, subagents, and per-entry fields survive updates.
+		writeFileSync(configPath, JSON.stringify({
+			otherTopLevel: { keep: true },
+			subagents: {
+				backend: "project-default",
+				futureField: 1,
+				profiles: { reviewer: { enabled: true, futureEntryField: "keep" } },
+			},
+		}), "utf8");
+		const updated = updateForgeSubagentProfileConfig(cwd, "reviewer", { backend: "pi-rpc-readonly", timeoutMs: 120_000 });
+		assert.equal(updated.ok, true);
+		assert.deepEqual(readConfig(), {
+			otherTopLevel: { keep: true },
+			subagents: {
+				backend: "project-default",
+				futureField: 1,
+				profiles: {
+					reviewer: {
+						enabled: true,
+						futureEntryField: "keep",
+						backend: "pi-rpc-readonly",
+						timeoutMs: 120_000,
+					},
+				},
+			},
+		});
+
+		// Clearing enabled keeps the remaining overrides; clearing everything removes
+		// the entry, the profiles map, and an otherwise-empty subagents section.
+		updateForgeSubagentProfileConfig(cwd, "reviewer", { enabled: false });
+		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
+			futureEntryField: "keep",
+			backend: "pi-rpc-readonly",
+			timeoutMs: 120_000,
+		});
+		updateForgeSubagentProfileConfig(cwd, "reviewer", { backend: null, timeoutMs: null });
+		assert.deepEqual(readConfig().subagents.profiles.reviewer, { futureEntryField: "keep" });
+
+		const removed = updateForgeSubagentProfileConfig(cwd, "scout", { enabled: true });
+		assert.equal(removed.ok, true);
+		updateForgeSubagentProfileConfig(cwd, "scout", { enabled: false });
+		const afterRemoval = readConfig();
+		assert.equal(afterRemoval.subagents.profiles.scout, undefined);
+		assert.deepEqual(Object.keys(afterRemoval.subagents.profiles), ["reviewer"]);
+
+		// The resolved policy follows the written file.
+		const settings = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(resolveSubagentProfilePolicy(settings, "reviewer").enabled, false);
+		assert.deepEqual(resolveSubagentProfilePolicy(settings, "reviewer").backend, {
+			id: "project-default",
+			source: "project",
+		});
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("updateForgeSubagentProfileConfig rejects invalid input and unreadable configs", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-config-write-invalid-"));
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+	mkdirSync(join(cwd, ".pi", "forge"), { recursive: true });
+	try {
+		const expectError = (result: ReturnType<typeof updateForgeSubagentProfileConfig>, pattern: RegExp) => {
+			assert.equal(result.ok, false);
+			assert.match(result.ok === false ? result.error : "", pattern);
+		};
+		expectError(updateForgeSubagentProfileConfig(cwd, "bad id", { enabled: true }), /Invalid agent profile id/);
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { backend: "" }), /non-empty string or null/);
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { timeoutMs: 500 }), /integer from 1000/);
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { timeoutMs: 3_600_001 }), /integer from 1000/);
+		assert.equal(existsSync(configPath), false);
+
+		writeFileSync(configPath, "{ not json", "utf8");
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { enabled: true }), /Refusing to update unreadable/);
+
+		writeFileSync(configPath, JSON.stringify({ subagents: "nope" }), "utf8");
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { enabled: true }), /subagents must be a JSON object/);
+
+		writeFileSync(configPath, JSON.stringify({ subagents: { profiles: { reviewer: 42 } } }), "utf8");
+		expectError(updateForgeSubagentProfileConfig(cwd, "reviewer", { enabled: true }), /profiles\.reviewer must be a JSON object/);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

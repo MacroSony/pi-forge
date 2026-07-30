@@ -481,6 +481,65 @@ test("web editor reports profile runtime drift after external changes", { timeou
 	});
 });
 
+test("web editor configures per-profile subagent delegation", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+	}, async ({ cwd, editorUrl, page }) => {
+		const configPath = join(cwd, ".pi", "forge", "config.json");
+		const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
+		const reviewerRow = page.locator('[data-profile-row][data-profile-id="reviewer"]');
+
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#profilesSurfaceBtn").click();
+		await reviewerRow.click();
+		await page.locator("[data-delegation-status]").filter({ hasText: "Disabled" }).waitFor();
+		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 0);
+		assert.equal(await page.locator("#delegationSaveBtn").isDisabled(), true);
+
+		await page.locator("#delegationEnabled").check();
+		await page.locator("#delegationBackend").selectOption("pi-rpc-readonly");
+		await page.locator("#delegationTimeout").fill("500");
+		await page.locator("[data-delegation-error]").filter({ hasText: /integer from 1000/ }).waitFor();
+		assert.equal(await page.locator("#delegationSaveBtn").isDisabled(), true);
+		await page.locator("#delegationTimeout").fill("120000");
+		assert.equal(await page.locator("#delegationSaveBtn").isEnabled(), true);
+
+		await page.locator("#delegationSaveBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Delegation enabled for reviewer" }).waitFor();
+		await page.locator("[data-delegation-status]").filter({ hasText: /Enabled · backend pi-rpc-readonly/ }).waitFor();
+		assert.match(await page.locator("[data-delegation-status]").textContent() ?? "", /timeout 120000 ms/);
+		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 1);
+		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
+			enabled: true,
+			backend: "pi-rpc-readonly",
+			timeoutMs: 120_000,
+		});
+
+		await page.locator("#delegationEnabled").uncheck();
+		await page.locator("#delegationBackend").selectOption("");
+		await page.locator("#delegationTimeout").fill("");
+		await page.locator("#delegationSaveBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Delegation settings saved for reviewer" }).waitFor();
+		await page.locator("[data-delegation-status]").filter({ hasText: "Disabled" }).waitFor();
+		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 0);
+		assert.equal(readConfig().subagents, undefined);
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+	});
+});
+
 test("Vue item editor preserves structured and advanced slot options", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		const stack = stackFixture("default", "Item editor", true);

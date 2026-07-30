@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isValidAgentProfileId } from "./agent-profile.js";
 import { globalForgeDir } from "./storage.js";
 /** Backend used when neither a per-run override nor a configured default applies. */
@@ -193,6 +193,93 @@ export function isValidSubagentTimeoutMs(value) {
     return Number.isSafeInteger(value)
         && value >= MIN_SUBAGENT_TIMEOUT_MS
         && value <= MAX_SUBAGENT_TIMEOUT_MS;
+}
+/**
+ * Update `subagents.profiles.<id>` in the project's `.pi/forge/config.json`,
+ * preserving unknown top-level, `subagents`, and per-entry fields. Callers
+ * must gate this on project trust; the project config is ignored otherwise.
+ */
+export function updateForgeSubagentProfileConfig(cwd, profileId, update) {
+    if (!isValidAgentProfileId(profileId)) {
+        return { ok: false, error: `Invalid agent profile id: ${profileId}` };
+    }
+    if (update.backend !== undefined && update.backend !== null && (typeof update.backend !== "string" || !update.backend.trim())) {
+        return { ok: false, error: "subagent backend must be a non-empty string or null to clear the override." };
+    }
+    if (update.timeoutMs !== undefined && update.timeoutMs !== null && !isValidSubagentTimeoutMs(update.timeoutMs)) {
+        return {
+            ok: false,
+            error: `subagent timeoutMs must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} or null to clear the override.`,
+        };
+    }
+    const configPath = join(cwd, ".pi", "forge", "config.json");
+    let root = {};
+    if (existsSync(configPath)) {
+        let raw;
+        try {
+            raw = JSON.parse(readFileSync(configPath, "utf8"));
+        }
+        catch (error) {
+            return {
+                ok: false,
+                error: `Refusing to update unreadable ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+        if (!isPlainObject(raw)) {
+            return { ok: false, error: `Refusing to update ${configPath}: the config root must be a JSON object.` };
+        }
+        root = raw;
+    }
+    if (root.subagents !== undefined && !isPlainObject(root.subagents)) {
+        return { ok: false, error: `Refusing to update ${configPath}: subagents must be a JSON object.` };
+    }
+    const subagents = isPlainObject(root.subagents) ? root.subagents : {};
+    if (subagents.profiles !== undefined && !isPlainObject(subagents.profiles)) {
+        return { ok: false, error: `Refusing to update ${configPath}: subagents.profiles must be a JSON object.` };
+    }
+    const profiles = isPlainObject(subagents.profiles) ? subagents.profiles : {};
+    if (profiles[profileId] !== undefined && !isPlainObject(profiles[profileId])) {
+        return { ok: false, error: `Refusing to update ${configPath}: subagents.profiles.${profileId} must be a JSON object.` };
+    }
+    const entry = isPlainObject(profiles[profileId]) ? { ...profiles[profileId] } : {};
+    if (update.enabled !== undefined) {
+        if (update.enabled)
+            entry.enabled = true;
+        else
+            delete entry.enabled;
+    }
+    if (update.backend !== undefined) {
+        if (typeof update.backend === "string" && update.backend.trim())
+            entry.backend = update.backend.trim();
+        else
+            delete entry.backend;
+    }
+    if (update.timeoutMs !== undefined) {
+        if (update.timeoutMs === null)
+            delete entry.timeoutMs;
+        else
+            entry.timeoutMs = update.timeoutMs;
+    }
+    if (Object.keys(entry).length > 0)
+        profiles[profileId] = entry;
+    else
+        delete profiles[profileId];
+    if (Object.keys(profiles).length > 0)
+        subagents.profiles = profiles;
+    else
+        delete subagents.profiles;
+    if (Object.keys(subagents).length > 0)
+        root.subagents = subagents;
+    else
+        delete root.subagents;
+    try {
+        mkdirSync(dirname(configPath), { recursive: true });
+        writeFileSync(configPath, `${JSON.stringify(root, null, 2)}\n`, "utf8");
+        return { ok: true, configPath };
+    }
+    catch (error) {
+        return { ok: false, error: `Failed to write ${configPath}: ${error instanceof Error ? error.message : String(error)}` };
+    }
 }
 function configuredProfile(settings, profileId) {
     return Object.hasOwn(settings.profiles, profileId) ? settings.profiles[profileId] : undefined;

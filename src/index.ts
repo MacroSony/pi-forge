@@ -141,6 +141,19 @@ export default function piForge(pi: ExtensionAPI) {
 			promptStack: state.active?.stack.id ?? null,
 			effectiveTools: pi.getActiveTools(),
 		}),
+		getSubagentBackends: () => {
+			// Backend construction can require live Pi runtime resources; listing
+			// options for the editor must not break profile browsing when they
+			// are unavailable (the same failure would surface again at prepare).
+			try {
+				return subagentRuntime.descriptors(ctx).map((descriptor) => ({
+					id: descriptor.id,
+					version: descriptor.version,
+				}));
+			} catch {
+				return subagentRuntime.backendIds().map((id) => ({ id, version: "unavailable" }));
+			}
+		},
 		resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
 		previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
 		reloadProfiles: () => profileRuntime.reloadProfiles(ctx),

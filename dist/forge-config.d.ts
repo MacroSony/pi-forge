@@ -62,4 +62,27 @@ export declare function resolveSubagentTimeout(settings: ForgeSubagentSettings, 
 export declare function resolveSubagentProfilePolicy(settings: ForgeSubagentSettings, profileId: string, explicitBackend?: string): ResolvedSubagentProfilePolicy;
 export declare function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentSettings;
 export declare function isValidSubagentTimeoutMs(value: unknown): value is number;
+/**
+ * One trusted-project per-profile delegation update. `enabled: false`,
+ * `backend: null`, and `timeoutMs: null` remove the explicit value; entries
+ * that become empty are removed so the file only records real overrides.
+ */
+export interface ForgeSubagentProfileConfigUpdate {
+    enabled?: boolean;
+    backend?: string | null;
+    timeoutMs?: number | null;
+}
+export type ForgeSubagentProfileConfigResult = {
+    ok: true;
+    configPath: string;
+} | {
+    ok: false;
+    error: string;
+};
+/**
+ * Update `subagents.profiles.<id>` in the project's `.pi/forge/config.json`,
+ * preserving unknown top-level, `subagents`, and per-entry fields. Callers
+ * must gate this on project trust; the project config is ignored otherwise.
+ */
+export declare function updateForgeSubagentProfileConfig(cwd: string, profileId: string, update: ForgeSubagentProfileConfigUpdate): ForgeSubagentProfileConfigResult;
 //# sourceMappingURL=forge-config.d.ts.map

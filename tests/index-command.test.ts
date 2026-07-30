@@ -1094,6 +1094,96 @@ test("/preset ui accepts at most one auto-activation profile", async () => {
 	}
 });
 
+test("/preset ui configures per-profile subagent delegation", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeProfile(cwd, "reviewer.json", {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+	const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const policyUrl = new URL("/api/profiles/reviewer/subagent", editorUrl);
+
+		const listed = await fetch(new URL("/api/profiles", editorUrl), { headers: { "x-pi-forge-token": token } });
+		const collection = await listed.json() as {
+			profiles: Array<{ subagent: { enabled: boolean; backend: string; backendRegistered: boolean } }>;
+			subagents: { backends: Array<{ id: string }>; defaultBackend: string };
+		};
+		assert.equal(collection.profiles[0]?.subagent.enabled, false);
+		assert.equal(collection.profiles[0]?.subagent.backendRegistered, true);
+		assert.ok(collection.subagents.backends.some((backend) => backend.id === collection.subagents.defaultBackend));
+
+		const enabled = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true, backend: "pi-rpc-readonly", timeoutMs: 120_000 }),
+		});
+		assert.equal(enabled.status, 200);
+		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
+			enabled: true,
+			backend: "pi-rpc-readonly",
+			timeoutMs: 120_000,
+		});
+		const enabledCollection = await enabled.json() as {
+			collection: { profiles: Array<{ subagent: { enabled: boolean; backend: string; timeoutMs: number } }> };
+		};
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.enabled, true);
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.backend, "pi-rpc-readonly");
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.timeoutMs, 120_000);
+
+		const invalidTimeout = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ timeoutMs: 500 }),
+		});
+		assert.equal(invalidTimeout.status, 400);
+		assert.match(await invalidTimeout.text(), /timeoutMs must be an integer/);
+
+		const unknownField = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ network: "off" }),
+		});
+		assert.equal(unknownField.status, 400);
+		assert.match(await unknownField.text(), /Unsupported subagent policy field/);
+
+		const missingProfile = await fetch(new URL("/api/profiles/missing/subagent", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true }),
+		});
+		assert.equal(missingProfile.status, 404);
+
+		const disabled = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: false, backend: null, timeoutMs: null }),
+		});
+		assert.equal(disabled.status, 200);
+		assert.equal(readConfig().subagents, undefined);
+
+		const untrustedUrl = new URL(policyUrl);
+		untrustedUrl.search = "";
+		const missingToken = await fetch(untrustedUrl, { method: "PUT", headers: { "content-type": "application/json" } });
+		assert.equal(missingToken.status, 403);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
 	const lifecycle = { ...ctx };
 	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];

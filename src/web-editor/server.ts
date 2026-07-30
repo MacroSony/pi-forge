@@ -7,10 +7,21 @@ import {
 	AGENT_PROFILE_TYPE,
 	type AgentProfile,
 } from "../agent-profile.ts";
+import {
+	isValidSubagentTimeoutMs,
+	MAX_SUBAGENT_TIMEOUT_MS,
+	MIN_SUBAGENT_TIMEOUT_MS,
+} from "../forge-config.ts";
 import { convertSillyTavernPreset } from "../sillytavern-importer.ts";
 import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
-import type { WebEditorHost, WebEditorOperationResult, WebEditorServer, WebEditorServerOptions } from "./types.ts";
+import type {
+	WebEditorHost,
+	WebEditorOperationResult,
+	WebEditorServer,
+	WebEditorServerOptions,
+	WebEditorSubagentPolicyUpdate,
+} from "./types.ts";
 
 // Port 0 asks Node to bind any available localhost port.
 export const DEFAULT_WEB_EDITOR_PORT = 0;
@@ -132,6 +143,16 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 
 	if (req.method === "DELETE" && parts[1] === "profiles" && parts.length === 3) {
 		sendOperation(res, await host.deleteProfile(parts[2]!));
+		return;
+	}
+
+	if (req.method === "PUT" && parts[1] === "profiles" && parts[3] === "subagent" && parts.length === 4) {
+		const parsed = readSubagentPolicyPayload(await readJsonBody(req));
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		sendOperation(res, await host.updateSubagentPolicy(parts[2]!, parsed.update));
 		return;
 	}
 
@@ -353,6 +374,32 @@ function readProfilePayload(body: unknown): { ok: true; profile: AgentProfile } 
 
 function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
 	return Array.isArray(value.prompts) && !Array.isArray(value.items);
+}
+
+function readSubagentPolicyPayload(body: unknown): { ok: true; update: WebEditorSubagentPolicyUpdate } | { ok: false; error: string } {
+	if (!isPlainObject(body)) return { ok: false, error: "Subagent policy payload must be a JSON object." };
+	const unsupported = Object.keys(body).find((field) => field !== "enabled" && field !== "backend" && field !== "timeoutMs");
+	if (unsupported) return { ok: false, error: `Unsupported subagent policy field: ${unsupported}` };
+	if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+		return { ok: false, error: "Subagent policy enabled must be a boolean when provided." };
+	}
+	if (body.backend !== undefined && body.backend !== null && (typeof body.backend !== "string" || !body.backend.trim())) {
+		return { ok: false, error: "Subagent policy backend must be a non-empty string or null to clear the override." };
+	}
+	if (body.timeoutMs !== undefined && body.timeoutMs !== null && !isValidSubagentTimeoutMs(body.timeoutMs)) {
+		return {
+			ok: false,
+			error: `Subagent policy timeoutMs must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} or null to clear the override.`,
+		};
+	}
+	return {
+		ok: true,
+		update: {
+			enabled: body.enabled as boolean | undefined,
+			backend: body.backend === null ? null : (body.backend as string | undefined)?.trim(),
+			timeoutMs: body.timeoutMs as number | null | undefined,
+		},
+	};
 }
 
 function readCharacterId(body: unknown): number | undefined {

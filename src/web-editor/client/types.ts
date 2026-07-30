@@ -14,6 +14,9 @@ import type {
 	WebEditorProfileMutation,
 	WebEditorProfileValidation,
 	WebEditorStackSummary,
+	WebEditorSubagentPolicyUpdate,
+	WebEditorSubagentProfilePolicy,
+	WebEditorSubagentSummary,
 } from "../types.ts";
 
 export type EditorJsonObject = Record<string, any>;
@@ -88,4 +91,7 @@ export type {
 	WebEditorProfileMutation,
 	WebEditorProfileValidation,
 	WebEditorStackSummary,
+	WebEditorSubagentPolicyUpdate,
+	WebEditorSubagentProfilePolicy,
+	WebEditorSubagentSummary,
 };

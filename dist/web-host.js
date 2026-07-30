@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, } from "./agent-profile.js";
+import { DEFAULT_SUBAGENT_BACKEND_ID, loadForgeSubagentSettings, resolveSubagentProfilePolicy, updateForgeSubagentProfileConfig, } from "./forge-config.js";
 import { isInsidePromptStackStorage, promptStackPath, validatePromptStack, } from "./loader.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export function createWebEditorHost(ctx, runtime) {
@@ -20,6 +21,7 @@ export function createWebEditorHost(ctx, runtime) {
         saveProfile: (id, profile) => saveProfileFile(ctx, runtime, id, profile),
         applyProfile: (id) => applyProfileRuntime(ctx, runtime, id),
         deleteProfile: (id) => deleteProfileFile(ctx, runtime, id),
+        updateSubagentPolicy: (id, update) => updateSubagentPolicy(ctx, runtime, id, update),
         listResources: () => runtime.getPolicyResources(),
         getStack: (id) => {
             const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
@@ -60,6 +62,9 @@ function profileCollection(ctx, runtime) {
     const current = runtime.getCurrentProfileRuntime();
     const lastApplied = runtime.getLastAppliedProfile();
     const availableModels = new Set(ctx.modelRegistry.getAvailable().map((model) => modelKey(model.provider, model.id)));
+    const subagentSettings = loadForgeSubagentSettings(ctx);
+    const subagentBackends = runtime.getSubagentBackends();
+    const registeredBackends = new Set(subagentBackends.map((backend) => backend.id));
     return {
         trusted: ctx.isProjectTrusted(),
         profileDirectory: agentProfilesDir(ctx.cwd),
@@ -76,6 +81,7 @@ function profileCollection(ctx, runtime) {
                 errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
                 warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
                 lastApplied: lastApplied?.sourcePath === loaded.filePath,
+                subagent: subagentPolicySummary(subagentSettings, loaded.profile.id, registeredBackends),
             };
         }),
         status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
@@ -89,6 +95,38 @@ function profileCollection(ctx, runtime) {
             id: loaded.stack.id,
             name: loaded.stack.name,
         })),
+        subagents: {
+            defaultBackend: subagentSettings.backend ?? DEFAULT_SUBAGENT_BACKEND_ID,
+            defaultBackendSource: subagentSettings.backendSource ?? "built-in",
+            timeoutMs: subagentSettings.timeoutMs,
+            timeoutSource: subagentSettings.timeoutSource,
+            allowAgentInvocationWithoutApproval: subagentSettings.allowAgentInvocationWithoutApproval,
+            backends: subagentBackends,
+            warnings: [...subagentSettings.warnings],
+        },
+    };
+}
+function subagentPolicySummary(settings, profileId, registeredBackends) {
+    const policy = resolveSubagentProfilePolicy(settings, profileId);
+    const configured = settings.profiles[profileId];
+    return {
+        enabled: policy.enabled,
+        enabledSource: policy.enabledSource,
+        backend: policy.backend.id,
+        backendSource: policy.backend.source,
+        backendRegistered: registeredBackends.has(policy.backend.id),
+        timeoutMs: policy.timeout.milliseconds,
+        timeoutSource: policy.timeout.source,
+        configured: configuredSubagentProfile(configured),
+    };
+}
+function configuredSubagentProfile(configured) {
+    if (!configured)
+        return {};
+    return {
+        enabled: configured.enabled,
+        backend: configured.backend,
+        timeoutMs: configured.timeoutMs,
     };
 }
 function profileValidation(ctx, runtime, profile, existingId) {
@@ -182,6 +220,25 @@ async function saveProfileFile(ctx, runtime, id, profile) {
         ok: true,
         collection: profileCollection(ctx, runtime),
         selectedPath: result.filePath,
+    };
+}
+async function updateSubagentPolicy(ctx, runtime, id, update) {
+    if (!ctx.isProjectTrusted()) {
+        return { ok: false, status: 403, error: "Project is not trusted; refusing to change subagent delegation." };
+    }
+    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    if (matches.length === 0)
+        return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
+    if (matches.length > 1) {
+        return { ok: false, status: 409, error: `Cannot configure subagent delegation for ${id} while duplicate profile ids exist.` };
+    }
+    const result = updateForgeSubagentProfileConfig(ctx.cwd, id, update);
+    if (!result.ok)
+        return { ok: false, status: 400, error: result.error };
+    return {
+        ok: true,
+        collection: profileCollection(ctx, runtime),
+        selectedPath: matches[0].filePath,
     };
 }
 function autoActivateConflictError(profiles, profile, excludeId) {
