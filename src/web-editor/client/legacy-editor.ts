@@ -2,6 +2,7 @@
 import { createEditorApi, EditorApiError } from "./api.ts";
 import { attr, el, escapeHtml, eventElement, query, queryAll, type EditorElement } from "./dom.ts";
 import { createInspector } from "./inspector.ts";
+import { createVueItemHost } from "./vue-item-host.ts";
 import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import type {
@@ -25,10 +26,7 @@ let dragDropIndex = -1;
 let dragScrollFrame = 0;
 let dragScrollSpeed = 0;
 let dragClientY = 0;
-let optionsText = "";
-let optionsError = "";
 let sidebarCollapsed = false;
-let slotOptionsMode: "form" | "json" = "form";
 let policyResources: { tools: WebEditorPolicyResource[]; skills: WebEditorPolicyResource[] } = { tools: [], skills: [] };
 let latestDiagnostics: PromptStackDiagnostic[] = [];
 let activeTab: "items" | "regex" | "policy" | "stack" = "items";
@@ -36,6 +34,13 @@ let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 let editorStarted = false;
 let editorIsActive = () => true;
+
+const slotNames = [
+  "chat-history", "tools", "tool-guidelines", "skills", "project-context",
+  "append-system-prompt", "variables", "date", "cwd", "date-cwd",
+  "active-model", "pi-docs"
+];
+const roles = ["", "system", "user", "assistant", "custom"];
 
 const {
   validateStack,
@@ -74,13 +79,16 @@ const vueMetadataHost = createVueMetadataHost({
   markDirty,
   setStatus,
 });
+const vueItemHost = createVueItemHost({
+  getStack: () => currentStack,
+  getSelectedIndex: () => selectedItemIndex,
+  slotNames,
+  roles,
+  markDirty,
+  renderItemList,
+  setStatus,
+});
 
-const slotNames = [
-  "chat-history", "tools", "tool-guidelines", "skills", "project-context",
-  "append-system-prompt", "variables", "date", "cwd", "date-cwd",
-  "active-model", "pi-docs"
-];
-const roles = ["", "system", "user", "assistant", "custom"];
 function applyTheme(theme: string) {
   currentTheme = theme === "dark" ? "dark" : "light";
   document.body.dataset.theme = currentTheme;
@@ -191,8 +199,8 @@ async function selectStack(id: any, options: any = {}) {
   currentFilePath = data.filePath || "";
   selectedItemIndex = loadedStack.items.length ? 0 : -1;
   dirty = false;
-  optionsError = "";
   vueTabHost.resetErrors();
+  vueItemHost.reset();
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + loadedStack.id);
@@ -474,197 +482,12 @@ function diagnosticTitle(diagnostics: any) {
 
 function renderItemEditor() {
   const editor = el("itemEditor");
-  if (!currentStack || selectedItemIndex < 0 || !currentStack.items[selectedItemIndex]) {
+  if (!vueItemHost.mount(editor)) {
     editor.innerHTML = '<div class="empty">No item selected.</div>';
     el("deleteItemBtn").disabled = true;
     return;
   }
   el("deleteItemBtn").disabled = false;
-  const stack = currentStack;
-  const item = stack.items[selectedItemIndex];
-  optionsText = JSON.stringify(item.options || {}, null, 2);
-  optionsError = "";
-  const slotSelect = '<select id="itemSlot">' + slotNames.map((slot: any) => '<option value="' + attr(slot) + '">' + escapeHtml(slot) + '</option>').join("") + '</select>';
-  const roleSelect = '<select id="itemRole">' + roles.map((role: any) => '<option value="' + attr(role) + '">' + escapeHtml(role || "(none)") + '</option>').join("") + '</select>';
-  const kindSelect = '<select id="itemKind"><option value="block">block</option><option value="slot">slot</option></select>';
-  const topFields = '<div class="item-fields">' +
-    field("Kind", kindSelect) +
-    field("ID", '<input id="itemId" value="' + attr(item.id) + '">') +
-    field("Name", '<input id="itemName" value="' + attr(item.name || "") + '">') +
-    field("Role", roleSelect) +
-    (item.kind === "slot" ? field("Slot", slotSelect) : "") +
-    '</div>';
-  const body = item.kind === "block"
-    ? field("Content", '<textarea id="itemContent">' + escapeHtml(item.content || "") + '</textarea>', "content-field")
-    : renderSlotOptionsEditor(item);
-  editor.innerHTML = '<div class="item-form">' + topFields + '<div class="item-body">' + body + '</div></div>';
-
-  el("itemKind").value = item.kind;
-  el("itemRole").value = item.role || "";
-  if (item.kind === "slot") el("itemSlot").value = item.slot || "chat-history";
-
-  el("itemKind").onchange = (event: any) => {
-    if (event.target.value === item.kind) return;
-    const base = { id: item.id, name: item.name, enabled: item.enabled, role: item.role, tags: item.tags, source: item.source };
-    stack.items[selectedItemIndex] = event.target.value === "slot"
-      ? { ...base, kind: "slot", slot: "chat-history" }
-      : { ...base, kind: "block", content: "" };
-    markDirty();
-    renderItemList();
-    renderItemEditor();
-  };
-  el("itemId").oninput = (event: any) => { item.id = event.target.value; markDirty(); renderItemList(); };
-  el("itemName").oninput = (event: any) => { setOptionalString(item, "name", event.target.value); markDirty(); };
-  el("itemRole").onchange = (event: any) => { setOptionalString(item, "role", event.target.value); markDirty(); renderItemList(); };
-  if (item.kind === "block") {
-    el("itemContent").oninput = (event: any) => { item.content = event.target.value; markDirty(); };
-  } else {
-    el("itemSlot").onchange = (event: any) => { item.slot = event.target.value; markDirty(); renderItemList(); };
-    bindSlotOptionsEditor(item);
-  }
-}
-
-function renderSlotOptionsEditor(item: any) {
-  const options = item.options || {};
-  const jsonActive = slotOptionsMode === "json";
-  const formButton = '<button id="slotOptionsFormBtn" type="button" class="' + (!jsonActive ? "active" : "") + '">Form</button>';
-  const jsonButton = '<button id="slotOptionsJsonBtn" type="button" class="' + (jsonActive ? "active" : "") + '">JSON</button>';
-  const body = jsonActive
-    ? '<textarea id="itemOptions" class="json-options">' + escapeHtml(optionsText) + '</textarea>'
-    : renderSlotOptionsForm(item, options);
-  return '<div class="field wide slot-options"><label>Slot options</label><div class="segmented">' + formButton + jsonButton + '</div>' + body + '</div>';
-}
-
-function renderSlotOptionsForm(item: any, options: any) {
-  const fields = [];
-  if (item.slot === "chat-history") {
-    fields.push(
-      optionCheckbox("includeLastUserMessage", "Include last user message", options.includeLastUserMessage !== false),
-      optionCheckbox("stripAssistantThinking", "Strip assistant thinking", options.stripAssistantThinking === true),
-      optionCheckbox("includeSummaries", "Include summaries", options.includeSummaries !== false),
-      optionSelect("toolMode", "Tool history", options.toolMode || "keep", ["keep", "drop"]),
-      optionText("roles", "Roles", Array.isArray(options.roles) ? options.roles.join(", ") : ""),
-      optionNumber("maxMessages", "Max messages", options.maxMessages ?? ""),
-      optionNumber("maxChars", "Max chars", options.maxChars ?? ""),
-    );
-  }
-  if (item.slot === "variables") {
-    fields.push(
-      optionCheckbox("includeStatic", "Include static variables", options.includeStatic !== false),
-      optionCheckbox("includeSession", "Include session variables", options.includeSession !== false),
-      optionCheckbox("includeTurn", "Include turn variables", options.includeTurn !== false),
-      optionSelect("format", "Format", options.format || "xml", ["xml", "plain"]),
-    );
-  }
-  if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot)) {
-    fields.push(optionSelect("format", "Format", options.format || "xml", ["xml", "plain"]));
-  }
-  if (["date", "date-cwd"].includes(item.slot)) {
-    fields.push(optionCheckbox("includeTime", "Include current time", options.includeTime === true));
-  }
-  if (fields.length === 0) {
-    fields.push('<div class="wide option-note">This slot has no structured options yet. Use JSON mode for advanced settings.</div>');
-  }
-  fields.push('<div class="wide option-note">Unknown option keys are preserved. Use JSON mode for advanced settings.</div>');
-  return '<div class="options-grid">' + fields.join("") + '</div>';
-}
-
-function bindSlotOptionsEditor(item: any) {
-  el("slotOptionsFormBtn").onclick = () => {
-    slotOptionsMode = "form";
-    renderItemEditor();
-  };
-  el("slotOptionsJsonBtn").onclick = () => {
-    slotOptionsMode = "json";
-    renderItemEditor();
-  };
-
-  if (slotOptionsMode === "json") {
-    el("itemOptions").oninput = (event: any) => {
-      optionsText = event.target.value;
-      try {
-        const parsed = optionsText.trim() ? JSON.parse(optionsText) : {};
-        item.options = Object.keys(parsed).length ? parsed : undefined;
-        optionsError = "";
-        markDirty();
-      } catch (error) {
-        optionsError = error instanceof Error ? error.message : String(error);
-        setStatus("Invalid item options JSON", "error");
-      }
-    };
-    return;
-  }
-
-  document.querySelectorAll("[data-option]").forEach((control: any) => {
-    control.onchange = (event: any) => {
-      const target = event.target;
-      const key = target.dataset.option;
-      if (!key) return;
-      if (target.type === "checkbox") {
-        setSlotOption(item, key, target.checked, defaultSlotOptionValue(key));
-      } else if (target.type === "number") {
-        const value = target.value.trim();
-        setSlotOption(item, key, value ? Number(value) : undefined);
-      } else if (target.dataset.array === "true") {
-        const values = target.value.split(",").map((part: any) => part.trim()).filter(Boolean);
-        setSlotOption(item, key, values.length ? values : undefined);
-      } else {
-        setSlotOption(item, key, target.value || undefined, defaultSlotOptionValue(key));
-      }
-      markDirty();
-    };
-  });
-}
-
-function setSlotOption(item: any, key: any, value: any, defaultValue: any = undefined) {
-  const options = { ...(item.options || {}) };
-  if (value === undefined || value === defaultValue) delete options[key];
-  else options[key] = value;
-  item.options = Object.keys(options).length ? options : undefined;
-}
-
-function defaultSlotOptionValue(key: any) {
-  if (["includeLastUserMessage", "includeSummaries", "includeStatic", "includeSession", "includeTurn"].includes(key)) return true;
-  if (["stripAssistantThinking", "includeTime"].includes(key)) return false;
-  if (key === "toolMode") return "keep";
-  if (key === "format") return "xml";
-  return undefined;
-}
-
-function optionCheckbox(key: any, label: any, checked: any) {
-  return '<label class="checkline" title="' + attr(optionHelp(key)) + '"><input type="checkbox" data-option="' + attr(key) + '" ' + (checked ? "checked" : "") + '> ' + escapeHtml(label) + '</label>';
-}
-
-function optionSelect(key: any, label: any, value: any, choices: any) {
-  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><select data-option="' + attr(key) + '">' +
-    choices.map((choice: any) => '<option value="' + attr(choice) + '"' + (choice === value ? " selected" : "") + '>' + escapeHtml(choice) + '</option>').join("") +
-    '</select></div>';
-}
-
-function optionText(key: any, label: any, value: any) {
-  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><input data-option="' + attr(key) + '" data-array="true" value="' + attr(value) + '" placeholder="comma,separated"></div>';
-}
-
-function optionNumber(key: any, label: any, value: any) {
-  return '<div class="field" title="' + attr(optionHelp(key)) + '"><label>' + escapeHtml(label) + '</label><input type="number" min="1" data-option="' + attr(key) + '" value="' + attr(value) + '"></div>';
-}
-
-function optionHelp(key: any) {
-  const descriptions = {
-    includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
-    stripAssistantThinking: "Remove prior assistant thinking blocks from inserted chat history while keeping visible text, tool calls, and tool results.",
-    includeSummaries: "Keep Pi branch and compaction summary messages inside inserted chat history.",
-    toolMode: "Keep tool calls/results or drop prior tool history from inserted chat history.",
-    roles: "Optional comma-separated message roles to keep, such as user, assistant, toolResult, compactionSummary.",
-    maxMessages: "Keep only the most recent N chat-history messages after filtering.",
-    maxChars: "Keep only the most recent chat-history messages within an approximate character budget.",
-    includeStatic: "Include static stack variables in this variables slot.",
-    includeSession: "Include session variables created by template macros.",
-    includeTurn: "Include temporary turn variables created during prompt compilation.",
-    includeTime: "Render the current time in HH:MM:SS after the current date.",
-    format: "Choose XML or compact plain text rendering.",
-  };
-  return descriptions[key as keyof typeof descriptions] || "Advanced slot option.";
 }
 
 function showStackModal(title: any, meta: any, body: any, options: any = {}) {
@@ -687,7 +510,7 @@ function applyStackFromVue(stack: EditorPromptStack) {
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   selectedItemIndex = stack.items.length ? Math.min(Math.max(selectedItemIndex, 0), stack.items.length - 1) : -1;
-  optionsError = "";
+  vueItemHost.reset();
   vueTabHost.resetErrors();
   markDirty();
   renderAll(latestDiagnostics);
@@ -1082,7 +905,8 @@ async function reloadFromDisk() {
 
 function stackForSubmit() {
   if (!currentStack) throw new Error("No stack selected.");
-  if (optionsError) throw new Error("Invalid item options JSON: " + optionsError);
+  const itemOptionsError = vueItemHost.getError();
+  if (itemOptionsError) throw new Error("Invalid item options JSON: " + itemOptionsError);
   const stackError = vueTabHost.getError("stack");
   if (stackError) throw new Error(stackError);
   const regexError = vueTabHost.getError("regex");
@@ -1143,10 +967,6 @@ function renderEmpty() {
   updateActionState();
 }
 
-function field(label: any, control: any, className: any = "") {
-  return '<div class="field ' + className + '"><label>' + escapeHtml(label) + '</label>' + control + '</div>';
-}
-
 function displayItemName(item: any) {
   if (item.name) return item.name;
   if (item.source && typeof item.source.previousName === "string" && item.source.previousName.trim()) return item.source.previousName;
@@ -1156,12 +976,6 @@ function displayItemName(item: any) {
     if (firstLine) return firstLine.length > 46 ? firstLine.slice(0, 43) + "..." : firstLine;
   }
   return item.id || "(unnamed)";
-}
-
-function setOptionalString(target: any, key: any, value: any) {
-  const trimmed = value.trim();
-  if (trimmed) target[key] = value;
-  else delete target[key];
 }
 
 async function run(action: any) {
@@ -1306,6 +1120,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();
     vueMetadataHost.unmount();
+    vueItemHost.unmount();
     editorIsActive = () => true;
   };
 }
@@ -1324,10 +1139,8 @@ function resetEditorState(): void {
   dragScrollFrame = 0;
   dragScrollSpeed = 0;
   dragClientY = 0;
-  optionsText = "";
-  optionsError = "";
   sidebarCollapsed = false;
-  slotOptionsMode = "form";
+  vueItemHost.reset();
   policyResources = { tools: [], skills: [] };
   latestDiagnostics = [];
   activeTab = "items";

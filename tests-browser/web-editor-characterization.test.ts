@@ -375,6 +375,56 @@ test("web editor refreshes runtime state after a failed profile application", { 
 	});
 });
 
+test("Vue item editor preserves structured and advanced slot options", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		const stack = stackFixture("default", "Item editor", true);
+		stack.items[1] = {
+			kind: "slot",
+			id: "history",
+			enabled: true,
+			slot: "chat-history",
+			options: {
+				futureOption: { preserve: true },
+			},
+		} as any;
+		writeStack(cwd, "default.json", stack);
+	}, async ({ cwd, editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator('[data-item-index="1"]').click();
+		assert.equal(await page.locator("#itemSlot").inputValue(), "chat-history");
+		assert.equal(await page.locator('[data-option="includeLastUserMessage"]').isChecked(), true);
+
+		await page.locator('[data-option="includeLastUserMessage"]').uncheck();
+		await page.locator("#slotOptionsJsonBtn").click();
+		assert.match(await page.locator("#itemOptions").inputValue(), /"futureOption"/);
+		assert.match(await page.locator("#itemOptions").inputValue(), /"includeLastUserMessage": false/);
+
+		await page.locator("#itemOptions").fill("{");
+		await page.locator("#saveBtn").click();
+		await page.locator("#status").filter({ hasText: "Invalid item options JSON" }).waitFor();
+		assert.equal(await page.locator("#itemOptions").inputValue(), "{");
+
+		await page.locator("#itemOptions").fill(JSON.stringify({
+			futureOption: { preserve: true },
+			includeLastUserMessage: false,
+			maxMessages: 3,
+		}, null, 2));
+		await page.locator("#slotOptionsFormBtn").click();
+		assert.equal(await page.locator('[data-option="maxMessages"]').inputValue(), "3");
+		await page.locator("#slotOptionsJsonBtn").click();
+		assert.match(await page.locator("#itemOptions").inputValue(), /"futureOption"/);
+
+		await page.locator("#saveBtn").click();
+		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
+		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"));
+		assert.deepEqual(saved.items[1].options, {
+			futureOption: { preserve: true },
+			includeLastUserMessage: false,
+			maxMessages: 3,
+		});
+	});
+});
+
 test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", {

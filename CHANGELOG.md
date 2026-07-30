@@ -17,6 +17,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Changed
 
+- **Declarative stack item editor.** Prompt blocks, runtime slots, and structured slot options now render through a lifecycle-managed Vue component. Form and raw-JSON modes share one reactive draft, preserve unknown option keys, and keep malformed JSON visible while preventing validation, preview, or save.
 - **First declarative web-editor tabs.** The policy and regex editors now run as lifecycle-managed Vue components while the remaining stack editor stays on the compatibility bridge. Their drafts remain plain JSON at the bridge boundary, validation errors survive tab changes, repeated mounts clean up safely, and advanced rule/policy fields are preserved while editing.
 - **Declarative stack settings editor.** Context options, stack variables, and the raw JSON recovery view now share the same lifecycle-managed Vue tab host. Duplicate-variable errors remain authoritative across tab changes, raw JSON stays unapplied until explicitly accepted, and applying a replacement stack resets the other tab drafts through one plain-JSON boundary.
 - **Declarative stack metadata.** Stack identity, name, mode, auto-activation, description, file provenance, collapse state, and dirty-state signaling now render through a lifecycle-managed Vue component while preserving the established browser controls and immutable-ID behavior.
