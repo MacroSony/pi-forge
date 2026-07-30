@@ -1042,6 +1042,58 @@ test("/preset ui refuses profile application while the agent is busy", async () 
 	}
 });
 
+test("/preset ui accepts at most one auto-activation profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const profile = (id: string, autoActivate?: boolean) => ({
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id,
+		autoActivate,
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const profilesUrl = new URL("/api/profiles", editorUrl);
+
+		const first = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("first", true) }) });
+		assert.equal(first.status, 200);
+
+		const second = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second", true) }) });
+		assert.equal(second.status, 409);
+		assert.match(await second.text(), /Multiple profiles request auto-activation/);
+		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "second.json")), false);
+
+		const plain = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second") }) });
+		assert.equal(plain.status, 200);
+
+		const enable = await fetch(new URL("/api/profiles/second", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ profile: profile("second", true) }),
+		});
+		assert.equal(enable.status, 409);
+		assert.match(await enable.text(), /already requested by first/);
+
+		const keep = await fetch(new URL("/api/profiles/first", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ profile: { ...profile("first", true), name: "First updated" } }),
+		});
+		assert.equal(keep.status, 200);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
 	const lifecycle = { ...ctx };
 	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];

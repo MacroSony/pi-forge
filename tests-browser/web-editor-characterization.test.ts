@@ -375,6 +375,112 @@ test("web editor refreshes runtime state after a failed profile application", { 
 	});
 });
 
+test("web editor enforces a single auto-activation profile", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeProfile(cwd, "first.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "first",
+			name: "First",
+			autoActivate: true,
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "medium",
+			promptStack: "default",
+		});
+	}, async ({ cwd, editorUrl, expectBrowserError, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#profilesSurfaceBtn").click();
+		const firstRow = page.locator('[data-profile-row][data-profile-id="first"]');
+		await firstRow.waitFor();
+		assert.equal(await firstRow.locator(".badge", { hasText: "auto" }).count(), 1);
+
+		await page.locator("#profileNewBtn").click();
+		const providerOptions = await page.locator("#profileProviderOptions option")
+			.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("value")));
+		assert.deepEqual(providerOptions, ["test"]);
+		await page.locator("#profileModelProvider").fill("test");
+		const modelOptions = await page.locator("#profileModelOptions option")
+			.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("value")).sort());
+		assert.deepEqual(modelOptions, ["current", "target"]);
+
+		await page.locator("#profileId").fill("second");
+		await page.locator("#profileModelId").fill("target");
+		await page.locator("#profileThinkingLevel").selectOption("medium");
+		await page.locator("#profilePromptStack").selectOption("default");
+		await page.locator("#profileAutoActivate").check();
+		await page.locator("#profileValidateBtn").click();
+		await page.locator("#profileEditorStatus").filter({ hasText: "validation error" }).waitFor();
+		assert.match(
+			await page.locator(".profile-editor-validation").textContent() ?? "",
+			/Multiple profiles request auto-activation; exactly one is allowed/,
+		);
+
+		expectBrowserError(/Failed to load resource: the server responded with a status of 409/);
+		await page.locator("#profileSaveBtn").click();
+		await page.locator("#profileEditorStatus.error").filter({ hasText: /auto-activation/ }).waitFor();
+		assert.equal(await page.locator("[data-profile-row]").count(), 1);
+		assert.equal(existsSync(agentProfilePath(cwd, "second")), false);
+
+		await page.locator("#profileAutoActivate").uncheck();
+		await page.locator("#profileSaveBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Created second" }).waitFor();
+		assert.equal(await page.locator("[data-profile-row]").count(), 2);
+		assert.equal(JSON.parse(readFileSync(agentProfilePath(cwd, "second"), "utf8")).autoActivate, undefined);
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+	});
+});
+
+test("web editor reports profile runtime drift after external changes", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeStack(cwd, "alternate.json", stackFixture("alternate", "Alternate stack"));
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "alternate",
+		});
+	}, async ({ context, editorUrl, harness, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
+		await page.locator(".profile-applicability").filter({ hasText: "Ready to apply" }).waitFor();
+		await page.locator("#profileApplyBtn").click();
+		await page.locator("#profilesStatus").filter({ hasText: "Applied reviewer once" }).waitFor();
+		const drift = page.locator(".profile-drift");
+		assert.match(await drift.textContent() ?? "", /Model: unchanged/);
+		assert.match(await drift.textContent() ?? "", /Thinking: unchanged/);
+		assert.match(await drift.textContent() ?? "", /Stack: unchanged/);
+
+		await harness.setModel(currentModel);
+		harness.setThinkingLevel("low");
+		await harness.commands.preset.handler("use default", context.ctx);
+
+		await page.locator("#profileRefreshBtn").click();
+		await page.locator(".profile-runtime-card").filter({ hasText: /test\/current ·\s*low ·\s*default/ }).waitFor();
+		assert.match(await drift.textContent() ?? "", /Model: drifted/);
+		assert.match(await drift.textContent() ?? "", /Thinking: drifted/);
+		assert.match(await drift.textContent() ?? "", /Stack: drifted/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Last applied\s*reviewer/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Source definition\s*unchanged/);
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+		thinkingLevel: "low",
+	});
+});
+
 test("Vue item editor preserves structured and advanced slot options", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		const stack = stackFixture("default", "Item editor", true);
@@ -562,9 +668,11 @@ async function withBrowserEditor(
 	t: TestContext,
 	prepare: (cwd: string) => void,
 	run: (fixture: {
+		context: ReturnType<typeof createContext>;
 		cwd: string;
 		editorUrl: URL;
 		expectBrowserError(pattern: RegExp): void;
+		harness: ReturnType<typeof createHarness>;
 		page: Page;
 	}) => Promise<void>,
 	harnessOptions: Parameters<typeof createHarness>[0] = {},
@@ -614,9 +722,11 @@ async function withBrowserEditor(
 
 		try {
 			await run({
+				context,
 				cwd,
 				editorUrl,
 				expectBrowserError: (pattern) => expectedBrowserErrors.push({ pattern, matched: false }),
+				harness,
 				page,
 			});
 		} catch (error) {

@@ -142,6 +142,9 @@ async function createProfileFile(ctx, runtime, profile) {
     if (runtime.getProfiles().some((loaded) => loaded.profile.id === profile.id)) {
         return { ok: false, status: 409, error: `Agent profile already exists: ${profile.id}` };
     }
+    const conflict = autoActivateConflictError(runtime.getProfiles(), profile);
+    if (conflict)
+        return { ok: false, status: 409, error: conflict };
     const result = writeAgentProfile(ctx.cwd, profile);
     if (!result.ok)
         return profileWriteError(profile.id, result);
@@ -165,6 +168,9 @@ async function saveProfileFile(ctx, runtime, id, profile) {
     if (profile.id !== id) {
         return { ok: false, status: 400, error: "Profile id is immutable during save; create a new profile to use a different id." };
     }
+    const conflict = autoActivateConflictError(runtime.getProfiles(), profile, id);
+    if (conflict)
+        return { ok: false, status: 409, error: conflict };
     const result = writeAgentProfile(ctx.cwd, profile, {
         filePath: matches[0].filePath,
         overwrite: true,
@@ -177,6 +183,14 @@ async function saveProfileFile(ctx, runtime, id, profile) {
         collection: profileCollection(ctx, runtime),
         selectedPath: result.filePath,
     };
+}
+function autoActivateConflictError(profiles, profile, excludeId) {
+    if (profile.autoActivate !== true)
+        return undefined;
+    const conflict = profiles.find((loaded) => loaded.profile.autoActivate === true && loaded.profile.id !== excludeId);
+    return conflict
+        ? `Multiple profiles request auto-activation; exactly one is allowed (already requested by ${conflict.profile.id}).`
+        : undefined;
 }
 async function applyProfileRuntime(ctx, runtime, id) {
     if (!ctx.isProjectTrusted()) {

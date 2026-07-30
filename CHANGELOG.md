@@ -32,6 +32,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 - **Breaking: legacy subagent compatibility surfaces.** Removed the `src/subagent-contract.ts` compatibility barrel (import the identical surface from `@zihanw/pi-forge/subagent` or the package root), the `subagentExecutionFingerprint` host fingerprint helper (execution fingerprints are runtime-issued), and the `scripts/subagent-sdk-spike*` diagnostic harness with its `spike:subagent` npm script and test. The spike's media-transport and trusted-extension preparation diagnostics are recorded as coverage debt in `NEXT_STEPS.md` and return with productized delegated media tasks.
 
+### Fixed
+
+- **Single auto-activation enforced on profile save.** The browser editor's create and save APIs now reject a profile that requests auto-activation while another project profile already does (409), matching the existing validation diagnostic instead of writing an ambiguous configuration that the loader would then flag on both profiles. Browser coverage now also exercises the single auto-activation rule, registry-populated model options, and runtime drift reporting after external model, thinking-level, and stack changes.
+
 ## [0.4.0-beta.1] - 2026-07-18
 
 ### Added
