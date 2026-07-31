@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer as createNetServer, type Server as NetServer } from "node:net";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import piForge from "../../src/index.ts";
 import { agentProfilesDir } from "../../src/agent-profile.ts";
+import { GLOBAL_FORGE_CONFIG_PATH_ENV } from "../../src/forge-config.ts";
 import { legacyPromptStacksDir, promptStacksDir } from "../../src/loader.ts";
 import { forgeExtensionsDir, globalForgeExtensionsDir } from "../../src/storage.ts";
+
+// Hermetic default: keep the developer's real ~/.pi/forge/config.json out of
+// harness-driven sessions. Suites that exercise global layering assign their
+// own PI_FORGE_GLOBAL_CONFIG_PATH explicitly after importing this module.
+process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] ??= join(tmpdir(), "pi-forge-harness-no-global-config.json");
 
 export function writeStack(cwd: string, name: string, value: unknown): void {
 	mkdirSync(promptStacksDir(cwd), { recursive: true });

@@ -35,6 +35,7 @@ onUnmounted(() => {
 				id="stacksSurfaceBtn"
 				type="button"
 				:class="{ active: activeSurface === 'stacks' }"
+				:aria-current="activeSurface === 'stacks' ? 'page' : undefined"
 				@click="activeSurface = 'stacks'"
 			>
 				Prompt stacks
@@ -43,6 +44,7 @@ onUnmounted(() => {
 				id="profilesSurfaceBtn"
 				type="button"
 				:class="{ active: activeSurface === 'profiles' }"
+				:aria-current="activeSurface === 'profiles' ? 'page' : undefined"
 				@click="activeSurface = 'profiles'"
 			>
 				Agent profiles
@@ -125,9 +127,12 @@ onUnmounted(() => {
 .app-root {
 	height: 100%;
 	min-height: 0;
+	display: flex;
+	flex-direction: column;
 }
 
 .surface-nav {
+	flex: none;
 	height: 44px;
 	padding: 5px 10px;
 	display: flex;
@@ -156,15 +161,23 @@ onUnmounted(() => {
 }
 
 .editor-surface {
-	height: calc(100% - 44px);
+	flex: 1;
 	min-height: 0;
 }
 
 .legacy-editor-root {
 	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.legacy-editor-root .topbar {
+	flex: none;
 }
 
 .editor-surface .shell {
-	height: calc(100% - 48px);
+	flex: 1;
+	min-height: 0;
+	height: auto;
 }
 </style>

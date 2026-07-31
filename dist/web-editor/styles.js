@@ -112,6 +112,16 @@ html, body {
   height: 100%;
   overflow: hidden;
 }
+#app {
+  height: 100%;
+  min-height: 0;
+}
+@media (max-width: 900px) {
+  #app {
+    height: auto;
+    min-height: 100%;
+  }
+}
 .topbar {
   display: flex;
   align-items: center;
@@ -966,7 +976,7 @@ html, body {
   }
   .shell {
     height: auto;
-    min-height: calc(100vh - 48px);
+    min-height: calc(100vh - 92px);
   }
   .sidebar, .items-pane {
     border-right: 0;

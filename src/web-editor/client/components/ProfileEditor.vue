@@ -53,6 +53,13 @@ const promptStackOptions = computed(() => {
 	}
 	return options.sort((left, right) => left.id.localeCompare(right.id));
 });
+const typedModelUnavailable = computed(() => {
+	const provider = draft.provider.trim();
+	const modelId = draft.modelId.trim();
+	if (!provider || !modelId) return false;
+	const match = props.collection.models.find((model) => model.provider === provider && model.id === modelId);
+	return match ? !match.available : false;
+});
 
 watch(draft, () => {
 	validation.value = undefined;
@@ -217,6 +224,9 @@ async function saveDraft(): Promise<void> {
 						:label="`${model.name || model.id}${model.available ? '' : ' (authentication unavailable)'}`"
 					></option>
 				</datalist>
+				<small v-if="typedModelUnavailable" class="profile-field-warning" data-model-auth-warning>
+					This model has no configured authentication; applying the profile will fail preflight.
+				</small>
 			</label>
 			<label class="profile-field">
 				<span>Thinking level</span>
@@ -316,6 +326,10 @@ async function saveDraft(): Promise<void> {
 
 .profile-field textarea {
 	min-height: 90px;
+}
+
+.profile-field-warning {
+	color: var(--warning) !important;
 }
 
 .profile-check {

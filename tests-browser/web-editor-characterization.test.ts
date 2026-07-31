@@ -516,7 +516,7 @@ test("web editor configures per-profile subagent delegation", { timeout: 20_000 
 
 		await page.locator("#delegationSaveBtn").click();
 		await page.locator("#profilesStatus").filter({ hasText: "Delegation enabled for reviewer" }).waitFor();
-		await page.locator("[data-delegation-status]").filter({ hasText: /Enabled · backend pi-rpc-readonly/ }).waitFor();
+		await page.locator("[data-delegation-status]").filter({ hasText: /enabled · backend pi-rpc-readonly/ }).waitFor();
 		assert.match(await page.locator("[data-delegation-status]").textContent() ?? "", /timeout 120000 ms/);
 		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 1);
 		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
@@ -533,6 +533,70 @@ test("web editor configures per-profile subagent delegation", { timeout: 20_000 
 		await page.locator("[data-delegation-status]").filter({ hasText: "Disabled" }).waitFor();
 		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 0);
 		assert.equal(readConfig().subagents, undefined);
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+	});
+});
+
+test("web editor constrains both surfaces to the viewport with internal scrolling", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+	}, async ({ editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		const stacksLayout = await page.evaluate(() => ({
+			viewport: innerHeight,
+			app: document.querySelector("#app")!.getBoundingClientRect().height,
+			shell: document.querySelector("#shell")!.getBoundingClientRect(),
+		}));
+		assert.equal(stacksLayout.app, stacksLayout.viewport, "#app must fill, not exceed, the viewport");
+		assert.ok(
+			stacksLayout.shell.bottom <= stacksLayout.viewport,
+			`stacks shell bottom ${stacksLayout.shell.bottom} exceeds viewport ${stacksLayout.viewport}`,
+		);
+
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator("[data-profile-row]").first().waitFor();
+		const profilesLayout = await page.evaluate(() => {
+			const main = document.querySelector(".profile-main")!;
+			const rect = main.getBoundingClientRect();
+			return {
+				viewport: innerHeight,
+				app: document.querySelector("#app")!.getBoundingClientRect().height,
+				mainBottom: rect.bottom,
+				mainClient: main.clientHeight,
+				mainScroll: main.scrollHeight,
+			};
+		});
+		assert.equal(profilesLayout.app, profilesLayout.viewport);
+		assert.ok(
+			profilesLayout.mainBottom <= profilesLayout.viewport,
+			`profile main bottom ${profilesLayout.mainBottom} exceeds viewport ${profilesLayout.viewport}`,
+		);
+		assert.ok(
+			profilesLayout.mainScroll > profilesLayout.mainClient,
+			"profile main should offer internal scrolling for overflowing content",
+		);
+
+		await page.locator(".delegation-card").scrollIntoViewIfNeeded();
+		const saveBox = await page.locator("#delegationSaveBtn").boundingBox();
+		assert.ok(saveBox, "delegation save button has no layout box");
+		assert.ok(
+			saveBox!.y + saveBox!.height <= profilesLayout.viewport,
+			"delegation save button must be reachable inside the viewport",
+		);
 	}, {
 		currentModel,
 		models: [currentModel, targetModel],

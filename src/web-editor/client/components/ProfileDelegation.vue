@@ -41,8 +41,10 @@ watch(
 	{ immediate: true },
 );
 
+const timeoutDraftText = () => String(timeoutText.value ?? "").trim();
+
 const timeoutValue = computed(() => {
-	const text = timeoutText.value.trim();
+	const text = timeoutDraftText();
 	if (!text) return undefined;
 	const parsed = Number(text);
 	return Number.isSafeInteger(parsed) ? parsed : Number.NaN;
@@ -59,7 +61,7 @@ const dirty = computed(() => {
 	const configured = props.entry.subagent.configured;
 	return enabled.value !== (configured.enabled === true)
 		|| backend.value !== (configured.backend ?? "")
-		|| timeoutText.value.trim() !== (configured.timeoutMs?.toString() ?? "");
+		|| timeoutDraftText() !== (configured.timeoutMs?.toString() ?? "");
 });
 
 const backendKnown = computed(() => {
@@ -97,14 +99,17 @@ async function save(): Promise<void> {
 
 <template>
 	<section class="profile-card delegation-card">
-		<div class="profile-card-title">Delegation (experimental)</div>
+		<div class="profile-card-title">
+			Delegation (experimental)
+			<span v-if="dirty" class="delegation-dirty">unsaved changes</span>
+		</div>
 		<div class="delegation-status" :class="{ ready: entry.subagent.enabled }" data-delegation-status>
 			<template v-if="entry.subagent.enabled">
-				Enabled · backend <code>{{ entry.subagent.backend }}</code> ({{ entry.subagent.backendSource }})
+				Saved: enabled · backend <code>{{ entry.subagent.backend }}</code> ({{ entry.subagent.backendSource }})
 				· timeout {{ entry.subagent.timeoutMs }} ms ({{ entry.subagent.timeoutSource }})
 			</template>
 			<template v-else>
-				Disabled — the main agent cannot delegate tasks to this profile.
+				Saved: disabled — the main agent cannot delegate tasks to this profile.
 			</template>
 		</div>
 		<div v-if="entry.subagent.enabled && !entry.subagent.backendRegistered" class="delegation-warning">
@@ -134,8 +139,10 @@ async function save(): Promise<void> {
 				<input
 					id="delegationTimeout"
 					v-model="timeoutText"
-					type="text"
-					inputmode="numeric"
+					type="number"
+					:min="TIMEOUT_MIN"
+					:max="TIMEOUT_MAX"
+					step="1000"
 					:placeholder="`Default ${summary.timeoutMs} ms (${summary.timeoutSource})`"
 					:disabled="busy"
 					autocomplete="off"
@@ -180,6 +187,17 @@ async function save(): Promise<void> {
 
 .delegation-status.ready {
 	color: var(--success);
+}
+
+.delegation-dirty {
+	margin-left: 8px;
+	border: 1px solid var(--warning);
+	border-radius: 999px;
+	padding: 1px 8px;
+	background: var(--warning-bg);
+	color: var(--warning);
+	font-size: 11px;
+	font-weight: 500;
 }
 
 .delegation-warning {

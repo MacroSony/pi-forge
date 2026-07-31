@@ -21,9 +21,17 @@ const profileActionStatus = ref("");
 const profileActionError = ref("");
 const profileActionBusy = ref(false);
 
+function preferredProfilePath(entries: WebEditorProfileEntry[]): string {
+	return (entries.find((entry) => entry.lastApplied)
+		?? entries.find((entry) => entry.errors === 0)
+		?? entries[0])?.filePath ?? "";
+}
+
 const selected = computed<WebEditorProfileEntry | undefined>(() => {
 	const entries = collection.value?.profiles || [];
-	return entries.find((entry) => entry.filePath === selectedPath.value) || entries[0];
+	return entries.find((entry) => entry.filePath === selectedPath.value)
+		?? entries.find((entry) => entry.filePath === preferredProfilePath(entries))
+		?? entries[0];
 });
 
 onMounted(() => {
@@ -42,7 +50,7 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 		);
 		collection.value = next;
 		if (!next.profiles.some((entry) => entry.filePath === selectedPath.value)) {
-			selectedPath.value = next.profiles[0]?.filePath || "";
+			selectedPath.value = preferredProfilePath(next.profiles);
 		}
 		if (reloadFromDisk) editorMode.value = undefined;
 	} catch (error) {
@@ -367,7 +375,7 @@ function driftLabel(changed: boolean): string {
 
 <style scoped>
 .profile-surface {
-	height: calc(100% - 44px);
+	flex: 1;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
@@ -403,12 +411,16 @@ function driftLabel(changed: boolean): string {
 
 .profile-sidebar {
 	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 	border-right: 1px solid var(--line);
 	background: var(--pane);
 }
 
 .profile-list {
-	height: calc(100% - 74px);
+	flex: 1;
+	min-height: 0;
 	padding: 8px;
 	overflow: auto;
 }
@@ -468,6 +480,7 @@ function driftLabel(changed: boolean): string {
 
 .profile-main {
 	min-width: 0;
+	min-height: 0;
 	overflow: auto;
 	padding: 16px;
 }
@@ -581,7 +594,7 @@ function driftLabel(changed: boolean): string {
 
 @media (max-width: 800px) {
 	.profile-layout {
-		grid-template-columns: 1fr;
+		display: block;
 		overflow: auto;
 	}
 
@@ -591,7 +604,7 @@ function driftLabel(changed: boolean): string {
 	}
 
 	.profile-list {
-		height: auto;
+		flex: none;
 		max-height: 35vh;
 	}
 
