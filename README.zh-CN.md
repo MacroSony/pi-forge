@@ -59,6 +59,10 @@ $EDITOR .pi/forge/prompt-stacks/default.json
 
 导入支持原生 pi-forge stack JSON，也支持 SillyTavern 预设 JSON。SillyTavern 预设会自动转换成 prompt stack；如果一个预设里有多个 `character_id` 配置，编辑器会询问要使用哪一个。
 
+同一个编辑器也可以管理 agent profile：用顶部导航在 prompt stack 和 agent profile 之间切换。Profile 列表会显示每个 profile 的 ID、名称、模型/思考等级/stack 目标、校验状态，以及 auto-activation、last-applied 和 delegation 徽章。受信任项目可以不写 JSON 就完成创建、编辑、校验、保存、一次性应用和删除：模型和思考等级选项来自 model registry，prompt stack 选项来自共享的 stack 仓库，保存时会拒绝第二个请求 auto-activation 的 profile。运行时与 provenance 卡片会区分当前运行时和上次应用的 provenance，并把源定义变化和外部修改模型/思考等级/prompt stack 后产生的逐字段 drift 分开显示。
+
+每个 profile 还有一张实验性 subagent 路径的 delegation 卡片。它会显示最终的委派状态、backend、timeout 及其配置来源，受信任项目可以直接切换委派开关、覆盖 backend/timeout，无需手动编辑 `.pi/forge/config.json`。项目默认值（`subagents.backend`、`subagents.timeoutMs`）和 `subagents.allowAgentInvocationWithoutApproval` 仍然只能在配置文件中设置。
+
 编辑器默认运行在一个可用的 `127.0.0.1` 端口，并带有会话 token，所以多个 Pi 实例可以同时打开各自的编辑器。如果 Pi 在 session navigation 或新会话后重新初始化扩展，同一项目中的 `/preset ui` 会复用已有编辑器 URL，不会遗留旧 server 后再开一个新端口；resources 和 preview 在生命周期刷新后仍可使用。写入需要项目被信任，且只会写入 prompt-stack 存储目录。新建的栈会写入 `.pi/forge/prompt-stacks`；旧的 `.pi/prompt-stacks` 栈仍然可读取和编辑。保存、导入、fork、删除成功后会重新加载到当前 Pi 会话。需要时可以用 `/preset ui restart` 或 `/preset ui stop`。
 
 要把旧栈复制到新位置，执行 `/preset migrate-stacks`。加 `--dry-run` 可先预览，加 `--overwrite` 可覆盖目标文件，加 `--delete-legacy` 会在复制成功后删除旧文件。
@@ -122,7 +126,7 @@ Profile 只应用一次，不会持续接管 Pi 的模型或思考等级；之�
 
 目前注册了两个实验性 backend：`pi-subprocess-readonly`（默认；在全新的 `pi --mode text --print` 子进程中执行）和 `pi-rpc-readonly`（在全新的 `pi --mode rpc` 进程中执行）。两者编译完全相同的密封 prompt，并执行相同的只读 shared-user 边界，仅进程协议不同。Backend 选择属于配置而不是 profile schema：在 `~/.pi/forge/config.json` 中设置 `subagents.backend` 作为用户级默认值，在受信任项目的 `.pi/forge/config.json` 中覆盖它，并可用 `--backend <id>` 或交互模式下 `forge_subagent` 的 `backend` 参数对单次运行再次覆盖。系统故意不提供 fallback：如果所选 backend 不可用，运行会在 provider transport 之前失败。无人值守的 `forge_subagent` 调用固定使用该 profile 最终解析出的 backend，并拒绝单次调用的覆盖参数。
 
-Agent profile 默认不能作为 subagent 委派。必须在受信任项目的 `.pi/forge/config.json` 中为它添加 `subagents.profiles` 配置并设置 `enabled: true`；普通 `/profile` 列表、应用和自动激活不受影响。未启用或未列出的 profile 不会出现在 `forge_subagent_profiles` 中，即使猜中 ID，模型工具和 `/forge-agent` 也会拒绝执行。
+Agent profile 默认不能作为 subagent 委派。必须在受信任项目的 `.pi/forge/config.json` 中为它添加 `subagents.profiles` 配置并设置 `enabled: true`，也可以在 web 编辑器中通过该 profile 的 delegation 卡片开启；普通 `/profile` 列表、应用和自动激活不受影响。未启用或未列出的 profile 不会出现在 `forge_subagent_profiles` 中，即使猜中 ID，模型工具和 `/forge-agent` 也会拒绝执行。
 
 前台运行默认采用 60 秒的 best-effort timeout。较慢的模型或较大的 review 可以通过 `subagents.timeoutMs` 将其设置为 1 秒至 1 小时。每个已启用 profile 还可以在项目配置中单独覆盖 `backend` 和 `timeoutMs`，无需把与主机有关的 runner 策略写进可移植的 profile JSON：
 

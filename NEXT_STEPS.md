@@ -69,7 +69,7 @@ Decisions and scope for taking 0.4.0 out of beta. This section supersedes older 
 3. **Resolve the runtime publish story** **(done 2026-07-28):** published `@zihanw/pi-subagent-runtime@0.1.0-beta.1` and pinned that exact prerelease in pi-forge. The subagent surface remains experimental and does not require runtime 0.1-stable.
 4. **Legacy cleanup and documentation alignment** **(done 2026-07-26):** removed the SDK spike scripts/test, the `src/subagent-contract.ts` compatibility barrel, and the `subagentExecutionFingerprint` host shim; aligned stale `pi-sdk-isolated`/registry claims in `SUBAGENT_INTERFACE_DESIGN.md`, `SUBAGENT_ADAPTER_CONTRACT.md`, `SUBAGENT_SDK_SPIKE_FINDINGS.md`, and `FEATURES.md`; recorded the removed legacy exports as breaking changes in `CHANGELOG.md`. Coverage debt accepted: the removed spike was the only live media-preparation and trusted-extension preparation diagnostic; re-establish that coverage when delegated media tasks are productized (work item 2).
 5. **Milestone 1 step 1 dogfooding** of the subprocess backend against representative providers, cancellation timing, long prompts, large read results, and rejection/full-prompt review flows. The bubblewrap sandbox evaluation and staged-write proposal remain Milestone 1 design work and do not gate 0.4.0; any sandbox backend lands as a separate runtime backend entry point with honest receipts.
-6. **Milestone 2: profile UI** in the browser editor, per its existing scope and done criteria.
+6. **Milestone 2: profile UI** **(done 2026-07-31):** the browser editor now manages profiles end to end — navigation, list/badges, create/edit/validate/save/apply/delete, single auto-activation enforcement, registry-driven model controls, provenance/drift display, and a per-profile delegation card that writes `subagents.profiles` policy with backend/timeout overrides. A viewport-layout regression from the Vue shell migration (clipped content with no scroll path) was repaired with flex `min-height: 0` chains, a collapsible diagnostics panel, narrow-mode layout fixes, and a layout-invariant browser test.
 7. **Milestone 3: release readiness**, plus explicit release-note non-goals: no runner, no background execution, no chains, no profile schema expansion, no macro portability hints, no chat-history lifecycle controls.
 
 ## 0.4.1 Candidate: Scoped Global Profiles and Stacks
@@ -101,7 +101,7 @@ Done criteria:
 - User cancellation and host timeout settle once and clean up preparation sessions, child processes, and temporary bridge data.
 - Documentation and receipts remain accurate on unsupported platforms and when falling back to shared-user execution.
 
-## Milestone 2: Profile UI
+## Milestone 2: Profile UI (landed 2026-07-31)
 
 Goal: make profile v1 fully manageable from the existing localhost editor while preserving the exact behavior of the shared profile service and `/profile` commands.
 
