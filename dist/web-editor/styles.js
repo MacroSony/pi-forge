@@ -968,8 +968,11 @@ html, body {
   min-height: 280px;
 }
 @media (max-width: 900px) {
-  .shell, .workspace, .settings, .item-fields {
+  .shell, .settings, .item-fields {
     grid-template-columns: 1fr;
+  }
+  .workspace {
+    display: block;
   }
   html, body {
     overflow: auto;
