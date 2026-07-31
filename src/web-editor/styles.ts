@@ -601,9 +601,41 @@ html, body {
 .diagnostics {
   border-top: 1px solid var(--line);
   background: var(--pane);
-  flex: 0 0 128px;
+  flex: none;
   min-height: 0;
+}
+.diagnostics-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+.diagnostics-head:hover {
+  background: var(--control-muted);
+}
+.diagnostics-title {
+  flex: 1;
+  font-weight: 650;
+}
+.diagnostics-chevron {
+  transition: transform .12s ease;
+}
+.diagnostics.collapsed .diagnostics-chevron {
+  transform: rotate(-90deg);
+}
+.diagnostics-body {
+  max-height: 128px;
   overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.diagnostics.collapsed .diagnostics-body {
+  display: none;
 }
 .diagnostic {
   padding: 6px 12px;
@@ -968,11 +1000,23 @@ html, body {
   min-height: 280px;
 }
 @media (max-width: 900px) {
-  .shell, .settings, .item-fields {
+  .shell, .settings {
     grid-template-columns: 1fr;
   }
   .workspace {
     display: block;
+  }
+  .item-form {
+    height: auto;
+    overflow: visible;
+  }
+  .item-fields {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+  .content-field textarea {
+    height: auto;
+    min-height: 220px;
+    resize: vertical;
   }
   html, body {
     overflow: auto;

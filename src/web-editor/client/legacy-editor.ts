@@ -29,6 +29,8 @@ let dragClientY = 0;
 let sidebarCollapsed = false;
 let policyResources: { tools: WebEditorPolicyResource[]; skills: WebEditorPolicyResource[] } = { tools: [], skills: [] };
 let latestDiagnostics: PromptStackDiagnostic[] = [];
+// null = automatic: expand when errors or warnings exist, collapse when clean.
+let diagnosticsCollapsed: boolean | null = null;
 let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
 let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
@@ -921,16 +923,34 @@ function stackForSubmit() {
 
 function renderDiagnostics(diagnostics: any) {
   latestDiagnostics = diagnostics || [];
+  const errors = latestDiagnostics.filter((diag: any) => (diag.level || "info") === "error").length;
+  const warnings = latestDiagnostics.filter((diag: any) => diag.level === "warning").length;
+  const collapsed = diagnosticsCollapsed ?? (errors === 0 && warnings === 0);
+  const summary = !latestDiagnostics.length
+    ? "none"
+    : [
+      errors ? errors + " error" + (errors === 1 ? "" : "s") : "",
+      warnings ? warnings + " warning" + (warnings === 1 ? "" : "s") : "",
+    ].filter(Boolean).join(" · ") || latestDiagnostics.length + " note" + (latestDiagnostics.length === 1 ? "" : "s");
+  const body = !latestDiagnostics.length
+    ? '<div class="diagnostic info">No diagnostics.</div>'
+    : latestDiagnostics.map((diag: any) => {
+      const level = diag.level || "info";
+      const item = diag.itemId ? " [" + escapeHtml(diag.itemId) + "]" : "";
+      return '<div class="diagnostic ' + attr(level) + '"><strong>' + escapeHtml(level.toUpperCase()) + item + '</strong>: ' + escapeHtml(diag.message || "") + '</div>';
+    }).join("");
   const pane = el("diagnostics");
-  if (!latestDiagnostics.length) {
-    pane.innerHTML = '<div class="diagnostic info">No diagnostics.</div>';
-    return;
-  }
-  pane.innerHTML = latestDiagnostics.map((diag: any) => {
-    const level = diag.level || "info";
-    const item = diag.itemId ? " [" + escapeHtml(diag.itemId) + "]" : "";
-    return '<div class="diagnostic ' + attr(level) + '"><strong>' + escapeHtml(level.toUpperCase()) + item + '</strong>: ' + escapeHtml(diag.message || "") + '</div>';
-  }).join("");
+  pane.classList.toggle("collapsed", collapsed);
+  pane.innerHTML =
+    '<button type="button" id="diagnosticsToggleBtn" class="diagnostics-head" aria-expanded="' + String(!collapsed) + '" title="Toggle the diagnostics panel">' +
+    '<span class="diagnostics-title">Diagnostics · ' + escapeHtml(summary) + '</span>' +
+    '<span class="diagnostics-chevron">▾</span>' +
+    '</button>' +
+    '<div class="diagnostics-body">' + body + '</div>';
+  el("diagnosticsToggleBtn").onclick = () => {
+    diagnosticsCollapsed = !collapsed;
+    renderDiagnostics(latestDiagnostics);
+  };
 }
 
 function renderEmpty() {

@@ -125,6 +125,50 @@ test("web editor transitions between populated and empty stack states", { timeou
 	});
 });
 
+test("stack diagnostics panel collapses and expands", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeStack(cwd, "warned.json", {
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "warned",
+			name: "Warned stack",
+			mode: "replace",
+			items: [{ kind: "block", id: "system", enabled: true, role: "system", content: "No history slot here." }],
+		});
+	}, async ({ editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+
+		// Clean stack: collapsed slim header, body hidden.
+		const diagnostics = page.locator(".diagnostics");
+		assert.equal(await diagnostics.getAttribute("class"), "diagnostics collapsed");
+		assert.equal(await page.locator(".diagnostics-title").textContent(), "Diagnostics · none");
+		assert.equal(await page.locator(".diagnostics-body").isVisible(), false);
+
+		// Warnings auto-expand the panel.
+		await page.locator(".stack-row", { hasText: "warned" }).click();
+		await page.locator(".diagnostics-title").filter({ hasText: "1 warning" }).waitFor();
+		assert.equal(await diagnostics.getAttribute("class"), "diagnostics");
+		assert.equal(await page.locator(".diagnostics-body").isVisible(), true);
+
+		// Back to clean: auto-collapses again until the user toggles.
+		await page.locator(".stack-row", { hasText: "default" }).click();
+		await page.locator(".diagnostics-title").filter({ hasText: "none" }).waitFor();
+		assert.equal(await diagnostics.getAttribute("class"), "diagnostics collapsed");
+		await page.locator("#diagnosticsToggleBtn").click();
+		assert.equal(await diagnostics.getAttribute("class"), "diagnostics");
+		assert.equal(await page.locator(".diagnostics-body").isVisible(), true);
+		assert.match(await page.locator(".diagnostics-body").textContent() ?? "", /No diagnostics/);
+		assert.equal(await page.locator("#diagnosticsToggleBtn").getAttribute("aria-expanded"), "true");
+
+		// The explicit user choice wins over the automatic state.
+		await page.locator(".stack-row", { hasText: "warned" }).click();
+		await page.locator(".diagnostics-title").filter({ hasText: "1 warning" }).waitFor();
+		assert.equal(await diagnostics.getAttribute("class"), "diagnostics");
+	});
+});
+
 test("web editor navigates project profile resolution without losing stack state", { timeout: 20_000 }, async (t) => {
 	const currentModel = browserModel("test", "current");
 	const targetModel = browserModel("test", "target");
