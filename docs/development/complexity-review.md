@@ -1,4 +1,6 @@
-# pi-forge Complexity Review
+# Complexity review
+
+> **Historical snapshot:** This review records the repository structure at the end of the 0.4 implementation cycle. File counts and hotspot rankings may age; use it as refactoring context, not current user guidance.
 
 Date: 2026-07-18
 
@@ -47,7 +49,7 @@ The previous 1,373-line `src/subagent-contract.ts` implementation is now a seven
 
 ### Package and API boundaries
 
-`PUBLIC_API.md` classifies stable, experimental, and compatibility surfaces. `@zihanw/pi-forge/subagent` is the preferred experimental integration entry point, while legacy `src/*` aliases resolve to compiled modules without publishing source files.
+The [public API policy](../reference/public-api.md) classifies stable, experimental, and compatibility surfaces. `@zihanw/pi-forge/subagent` is the preferred experimental integration entry point, while legacy `src/*` aliases resolve to compiled modules without publishing source files.
 
 ## Current Complexity Hotspots
 

@@ -1,4 +1,4 @@
-# Review of `NEXT_STEPS.md` and `SUBAGENT_INTERFACE_DESIGN.md`
+# Historical subagent design review
 
 Status: historical pre-implementation review. Its blocking findings were resolved by the exported contract, validated backend registry, immutable preparation binding, concrete backends, and approval-gated foreground integration; the text below records the issues that shaped that design.
 

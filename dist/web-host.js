@@ -289,6 +289,7 @@ async function deleteProfileFile(ctx, runtime, id) {
     if (matches.length > 1) {
         return { ok: false, status: 409, error: `Cannot delete agent profile ${id} while duplicate profile ids exist.` };
     }
+    const subagentSettings = loadForgeSubagentSettings(ctx);
     const result = deleteAgentProfile(ctx.cwd, matches[0]);
     if (!result.ok) {
         if (result.reason === "invalid-path")
@@ -299,6 +300,21 @@ async function deleteProfileFile(ctx, runtime, id) {
             return { ok: false, status: 409, error: `Agent profile ${id} changed on disk; refresh before deleting it.` };
         }
         return { ok: false, status: 500, error: result.error ?? `Failed to delete agent profile ${id}.` };
+    }
+    if (Object.hasOwn(subagentSettings.profiles, id)) {
+        const cleared = updateForgeSubagentProfileConfig(ctx.cwd, id, {
+            enabled: false,
+            backend: null,
+            timeoutMs: null,
+        });
+        if (!cleared.ok) {
+            await runtime.reloadProfiles();
+            return {
+                ok: false,
+                status: 500,
+                error: `Deleted agent profile ${id}, but failed to remove its delegation settings: ${cleared.error}`,
+            };
+        }
     }
     await runtime.reloadProfiles();
     const collection = profileCollection(ctx, runtime);

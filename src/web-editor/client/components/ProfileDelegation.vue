@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import type {
@@ -18,6 +18,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
 	"update:busy": [value: boolean];
+	"update:dirty": [value: boolean];
 	saved: [mutation: WebEditorProfileMutation, message: string];
 	failed: [message: string];
 }>();
@@ -30,18 +31,30 @@ const backend = ref("");
 const timeoutText = ref("");
 const localError = ref("");
 
+const timeoutDraftText = () => String(timeoutText.value ?? "").trim();
+
+function draftMatches(entry: WebEditorProfileEntry): boolean {
+	const configured = entry.subagent.configured;
+	return enabled.value === (configured.enabled === true)
+		&& backend.value === (configured.backend ?? "")
+		&& timeoutDraftText() === (configured.timeoutMs?.toString() ?? "");
+}
+
+function syncDraft(entry: WebEditorProfileEntry): void {
+	enabled.value = entry.subagent.configured.enabled === true;
+	backend.value = entry.subagent.configured.backend ?? "";
+	timeoutText.value = entry.subagent.configured.timeoutMs?.toString() ?? "";
+	localError.value = "";
+}
+
 watch(
 	() => props.entry,
-	(entry) => {
-		enabled.value = entry.subagent.configured.enabled === true;
-		backend.value = entry.subagent.configured.backend ?? "";
-		timeoutText.value = entry.subagent.configured.timeoutMs?.toString() ?? "";
-		localError.value = "";
+	(entry, previous) => {
+		const preserveDraft = previous?.filePath === entry.filePath && !draftMatches(previous);
+		if (!preserveDraft) syncDraft(entry);
 	},
 	{ immediate: true },
 );
-
-const timeoutDraftText = () => String(timeoutText.value ?? "").trim();
 
 const timeoutValue = computed(() => {
 	const text = timeoutDraftText();
@@ -57,11 +70,20 @@ const timeoutInvalid = computed(() => {
 		|| (timeoutValue.value as number) > TIMEOUT_MAX;
 });
 
-const dirty = computed(() => {
-	const configured = props.entry.subagent.configured;
-	return enabled.value !== (configured.enabled === true)
-		|| backend.value !== (configured.backend ?? "")
-		|| timeoutDraftText() !== (configured.timeoutMs?.toString() ?? "");
+const dirty = computed(() => !draftMatches(props.entry));
+
+watch(dirty, (value) => emit("update:dirty", value), { immediate: true });
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+	if (!dirty.value) return;
+	event.preventDefault();
+	event.returnValue = "";
+}
+
+onMounted(() => window.addEventListener("beforeunload", handleBeforeUnload));
+onBeforeUnmount(() => {
+	window.removeEventListener("beforeunload", handleBeforeUnload);
+	emit("update:dirty", false);
 });
 
 const backendKnown = computed(() => {

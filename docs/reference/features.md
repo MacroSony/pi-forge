@@ -1,4 +1,4 @@
-# pi-forge Implemented Features
+# Implemented feature inventory
 
 This file tracks the currently implemented feature surface for agent profiles, the prompt-stack runtime, template variables, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
 
@@ -10,7 +10,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tarball verification rejects physical `src/` entries and requires the root and subagent compiled entry points.
 - The web editor's HTML page shell and static styles are maintained separately from its browser behavior modules.
 - Strict typed web-editor client modules bundled into one self-contained browser script at build time, with generated-client consistency verification.
-- Supported runtime baseline is Node.js 22.19+ with the exact `@earendil-works/pi-*` 0.82.1 package set; earlier and later SDK versions are not claimed as compatible.
+- Supported Node.js baseline is 22.19+. Published Pi SDK dependencies are host-provided wildcard peers; exact repository versions are reproducible development/test fixtures rather than runtime constraints.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 
@@ -31,7 +31,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Last-applied provenance is branch-scoped session metadata used only for drift reporting; reload, resume, tree navigation, and compaction never reapply a profile.
 - `/profile reload` reloads definitions without applying them, and `/profile forget` clears provenance without changing runtime state.
 - Project trust gates profile loading, application, and writes.
-- Shared typed profile services own capture, protected write/update/delete, application/rollback, immutable preview data, provenance changes, and runtime-drift calculation so command and future UI/adapter consumers do not duplicate behavior.
+- Shared typed profile services own capture, protected write/update/delete, application/rollback, immutable preview data, provenance changes, and runtime-drift calculation so command, web-editor, and adapter consumers do not duplicate behavior.
 
 ## Subagent Adapter Contract
 
@@ -42,7 +42,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.
 - Backend tool negotiation intersects prompt-stack name policy with declared filesystem/process/network effects and per-request access.
 - Optional empty-by-default backend registry validates registration and preflight identity, requires the backend to supply a complete fingerprinted prompt runtime, binds the exact host preparation to execution, routes dry-plan discard, rejects unbound or refingerprinted substitute plans, arbitrates cancellation and host timeouts, normalizes failures, and protects opaque trace routing behind authorization-scoped handles.
-- Experimental `pi-subprocess-readonly` backend reuses Pi 0.82.1's parent `ModelRuntime` for authenticated preparation, then runs a clean foreground Pi subprocess with the exact profile model, thinking level, and compiled prompt. Its candidate model tools are limited to `read`, `grep`, `find`, and `ls`, further filtered by prompt-stack policy; it loads no write/shell tools, skills, prompt templates, context files, or third-party extensions.
+- Experimental `pi-subprocess-readonly` backend reuses the host Pi runtime for authenticated preparation, then runs a clean foreground Pi subprocess with the exact profile model, thinking level, and compiled prompt. Its candidate model tools are limited to `read`, `grep`, `find`, and `ls`, further filtered by prompt-stack policy; it loads no write/shell tools, skills, prompt templates, context files, or third-party extensions. Host-coupled capability mismatches fail closed during preflight.
 - Delegation is an explicit per-profile opt-in under the trusted project's `subagents.profiles`; ordinary profile loading/application remains independent. Global profile entries warn and are ignored so project-local profile IDs cannot silently authorize unrelated projects. Disabled and unlisted profiles are omitted from `forge_subagent_profiles` and rejected before preparation by the command, model-callable tool, and concrete runtime.
 - The no-egress `forge_subagent_profiles` tool gives the main agent a live catalog of enabled profile IDs, names, descriptions, model/thinking/stack metadata, effective backend/timeout and sources, and ready/unavailable resolution status. It also reports whether the parent tool policy currently permits `forge_subagent`.
 - The model-callable `forge_subagent` tool and `/forge-agent run` prepare an immutable plan before provider transport. `/forge-agent run` and the default tool path require explicit human approval; a trusted-project `subagents.allowAgentInvocationWithoutApproval` option may authorize only the model-callable tool without a per-run prompt. The default review shows the task, profile/stack, provider/model/thinking level, effective tools, working directory, shared-user boundary, payload size, and fingerprint; the complete provider-bound prompt can be opened on demand.
@@ -56,7 +56,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Granular validators cover request access/depth/media/limits, backend capabilities and enforcement, prompt-runtime fidelity, plan correlation, all response terminal statuses, usage units, artifact namespaces/paths, and authorized trace handles.
 - Portable profile, prompt-stack, and complete execution fingerprints use canonical `sha256:v1` serialization without changing legacy branch-provenance fingerprints.
 - The opt-in internal Pi SDK spike remains available for broader live diagnostics, including media and trusted custom registrations beyond the shipped text-only walking skeleton.
-- Adapter responsibilities and unsupported runner behavior are documented in `SUBAGENT_ADAPTER_CONTRACT.md`.
+- Adapter responsibilities and unsupported runner behavior are documented in the [subagent adapter contract](subagent-adapter.md).
 
 ## Prompt Stack Loading and Storage
 

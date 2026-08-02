@@ -1,17 +1,19 @@
-# pi-forge Next Steps
+# Historical 0.4 roadmap and implementation log
 
-This file is the forward-looking product roadmap. Completed capability belongs in [`FEATURES.md`](FEATURES.md), release history belongs in [`CHANGELOG.md`](CHANGELOG.md), and detailed architecture belongs in the linked design documents below.
+> **Archive:** This document preserves the planning record through the 0.4 development cycle. Completed behavior belongs in the [feature inventory](../reference/features.md); current plans belong in the [roadmap](../development/roadmap.md).
+
+This file was the forward-looking product roadmap during 0.4 development. Completed capability now belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and current plans in the [roadmap](../development/roadmap.md).
 
 ## Documentation Map
 
-- [`README.md`](README.md) and [`README.zh-CN.md`](README.zh-CN.md): user installation, profile, prompt-stack, editor, and development workflows.
-- [`FEATURES.md`](FEATURES.md): implemented profile, prompt-stack, web-editor, payload, extension, packaging, and experimental subagent behavior.
-- [`CHANGELOG.md`](CHANGELOG.md): release and unreleased change history.
-- [`SUBAGENT_INTERFACE_DESIGN.md`](SUBAGENT_INTERFACE_DESIGN.md): accepted request/response architecture, context model, responsibility boundaries, and implementation history.
-- [`SUBAGENT_ADAPTER_CONTRACT.md`](SUBAGENT_ADAPTER_CONTRACT.md): exported contract, backend registry flow, validation, enforcement receipts, and adapter responsibilities.
-- [`SUBAGENT_SDK_SPIKE_FINDINGS.md`](SUBAGENT_SDK_SPIKE_FINDINGS.md): real Pi SDK findings for model/auth resolution, exact prompt preparation, dynamic tools, media, timeout, and cleanup.
-- [`SUBAGENT_DESIGN_REVIEW.md`](SUBAGENT_DESIGN_REVIEW.md): the design issues that caused resolution, preflight, enforcement, task-preservation, fingerprint, and response semantics to be revised before implementation.
-- [`PUBLIC_API.md`](PUBLIC_API.md): stable, experimental, and internal compatibility surfaces.
+- [Root README](../../README.md) and [Chinese README](../../README.zh-CN.md): short project landing pages.
+- [Feature inventory](../reference/features.md): implemented profile, prompt-stack, web-editor, payload, extension, packaging, and experimental subagent behavior.
+- [Changelog](../../CHANGELOG.md): release and unreleased change history.
+- [Subagent interface design](subagents/interface-design.md): accepted request/response architecture, context model, responsibility boundaries, and implementation history.
+- [Subagent adapter contract](../reference/subagent-adapter.md): current exported contract, validation, enforcement receipts, and adapter responsibilities.
+- [SDK spike findings](subagents/sdk-spike-findings.md): historical real Pi SDK findings for model/auth resolution, exact prompt preparation, dynamic tools, media, timeout, and cleanup.
+- [Subagent design review](subagents/design-review.md): issues that drove resolution, preflight, enforcement, task-preservation, fingerprint, and response revisions.
+- [Public API policy](../reference/public-api.md): stable, experimental, and internal compatibility surfaces.
 
 ## Current Objective
 

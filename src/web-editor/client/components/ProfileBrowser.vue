@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import type {
@@ -9,6 +9,10 @@ import type {
 } from "../types.ts";
 import ProfileDelegation from "./ProfileDelegation.vue";
 import ProfileEditor from "./ProfileEditor.vue";
+
+const props = defineProps<{
+	active: boolean;
+}>();
 
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
@@ -20,6 +24,8 @@ const editorMode = ref<"create" | "edit">();
 const profileActionStatus = ref("");
 const profileActionError = ref("");
 const profileActionBusy = ref(false);
+const delegationDirty = ref(false);
+const delegationRevision = ref(0);
 
 function preferredProfilePath(entries: WebEditorProfileEntry[]): string {
 	return (entries.find((entry) => entry.lastApplied)
@@ -34,9 +40,13 @@ const selected = computed<WebEditorProfileEntry | undefined>(() => {
 		?? entries[0];
 });
 
-onMounted(() => {
-	void loadProfiles();
-});
+watch(
+	() => props.active,
+	(active) => {
+		if (active) void loadProfiles();
+	},
+	{ immediate: true },
+);
 
 async function loadProfiles(reloadFromDisk = false): Promise<void> {
 	loading.value = true;
@@ -60,11 +70,31 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 	}
 }
 
+function confirmDiscardDelegation(): boolean {
+	if (!delegationDirty.value) return true;
+	if (!window.confirm("Discard unsaved delegation changes?")) return false;
+	delegationDirty.value = false;
+	delegationRevision.value += 1;
+	return true;
+}
+
 function selectProfile(entry: WebEditorProfileEntry): void {
+	if (entry.filePath === selected.value?.filePath) return;
+	if (!confirmDiscardDelegation()) return;
 	selectedPath.value = entry.filePath;
 	editorMode.value = undefined;
 	profileActionStatus.value = "";
 	profileActionError.value = "";
+}
+
+function startEditor(mode: "create" | "edit"): void {
+	if (!confirmDiscardDelegation()) return;
+	editorMode.value = mode;
+}
+
+function refreshProfiles(): void {
+	if (!confirmDiscardDelegation()) return;
+	void loadProfiles(true);
 }
 
 function handleProfileSaved(mutation: WebEditorProfileMutation): void {
@@ -124,7 +154,8 @@ function handleDelegationFailed(message: string): void {
 async function deleteSelectedProfile(): Promise<void> {
 	const target = selected.value;
 	if (!target) return;
-	if (!window.confirm(`Delete agent profile ${target.profile.id}?\n\n${target.filePath}`)) return;
+	if (!confirmDiscardDelegation()) return;
+	if (!window.confirm(`Delete agent profile ${target.profile.id} and its delegation settings?\n\n${target.filePath}`)) return;
 	profileActionBusy.value = true;
 	profileActionStatus.value = "";
 	profileActionError.value = "";
@@ -180,11 +211,11 @@ function driftLabel(changed: boolean): string {
 				data-icon="+"
 				type="button"
 				:disabled="loading || profileActionBusy || !!editorMode || !collection?.trusted"
-				@click="editorMode = 'create'"
+				@click="startEditor('create')"
 			>
 				New profile
 			</button>
-			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="loadProfiles(true)">
+			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="refreshProfiles">
 				Refresh
 			</button>
 		</header>
@@ -257,7 +288,7 @@ function driftLabel(changed: boolean): string {
 							>
 								{{ selected.preview.applicable ? "Ready to apply" : "Preflight failed" }}
 							</span>
-							<button id="profileEditBtn" data-icon="✎" type="button" @click="editorMode = 'edit'">
+							<button id="profileEditBtn" data-icon="✎" type="button" @click="startEditor('edit')">
 								Edit
 							</button>
 							<button
@@ -328,10 +359,12 @@ function driftLabel(changed: boolean): string {
 					</section>
 
 					<ProfileDelegation
+						:key="`${selected.filePath}:${delegationRevision}`"
 						:entry="selected"
 						:summary="collection.subagents"
 						:busy="profileActionBusy"
 						@update:busy="profileActionBusy = $event"
+						@update:dirty="delegationDirty = $event"
 						@saved="handleDelegationSaved"
 						@failed="handleDelegationFailed"
 					/>

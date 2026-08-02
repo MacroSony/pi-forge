@@ -21,8 +21,35 @@ const [manifest] = JSON.parse(packed.stdout);
 const paths = new Set(manifest.files.map((file) => file.path));
 const failures = [];
 
-for (const required of ["dist/index.js", "dist/index.d.ts", "dist/subagent/index.js", "dist/subagent/index.d.ts"]) {
+for (const required of [
+	"dist/index.js",
+	"dist/index.d.ts",
+	"dist/subagent/index.js",
+	"dist/subagent/index.d.ts",
+	"docs/README.md",
+	"docs/development/release.md",
+	"docs/reference/commands.md",
+]) {
 	if (!paths.has(required)) failures.push(`missing required package entry: ${required}`);
+}
+
+const hostDependencies = [
+	"@earendil-works/pi-agent-core",
+	"@earendil-works/pi-ai",
+	"@earendil-works/pi-coding-agent",
+	"@earendil-works/pi-tui",
+	"typebox",
+];
+for (const dependency of hostDependencies) {
+	if (packageJson.peerDependencies?.[dependency] !== "*") {
+		failures.push(`host dependency must be a wildcard peer: ${dependency}`);
+	}
+	if (packageJson.peerDependenciesMeta?.[dependency]?.optional !== true) {
+		failures.push(`host dependency peer must be optional: ${dependency}`);
+	}
+	if (packageJson.dependencies?.[dependency] !== undefined) {
+		failures.push(`host dependency must not be privately installed: ${dependency}`);
+	}
 }
 
 for (const path of paths) {
@@ -51,5 +78,7 @@ if (failures.length > 0) {
 	for (const failure of failures) console.error(`  - ${failure}`);
 	process.exitCode = 1;
 } else {
-	console.log(`npm package uses compiled runtime entries (${paths.size} files; no physical src/ entries).`);
+	console.log(
+		`npm package uses host-provided Pi peers and compiled runtime entries (${paths.size} files; docs included; no physical src/ entries).`,
+	);
 }

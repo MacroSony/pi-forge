@@ -1184,6 +1184,59 @@ test("/preset ui configures per-profile subagent delegation", async () => {
 	}
 });
 
+test("/preset ui removes delegation settings with a deleted profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const profile = {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	};
+	writeProfile(cwd, "reviewer.json", profile);
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+
+		const enabled = await fetch(new URL("/api/profiles/reviewer/subagent", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true, backend: "pi-rpc-readonly", timeoutMs: 120_000 }),
+		});
+		assert.equal(enabled.status, 200);
+
+		const deleted = await fetch(new URL("/api/profiles/reviewer", editorUrl), {
+			method: "DELETE",
+			headers,
+		});
+		assert.equal(deleted.status, 200);
+		assert.equal(JSON.parse(readFileSync(configPath, "utf8")).subagents, undefined);
+
+		const recreated = await fetch(new URL("/api/profiles", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(recreated.status, 200);
+		const mutation = await recreated.json() as {
+			collection: { profiles: Array<{ profile: { id: string }; subagent: { enabled: boolean; configured: object } }> };
+		};
+		const reviewer = mutation.collection.profiles.find((entry) => entry.profile.id === "reviewer");
+		assert.equal(reviewer?.subagent.enabled, false);
+		assert.deepEqual(reviewer?.subagent.configured, {});
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
 	const lifecycle = { ...ctx };
 	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];

@@ -125,6 +125,43 @@ test("web editor transitions between populated and empty stack states", { timeou
 	});
 });
 
+test("profile preflight refreshes after prompt-stack deletion", { timeout: 20_000 }, async (t) => {
+	const currentModel = browserModel("test", "current");
+	const targetModel = browserModel("test", "target");
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		writeProfile(cwd, "reviewer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: "default",
+		});
+	}, async ({ editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
+		await page.locator(".profile-applicability").filter({ hasText: "Ready to apply" }).waitFor();
+
+		await page.locator("#stacksSurfaceBtn").click();
+		page.once("dialog", async (dialog) => {
+			assert.match(dialog.message(), /Delete prompt stack 'default'/);
+			await dialog.accept();
+		});
+		await page.locator("#deleteStackBtn").click();
+		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
+
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown prompt stack: default/);
+	}, {
+		currentModel,
+		models: [currentModel, targetModel],
+		availableModels: [currentModel, targetModel],
+	});
+});
+
 test("stack diagnostics panel collapses and expands", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
@@ -538,6 +575,14 @@ test("web editor configures per-profile subagent delegation", { timeout: 20_000 
 			thinkingLevel: "high",
 			promptStack: "default",
 		});
+		writeProfile(cwd, "observer.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "observer",
+			model: { provider: "test", id: "current" },
+			thinkingLevel: "low",
+			promptStack: "default",
+		});
 	}, async ({ cwd, editorUrl, page }) => {
 		const configPath = join(cwd, ".pi", "forge", "config.json");
 		const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
@@ -557,6 +602,14 @@ test("web editor configures per-profile subagent delegation", { timeout: 20_000 
 		assert.equal(await page.locator("#delegationSaveBtn").isDisabled(), true);
 		await page.locator("#delegationTimeout").fill("120000");
 		assert.equal(await page.locator("#delegationSaveBtn").isEnabled(), true);
+		page.once("dialog", async (dialog) => {
+			assert.equal(dialog.message(), "Discard unsaved delegation changes?");
+			await dialog.dismiss();
+		});
+		await page.locator('[data-profile-row][data-profile-id="observer"]').click();
+		assert.equal(await reviewerRow.getAttribute("class"), "profile-row selected");
+		assert.equal(await page.locator("#delegationEnabled").isChecked(), true);
+		assert.equal(await page.locator("#delegationTimeout").inputValue(), "120000");
 
 		await page.locator("#delegationSaveBtn").click();
 		await page.locator("#profilesStatus").filter({ hasText: "Delegation enabled for reviewer" }).waitFor();

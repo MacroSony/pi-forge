@@ -1,4 +1,4 @@
-# Pi SDK Subagent Spike Findings
+# Historical Pi SDK subagent spike findings
 
 Status: completed internal spike against `@earendil-works/pi-coding-agent` 0.80.6 on 2026-07-12. Its contract findings are productized in `@zihanw/pi-subagent-runtime`'s shared SDK preparation gate, which both fresh-process backends use. The spike harness (`scripts/subagent-sdk-spike*.ts`) was removed in the 0.4 cleanup; with it went the only live media-transport and trusted-extension preparation diagnostic, to be re-established when delegated media tasks are productized. The 0.80.6 observations and terminology below remain a historical record.
 

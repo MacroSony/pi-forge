@@ -119,7 +119,7 @@ onUnmounted(() => {
 		<div id="stackModal" class="modal"></div>
 			</div>
 		</section>
-		<ProfileBrowser v-show="activeSurface === 'profiles'" />
+		<ProfileBrowser v-show="activeSurface === 'profiles'" :active="activeSurface === 'profiles'" />
 	</div>
 </template>
 
