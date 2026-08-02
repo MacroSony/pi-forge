@@ -1,6 +1,8 @@
-import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
-import type { WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
+import { type AgentProfileApplicationResult, type AgentProfileCurrentRuntime } from "./profile-service.ts";
+import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
+import type { WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary, WebEditorSubagentBackendOption } from "./web-editor/index.ts";
 export interface WebHostRuntime {
     getStacks(): LoadedPromptStack[];
     getActive(): LoadedPromptStack | undefined;
@@ -14,14 +16,23 @@ export interface WebHostRuntime {
         diagnostics: PromptStackDiagnostic[];
     };
     getPolicyResources(): WebEditorPolicyResources;
+    getProfiles(): LoadedAgentProfile[];
+    getLastAppliedProfile(): AgentProfileProvenance | undefined;
+    getCurrentProfileRuntime(): AgentProfileCurrentRuntime;
+    getSubagentBackends(): WebEditorSubagentBackendOption[];
+    resolveProfile(target: LoadedAgentProfile): ResolvedAgentProfile;
+    previewToolNames(stack: PromptStack | undefined): string[];
+    reloadProfiles(): void | Promise<void>;
+    isIdle(): boolean;
+    applyProfile(target: ResolvedAgentProfile): Promise<AgentProfileApplicationResult>;
     getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 }
-export declare function createWebEditorHost(ctx: ExtensionCommandContext, runtime: WebHostRuntime): WebEditorHost;
+export declare function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost;
 export declare function stackSummary(loaded: LoadedPromptStack, active: LoadedPromptStack | undefined): WebEditorStackSummary;
 export declare function stackSummaries(stacks: LoadedPromptStack[], active: LoadedPromptStack | undefined): WebEditorStackSummary[];
-export declare function loadWebEditorSettings(ctx: ExtensionCommandContext): {
+export declare function loadWebEditorSettings(ctx: ExtensionContext): {
     preferredPort?: number;
     configPath: string;
     warnings: string[];

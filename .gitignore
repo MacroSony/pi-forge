@@ -1,5 +1,7 @@
 node_modules/
-.pi/
-dist/
+.pi/*
+!.pi/settings.json
+.dist-check-*/
+# dist/ is tracked intentionally so git installs can load ./dist/index.js.
 *.tsbuildinfo
 .DS_Store

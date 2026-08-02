@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pi-version: 0.82.1
+            typebox-version: 1.1.38
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - name: Install tested Pi host family
+        run: >-
+          npm install --no-save --package-lock=false --legacy-peer-deps
+          @earendil-works/pi-agent-core@${{ matrix.pi-version }}
+          @earendil-works/pi-ai@${{ matrix.pi-version }}
+          @earendil-works/pi-coding-agent@${{ matrix.pi-version }}
+          @earendil-works/pi-tui@${{ matrix.pi-version }}
+          typebox@${{ matrix.typebox-version }}
+      - run: npm run verify
+
+  latest-pi:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - name: Install latest Pi host family
+        run: |
+          PI_TEST_VERSION=$(npm view @earendil-works/pi-coding-agent version)
+          TYPEBOX_TEST_VERSION=$(npm view @earendil-works/pi-coding-agent@"$PI_TEST_VERSION" dependencies.typebox)
+          npm install --no-save --package-lock=false --legacy-peer-deps \
+            @earendil-works/pi-agent-core@"$PI_TEST_VERSION" \
+            @earendil-works/pi-ai@"$PI_TEST_VERSION" \
+            @earendil-works/pi-coding-agent@"$PI_TEST_VERSION" \
+            @earendil-works/pi-tui@"$PI_TEST_VERSION" \
+            typebox@"$TYPEBOX_TEST_VERSION"
+      - run: npm run verify

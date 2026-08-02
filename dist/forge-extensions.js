@@ -7,21 +7,25 @@ var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExte
     return path;
 };
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 import { promptRenderHelpers } from "./render-helpers.js";
 import { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
 import { forgeDir, forgeExtensionsDir, globalForgeDir, globalForgeExtensionsDir } from "./storage.js";
+const require = createRequire(import.meta.url);
 export function createForgeExtensionState() {
     return { unregister: [], loadVersion: 0 };
 }
 export async function reloadForgeExtensions(cwd, state) {
     const diagnostics = unloadForgeExtensions(state);
     state.loadVersion++;
+    const loadToken = `${state.loadVersion}-${randomUUID()}`;
     const loadedPaths = [];
     for (const candidate of discoverForgeExtensionCandidates(cwd)) {
-        const result = await loadForgeExtensionFile(cwd, candidate.forgeDir, candidate.filePath, state.loadVersion);
+        const result = await loadForgeExtensionFile(cwd, candidate.forgeDir, candidate.filePath, loadToken);
         diagnostics.push(...result.diagnostics);
         if (result.loaded) {
             state.unregister.push(...result.unregister);
@@ -99,11 +103,12 @@ function discoverForgeExtensionFilesInDir(dir) {
     }
     return files;
 }
-async function loadForgeExtensionFile(cwd, forgeDirPath, filePath, loadVersion) {
+async function loadForgeExtensionFile(cwd, forgeDirPath, filePath, loadToken) {
     const unregister = [];
     const diagnostics = [];
     try {
-        const module = await import(__rewriteRelativeImportExtension(`${pathToFileURL(filePath).href}?piForgeReload=${loadVersion}`));
+        clearCommonJsCache(filePath);
+        const module = await import(__rewriteRelativeImportExtension(`${pathToFileURL(filePath).href}?piForgeReload=${encodeURIComponent(loadToken)}`));
         const register = readRegisterFunction(module);
         if (!register) {
             return {
@@ -134,6 +139,17 @@ async function loadForgeExtensionFile(cwd, forgeDirPath, filePath, loadVersion) 
             message: `Failed to load pi-forge extension ${extensionLabel(filePath)}: ${error instanceof Error ? error.message : String(error)}`,
         });
         return { loaded: false, unregister: [], diagnostics };
+    }
+}
+function clearCommonJsCache(filePath) {
+    if (!filePath.endsWith(".js") && !filePath.endsWith(".cjs"))
+        return;
+    try {
+        const resolved = require.resolve(filePath);
+        delete require.cache[resolved];
+    }
+    catch {
+        // ESM .js files do not use the CommonJS cache.
     }
 }
 function createForgeExtensionApi(cwd, forgeDirPath, extensionPath, unregister) {

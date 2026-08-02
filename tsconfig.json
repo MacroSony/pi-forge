@@ -9,5 +9,6 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "tests-browser/**/*.ts"],
+  "exclude": ["src/web-editor/client/**/*"]
 }

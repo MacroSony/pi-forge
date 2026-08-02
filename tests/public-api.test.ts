@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import * as rootSurface from "../src/index.ts";
+import * as modularContract from "../src/subagent/contract.ts";
+import * as subagentSurface from "../src/subagent/index.ts";
+
+const contractRuntimeExports = [
+	"SUBAGENT_CONTRACT_VERSION",
+	"SUBAGENT_FINGERPRINT_PREFIX",
+	"appendProtectedSubagentTask",
+	"budgetSubagentContext",
+	"canonicalSubagentJson",
+	"createAgentExecutionPlan",
+	"createProtectedSubagentTask",
+	"hasSubagentErrors",
+	"isProtectedSubagentTaskPreserved",
+	"negotiateSubagentTools",
+	"prepareSubagentInitialMessages",
+	"renderSubagentSelectedContext",
+	"subagentFingerprint",
+	"subagentPromptRuntimeFingerprint",
+	"subagentPromptStackFingerprint",
+	"subagentSourceProfileFingerprint",
+	"validateAgentExecutionPlan",
+	"validateAgentProfileSnapshot",
+	"validateAgentRequest",
+	"validateAgentResponse",
+	"validateBackendPreflight",
+	"validatePreflightAgainstRequest",
+	"validatePreparationRuntime",
+	"validateSubagentArtifactReference",
+	"validateSubagentTraceReference",
+].sort();
+
+test("the modular subagent contract surface is complete and root-compatible", () => {
+	assert.deepEqual(Object.keys(modularContract).sort(), contractRuntimeExports);
+	const root = rootSurface as Record<string, unknown>;
+	const modular = modularContract as Record<string, unknown>;
+	for (const name of contractRuntimeExports) {
+		assert.equal(root[name], modular[name], name);
+	}
+});
+
+test("the dedicated subagent entry point preserves the package-root adapter surface", async () => {
+	// Execution ownership (backend registry, process backends) moved to
+	// @zihanw/pi-subagent-runtime; the Forge surface keeps host contracts.
+	for (const name of [
+		"validateAgentRequest",
+		"resolveSubagentHostProfile",
+		"createAgentExecutionPlan",
+		"validateAgentResponse",
+	] as const) {
+		assert.equal(typeof subagentSurface[name], "function", name);
+		assert.equal(rootSurface[name], subagentSurface[name], name);
+	}
+
+	const packaged = await import("@zihanw/pi-forge/subagent");
+	assert.equal(typeof packaged.validateAgentRequest, "function");
+	assert.equal(typeof packaged.resolveSubagentHostProfile, "function");
+});

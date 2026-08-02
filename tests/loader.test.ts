@@ -236,8 +236,52 @@ test("loadPromptStacks validates tool and skill policies", () => {
 	assert.match(messages, /tools policy must use either allow or deny, not both/);
 	assert.match(messages, /Duplicate tools\.allow pattern: read/);
 	assert.match(messages, /skills\.allow must be an array of strings/);
+	assert.match(messages, /does not disable explicit skill invocation.*not a security boundary/);
 	assert.match(messages, /skills policy only filters pi-forge skills slots/);
 	assert.equal(isUsablePromptStack(loaded), false);
+});
+
+test("loadPromptStacks preserves strict errors for malformed fields before normalization", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-loader-"));
+	writeStack(cwd, "malformed.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "malformed",
+		autoActivate: "false",
+		mode: "replace-ish",
+		defaults: {
+			syntheticMessagesVisible: "false",
+			unresolvedMacroPolicy: "ignore",
+		},
+		context: { allowDuplicateChatHistory: "false" },
+		variables: { valid: "yes", invalid: 1 },
+		items: [{
+			kind: "sloot",
+			id: "bad-item",
+			enabled: "false",
+			role: "sysstem",
+			content: "must not become usable",
+			tags: ["valid", 1],
+			source: "inline",
+		}],
+	});
+
+	const loaded = loadPromptStacks(cwd)[0]!;
+	const messages = loaded.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+
+	assert.equal(isUsablePromptStack(loaded), false);
+	assert.match(messages, /autoActivate must be a boolean/);
+	assert.match(messages, /mode must be/);
+	assert.match(messages, /syntheticMessagesVisible must be a boolean/);
+	assert.match(messages, /unresolvedMacroPolicy must be/);
+	assert.match(messages, /allowDuplicateChatHistory must be a boolean/);
+	assert.match(messages, /Stack variable invalid must be a string/);
+	assert.match(messages, /kind must be "block" or "slot"/);
+	assert.match(messages, /enabled must be a boolean/);
+	assert.match(messages, /Invalid role: sysstem/);
+	assert.match(messages, /tags must be an array of strings/);
+	assert.match(messages, /source must be an object/);
+	assert.equal(loaded.stack.items[0]?.kind, "block");
 });
 
 test("loadPromptStacks accepts registered custom slots", () => {

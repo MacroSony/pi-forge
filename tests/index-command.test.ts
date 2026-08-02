@@ -15,12 +15,20 @@ import {
 	writeForgeExtension,
 	writeGlobalForgeExtension,
 	writeLegacyStack,
+	writeProfile,
 	writePreset,
 	writeStack,
 } from "./helpers/index-command-harness.ts";
 
 const TEST_HOME = mkdtempSync(join(tmpdir(), "pi-forge-home-"));
 process.env.HOME = TEST_HOME;
+
+test("extension composition registers the foreground subagent tool and commands", () => {
+	const harness = createHarness();
+	assert.equal(harness.tools.forge_subagent?.name, "forge_subagent");
+	assert.equal(harness.tools.forge_subagent_profiles?.name, "forge_subagent_profiles");
+	assert.ok(harness.commands["forge-agent"]);
+});
 
 test("/preset completions preserve second-level subcommand text", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
@@ -129,6 +137,136 @@ test("active stack tool policy filters and restores active tools", async () => {
 	assert.equal(statuses["pi-forge-tools"], undefined);
 });
 
+test("session_shutdown restores tool policy baseline before reload", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const baselineTools = [
+		"read",
+		"bash",
+		"edit",
+		"write",
+		"paint_list_workflows",
+		"paint_get_details",
+		"paint_validate_workflow",
+	];
+	const harness = createHarness({ activeTools: baselineTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+
+	await harness.events.session_start({ type: "session_start", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+
+	await harness.events.resources_discover({ type: "resources_discover", cwd, reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), baselineTools);
+});
+
+test("late extension tool configuration is filtered after reload and preserved as the baseline", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const configuredTools = ["read", "bash", "edit", "write", "web_search", "web_image"];
+	const registryTools = [...configuredTools, "web_fetch"];
+	const harness = createHarness({ activeTools: configuredTools, allTools: registryTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), configuredTools);
+
+	// Pi rebuilds with all extension tools active before session_start. A later
+	// extension then applies its config, enabling search/image and disabling fetch.
+	harness.setActiveTools(registryTools);
+	await harness.events.session_start({ type: "session_start", reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), registryTools);
+
+	harness.setActiveTools(configuredTools);
+	await harness.events.resources_discover({ type: "resources_discover", cwd, reason: "reload" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), configuredTools);
+});
+
+test("tool policy reasserts before input and blocks disallowed tool calls", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		tools: {
+			allow: ["read"],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const baselineTools = ["read", "bash", "edit", "write", "web_search"];
+	const harness = createHarness({ activeTools: baselineTools });
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	const callsAfterStartup = harness.setActiveToolsCalls.length;
+	await harness.events.input({ type: "input", text: "hello", source: "interactive" }, ctx);
+	assert.equal(harness.setActiveToolsCalls.length, callsAfterStartup);
+	await harness.events.turn_start({ type: "turn_start", turnIndex: 0, timestamp: 1 }, ctx);
+	assert.equal(harness.setActiveToolsCalls.length, callsAfterStartup);
+
+	harness.registerTool({ name: "late_extension_tool" });
+	harness.setActiveTools(["read", "web_search", "late_extension_tool"]);
+	const blocked = await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "web_search",
+		toolCallId: "call-web",
+		input: {},
+	}, ctx);
+	assert.deepEqual(blocked, {
+		block: true,
+		reason: 'Tool "web_search" is blocked by prompt stack "default".',
+	});
+	assert.equal(await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "read",
+		toolCallId: "call-read",
+		input: {},
+	}, ctx), undefined);
+
+	await harness.events.input({ type: "input", text: "hello", source: "interactive" }, ctx);
+	assert.deepEqual(harness.getActiveTools(), ["read"]);
+
+	await harness.commands.preset.handler("use none", ctx);
+	assert.deepEqual(harness.getActiveTools(), [...baselineTools, "late_extension_tool"]);
+	assert.equal(await harness.events.tool_call({
+		type: "tool_call",
+		toolName: "web_search",
+		toolCallId: "call-web-unrestricted",
+		input: {},
+	}, ctx), undefined);
+});
+
 test("trusted pi-forge extension modules register custom macros and slots before validation", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeForgeExtension(cwd, "system-status.ts", `
@@ -179,8 +317,27 @@ export default function register(api: any) {
 	}, context.ctx);
 	assert.equal(second.systemPrompt, "Macro macro-v2\n\nslot-v2");
 
+	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, context.ctx);
+	writeForgeExtension(cwd, "system-status.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "forgeCustomMacro", render: () => "macro-v3" });
+  api.registerSlot({ name: "forge-custom-slot", render: () => "slot-v3" });
+}
+`);
+	const replacementHarness = createHarness();
+	const replacementContext = createContext(cwd);
+	await startSession(replacementHarness, replacementContext.ctx);
+	const third = await replacementHarness.events.before_agent_start({
+		type: "before_agent_start",
+		systemPromptOptions: replacementContext.ctx.getSystemPromptOptions(),
+		systemPrompt: "base system",
+		prompt: "hello",
+	}, replacementContext.ctx);
+	assert.equal(third.systemPrompt, "Macro macro-v3\n\nslot-v3");
+	assert.doesNotMatch(replacementContext.notifications.map((notification) => notification.message).join("\n"), /already registered/);
+
 	const untrusted = createContext(cwd, [], { trusted: false });
-	await startSession(harness, untrusted.ctx);
+	await startSession(replacementHarness, untrusted.ctx);
 });
 
 test("global and project pi-forge extension modules load before validation", async () => {
@@ -402,6 +559,8 @@ test("/payload next saves a redacted provider payload", async () => {
 		type: "before_provider_request",
 		payload: {
 			Authorization: "Bearer secret",
+			max_tokens: 4096,
+			input_tokens: 12,
 			messages: [{ content: "hello" }],
 			image: "data:image/png;base64," + "a".repeat(100),
 		},
@@ -409,11 +568,69 @@ test("/payload next saves a redacted provider payload", async () => {
 
 	const saved = readFileSync(join(cwd, ".pi", "forge", "payloads", "last.json"), "utf8");
 	assert.match(saved, /"Authorization": "\[redacted\]"/);
+	assert.match(saved, /"max_tokens": 4096/);
+	assert.match(saved, /"input_tokens": 12/);
 	assert.match(saved, /"image": "\[image data omitted\]"/);
 	assert.match(saved, /"content": "hello"/);
 	assert.equal(statuses["pi-forge-intercept"], undefined);
 	assert.match(notifications.at(-1)?.message ?? "", /saved to/);
 	assert.match(editors.at(-1)?.title ?? "", /pi-forge: provider payload \(\d+ chars, ~\d+ tokens\)/);
+});
+
+test("web editor resources and preview survive lifecycle-only host refreshes", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	harness.tools.read = { name: "read", description: "Read files.", promptSnippet: "Read files." };
+	const context = createContext(cwd);
+	context.ctx.getSystemPromptOptions = () => ({
+		cwd,
+		selectedTools: ["read"],
+		toolSnippets: { read: "Read files." },
+		promptGuidelines: [],
+		contextFiles: [],
+		skills: [{ name: "review", description: "Review code.", filePath: "/skills/review/SKILL.md" }],
+	});
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const lifecycleCtx = lifecycleOnlyContext(context.ctx);
+		const refreshes: Array<[string, Record<string, unknown>]> = [
+			["session_tree", { type: "session_tree" }],
+			["session_compact", { type: "session_compact" }],
+			["session_start", { type: "session_start", reason: "reload" }],
+		];
+
+		for (const [eventName, event] of refreshes) {
+			await harness.events[eventName](event, lifecycleCtx);
+			const resourcesResponse = await fetch(new URL("/api/resources", editorUrl), { headers });
+			assert.equal(resourcesResponse.status, 200, eventName);
+			const resources = await resourcesResponse.json() as { tools: Array<{ name: string }>; skills: Array<{ name: string }> };
+			assert.ok(resources.tools.some((tool) => tool.name === "read"), eventName);
+			assert.ok(resources.skills.some((skill) => skill.name === "review"), eventName);
+
+			const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers });
+			assert.equal(stackResponse.status, 200, eventName);
+			const loaded = await stackResponse.json() as { stack: unknown };
+			const previewResponse = await fetch(new URL("/api/stacks/default/preview", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ stack: loaded.stack }),
+			});
+			assert.equal(previewResponse.status, 200, eventName);
+		}
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
 });
 
 test("/preset ui serves and saves through the local stack editor API", async () => {
@@ -473,67 +690,12 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const pageResponse = await fetch(editorUrl);
 		assert.equal(pageResponse.status, 200);
 		const pageHtml = await pageResponse.text();
-		assert.match(pageHtml, /sidebarToggleBtn/);
-		assert.match(pageHtml, /newStackBtn/);
-		assert.match(pageHtml, /createNewStack/);
-		assert.match(pageHtml, /Default Pi Prompt Mirror/);
-		assert.match(pageHtml, /tool-guidelines/);
-		assert.match(pageHtml, /pi-docs/);
-		assert.match(pageHtml, /emptyNewStackBtn/);
-		assert.match(pageHtml, /handleEditorShortcut/);
-		assert.match(pageHtml, /Ctrl\/Cmd\+S/);
-			assert.match(pageHtml, /slotOptionsFormBtn/);
-			assert.match(pageHtml, /stripAssistantThinking/);
-			assert.match(pageHtml, /includeSummaries/);
-			assert.match(pageHtml, /toolMode/);
-			assert.match(pageHtml, /forkBtn/);
-		assert.match(pageHtml, /importBtn/);
-		assert.match(pageHtml, /exportBtn/);
-		assert.match(pageHtml, /deleteStackBtn/);
-		const deleteItemIndex = pageHtml.indexOf('id="deleteItemBtn"');
-		assert.ok(deleteItemIndex > pageHtml.indexOf('<div class="item-tools">'));
-		assert.ok(deleteItemIndex < pageHtml.indexOf('<div id="itemList"'));
-		assert.match(pageHtml, /metadataToggleBtn/);
-		assert.match(pageHtml, /itemsTabBtn/);
-		assert.doesNotMatch(pageHtml, /stateTabBtn/);
-		assert.match(pageHtml, /regexTabBtn/);
-		assert.match(pageHtml, /policyTabBtn/);
-		assert.match(pageHtml, /stackTabBtn/);
-		assert.match(pageHtml, /addItemBtn/);
-		assert.match(pageHtml, /addSlotBtn/);
-			assert.match(pageHtml, /regexRows/);
-			assert.match(pageHtml, /data-regex-row/);
-			assert.match(pageHtml, /data-regex-trim-strings/);
-			assert.match(pageHtml, /data-regex-min-depth/);
-			assert.match(pageHtml, /data-regex-max-depth/);
-			assert.match(pageHtml, /syncRegexRulesFromModal/);
-		assert.match(pageHtml, /data-policy-row/);
-		assert.match(pageHtml, /data-policy-mode-option/);
-		assert.match(pageHtml, /resourcePickerHtml/);
-		assert.match(pageHtml, /data-resource-name/);
-		assert.match(pageHtml, /data-remove-policy-pattern/);
-		assert.match(pageHtml, /data-resource-filter/);
-		assert.match(pageHtml, /policyResourceAutocompleteValue/);
-		assert.match(pageHtml, /syncResourcePolicyFromTab/);
-		assert.match(pageHtml, /\["outgoing", "finalize", "display", "both"\]/);
-		assert.match(pageHtml, /payloadBtn/);
-		const previewIndex = pageHtml.indexOf('id="preview"');
-		const stackModalIndex = pageHtml.indexOf('id="stackModal"');
-		assert.ok(previewIndex > pageHtml.indexOf("</main>"));
-		assert.ok(previewIndex < stackModalIndex);
-		assert.match(pageHtml, /drop-before/);
-		assert.match(pageHtml, /updateItemDragAutoScroll/);
-		assert.match(pageHtml, /handleDocumentItemDragOver/);
-		assert.match(pageHtml, /nextNumericItemId/);
-		assert.match(pageHtml, /themeBtn/);
-		assert.match(pageHtml, /dirtyBadge/);
-		assert.match(pageHtml, /copyImportReportBtn/);
-		assert.match(pageHtml, /data-icon/);
-		assert.match(pageHtml, /validateRawStackJson/);
-		assert.match(pageHtml, /\["xml", "plain"\]/);
-		const scriptMatch = pageHtml.match(/<script>([\s\S]*)<\/script>/);
-		assert.ok(scriptMatch?.[1]);
-		assert.doesNotThrow(() => new Function(scriptMatch[1]!));
+		assert.match(pageHtml, /<div id="app"><\/div>/);
+		assert.doesNotMatch(pageHtml, /<script[^>]+src=/);
+		const scripts = [...pageHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+		assert.equal(scripts.length, 1);
+		assert.ok(scripts[0]?.[1]);
+		assert.doesNotThrow(() => new Function(scripts[0]![1]));
 
 		const rejected = await fetch(apiUrl);
 		assert.equal(rejected.status, 403);
@@ -557,6 +719,20 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const stackResponse = await fetch(new URL("/api/stacks/default", editorUrl), { headers: { "x-pi-forge-token": token } });
 		assert.equal(stackResponse.status, 200);
 		const loaded = await stackResponse.json() as { stack: any };
+		const renameAttempt = structuredClone(loaded.stack);
+		renameAttempt.id = "renamed";
+		const renameResponse = await fetch(new URL("/api/stacks/default", editorUrl), {
+			method: "PUT",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ stack: renameAttempt }),
+		});
+		assert.equal(renameResponse.status, 400);
+		assert.match(await renameResponse.text(), /immutable during save/);
+		const afterRenameResponse = await fetch(apiUrl, { headers: { "x-pi-forge-token": token } });
+		const afterRename = await afterRenameResponse.json() as { stacks: Array<{ id: string; active: boolean }> };
+		assert.deepEqual(afterRename.stacks.map((stack) => stack.id), ["default"]);
+		assert.equal(afterRename.stacks[0]?.active, true);
+		assert.match(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"), /"id": "default"/);
 		loaded.stack.name = "Edited in UI";
 		loaded.stack.regex = {
 			schemaVersion: 1,
@@ -778,6 +954,294 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 	}
 	assert.equal(statuses["pi-forge-editor"], undefined);
 });
+
+test("/preset ui profile mutations remain token-gated and fail closed for untrusted projects", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const harness = createHarness();
+	const context = createContext(cwd, [], { trusted: false });
+	const profile = {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "blocked",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	};
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const profilesUrl = new URL("/api/profiles", editorUrl);
+
+		const missingToken = await fetch(profilesUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(missingToken.status, 403);
+
+		const createResponse = await fetch(profilesUrl, {
+			method: "POST",
+			headers: { "content-type": "application/json", "x-pi-forge-token": token },
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(createResponse.status, 403);
+		assert.match(await createResponse.text(), /not trusted/i);
+
+		const reloadResponse = await fetch(new URL("/api/profiles/reload", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(reloadResponse.status, 403);
+
+		const applyResponse = await fetch(new URL("/api/profiles/blocked/apply", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(applyResponse.status, 403);
+
+		const deleteResponse = await fetch(new URL("/api/profiles/blocked", editorUrl), {
+			method: "DELETE",
+			headers: { "x-pi-forge-token": token },
+		});
+		assert.equal(deleteResponse.status, 403);
+		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "blocked.json")), false);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("/preset ui refuses profile application while the agent is busy", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeProfile(cwd, "busy.json", {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "busy",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd, [], { idle: false });
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const response = await fetch(new URL("/api/profiles/busy/apply", editorUrl), {
+			method: "POST",
+			headers: { "x-pi-forge-token": editorUrl.searchParams.get("token")! },
+		});
+		assert.equal(response.status, 409);
+		assert.match(await response.text(), /current agent operation/);
+		assert.equal(harness.setModelCalls.length, 0);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("/preset ui accepts at most one auto-activation profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const profile = (id: string, autoActivate?: boolean) => ({
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id,
+		autoActivate,
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const profilesUrl = new URL("/api/profiles", editorUrl);
+
+		const first = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("first", true) }) });
+		assert.equal(first.status, 200);
+
+		const second = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second", true) }) });
+		assert.equal(second.status, 409);
+		assert.match(await second.text(), /Multiple profiles request auto-activation/);
+		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "second.json")), false);
+
+		const plain = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second") }) });
+		assert.equal(plain.status, 200);
+
+		const enable = await fetch(new URL("/api/profiles/second", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ profile: profile("second", true) }),
+		});
+		assert.equal(enable.status, 409);
+		assert.match(await enable.text(), /already requested by first/);
+
+		const keep = await fetch(new URL("/api/profiles/first", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ profile: { ...profile("first", true), name: "First updated" } }),
+		});
+		assert.equal(keep.status, 200);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("/preset ui configures per-profile subagent delegation", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeProfile(cwd, "reviewer.json", {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+	const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const policyUrl = new URL("/api/profiles/reviewer/subagent", editorUrl);
+
+		const listed = await fetch(new URL("/api/profiles", editorUrl), { headers: { "x-pi-forge-token": token } });
+		const collection = await listed.json() as {
+			profiles: Array<{ subagent: { enabled: boolean; backend: string; backendRegistered: boolean } }>;
+			subagents: { backends: Array<{ id: string }>; defaultBackend: string };
+		};
+		assert.equal(collection.profiles[0]?.subagent.enabled, false);
+		assert.equal(collection.profiles[0]?.subagent.backendRegistered, true);
+		assert.ok(collection.subagents.backends.some((backend) => backend.id === collection.subagents.defaultBackend));
+
+		const enabled = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true, backend: "pi-rpc-readonly", timeoutMs: 120_000 }),
+		});
+		assert.equal(enabled.status, 200);
+		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
+			enabled: true,
+			backend: "pi-rpc-readonly",
+			timeoutMs: 120_000,
+		});
+		const enabledCollection = await enabled.json() as {
+			collection: { profiles: Array<{ subagent: { enabled: boolean; backend: string; timeoutMs: number } }> };
+		};
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.enabled, true);
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.backend, "pi-rpc-readonly");
+		assert.equal(enabledCollection.collection.profiles[0]?.subagent.timeoutMs, 120_000);
+
+		const invalidTimeout = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ timeoutMs: 500 }),
+		});
+		assert.equal(invalidTimeout.status, 400);
+		assert.match(await invalidTimeout.text(), /timeoutMs must be an integer/);
+
+		const unknownField = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ network: "off" }),
+		});
+		assert.equal(unknownField.status, 400);
+		assert.match(await unknownField.text(), /Unsupported subagent policy field/);
+
+		const missingProfile = await fetch(new URL("/api/profiles/missing/subagent", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true }),
+		});
+		assert.equal(missingProfile.status, 404);
+
+		const disabled = await fetch(policyUrl, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: false, backend: null, timeoutMs: null }),
+		});
+		assert.equal(disabled.status, 200);
+		assert.equal(readConfig().subagents, undefined);
+
+		const untrustedUrl = new URL(policyUrl);
+		untrustedUrl.search = "";
+		const missingToken = await fetch(untrustedUrl, { method: "PUT", headers: { "content-type": "application/json" } });
+		assert.equal(missingToken.status, 403);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("/preset ui removes delegation settings with a deleted profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const profile = {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	};
+	writeProfile(cwd, "reviewer.json", profile);
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	const configPath = join(cwd, ".pi", "forge", "config.json");
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+
+		const enabled = await fetch(new URL("/api/profiles/reviewer/subagent", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true, backend: "pi-rpc-readonly", timeoutMs: 120_000 }),
+		});
+		assert.equal(enabled.status, 200);
+
+		const deleted = await fetch(new URL("/api/profiles/reviewer", editorUrl), {
+			method: "DELETE",
+			headers,
+		});
+		assert.equal(deleted.status, 200);
+		assert.equal(JSON.parse(readFileSync(configPath, "utf8")).subagents, undefined);
+
+		const recreated = await fetch(new URL("/api/profiles", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile }),
+		});
+		assert.equal(recreated.status, 200);
+		const mutation = await recreated.json() as {
+			collection: { profiles: Array<{ profile: { id: string }; subagent: { enabled: boolean; configured: object } }> };
+		};
+		const reviewer = mutation.collection.profiles.find((entry) => entry.profile.id === "reviewer");
+		assert.equal(reviewer?.subagent.enabled, false);
+		assert.deepEqual(reviewer?.subagent.configured, {});
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
+	const lifecycle = { ...ctx };
+	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];
+	return lifecycle;
+}
 
 test("/preset ui can create the first stack in an empty project", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));

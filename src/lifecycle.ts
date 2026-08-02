@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
 	compileMessages,
 	compileSystemPrompt,
@@ -8,24 +8,56 @@ import {
 	resetTurnVariables,
 } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
-import { STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
+import { isAgentProfileProvenance } from "./agent-profile.ts";
+import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
 import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
 
 export interface LifecycleDeps {
-	reloadStacks(ctx: ExtensionContext, preferredId?: string): Promise<void>;
-	refreshWebEditorHost(ctx: ExtensionContext): void;
+	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
+	disposePromptStackRuntime(): PromptStackDiagnostic[];
+	disposeSubagentRuntime(): Promise<void>;
+	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
+	refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
+	restoreActiveToolPolicy(): void;
+	toolPolicyBlockReason(toolName: string): string | undefined;
 	activeId(): string | undefined;
 	persistActiveSelection(id: string): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
 }
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
+	let startupToolPolicyPending = false;
+
+	pi.on("session_shutdown", async () => {
+		// Pi carries the old runtime's active built-in tool names into a replacement
+		// runtime. Restore the pre-policy set before reload/session replacement so the
+		// replacement pi-forge instance can capture a complete baseline.
+		startupToolPolicyPending = false;
+		deps.restoreActiveToolPolicy();
+		deps.disposePromptStackRuntime();
+		await deps.disposeSubagentRuntime();
+	});
+
 	pi.on("session_start", async (event, ctx) => {
-		await restoreBranchScopedRuntime(ctx, state, deps);
+		startupToolPolicyPending = true;
+		try {
+			const freshSession = shouldAutoActivateForSessionStart(event, ctx);
+			await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
+			if (freshSession) await deps.activateFreshSessionDefaults(ctx);
+		} catch (error) {
+			startupToolPolicyPending = false;
+			throw error;
+		}
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
+	});
+
+	pi.on("resources_discover", async (_event, ctx) => {
+		if (!startupToolPolicyPending) return;
+		startupToolPolicyPending = false;
+		deps.syncActiveToolPolicy(ctx);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
@@ -46,8 +78,18 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		if (id) deps.persistActiveSelection(id);
 	});
 
+	pi.on("input", async () => {
+		deps.syncActiveToolPolicy();
+	});
+
+	pi.on("tool_call", async (event) => {
+		const reason = deps.toolPolicyBlockReason(event.toolName);
+		return reason ? { block: true, reason } : undefined;
+	});
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.currentSystemPromptOptions = event.systemPromptOptions;
+		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		state.currentLatestUserMessage = event.prompt;
 		state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
 		resetTurnVariables(state.currentVariableStore);
@@ -105,12 +147,64 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 }
 
-async function restoreBranchScopedRuntime(ctx: ExtensionContext, state: PiForgeRuntimeState, deps: LifecycleDeps): Promise<void> {
+async function restoreBranchScopedRuntime(
+	ctx: ExtensionContext,
+	state: PiForgeRuntimeState,
+	deps: LifecycleDeps,
+	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
+): Promise<void> {
 	state.sessionVariables = getRestoredVariables(ctx);
+	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
 	state.currentVariableStore = undefined;
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
-	await deps.reloadStacks(ctx, restoredActiveId);
+	await deps.reloadStacks(ctx, restoredActiveId, options);
+}
+
+function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {
+	if (event.reason === "new") return true;
+	if (event.reason !== "startup") return false;
+	return isFreshStartupBranch(getCurrentBranchEntries(ctx));
+}
+
+function isFreshStartupBranch(entries: unknown[]): boolean {
+	if (entries.length === 0) return true;
+
+	let modelChanges = 0;
+	let thinkingLevelChanges = 0;
+	for (const entry of entries) {
+		if (!entry || typeof entry !== "object") return false;
+		const type = (entry as { type?: unknown }).type;
+		if (type === "model_change") {
+			modelChanges += 1;
+			if (modelChanges > 1) return false;
+			continue;
+		}
+		if (type === "thinking_level_change") {
+			thinkingLevelChanges += 1;
+			if (thinkingLevelChanges > 1) return false;
+			continue;
+		}
+		if (type === "session_info") continue;
+		return false;
+	}
+
+	// Pi 0.82 writes the initial thinking level, and the model when one is
+	// selected, before extensions receive the first startup event. A previously
+	// opened empty session receives another bootstrap pair, so the count limits
+	// above keep it from being mistaken for a newly created session.
+	return thinkingLevelChanges === 1;
+}
+
+function getRestoredProfileProvenance(ctx: ExtensionContext) {
+	const entries = getCurrentBranchEntries(ctx);
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i] as { type?: string; customType?: string; data?: { provenance?: unknown } };
+		if (entry.type !== "custom" || entry.customType !== PROFILE_ENTRY_TYPE) continue;
+		if (entry.data?.provenance === null) return undefined;
+		return isAgentProfileProvenance(entry.data?.provenance) ? entry.data.provenance : undefined;
+	}
+	return undefined;
 }
 
 function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {

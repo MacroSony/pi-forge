@@ -2,10 +2,26 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
+import {
+	AGENT_PROFILE_THINKING_LEVELS,
+	AGENT_PROFILE_TYPE,
+	type AgentProfile,
+} from "../agent-profile.ts";
+import {
+	isValidSubagentTimeoutMs,
+	MAX_SUBAGENT_TIMEOUT_MS,
+	MIN_SUBAGENT_TIMEOUT_MS,
+} from "../forge-config.ts";
 import { convertSillyTavernPreset } from "../sillytavern-importer.ts";
 import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
-import type { WebEditorHost, WebEditorOperationResult, WebEditorServer, WebEditorServerOptions } from "./types.ts";
+import type {
+	WebEditorHost,
+	WebEditorOperationResult,
+	WebEditorServer,
+	WebEditorServerOptions,
+	WebEditorSubagentPolicyUpdate,
+} from "./types.ts";
 
 // Port 0 asks Node to bind any available localhost port.
 export const DEFAULT_WEB_EDITOR_PORT = 0;
@@ -75,6 +91,68 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 
 	if (req.method === "GET" && parts[1] === "stacks" && parts.length === 2) {
 		sendJson(res, 200, { stacks: host.listStacks(), cwd: host.cwd });
+		return;
+	}
+
+	if (req.method === "GET" && parts[1] === "profiles" && parts.length === 2) {
+		sendJson(res, 200, host.listProfiles());
+		return;
+	}
+
+	if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "reload" && parts.length === 3) {
+		sendOperation(res, await host.reloadProfiles());
+		return;
+	}
+
+	if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "validate" && parts.length === 3) {
+		const body = await readJsonBody(req);
+		const parsed = readProfilePayload(body);
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		const existingId = isPlainObject(body) && typeof body.existingId === "string" ? body.existingId : undefined;
+		sendJson(res, 200, host.validateProfile(parsed.profile, existingId));
+		return;
+	}
+
+	if (req.method === "POST" && parts[1] === "profiles" && parts.length === 2) {
+		const parsed = readProfilePayload(await readJsonBody(req));
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		sendOperation(res, await host.createProfile(parsed.profile));
+		return;
+	}
+
+	if (req.method === "PUT" && parts[1] === "profiles" && parts.length === 3) {
+		const parsed = readProfilePayload(await readJsonBody(req));
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		sendOperation(res, await host.saveProfile(parts[2]!, parsed.profile));
+		return;
+	}
+
+	if (req.method === "POST" && parts[1] === "profiles" && parts[3] === "apply" && parts.length === 4) {
+		sendOperation(res, await host.applyProfile(parts[2]!));
+		return;
+	}
+
+	if (req.method === "DELETE" && parts[1] === "profiles" && parts.length === 3) {
+		sendOperation(res, await host.deleteProfile(parts[2]!));
+		return;
+	}
+
+	if (req.method === "PUT" && parts[1] === "profiles" && parts[3] === "subagent" && parts.length === 4) {
+		const parsed = readSubagentPolicyPayload(await readJsonBody(req));
+		if (!parsed.ok) {
+			sendJson(res, 400, { error: parsed.error });
+			return;
+		}
+		sendOperation(res, await host.updateSubagentPolicy(parts[2]!, parsed.update));
 		return;
 	}
 
@@ -232,8 +310,96 @@ function readStackPayload(body: unknown): { ok: true; stack: PromptStack; import
 	return { ok: true, stack: rawStack as unknown as PromptStack };
 }
 
+function readProfilePayload(body: unknown): { ok: true; profile: AgentProfile } | { ok: false; error: string } {
+	const raw = isPlainObject(body) && "profile" in body ? body.profile : body;
+	if (!isPlainObject(raw)) return { ok: false, error: "Profile payload must be a JSON object." };
+
+	const allowedFields = new Set([
+		"schemaVersion",
+		"type",
+		"id",
+		"name",
+		"description",
+		"autoActivate",
+		"model",
+		"thinkingLevel",
+		"promptStack",
+	]);
+	const unsupported = Object.keys(raw).find((field) => !allowedFields.has(field));
+	if (unsupported) return { ok: false, error: `Unsupported profile field: ${unsupported}` };
+	if (raw.schemaVersion !== 1) return { ok: false, error: "Profile schemaVersion must be 1." };
+	if (raw.type !== AGENT_PROFILE_TYPE) return { ok: false, error: `Profile type must be "${AGENT_PROFILE_TYPE}".` };
+	if (typeof raw.id !== "string") return { ok: false, error: "Profile id must be a string." };
+	if (raw.name !== undefined && typeof raw.name !== "string") return { ok: false, error: "Profile name must be a string when provided." };
+	if (raw.description !== undefined && typeof raw.description !== "string") {
+		return { ok: false, error: "Profile description must be a string when provided." };
+	}
+	if (raw.autoActivate !== undefined && typeof raw.autoActivate !== "boolean") {
+		return { ok: false, error: "Profile autoActivate must be a boolean when provided." };
+	}
+	if (!isPlainObject(raw.model)) return { ok: false, error: "Profile model must be an object." };
+	const unsupportedModelField = Object.keys(raw.model).find((field) => field !== "provider" && field !== "id");
+	if (unsupportedModelField) return { ok: false, error: `Unsupported profile model field: ${unsupportedModelField}` };
+	if (typeof raw.model.provider !== "string" || typeof raw.model.id !== "string") {
+		return { ok: false, error: "Profile model provider and id must be strings." };
+	}
+	if (
+		typeof raw.thinkingLevel !== "string"
+		|| !AGENT_PROFILE_THINKING_LEVELS.includes(raw.thinkingLevel as AgentProfile["thinkingLevel"])
+	) {
+		return { ok: false, error: `Unsupported profile thinkingLevel: ${String(raw.thinkingLevel)}` };
+	}
+	if (raw.promptStack !== null && typeof raw.promptStack !== "string") {
+		return { ok: false, error: "Profile promptStack must be a string or null." };
+	}
+
+	return {
+		ok: true,
+		profile: {
+			schemaVersion: 1,
+			type: AGENT_PROFILE_TYPE,
+			id: raw.id,
+			name: raw.name as string | undefined,
+			description: raw.description as string | undefined,
+			autoActivate: raw.autoActivate as boolean | undefined,
+			model: {
+				provider: raw.model.provider,
+				id: raw.model.id,
+			},
+			thinkingLevel: raw.thinkingLevel as AgentProfile["thinkingLevel"],
+			promptStack: raw.promptStack,
+		},
+	};
+}
+
 function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
 	return Array.isArray(value.prompts) && !Array.isArray(value.items);
+}
+
+function readSubagentPolicyPayload(body: unknown): { ok: true; update: WebEditorSubagentPolicyUpdate } | { ok: false; error: string } {
+	if (!isPlainObject(body)) return { ok: false, error: "Subagent policy payload must be a JSON object." };
+	const unsupported = Object.keys(body).find((field) => field !== "enabled" && field !== "backend" && field !== "timeoutMs");
+	if (unsupported) return { ok: false, error: `Unsupported subagent policy field: ${unsupported}` };
+	if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+		return { ok: false, error: "Subagent policy enabled must be a boolean when provided." };
+	}
+	if (body.backend !== undefined && body.backend !== null && (typeof body.backend !== "string" || !body.backend.trim())) {
+		return { ok: false, error: "Subagent policy backend must be a non-empty string or null to clear the override." };
+	}
+	if (body.timeoutMs !== undefined && body.timeoutMs !== null && !isValidSubagentTimeoutMs(body.timeoutMs)) {
+		return {
+			ok: false,
+			error: `Subagent policy timeoutMs must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} or null to clear the override.`,
+		};
+	}
+	return {
+		ok: true,
+		update: {
+			enabled: body.enabled as boolean | undefined,
+			backend: body.backend === null ? null : (body.backend as string | undefined)?.trim(),
+			timeoutMs: body.timeoutMs as number | null | undefined,
+		},
+	};
 }
 
 function readCharacterId(body: unknown): number | undefined {

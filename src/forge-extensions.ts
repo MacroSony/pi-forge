@@ -1,4 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -14,6 +16,8 @@ import {
 } from "./slot-renderers.ts";
 import { forgeDir, forgeExtensionsDir, globalForgeDir, globalForgeExtensionsDir } from "./storage.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
+
+const require = createRequire(import.meta.url);
 
 export interface ForgeExtensionApi {
 	cwd: string;
@@ -50,10 +54,11 @@ export function createForgeExtensionState(): ForgeExtensionState {
 export async function reloadForgeExtensions(cwd: string, state: ForgeExtensionState): Promise<ForgeExtensionLoadResult> {
 	const diagnostics = unloadForgeExtensions(state);
 	state.loadVersion++;
+	const loadToken = `${state.loadVersion}-${randomUUID()}`;
 	const loadedPaths: string[] = [];
 
 	for (const candidate of discoverForgeExtensionCandidates(cwd)) {
-		const result = await loadForgeExtensionFile(cwd, candidate.forgeDir, candidate.filePath, state.loadVersion);
+		const result = await loadForgeExtensionFile(cwd, candidate.forgeDir, candidate.filePath, loadToken);
 		diagnostics.push(...result.diagnostics);
 		if (result.loaded) {
 			state.unregister.push(...result.unregister);
@@ -139,12 +144,13 @@ async function loadForgeExtensionFile(
 	cwd: string,
 	forgeDirPath: string,
 	filePath: string,
-	loadVersion: number,
+	loadToken: string,
 ): Promise<{ loaded: boolean; unregister: Array<() => void>; diagnostics: PromptStackDiagnostic[] }> {
 	const unregister: Array<() => void> = [];
 	const diagnostics: PromptStackDiagnostic[] = [];
 	try {
-		const module = await import(`${pathToFileURL(filePath).href}?piForgeReload=${loadVersion}`);
+		clearCommonJsCache(filePath);
+		const module = await import(`${pathToFileURL(filePath).href}?piForgeReload=${encodeURIComponent(loadToken)}`);
 		const register = readRegisterFunction(module);
 		if (!register) {
 			return {
@@ -173,6 +179,16 @@ async function loadForgeExtensionFile(
 			message: `Failed to load pi-forge extension ${extensionLabel(filePath)}: ${error instanceof Error ? error.message : String(error)}`,
 		});
 		return { loaded: false, unregister: [], diagnostics };
+	}
+}
+
+function clearCommonJsCache(filePath: string): void {
+	if (!filePath.endsWith(".js") && !filePath.endsWith(".cjs")) return;
+	try {
+		const resolved = require.resolve(filePath);
+		delete require.cache[resolved];
+	} catch {
+		// ESM .js files do not use the CommonJS cache.
 	}
 }
 

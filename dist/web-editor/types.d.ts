@@ -1,3 +1,5 @@
+import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
+import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
     id: string;
@@ -14,6 +16,14 @@ export interface WebEditorStackSummary {
 export interface WebEditorHost {
     cwd: string;
     listStacks(): WebEditorStackSummary[];
+    listProfiles(): WebEditorProfileCollection;
+    reloadProfiles(): Promise<WebEditorOperationResult<WebEditorProfileCollection>>;
+    validateProfile(profile: AgentProfile, existingId?: string): WebEditorProfileValidation;
+    createProfile(profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+    updateSubagentPolicy(id: string, update: WebEditorSubagentPolicyUpdate): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     listResources(): WebEditorPolicyResources;
     getStack(id: string): {
         stack: PromptStack;
@@ -53,6 +63,75 @@ export interface WebEditorHost {
         activeId?: string;
         stacks: WebEditorStackSummary[];
     }>>;
+}
+export interface WebEditorProfileEntry {
+    profile: AgentProfile;
+    filePath: string;
+    preview: AgentProfilePreview;
+    errors: number;
+    warnings: number;
+    lastApplied: boolean;
+    subagent: WebEditorSubagentProfilePolicy;
+}
+export interface WebEditorSubagentBackendOption {
+    id: string;
+    version: string;
+}
+export interface WebEditorSubagentProfilePolicy {
+    enabled: boolean;
+    enabledSource: "project-profile" | "built-in";
+    backend: string;
+    backendSource: string;
+    backendRegistered: boolean;
+    timeoutMs: number;
+    timeoutSource: string;
+    configured: {
+        enabled?: boolean;
+        backend?: string;
+        timeoutMs?: number;
+    };
+}
+export interface WebEditorSubagentSummary {
+    defaultBackend: string;
+    defaultBackendSource: string;
+    timeoutMs: number;
+    timeoutSource: string;
+    allowAgentInvocationWithoutApproval: boolean;
+    backends: WebEditorSubagentBackendOption[];
+    warnings: string[];
+}
+export interface WebEditorSubagentPolicyUpdate {
+    enabled?: boolean;
+    backend?: string | null;
+    timeoutMs?: number | null;
+}
+export interface WebEditorProfileCollection {
+    trusted: boolean;
+    profileDirectory: string;
+    profiles: WebEditorProfileEntry[];
+    status: AgentProfileRuntimeStatus;
+    models: WebEditorProfileModelOption[];
+    promptStacks: Array<{
+        id: string;
+        name?: string;
+    }>;
+    subagents: WebEditorSubagentSummary;
+}
+export interface WebEditorProfileModelOption {
+    provider: string;
+    id: string;
+    name?: string;
+    available: boolean;
+}
+export interface WebEditorProfileValidation {
+    preview: AgentProfilePreview;
+    diagnostics: AgentProfileDiagnostic[];
+    errors: number;
+    warnings: number;
+}
+export interface WebEditorProfileMutation {
+    collection: WebEditorProfileCollection;
+    selectedPath: string;
 }
 export interface WebEditorPreviewSection {
     id: string;
