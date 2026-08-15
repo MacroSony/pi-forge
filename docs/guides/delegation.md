@@ -47,6 +47,12 @@ Humans use:
 
 The parent model uses `forge_subagent_profiles` to discover enabled profiles and `forge_subagent` to invoke one. A restrictive parent stack must allow both tool names. Discovery is local/no-egress and reports metadata, resolution readiness, effective backend/timeout, approval mode, and whether parent tool policy permits invocation.
 
+Projects with only a few frequently used profiles can set `subagents.summaryInToolDescription: true` (global or trusted-project config). The `forge_subagent` tool description then carries a compact summary of enabled profiles—id, model, thinking level, stack, backend, and timeout—so the parent model does not need a discovery call to pick a profile. Ready profiles appear first; unavailable enabled profiles remain visible with their first resolution error so the model knows not to invoke them. The summary rides in every request, is capped at 8 profiles and 1,000 characters, and refreshes with profiles, stacks, and configuration; `forge_subagent_profiles` remains the authoritative full-detail surface.
+
+## Parallel invocation
+
+`forge_subagent` is a parallel-execution tool: the parent model may issue several calls in one turn, and they prepare and run concurrently. Interactive approval dialogs are serialized one at a time because Pi's selector/editor UI is a single slot—a second concurrent dialog would clear the first and leave it unresolved—so each call waits its turn for the dialog and then executes immediately, letting approved runs overlap. Unattended invocation needs no dialog and is fully concurrent. Each run is an independent `pi` subprocess and provider request; a burst of parallel calls multiplies provider cost and process load, so keep the parent tool policy conservative until a configurable concurrency cap lands.
+
 ## Backends and precedence
 
 Two fresh-process backends are registered:

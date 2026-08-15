@@ -50,6 +50,8 @@ Trusted project configuration may override defaults, authorize individual projec
 
 Valid timeouts are 1,000–3,600,000 ms. Invalid fields warn and fall back to the preceding applicable default. General backend precedence is project then user then built-in; an interactive run and a project profile entry can further override it as described in [delegation](../guides/delegation.md#backends-and-precedence).
 
+`subagents.summaryInToolDescription` (default `false`) embeds a compact, bounded summary of enabled subagent profiles directly in the `forge_subagent` tool description so the parent model can pick a profile without a discovery call. Ready profiles appear first, and unavailable enabled profiles include their first resolution error. It may be set in user or trusted-project configuration and applies wherever it is enabled.
+
 `profiles` in global configuration warns and is ignored. `allowAgentInvocationWithoutApproval` is project-only, requires trust, and fails closed when malformed. Deleting a profile also clears its effective delegation policy.
 
 Treat project configuration as an authorization boundary. In particular, do not commit unattended delegation unless every permitted parent agent may transmit compiled prompt and readable project content without another human approval.

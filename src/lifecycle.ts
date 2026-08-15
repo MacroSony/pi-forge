@@ -18,6 +18,7 @@ export interface LifecycleDeps {
 	disposeSubagentRuntime(): Promise<void>;
 	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
+	refreshSubagentToolDescriptions(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
 	restoreActiveToolPolicy(): void;
@@ -51,10 +52,12 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 			throw error;
 		}
 		deps.refreshWebEditorHost(ctx);
+		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
 	});
 
 	pi.on("resources_discover", async (_event, ctx) => {
+		deps.refreshSubagentToolDescriptions(ctx);
 		if (!startupToolPolicyPending) return;
 		startupToolPolicyPending = false;
 		deps.syncActiveToolPolicy(ctx);
@@ -63,12 +66,14 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	pi.on("session_tree", async (_event, ctx) => {
 		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);
+		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after tree navigation");
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
 		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.refreshWebEditorHost(ctx);
+		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after compaction");
 	});
 
@@ -89,6 +94,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.currentSystemPromptOptions = event.systemPromptOptions;
+		deps.refreshSubagentToolDescriptions(ctx);
 		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		state.currentLatestUserMessage = event.prompt;
 		state.currentVariableStore = createPromptVariableStore(state.sessionVariables);

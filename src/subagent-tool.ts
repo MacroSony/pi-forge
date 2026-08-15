@@ -7,7 +7,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { loadForgeSubagentSettings, resolveSubagentProfilePolicy } from "./forge-config.ts";
+import { loadForgeSubagentSettings, resolveSubagentProfilePolicy, type ForgeSubagentSettings } from "./forge-config.ts";
+import type { LoadedAgentProfile, ResolvedAgentProfile } from "./agent-profile.ts";
+import { summarizeProfile, type ForgeSubagentProfileSummary } from "./subagent-profile-tool.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime, SubagentBackendExecutionUpdate } from "./runtime/subagent-runtime.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 import {
@@ -24,6 +26,8 @@ const MAX_APPROVAL_TASK_PREVIEW_CHARS = 48;
 const MAX_APPROVAL_EXECUTION_PREVIEW_CHARS = 44;
 const MAX_APPROVAL_PATH_PREVIEW_CHARS = 44;
 const MAX_APPROVAL_FINGERPRINT_PREVIEW_CHARS = 24;
+const MAX_EMBEDDED_PROFILES = 8;
+const MAX_EMBEDDED_SUMMARY_CHARS = 1_000;
 
 const ForgeSubagentParameters = Type.Object({
 	profileId: Type.String({
@@ -86,175 +90,286 @@ export interface ForgeSubagentApprovalResult {
 	viewedFullPrompt: boolean;
 }
 
+/**
+ * Optional refresh-time inputs for the forge_subagent tool description.
+ * `summarize` returns the embedded profile summary for a context, or
+ * undefined when the summary is disabled or empty; the tool re-registers
+ * only when the rendered description would change.
+ */
+export interface ForgeSubagentToolRegistrationOptions {
+	summarize?: (ctx: ExtensionContext) => string | undefined;
+}
+
 export function registerForgeSubagentTool(
 	pi: ExtensionAPI,
 	runtime: ForgeSubagentRuntime,
 	profileIds: () => string[],
-): void {
-	pi.registerTool({
-		name: "forge_subagent",
-		label: "Forge Subagent",
-		description: [
-			"Delegate one foreground task to a Pi Forge agent profile explicitly enabled in subagents.profiles.",
-			"Use forge_subagent_profiles first when the user has not already specified a profile ID.",
-			"Runs require human approval after exact preparation unless the trusted project explicitly enables unattended agent invocation.",
-			"The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
-			"The optional backend parameter selects the execution backend for interactively approved runs; unattended invocation always uses the configured default backend.",
-			"Use the final report as evidence and do not repeatedly request the same rejected delegation.",
-		].join(" "),
-		parameters: ForgeSubagentParameters,
-		executionMode: "sequential",
+	options: ForgeSubagentToolRegistrationOptions = {},
+): (ctx: ExtensionContext) => void {
+	// The description is static at registration time; re-registering the tool
+	// by name replaces its definition and refreshes the tool registry. Track
+	// the last embedded summary so lifecycle refreshes (every turn included)
+	// are no-ops unless the profile summary actually changed.
+	let lastSummary: string | undefined;
 
-		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<ForgeSubagentToolDetails>> {
-			const settings = loadForgeSubagentSettings(ctx);
-			const approvalRequired = !settings.allowAgentInvocationWithoutApproval;
-			const configDiagnostics = settings.warnings.map((message): SubagentDiagnostic => ({ level: "warning", code: "host.config", message }));
-			const baseDetails: ForgeSubagentToolDetails = {
-				status: "preparing",
-				profileId: params.profileId,
-				task: params.task,
-				approval: {
-					required: approvalRequired,
-					approved: false,
-					viewedFullPrompt: false,
-					source: approvalRequired ? "none" : "trusted-project-config",
-				},
-				diagnostics: configDiagnostics,
-				progress: [],
-			};
-			const knownProfileIds = profileIds();
-			const enabledProfileIds = knownProfileIds.filter((profileId) =>
-				resolveSubagentProfilePolicy(settings, profileId).enabled
-			);
-			if (!knownProfileIds.includes(params.profileId)) {
-				const available = enabledProfileIds.join(", ") || "none";
-				return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Enabled subagent profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
-			}
-			const configuredPolicy = resolveSubagentProfilePolicy(settings, params.profileId);
-			if (!configuredPolicy.enabled) {
-				return toolResult(
-					`Pi Forge agent profile "${params.profileId}" is not enabled for subagent delegation. Use forge_subagent_profiles to discover enabled profiles.`,
-					{ ...baseDetails, status: "failed" },
-					true,
-				);
-			}
-			const configuredBackend = configuredPolicy.backend;
-			if (!approvalRequired && params.backend && params.backend !== configuredBackend.id) {
-				return toolResult(
-					`Subagent invocation was not run: unattended invocation is pinned to the configured backend "${configuredBackend.id}". To use "${params.backend}", run interactively or change the trusted subagent configuration.`,
-					{
-						...baseDetails,
-						status: "failed",
-						approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
+	function register(embedded?: string) {
+		pi.registerTool({
+			name: "forge_subagent",
+			label: "Forge Subagent",
+			description: forgeSubagentToolDescription(embedded),
+			parameters: ForgeSubagentParameters,
+			// Parallel execution lets the parent model issue several subagent calls
+			// in one turn. Pi serializes a whole batch only when any call in it is
+			// sequential; approvals stay safe because requestForgeSubagentApproval
+			// serializes its dialogs internally.
+			executionMode: "parallel",
+
+			async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<ForgeSubagentToolDetails>> {
+				const settings = loadForgeSubagentSettings(ctx);
+				const approvalRequired = !settings.allowAgentInvocationWithoutApproval;
+				const configDiagnostics = settings.warnings.map((message): SubagentDiagnostic => ({ level: "warning", code: "host.config", message }));
+				const baseDetails: ForgeSubagentToolDetails = {
+					status: "preparing",
+					profileId: params.profileId,
+					task: params.task,
+					approval: {
+						required: approvalRequired,
+						approved: false,
+						viewedFullPrompt: false,
+						source: approvalRequired ? "none" : "trusted-project-config",
 					},
-					true,
+					diagnostics: configDiagnostics,
+					progress: [],
+				};
+				const knownProfileIds = profileIds();
+				const enabledProfileIds = knownProfileIds.filter((profileId) =>
+					resolveSubagentProfilePolicy(settings, profileId).enabled
 				);
-			}
-			const runPolicy = resolveSubagentProfilePolicy(
-				settings,
-				params.profileId,
-				approvalRequired ? params.backend : undefined,
-			);
-			if (approvalRequired && !ctx.hasUI) {
-				return toolResult("Subagent invocation was not run: interactive human approval is unavailable.", { ...baseDetails, status: "cancelled" });
-			}
-
-			onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
-			let prepared: ForgeSubagentPreparedRun | undefined;
-			try {
-				const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
-					backendId: runPolicy.backend.id,
-					timeoutMs: runPolicy.timeout.milliseconds,
-				});
-				if (!preparation.ok) {
-					const diagnostics = [...configDiagnostics, ...preparation.diagnostics];
+				if (!knownProfileIds.includes(params.profileId)) {
+					const available = enabledProfileIds.join(", ") || "none";
+					return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Enabled subagent profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
+				}
+				const configuredPolicy = resolveSubagentProfilePolicy(settings, params.profileId);
+				if (!configuredPolicy.enabled) {
 					return toolResult(
-						`Subagent preparation failed:\n${renderDiagnostics(diagnostics)}`,
-						{ ...baseDetails, status: "failed", diagnostics },
+						`Pi Forge agent profile "${params.profileId}" is not enabled for subagent delegation. Use forge_subagent_profiles to discover enabled profiles.`,
+						{ ...baseDetails, status: "failed" },
 						true,
 					);
 				}
-				prepared = preparation.prepared;
-				const plan = summarizeForgeSubagentPlan(prepared, ctx.cwd);
-				const preparedDetails: ForgeSubagentToolDetails = {
-					...baseDetails,
-					status: approvalRequired ? "awaiting-approval" : "prepared",
-					plan,
-					diagnostics: [...configDiagnostics, ...prepared.diagnostics],
-				};
-				onUpdate?.(toolResult(
-					approvalRequired
-						? "The exact plan is ready and awaiting human approval."
-						: "The exact plan is ready; per-run approval is bypassed by trusted-project configuration.",
-					preparedDetails,
-				));
-				const approval = approvalRequired
-					? await requestForgeSubagentApproval(prepared, params.task, ctx, signal)
-					: { approved: true, viewedFullPrompt: false };
-				if (!approval.approved) {
-					await runtime.discard(prepared);
-					prepared = undefined;
-					return toolResult("Subagent invocation was rejected by the human before provider transport.", {
-						...preparedDetails,
-						status: "cancelled",
-						approval: { required: true, approved: false, viewedFullPrompt: approval.viewedFullPrompt, source: "none" },
-					});
+				const configuredBackend = configuredPolicy.backend;
+				if (!approvalRequired && params.backend && params.backend !== configuredBackend.id) {
+					return toolResult(
+						`Subagent invocation was not run: unattended invocation is pinned to the configured backend "${configuredBackend.id}". To use "${params.backend}", run interactively or change the trusted subagent configuration.`,
+						{
+							...baseDetails,
+							status: "failed",
+							approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
+						},
+						true,
+					);
+				}
+				const runPolicy = resolveSubagentProfilePolicy(
+					settings,
+					params.profileId,
+					approvalRequired ? params.backend : undefined,
+				);
+				if (approvalRequired && !ctx.hasUI) {
+					return toolResult("Subagent invocation was not run: interactive human approval is unavailable.", { ...baseDetails, status: "cancelled" });
 				}
 
-				const approvedAt = new Date().toISOString();
-				const progress: SubagentBackendExecutionUpdate[] = [];
-				const running: ForgeSubagentToolDetails = {
-					...preparedDetails,
-					status: "running",
-					approval: {
-						required: approvalRequired,
-						approved: true,
-						viewedFullPrompt: approval.viewedFullPrompt,
-						source: approvalRequired ? "human" : "trusted-project-config",
-						executionFingerprint: prepared.plan.executionFingerprint,
-						approvedAt,
-					},
-					progress,
-				};
-				const response = await runtime.execute(prepared, ctx, signal, (update) => {
-					progress.push(structuredClone(update));
-					if (progress.length > MAX_PROGRESS_ITEMS) progress.splice(0, progress.length - MAX_PROGRESS_ITEMS);
-					onUpdate?.(toolResult(truncate(update.message, 2_000), { ...running, progress: [...progress] }));
-				});
-				prepared = undefined;
-				const rawReport = runtime.takeReport?.(response.runId);
-				const report = rawReport ? sanitizePiSubprocessRunReport(rawReport) : undefined;
-				const finalDetails: ForgeSubagentToolDetails = {
-					...running,
-					status: toolStatus(response),
-					progress: [...progress],
-					response,
-					report,
-				};
-				return toolResult(renderResponseForModel(response), finalDetails, response.status === "failed");
-			} catch (error) {
-				if (prepared) await runtime.discard(prepared).catch(() => undefined);
-				const message = error instanceof Error ? error.message : String(error);
-				return toolResult(`Subagent invocation failed: ${message}`, { ...baseDetails, status: "failed" }, true);
-			}
-		},
+				onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
+				let prepared: ForgeSubagentPreparedRun | undefined;
+				try {
+					const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
+						backendId: runPolicy.backend.id,
+						timeoutMs: runPolicy.timeout.milliseconds,
+					});
+					if (!preparation.ok) {
+						const diagnostics = [...configDiagnostics, ...preparation.diagnostics];
+						return toolResult(
+							`Subagent preparation failed:\n${renderDiagnostics(diagnostics)}`,
+							{ ...baseDetails, status: "failed", diagnostics },
+							true,
+						);
+					}
+					prepared = preparation.prepared;
+					const plan = summarizeForgeSubagentPlan(prepared, ctx.cwd);
+					const preparedDetails: ForgeSubagentToolDetails = {
+						...baseDetails,
+						status: approvalRequired ? "awaiting-approval" : "prepared",
+						plan,
+						diagnostics: [...configDiagnostics, ...prepared.diagnostics],
+					};
+					onUpdate?.(toolResult(
+						approvalRequired
+							? "The exact plan is ready and awaiting human approval."
+							: "The exact plan is ready; per-run approval is bypassed by trusted-project configuration.",
+						preparedDetails,
+					));
+					const approval = approvalRequired
+						? await requestForgeSubagentApproval(prepared, params.task, ctx, signal)
+						: { approved: true, viewedFullPrompt: false };
+					if (!approval.approved) {
+						await runtime.discard(prepared);
+						prepared = undefined;
+						return toolResult("Subagent invocation was rejected by the human before provider transport.", {
+							...preparedDetails,
+							status: "cancelled",
+							approval: { required: true, approved: false, viewedFullPrompt: approval.viewedFullPrompt, source: "none" },
+						});
+					}
 
-		renderCall(args, theme) {
-			const task = truncate(args.task.replace(/\s+/g, " ").trim(), 100);
-			return new Text(
-				`${theme.fg("toolTitle", theme.bold("forge subagent "))}${theme.fg("accent", args.profileId)}\n${theme.fg("dim", task)}`,
-				0,
-				0,
-			);
-		},
+					const approvedAt = new Date().toISOString();
+					const progress: SubagentBackendExecutionUpdate[] = [];
+					const running: ForgeSubagentToolDetails = {
+						...preparedDetails,
+						status: "running",
+						approval: {
+							required: approvalRequired,
+							approved: true,
+							viewedFullPrompt: approval.viewedFullPrompt,
+							source: approvalRequired ? "human" : "trusted-project-config",
+							executionFingerprint: prepared.plan.executionFingerprint,
+							approvedAt,
+						},
+						progress,
+					};
+					const response = await runtime.execute(prepared, ctx, signal, (update) => {
+						progress.push(structuredClone(update));
+						if (progress.length > MAX_PROGRESS_ITEMS) progress.splice(0, progress.length - MAX_PROGRESS_ITEMS);
+						onUpdate?.(toolResult(truncate(update.message, 2_000), { ...running, progress: [...progress] }));
+					});
+					prepared = undefined;
+					const rawReport = runtime.takeReport?.(response.runId);
+					const report = rawReport ? sanitizePiSubprocessRunReport(rawReport) : undefined;
+					const finalDetails: ForgeSubagentToolDetails = {
+						...running,
+						status: toolStatus(response),
+						progress: [...progress],
+						response,
+						report,
+					};
+					return toolResult(renderResponseForModel(response), finalDetails, response.status === "failed");
+				} catch (error) {
+					if (prepared) await runtime.discard(prepared).catch(() => undefined);
+					const message = error instanceof Error ? error.message : String(error);
+					return toolResult(`Subagent invocation failed: ${message}`, { ...baseDetails, status: "failed" }, true);
+				}
+			},
 
-		renderResult(result, { expanded, isPartial }, theme) {
-			const details = result.details;
-			if (!details) return new Text(textContent(result) || "(no subagent result)", 0, 0);
-			if (!expanded) return renderCollapsedResult(result, details, isPartial, theme);
-			return renderExpandedResult(result, details, theme);
-		},
-	});
+			renderCall(args, theme) {
+				const task = truncate(args.task.replace(/\s+/g, " ").trim(), 100);
+				return new Text(
+					`${theme.fg("toolTitle", theme.bold("forge subagent "))}${theme.fg("accent", args.profileId)}\n${theme.fg("dim", task)}`,
+					0,
+					0,
+				);
+			},
+
+			renderResult(result, { expanded, isPartial }, theme) {
+				const details = result.details;
+				if (!details) return new Text(textContent(result) || "(no subagent result)", 0, 0);
+				if (!expanded) return renderCollapsedResult(result, details, isPartial, theme);
+				return renderExpandedResult(result, details, theme);
+			},
+		});
+	}
+
+	function refresh(ctx: ExtensionContext): void {
+		const summary = options.summarize?.(ctx);
+		if (summary === lastSummary) return;
+		lastSummary = summary;
+		register(summary);
+	}
+
+	register(undefined);
+	return refresh;
+}
+
+function forgeSubagentToolDescription(embedded?: string): string {
+	const lines = [
+		"Delegate one foreground task to a Pi Forge agent profile explicitly enabled in subagents.profiles.",
+		"Multiple forge_subagent calls in one turn run concurrently; interactive approvals are serialized one at a time.",
+		embedded
+			? "The enabled profiles are summarized below; run forge_subagent_profiles for full descriptions, diagnostics, and approval mode."
+			: "Use forge_subagent_profiles first when the user has not already specified a profile ID.",
+		"Runs require human approval after exact preparation unless the trusted project explicitly enables unattended agent invocation.",
+		"The child receives only approved read tools, but runs with the invoking user's OS permissions; read-only is not a sandbox.",
+		"The optional backend parameter selects the execution backend for interactively approved runs; unattended invocation always uses the configured default backend.",
+		"Use the final report as evidence and do not repeatedly request the same rejected delegation.",
+	].join(" ");
+	return embedded ? `${lines}\n\n${embedded}` : lines;
+}
+
+/**
+ * Compact summary of enabled subagent profiles for the forge_subagent tool
+ * description. Rendered only when subagents.summaryInToolDescription
+ * is enabled; ready profiles come first, unavailable profiles stay visible so
+ * the model does not attempt them. Returns undefined when disabled or when no
+ * profile is enabled for delegation.
+ */
+export function renderEmbeddedSubagentSummary(
+	settings: ForgeSubagentSettings,
+	profiles: readonly LoadedAgentProfile[],
+	resolve: (loaded: LoadedAgentProfile) => ResolvedAgentProfile,
+): string | undefined {
+	if (!settings.summaryInToolDescription) return undefined;
+	const summaries: ForgeSubagentProfileSummary[] = [];
+	for (const loaded of profiles) {
+		const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+		if (!policy.enabled) continue;
+		summaries.push(summarizeProfile(loaded, resolve(loaded), policy));
+	}
+	if (summaries.length === 0) return undefined;
+	const readyFirst = [...summaries].sort((a, b) => statusRank(a.status) - statusRank(b.status));
+	return renderEmbeddedSummaryText(readyFirst);
+}
+
+export function renderEmbeddedSummaryText(summaries: readonly ForgeSubagentProfileSummary[]): string {
+	const total = summaries.length;
+	const visible = summaries.slice(0, MAX_EMBEDDED_PROFILES);
+	const lines = ["Enabled subagent profiles:"];
+	for (const profile of visible) lines.push(`- ${embeddedProfileLine(profile)}`);
+	if (total > visible.length) {
+		const omitted = total - visible.length;
+		lines.push(`- ... and ${omitted} more enabled profile${omitted === 1 ? "" : "s"} (forge_subagent_profiles lists all)`);
+	}
+	const text = lines.join("\n");
+	return text.length <= MAX_EMBEDDED_SUMMARY_CHARS
+		? text
+		: `${text.slice(0, Math.max(0, MAX_EMBEDDED_SUMMARY_CHARS - 3))}...`;
+}
+
+function statusRank(status: ForgeSubagentProfileSummary["status"]): number {
+	return status === "ready" ? 0 : 1;
+}
+
+function embeddedProfileLine(profile: ForgeSubagentProfileSummary): string {
+	const label = profile.name ? `${profile.id} — ${compact(profile.name)}` : profile.id;
+	const target = `${profile.model.provider}/${profile.model.id} · thinking ${profile.thinkingLevel} · stack ${profile.promptStack ?? "none"}`;
+	const execution = `backend ${profile.backend.id} · ${formatTimeoutMs(profile.timeout.milliseconds)}`;
+	if (profile.status === "ready") return `${label}: ${target}; ${execution}`;
+	const reason = profile.diagnostics.find((diagnostic) => diagnostic.level === "error")?.message
+		?? "profile resolution failed";
+	return `${label}: ${target}; ${execution} (unavailable: ${compact(reason)})`;
+}
+
+function formatTimeoutMs(milliseconds: number): string {
+	return milliseconds % 1_000 === 0 ? `${milliseconds / 1_000}s` : `${milliseconds}ms`;
+}
+
+// Pi's select/editor UI is a single slot: a second concurrent dialog clears
+// the first component and leaves its promise permanently unresolved. Parallel
+// tool calls must therefore serialize the interactive approval flow through
+// this gate. Execution after each approval is not gated, so approved runs
+// still overlap; unattended invocation never enters the gate.
+let approvalDialogGate: Promise<void> = Promise.resolve();
+
+function withApprovalDialog<T>(run: () => Promise<T>): Promise<T> {
+	const next = approvalDialogGate.then(run);
+	approvalDialogGate = next.then(() => undefined, () => undefined);
+	return next;
 }
 
 export async function requestForgeSubagentApproval(
@@ -263,28 +378,30 @@ export async function requestForgeSubagentApproval(
 	ctx: ExtensionContext,
 	signal?: AbortSignal,
 ): Promise<ForgeSubagentApprovalResult> {
-	let viewedFullPrompt = false;
-	while (!signal?.aborted) {
-		const choice = await ctx.ui.select(
-			renderApprovalSummary(prepared, task, ctx.cwd),
-			[APPROVE, VIEW_FULL_PROMPT, REJECT],
-			{ signal },
-		);
-		if (choice === VIEW_FULL_PROMPT) {
-			viewedFullPrompt = true;
-			await ctx.ui.editor(
-				`Subagent approval details: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`,
-				[
-					renderApprovalDetails(prepared, task, ctx.cwd),
-					"",
-					renderFullForgeSubagentPrompt(prepared),
-				].join("\n"),
+	return withApprovalDialog(async () => {
+		let viewedFullPrompt = false;
+		while (!signal?.aborted) {
+			const choice = await ctx.ui.select(
+				renderApprovalSummary(prepared, task, ctx.cwd),
+				[APPROVE, VIEW_FULL_PROMPT, REJECT],
+				{ signal },
 			);
-			continue;
+			if (choice === VIEW_FULL_PROMPT) {
+				viewedFullPrompt = true;
+				await ctx.ui.editor(
+					`Subagent approval details: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`,
+					[
+						renderApprovalDetails(prepared, task, ctx.cwd),
+						"",
+						renderFullForgeSubagentPrompt(prepared),
+					].join("\n"),
+				);
+				continue;
+			}
+			return { approved: choice === APPROVE, viewedFullPrompt };
 		}
-		return { approved: choice === APPROVE, viewedFullPrompt };
-	}
-	return { approved: false, viewedFullPrompt };
+		return { approved: false, viewedFullPrompt };
+	});
 }
 
 export function summarizeForgeSubagentPlan(prepared: ForgeSubagentPreparedRun, cwd: string): ForgeSubagentPlanSummary {
@@ -551,6 +668,10 @@ function indent(text: string): string {
 
 function truncate(text: string, maxChars: number): string {
 	return text.length <= maxChars ? text : `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+}
+
+function compact(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
 }
 
 function oneLinePreview(text: string, maxChars: number): string {

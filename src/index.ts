@@ -7,7 +7,8 @@ import { registerProfileCommand } from "./profile-command.ts";
 import { applyResolvedAgentProfile } from "./profile-service.ts";
 import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.ts";
 import { registerForgeSubagentCommand } from "./subagent-command.ts";
-import { registerForgeSubagentTool } from "./subagent-tool.ts";
+import { registerForgeSubagentTool, renderEmbeddedSubagentSummary } from "./subagent-tool.ts";
+import { loadForgeSubagentSettings } from "./forge-config.ts";
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.ts";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
@@ -176,12 +177,31 @@ export default function piForge(pi: ExtensionAPI) {
 		},
 	}));
 
+	// The forge_subagent description can embed a compact summary of enabled
+	// profiles when subagents.summaryInToolDescription is enabled.
+	// Registration returns a refresh function the lifecycle wiring calls with
+	// a context whenever profiles, stacks, or configuration may have changed;
+	// the tool re-registers only when the rendered summary actually changed.
+	const refreshSubagentToolDescriptions = registerForgeSubagentTool(
+		pi,
+		subagentRuntime,
+		() => state.profiles.map((profile) => profile.profile.id),
+		{
+			summarize: (ctx) => renderEmbeddedSubagentSummary(
+				loadForgeSubagentSettings(ctx),
+				state.profiles,
+				(loaded) => profileRuntime.resolveProfile(loaded, ctx),
+			),
+		},
+	);
+
 	registerLifecycleHandlers(pi, state, {
 		reloadStacks: stackRuntime.reloadStacks,
 		disposePromptStackRuntime: stackRuntime.dispose,
 		disposeSubagentRuntime: subagentRuntime.dispose,
 		activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
 		refreshWebEditorHost: webEditorRuntime.refreshHost,
+		refreshSubagentToolDescriptions,
 		notifyActivePreset: stackRuntime.notifyActivePreset,
 		syncActiveToolPolicy: toolPolicy.sync,
 		restoreActiveToolPolicy: toolPolicy.restore,
@@ -207,5 +227,4 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 	registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 	registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
-	registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }

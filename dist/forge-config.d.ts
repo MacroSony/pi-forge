@@ -30,6 +30,15 @@ export interface ForgeSubagentSettings {
     /** Best-effort foreground timeout; a trusted project config wins over the global config. */
     timeoutMs: number;
     timeoutSource: ForgeSubagentConfigSource | "built-in";
+    /**
+     * Embed a compact summary of enabled subagent profiles directly in the
+     * forge_subagent tool description so the parent model does not need a
+     * discovery call for a small set of frequently used profiles. Opt-in
+     * because the summary rides in every request; the discovery tool remains
+     * the authoritative surface.
+     */
+    summaryInToolDescription: boolean;
+    summaryInToolDescriptionSource?: ForgeSubagentConfigSource;
     /** Per-profile delegation allowlist and execution overrides. Unlisted profiles are not delegatable. */
     profiles: Record<string, ForgeSubagentProfileSettings>;
     configPath: string;

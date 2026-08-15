@@ -5,3 +5,5 @@ node_modules/
 # dist/ is tracked intentionally so git installs can load ./dist/index.js.
 *.tsbuildinfo
 .DS_Store
+# Marketing drafts and published ad copy.
+ads/

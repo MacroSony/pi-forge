@@ -4,13 +4,9 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## 0.4 release
+## 0.4 baseline
 
-The profile UI, foreground-delegation dogfooding, dependency compatibility work, and documentation reorganization are complete. Runtime beta.2 is published and the packed extension passes the full verification surface against the documented Pi versions. The 0.4.0 release commit is ready; remaining release work is intentionally small:
-
-- merge the release commit to `main`;
-- publish 0.4.0 with delegation explicitly labelled experimental;
-- install the published package through Pi and complete the post-publish smoke check.
+The profile UI, foreground-delegation dogfooding, dependency compatibility work, and documentation reorganization are complete and merged to `main`. Runtime beta.2 is published, and the packed 0.4.0 extension passes the full verification surface against the documented Pi versions.
 
 Stable 0.4 does not imply that the subagent adapter or runtime has become stable. Prompt stacks and ordinary profile use remain independent of delegation.
 

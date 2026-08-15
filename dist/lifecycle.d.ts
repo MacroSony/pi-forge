@@ -10,6 +10,7 @@ export interface LifecycleDeps {
     disposeSubagentRuntime(): Promise<void>;
     activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
     refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
+    refreshSubagentToolDescriptions(ctx: ExtensionContext): void;
     notifyActivePreset(ctx: ExtensionContext, detail: string): void;
     syncActiveToolPolicy(ctx?: ExtensionContext): void;
     restoreActiveToolPolicy(): void;

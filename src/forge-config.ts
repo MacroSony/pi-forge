@@ -44,6 +44,15 @@ export interface ForgeSubagentSettings {
 	/** Best-effort foreground timeout; a trusted project config wins over the global config. */
 	timeoutMs: number;
 	timeoutSource: ForgeSubagentConfigSource | "built-in";
+	/**
+	 * Embed a compact summary of enabled subagent profiles directly in the
+	 * forge_subagent tool description so the parent model does not need a
+	 * discovery call for a small set of frequently used profiles. Opt-in
+	 * because the summary rides in every request; the discovery tool remains
+	 * the authoritative surface.
+	 */
+	summaryInToolDescription: boolean;
+	summaryInToolDescriptionSource?: ForgeSubagentConfigSource;
 	/** Per-profile delegation allowlist and execution overrides. Unlisted profiles are not delegatable. */
 	profiles: Record<string, ForgeSubagentProfileSettings>;
 	configPath: string;
@@ -117,6 +126,7 @@ export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentS
 		allowAgentInvocationWithoutApproval: false,
 		timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
 		timeoutSource: "built-in",
+		summaryInToolDescription: false,
 		profiles: Object.create(null) as Record<string, ForgeSubagentProfileSettings>,
 		configPath,
 		globalConfigPath,
@@ -128,11 +138,13 @@ export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentS
 	const globalSection = readSubagentsSection(globalConfigPath, settings.warnings);
 	applyBackend(globalSection, globalConfigPath, "global", settings);
 	applyTimeout(globalSection, globalConfigPath, "global", settings);
+	applyEmbedProfileSummary(globalSection, globalConfigPath, "global", settings);
 	warnIgnoredGlobalProfiles(globalSection, globalConfigPath, settings);
 	if (!ctx.isProjectTrusted()) return settings;
 	const projectSection = readSubagentsSection(configPath, settings.warnings);
 	applyBackend(projectSection, configPath, "project", settings);
 	applyTimeout(projectSection, configPath, "project", settings);
+	applyEmbedProfileSummary(projectSection, configPath, "project", settings);
 	applyProjectProfiles(projectSection, configPath, settings);
 	applyUnattended(projectSection, configPath, settings);
 	return settings;
@@ -191,6 +203,24 @@ function applyTimeout(
 	}
 	settings.timeoutMs = value;
 	settings.timeoutSource = source;
+}
+
+function applyEmbedProfileSummary(
+	section: Record<string, unknown> | undefined,
+	configPath: string,
+	source: ForgeSubagentConfigSource,
+	settings: ForgeSubagentSettings,
+): void {
+	if (!section || section.summaryInToolDescription === undefined) return;
+	const value = section.summaryInToolDescription;
+	if (typeof value !== "boolean") {
+		settings.warnings.push(
+			`pi-forge: ${configPath} subagents.summaryInToolDescription must be boolean; the configured value is ignored.`,
+		);
+		return;
+	}
+	settings.summaryInToolDescription = value;
+	settings.summaryInToolDescriptionSource = source;
 }
 
 function warnIgnoredGlobalProfiles(

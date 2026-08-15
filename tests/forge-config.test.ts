@@ -238,6 +238,48 @@ function context(cwd: string, trusted: boolean) {
 	return { cwd, isProjectTrusted: () => trusted } as any;
 }
 
+test("subagent embedded description flag layers global, trusted project, and validated defaults", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-embed-flag-"));
+	const globalConfigPath = join(cwd, "global-config.json");
+	const projectConfigPath = join(cwd, ".pi", "forge", "config.json");
+	const previousGlobalPath = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+	process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = globalConfigPath;
+	mkdirSync(join(cwd, ".pi", "forge"), { recursive: true });
+	try {
+		// No config anywhere: the flag is off by default.
+		const defaults = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(defaults.summaryInToolDescription, false);
+		assert.equal(defaults.summaryInToolDescriptionSource, undefined);
+
+		// The user-owned global config can enable the summary for any project.
+		writeFileSync(globalConfigPath, JSON.stringify({ subagents: { summaryInToolDescription: true } }), "utf8");
+		const globalOnly = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(globalOnly.summaryInToolDescription, true);
+		assert.equal(globalOnly.summaryInToolDescriptionSource, "global");
+
+		// A trusted project config wins over the global config.
+		writeFileSync(projectConfigPath, JSON.stringify({ subagents: { summaryInToolDescription: false } }), "utf8");
+		const project = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(project.summaryInToolDescription, false);
+		assert.equal(project.summaryInToolDescriptionSource, "project");
+
+		// An untrusted project override is ignored; the global value still applies.
+		const untrusted = loadForgeSubagentSettings(context(cwd, false));
+		assert.equal(untrusted.summaryInToolDescription, true);
+		assert.equal(untrusted.summaryInToolDescriptionSource, "global");
+
+		// Malformed values warn and are ignored without discarding other layers.
+		writeFileSync(projectConfigPath, JSON.stringify({ subagents: { summaryInToolDescription: "yes" } }), "utf8");
+		const malformed = loadForgeSubagentSettings(context(cwd, true));
+		assert.equal(malformed.summaryInToolDescription, true);
+		assert.match(malformed.warnings.join("\n"), /summaryInToolDescription must be boolean/);
+	} finally {
+		if (previousGlobalPath === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousGlobalPath;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("updateForgeSubagentProfileConfig writes, preserves, and removes per-profile delegation", () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-config-write-"));
 	const configPath = join(cwd, ".pi", "forge", "config.json");

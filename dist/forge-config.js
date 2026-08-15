@@ -54,6 +54,7 @@ export function loadForgeSubagentSettings(ctx) {
         allowAgentInvocationWithoutApproval: false,
         timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
         timeoutSource: "built-in",
+        summaryInToolDescription: false,
         profiles: Object.create(null),
         configPath,
         globalConfigPath,
@@ -64,12 +65,14 @@ export function loadForgeSubagentSettings(ctx) {
     const globalSection = readSubagentsSection(globalConfigPath, settings.warnings);
     applyBackend(globalSection, globalConfigPath, "global", settings);
     applyTimeout(globalSection, globalConfigPath, "global", settings);
+    applyEmbedProfileSummary(globalSection, globalConfigPath, "global", settings);
     warnIgnoredGlobalProfiles(globalSection, globalConfigPath, settings);
     if (!ctx.isProjectTrusted())
         return settings;
     const projectSection = readSubagentsSection(configPath, settings.warnings);
     applyBackend(projectSection, configPath, "project", settings);
     applyTimeout(projectSection, configPath, "project", settings);
+    applyEmbedProfileSummary(projectSection, configPath, "project", settings);
     applyProjectProfiles(projectSection, configPath, settings);
     applyUnattended(projectSection, configPath, settings);
     return settings;
@@ -118,6 +121,17 @@ function applyTimeout(section, configPath, source, settings) {
     }
     settings.timeoutMs = value;
     settings.timeoutSource = source;
+}
+function applyEmbedProfileSummary(section, configPath, source, settings) {
+    if (!section || section.summaryInToolDescription === undefined)
+        return;
+    const value = section.summaryInToolDescription;
+    if (typeof value !== "boolean") {
+        settings.warnings.push(`pi-forge: ${configPath} subagents.summaryInToolDescription must be boolean; the configured value is ignored.`);
+        return;
+    }
+    settings.summaryInToolDescription = value;
+    settings.summaryInToolDescriptionSource = source;
 }
 function warnIgnoredGlobalProfiles(section, configPath, settings) {
     if (!section || section.profiles === undefined)

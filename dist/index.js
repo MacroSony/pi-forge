@@ -6,7 +6,8 @@ import { registerProfileCommand } from "./profile-command.js";
 import { applyResolvedAgentProfile } from "./profile-service.js";
 import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.js";
 import { registerForgeSubagentCommand } from "./subagent-command.js";
-import { registerForgeSubagentTool } from "./subagent-tool.js";
+import { registerForgeSubagentTool, renderEmbeddedSubagentSummary } from "./subagent-tool.js";
+import { loadForgeSubagentSettings } from "./forge-config.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.js";
@@ -79,12 +80,21 @@ export default function piForge(pi) {
             return { ok: true, ...webPayloadSnapshot(state) };
         },
     }));
+    // The forge_subagent description can embed a compact summary of enabled
+    // profiles when subagents.summaryInToolDescription is enabled.
+    // Registration returns a refresh function the lifecycle wiring calls with
+    // a context whenever profiles, stacks, or configuration may have changed;
+    // the tool re-registers only when the rendered summary actually changed.
+    const refreshSubagentToolDescriptions = registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id), {
+        summarize: (ctx) => renderEmbeddedSubagentSummary(loadForgeSubagentSettings(ctx), state.profiles, (loaded) => profileRuntime.resolveProfile(loaded, ctx)),
+    });
     registerLifecycleHandlers(pi, state, {
         reloadStacks: stackRuntime.reloadStacks,
         disposePromptStackRuntime: stackRuntime.dispose,
         disposeSubagentRuntime: subagentRuntime.dispose,
         activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
         refreshWebEditorHost: webEditorRuntime.refreshHost,
+        refreshSubagentToolDescriptions,
         notifyActivePreset: stackRuntime.notifyActivePreset,
         syncActiveToolPolicy: toolPolicy.sync,
         restoreActiveToolPolicy: toolPolicy.restore,
@@ -110,6 +120,5 @@ export default function piForge(pi) {
     });
     registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
     registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
-    registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
 }
 //# sourceMappingURL=index.js.map

@@ -5,9 +5,18 @@ import { join } from "node:path";
 import test from "node:test";
 import { Text } from "@earendil-works/pi-tui";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
-import { registerForgeSubagentTool, renderApprovalSummary } from "../src/subagent-tool.ts";
+import {
+	registerForgeSubagentTool,
+	renderApprovalSummary,
+	renderEmbeddedSubagentSummary,
+	renderEmbeddedSummaryText,
+} from "../src/subagent-tool.ts";
 import type { AgentResponse } from "../src/subagent/contract.ts";
 import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
+import type { ForgeSubagentSettings } from "../src/forge-config.ts";
+import type { LoadedAgentProfile, ResolvedAgentProfile } from "../src/agent-profile.ts";
+import type { ForgeSubagentProfileSummary } from "../src/subagent-profile-tool.ts";
+import { createContext, createHarness, startSession, writeForgeConfig, writeProfile } from "./helpers/index-command-harness.ts";
 import {
 	createFakeExecutionPlan,
 	fakeAcceptedPreflight,
@@ -61,7 +70,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId]);
 	const tool = registered.forge_subagent;
 	assert.ok(tool);
-	assert.equal(tool.executionMode, "sequential");
+	assert.equal(tool.executionMode, "parallel");
 
 	const context = toolContext(["View full prompt", "Approve and run"]);
 	const updates: any[] = [];
@@ -102,6 +111,63 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.match(expandedText, /Subagent transcript/);
 	assert.match(expandedText, /read/);
 	assert.match(expandedText, /Image data omitted/);
+});
+
+test("parallel forge_subagent calls serialize approval dialogs but execute concurrently", async () => {
+	const fixture = await toolFixture();
+	let markFirstEntered!: () => void;
+	const firstEntered = new Promise<void>((resolve) => { markFirstEntered = resolve; });
+	let releaseFirst!: () => void;
+	const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+	const selectTitles: string[] = [];
+	const executionIntervals: Array<{ startedAt: number; finishedAt: number }> = [];
+	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
+		descriptors: () => [],
+		prepare: async () => ({ ok: true, prepared: fixture.prepared }),
+		discard: async () => undefined,
+		execute: async () => {
+			const startedAt = Date.now();
+			await sleep(30);
+			executionIntervals.push({ startedAt, finishedAt: Date.now() });
+			return completedResponse(fixture.prepared, "ok");
+		},
+		dispose: async () => undefined,
+	};
+	const registered: Record<string, any> = {};
+	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId]);
+	const tool = registered.forge_subagent;
+	assert.equal(tool.executionMode, "parallel");
+
+	const ctx = {
+		hasUI: true,
+		cwd: TEST_CWD,
+		isProjectTrusted: () => true,
+		ui: {
+			select: async (title: string) => {
+				selectTitles.push(title);
+				if (selectTitles.length === 1) {
+					markFirstEntered();
+					await release;
+				}
+				return "Approve and run";
+			},
+			editor: async () => "",
+		},
+	} as any;
+
+	const first = tool.execute("call-1", { profileId: fixture.profileId, task: "Task one." }, undefined, undefined, ctx);
+	await firstEntered;
+	const second = tool.execute("call-2", { profileId: fixture.profileId, task: "Task two." }, undefined, undefined, ctx);
+	await sleep(50);
+	assert.equal(selectTitles.length, 1, "the second approval dialog must wait for the first");
+	releaseFirst();
+	const [firstResult, secondResult] = await Promise.all([first, second]);
+	assert.equal(selectTitles.length, 2, "the second approval dialog runs after the first resolves");
+	assert.equal(firstResult.details.status, "completed");
+	assert.equal(secondResult.details.status, "completed");
+	assert.equal(executionIntervals.length, 2);
+	assert.ok(intervalsOverlap(executionIntervals), "approved runs must execute concurrently");
 });
 
 test("subagent approval selector stays compact for long multiline tasks", async () => {
@@ -276,6 +342,248 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 	assert.deepEqual(prepareRuns.at(-1), { backendId: "other-backend", timeoutMs: 60_000 });
 });
 
+function subagentSettings(overrides: Partial<ForgeSubagentSettings> = {}): ForgeSubagentSettings {
+	return {
+		allowAgentInvocationWithoutApproval: false,
+		timeoutMs: 60_000,
+		timeoutSource: "built-in",
+		summaryInToolDescription: false,
+		profiles: {},
+		configPath: "/tmp/config.json",
+		globalConfigPath: "/tmp/global.json",
+		warnings: [],
+		...overrides,
+	};
+}
+
+function loadedProfile(id: string): LoadedAgentProfile {
+	return {
+		filePath: `/tmp/${id}.json`,
+		diagnostics: [],
+		profile: {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id,
+			name: `${id} name`,
+			model: { provider: "test-provider", id: "test-model" },
+			thinkingLevel: "high",
+			promptStack: `${id}-stack`,
+		},
+	};
+}
+
+function resolvedProfile(loaded: LoadedAgentProfile, error?: string): ResolvedAgentProfile {
+	return {
+		loaded,
+		model: { provider: loaded.profile.model.provider, id: loaded.profile.model.id } as any,
+		promptStack: undefined,
+		effectiveThinkingLevel: loaded.profile.thinkingLevel as any,
+		diagnostics: error ? [{ level: "error", message: error }] : [],
+	};
+}
+
+function profileSummary(overrides: Partial<ForgeSubagentProfileSummary> = {}): ForgeSubagentProfileSummary {
+	return {
+		id: "reviewer",
+		name: "Review specialist",
+		description: "Reviews code and architecture.",
+		model: { provider: "test-provider", id: "test-model" },
+		thinkingLevel: "high",
+		promptStack: "review-stack",
+		backend: { id: "pi-subprocess-readonly", source: "built-in" },
+		timeout: { milliseconds: 60_000, source: "built-in" },
+		status: "ready",
+		diagnostics: [],
+		...overrides,
+	};
+}
+
+test("embedded subagent summaries render one compact line per enabled profile with bounds", () => {
+	const text = renderEmbeddedSummaryText([
+		profileSummary(),
+		profileSummary({
+			id: "translate",
+			name: "Translator",
+			status: "unavailable",
+			diagnostics: [
+				{ level: "error", field: "model", message: "Model test-provider/other has no configured authentication." },
+				{ level: "error", field: "promptStack", message: "This later error stays in full discovery details." },
+			],
+		}),
+	]);
+	assert.match(text, /^- reviewer — Review specialist: test-provider\/test-model · thinking high · stack review-stack; backend pi-subprocess-readonly · 60s$/m);
+	assert.match(text, /^- translate — Translator: .* \(unavailable: Model test-provider\/other has no configured authentication\.\)$/m);
+	assert.doesNotMatch(text, /later error/);
+});
+
+test("embedded subagent summaries cap the profile count and total length", () => {
+	const many = Array.from({ length: 12 }, (_, index) => profileSummary({ id: `profile-${index}`, name: undefined }));
+	const text = renderEmbeddedSummaryText(many);
+	const lines = text.split("\n");
+	assert.equal(lines.length, 10); // header + 8 profiles + one omitted line
+	assert.match(lines[9] ?? "", /\.\.\. and 4 more enabled profiles/);
+
+	const verbose = renderEmbeddedSummaryText([profileSummary({ name: "x".repeat(400) })]);
+	assert.ok(verbose.length <= 1_000, "the embedded summary must respect the character budget");
+});
+
+test("renderEmbeddedSubagentSummary gates on the config flag, delegation policy, and resolution", () => {
+	const settings = subagentSettings({
+		summaryInToolDescription: true,
+		profiles: {
+			reviewer: { enabled: true },
+			broken: { enabled: true },
+			hidden: { enabled: false },
+		},
+	});
+	const profiles = [loadedProfile("reviewer"), loadedProfile("broken"), loadedProfile("hidden")];
+	const resolve = (loaded: LoadedAgentProfile) => resolvedProfile(loaded, loaded.profile.id === "broken" ? "Model authentication is missing." : undefined);
+
+	const summary = renderEmbeddedSubagentSummary(settings, profiles, resolve);
+	assert.ok(summary);
+	assert.match(summary, /reviewer/);
+	assert.match(summary, /broken.*unavailable: Model authentication is missing\./);
+	assert.doesNotMatch(summary, /hidden/);
+	// Ready profiles come first.
+	assert.ok(summary.indexOf("reviewer") < summary.indexOf("broken"));
+
+	// Disabled flag: no summary at all.
+	assert.equal(renderEmbeddedSubagentSummary(subagentSettings({ summaryInToolDescription: false }), profiles, resolve), undefined);
+	// No enabled profiles: no summary at all.
+	assert.equal(renderEmbeddedSubagentSummary(subagentSettings({ summaryInToolDescription: true }), profiles, resolve), undefined);
+});
+
+test("forge_subagent re-registers its description only when the embedded summary changes", () => {
+	const registered: any[] = [];
+	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
+		descriptors: () => [],
+		prepare: async () => ({ ok: false, diagnostics: [] }),
+		discard: async () => undefined,
+		execute: async () => completedResponse((await toolFixture()).prepared, "never runs"),
+		dispose: async () => undefined,
+	};
+	let settings = subagentSettings({
+		summaryInToolDescription: true,
+		profiles: { reviewer: { enabled: true } },
+	});
+	const profiles = [loadedProfile("reviewer")];
+	const refresh = registerForgeSubagentTool(
+		{ registerTool: (definition: any) => { registered.push(definition); } } as any,
+		runtime,
+		() => profiles.map((profile) => profile.profile.id),
+		{
+			summarize: () => renderEmbeddedSubagentSummary(settings, profiles, (loaded) => resolvedProfile(loaded)),
+		},
+	);
+
+	// Registration carries the base description; refresh only happens with a context.
+	assert.equal(registered.length, 1);
+	assert.match(registered[0].description, /Use forge_subagent_profiles first/);
+	assert.doesNotMatch(registered[0].description, /Enabled subagent profiles/);
+
+	refresh({} as any);
+	assert.equal(registered.length, 2);
+	assert.match(registered[1].description, /Enabled subagent profiles:/);
+	assert.match(registered[1].description, /- reviewer — reviewer name: test-provider\/test-model · thinking high · stack reviewer-stack; backend pi-subprocess-readonly · 60s/);
+	assert.match(registered[1].description, /run forge_subagent_profiles for full descriptions/);
+	assert.doesNotMatch(registered[1].description, /Use forge_subagent_profiles first/);
+
+	// Unchanged state: refresh is a no-op.
+	refresh({} as any);
+	assert.equal(registered.length, 2);
+
+	// Disabling the option reverts the description to the base form.
+	settings = subagentSettings();
+	refresh({} as any);
+	assert.equal(registered.length, 3);
+	assert.match(registered[2].description, /Use forge_subagent_profiles first/);
+	assert.doesNotMatch(registered[2].description, /Enabled subagent profiles/);
+});
+
+test("forge_subagent keeps its initial registration when the embedded summary stays disabled", () => {
+	const registered: any[] = [];
+	const runtime: ForgeSubagentRuntime = {
+		backendIds: () => [],
+		descriptors: () => [],
+		prepare: async () => ({ ok: false, diagnostics: [] }),
+		discard: async () => undefined,
+		execute: async () => completedResponse((await toolFixture()).prepared, "never runs"),
+		dispose: async () => undefined,
+	};
+	const refresh = registerForgeSubagentTool(
+		{ registerTool: (definition: any) => { registered.push(definition); } } as any,
+		runtime,
+		() => [],
+		{ summarize: () => undefined },
+	);
+
+	assert.equal(registered.length, 1);
+	refresh({} as any);
+	refresh({} as any);
+	assert.equal(registered.length, 1);
+});
+
+test("forge_subagent embeds the enabled profile summary through the full extension lifecycle", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-embed-lifecycle-"));
+	const targetModel = {
+		api: "openai-completions",
+		provider: "test",
+		id: "reviewer-model",
+		name: "Reviewer model",
+		baseUrl: "http://localhost.invalid",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 128_000,
+		maxTokens: 8_192,
+	};
+	writeProfile(cwd, "reviewer.json", {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		name: "Review specialist",
+		model: { provider: "test", id: "reviewer-model" },
+		thinkingLevel: "high",
+		promptStack: null,
+	});
+	writeForgeConfig(cwd, {
+		subagents: {
+			summaryInToolDescription: true,
+			profiles: { reviewer: { enabled: true } },
+		},
+	});
+	const harness = createHarness({ currentModel: targetModel, models: [targetModel], availableModels: [targetModel] });
+	const context = createContext(cwd, [], { modelRuntime: harness });
+	try {
+		assert.match(harness.tools.forge_subagent.description, /Use forge_subagent_profiles first/);
+
+		await startSession(harness, context.ctx);
+		assert.match(harness.tools.forge_subagent.description, /Enabled subagent profiles:/);
+		assert.match(harness.tools.forge_subagent.description, /- reviewer — Review specialist: test\/reviewer-model · thinking high · stack none; backend pi-subprocess-readonly · 60s/);
+
+		// Firing an agent turn with unchanged state does not churn the tool registry.
+		const toolsBefore = Object.keys(harness.tools).length;
+		await harness.events.before_agent_start?.(
+			{ systemPromptOptions: context.ctx.getSystemPromptOptions(), prompt: "Inspect this code." },
+			context.ctx,
+		);
+		assert.equal(Object.keys(harness.tools).length, toolsBefore);
+		assert.match(harness.tools.forge_subagent.description, /Enabled subagent profiles:/);
+
+		// Disabling the option reverts the description on the next lifecycle refresh.
+		writeForgeConfig(cwd, { subagents: {} });
+		await harness.events.before_agent_start?.(
+			{ systemPromptOptions: context.ctx.getSystemPromptOptions(), prompt: "Inspect this code." },
+			context.ctx,
+		);
+		assert.match(harness.tools.forge_subagent.description, /Use forge_subagent_profiles first/);
+		assert.doesNotMatch(harness.tools.forge_subagent.description, /Enabled subagent profiles:/);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 async function toolFixture() {
 	const request = fakeRequest({
 		limits: { timeoutMs: { value: 300_000, enforcement: "best-effort" } },
@@ -374,4 +682,14 @@ function theme() {
 		fg: (_color: string, text: string) => text,
 		bold: (text: string) => text,
 	} as any;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function intervalsOverlap(intervals: Array<{ startedAt: number; finishedAt: number }>): boolean {
+	if (intervals.length < 2) return false;
+	const [left, right] = intervals;
+	return left.startedAt < right.finishedAt && right.startedAt < left.finishedAt;
 }
