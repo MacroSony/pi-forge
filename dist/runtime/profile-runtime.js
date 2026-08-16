@@ -1,9 +1,9 @@
-import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
+import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, loadAgentProfilesScoped, loadGlobalAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
 import { chooseDefaultStack } from "../loader.js";
 import { applyResolvedAgentProfile } from "../profile-service.js";
 export function createProfileRuntime(pi, state, deps) {
     function reloadProfiles(ctx) {
-        state.profiles = ctx.isProjectTrusted() ? loadAgentProfiles(ctx.cwd) : [];
+        state.profiles = ctx.isProjectTrusted() ? loadAgentProfilesScoped(ctx.cwd) : loadGlobalAgentProfiles();
     }
     function resolveProfile(target, ctx) {
         return resolveAgentProfile(target, {
@@ -14,6 +14,11 @@ export function createProfileRuntime(pi, state, deps) {
         });
     }
     async function activateFreshSessionDefaults(ctx) {
+        // D3: auto-activation is an application action. Untrusted projects may
+        // browse global definitions, but they must not apply global profiles or
+        // activate global prompt stacks during a fresh session.
+        if (!ctx.isProjectTrusted())
+            return;
         const target = chooseAutoActivateAgentProfile(state.profiles);
         if (!target) {
             if (hasAutoActivateAgentProfile(state.profiles)) {

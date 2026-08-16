@@ -2,6 +2,7 @@ import { getRegisteredMacros, } from "./macro-engine.js";
 import { getRegisteredSlots, } from "./slot-renderers.js";
 import { compileMessages, compileSystemPrompt, createPromptVariableStore } from "./compiler.js";
 import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, negotiateSubagentTools, prepareSubagentInitialMessages, } from "./subagent/contract.js";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 const BUILT_IN_MACROS = new Set([
     "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
     "setvar", "setturnvar", "setsessionvar", "getvar", "var", "getturnvar", "getsessionvar",
@@ -27,31 +28,54 @@ export function resolveSubagentHostProfile(loaded, resources) {
     }));
     const registrations = resources.registrations ?? currentSubagentPromptRegistrationCatalog();
     let promptStack;
+    let promptStackId = null;
     if (loaded.profile.promptStack !== null) {
-        const matches = resources.promptStacks.filter((candidate) => candidate.stack.id === loaded.profile.promptStack);
-        if (matches.length !== 1) {
+        const reference = loaded.profile.promptStack;
+        const parsed = parseResourceSelector(reference);
+        if (!parsed.ok) {
             diagnostics.push({
                 level: "error",
-                code: matches.length === 0 ? "profile.stack-missing" : "profile.stack-ambiguous",
+                code: "profile.stack-reference",
                 path: "profile.promptStack",
-                message: matches.length === 0
-                    ? `Unknown prompt stack: ${loaded.profile.promptStack}`
-                    : `Prompt stack id is ambiguous: ${loaded.profile.promptStack}`,
+                message: parsed.error,
+            });
+        }
+        else if (loaded.scope === "global" && parsed.selector.scope === "project") {
+            diagnostics.push({
+                level: "error",
+                code: "profile.stack-reference",
+                path: "profile.promptStack",
+                message: `Global profile ${loaded.profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
             });
         }
         else {
-            promptStack = matches[0];
-            for (const diagnostic of promptStack.diagnostics) {
+            const scope = parsed.selector.scope ?? loaded.scope;
+            const matches = resources.promptStacks.filter((candidate) => candidate.scope === scope && candidate.stack.id === parsed.selector.id);
+            if (matches.length !== 1) {
                 diagnostics.push({
-                    level: diagnostic.level,
-                    code: "profile.stack-validation",
-                    path: diagnostic.itemId ? `promptStack.items.${diagnostic.itemId}` : "promptStack",
-                    message: diagnostic.message,
+                    level: "error",
+                    code: matches.length === 0 ? "profile.stack-missing" : "profile.stack-ambiguous",
+                    path: "profile.promptStack",
+                    message: matches.length === 0
+                        ? `Unknown prompt stack: ${reference}`
+                        : `Prompt stack id is ambiguous: ${reference}`,
                 });
             }
-            if (!promptStack.stack.mode || !["replace", "append", "prepend"].includes(promptStack.stack.mode)) {
-                if (promptStack.stack.mode !== undefined)
-                    diagnostics.push({ level: "error", code: "profile.stack-mode", path: "promptStack.mode", message: `Unsupported prompt stack mode: ${String(promptStack.stack.mode)}` });
+            else {
+                promptStack = matches[0];
+                promptStackId = formatResourceKey({ scope, id: parsed.selector.id });
+                for (const diagnostic of promptStack.diagnostics) {
+                    diagnostics.push({
+                        level: diagnostic.level,
+                        code: "profile.stack-validation",
+                        path: diagnostic.itemId ? `promptStack.items.${diagnostic.itemId}` : "promptStack",
+                        message: diagnostic.message,
+                    });
+                }
+                if (!promptStack.stack.mode || !["replace", "append", "prepend"].includes(promptStack.stack.mode)) {
+                    if (promptStack.stack.mode !== undefined)
+                        diagnostics.push({ level: "error", code: "profile.stack-mode", path: "promptStack.mode", message: `Unsupported prompt stack mode: ${String(promptStack.stack.mode)}` });
+                }
             }
         }
     }
@@ -60,7 +84,7 @@ export function resolveSubagentHostProfile(loaded, resources) {
         : { dependencies: [], missingDependencies: [], diagnostics: [] };
     diagnostics.push(...dependencyResult.diagnostics);
     const resolution = {
-        profileId: loaded.profile.id,
+        profileId: formatResourceKey(loaded.key),
         dependencies: dependencyResult.dependencies,
         missingDependencies: dependencyResult.missingDependencies,
         diagnostics,
@@ -68,7 +92,9 @@ export function resolveSubagentHostProfile(loaded, resources) {
     if (!diagnostics.some((diagnostic) => diagnostic.level === "error")) {
         resolution.snapshot = {
             schemaVersion: 1,
+            profileId: formatResourceKey(loaded.key),
             profile: structuredClone(loaded.profile),
+            promptStackId,
             promptStack: promptStack ? structuredClone(promptStack.stack) : null,
             dependencies: structuredClone(dependencyResult.dependencies),
             profileFingerprint: subagentSourceProfileFingerprint(loaded.profile),

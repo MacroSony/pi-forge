@@ -30,6 +30,8 @@ test("tool policy runtime owns filtering, preview, and restoration state", () =>
 	const state = createRuntimeState();
 	const active = {
 		filePath: "/tmp/read-only.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: "read-only" },
 		diagnostics: [],
 		stack: { schemaVersion: 1 as const, id: "read-only", tools: { allow: ["read"] }, items: [] },
 	};

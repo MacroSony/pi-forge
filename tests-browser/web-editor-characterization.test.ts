@@ -121,7 +121,7 @@ test("web editor transitions between populated and empty stack states", { timeou
 		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
 		assert.deepEqual(promptAnswers, []);
 		await page.locator("#profilesSurfaceBtn").click();
-		await page.locator(".profile-empty").filter({ hasText: "No project agent profiles found." }).waitFor();
+		await page.locator(".profile-empty").filter({ hasText: "No agent profiles found." }).waitFor();
 	});
 });
 
@@ -276,6 +276,7 @@ test("web editor navigates project profile resolution without losing stack state
 
 		await page.locator("#profileNewBtn").click();
 		await page.locator("#profileId").fill("scout");
+		assert.equal(await page.locator("#profilePromptStack").inputValue(), "default");
 		await page.locator("#profileName").fill("Scout");
 		await page.locator("#profileDescription").fill("Explore a focused change.");
 		await page.locator("#profileModelProvider").fill("test");
@@ -318,7 +319,7 @@ test("web editor navigates project profile resolution without losing stack state
 
 		await page.locator("#profileApplyBtn").click();
 		await page.locator("#profilesStatus").filter({ hasText: "Applied scout once" }).waitFor();
-		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*alternate/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*project:alternate/);
 		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Last applied\s*scout/);
 		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Source definition\s*unchanged/);
 		assert.match(
@@ -390,7 +391,7 @@ test("web editor navigates project profile resolution without losing stack state
 		});
 		assert.equal(invalidApply.status(), 400);
 		assert.match(await invalidApply.text(), /failed preflight/);
-		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*alternate/);
+		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /test\/target ·\s*medium ·\s*project:alternate/);
 
 		await page.locator('[data-profile-row][data-profile-id="reviewer"]').click();
 		await page.locator("#stacksSurfaceBtn").click();
@@ -442,7 +443,7 @@ test("web editor refreshes runtime state after a failed profile application", { 
 		await page.locator("#profilesStatus").filter({ hasText: "instead of high" }).waitFor();
 		assert.match(
 			await page.locator(".profile-runtime-card").textContent() ?? "",
-			/test\/current ·\s*low ·\s*default/,
+			/test\/current ·\s*low ·\s*project:default/,
 		);
 		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /No profile has been applied/);
 		await page.locator("#stacksSurfaceBtn").click();
@@ -548,7 +549,7 @@ test("web editor reports profile runtime drift after external changes", { timeou
 		await harness.commands.preset.handler("use default", context.ctx);
 
 		await page.locator("#profileRefreshBtn").click();
-		await page.locator(".profile-runtime-card").filter({ hasText: /test\/current ·\s*low ·\s*default/ }).waitFor();
+		await page.locator(".profile-runtime-card").filter({ hasText: /test\/current ·\s*low ·\s*project:default/ }).waitFor();
 		assert.match(await drift.textContent() ?? "", /Model: drifted/);
 		assert.match(await drift.textContent() ?? "", /Thinking: drifted/);
 		assert.match(await drift.textContent() ?? "", /Stack: drifted/);

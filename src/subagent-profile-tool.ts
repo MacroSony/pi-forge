@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { formatResourceKey } from "./resource-identity.ts";
 import {
 	DEFAULT_SUBAGENT_TIMEOUT_MS,
 	loadForgeSubagentSettings,
@@ -78,7 +79,7 @@ export function registerForgeSubagentProfilesTool(
 			const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
 			const defaultBackend = resolveSubagentBackend(settings);
 			const summaries = profiles().flatMap((loaded) => {
-				const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+				const policy = resolveSubagentProfilePolicy(settings, formatResourceKey(loaded.key));
 				return policy.enabled ? [summarizeProfile(loaded, resolveProfile(loaded, ctx), policy)] : [];
 			});
 			const timeout = { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
@@ -96,7 +97,7 @@ export function summarizeProfile(
 	policy: ResolvedSubagentProfilePolicy,
 ): ForgeSubagentProfileSummary {
 	return {
-		id: loaded.profile.id,
+		id: formatResourceKey(loaded.key),
 		name: loaded.profile.name,
 		description: loaded.profile.description,
 		model: structuredClone(loaded.profile.model),

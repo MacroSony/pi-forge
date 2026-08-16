@@ -1,5 +1,8 @@
 import { existsSync } from "node:fs";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, isValidAgentProfileId, renderAgentProfileDiagnostics, } from "./agent-profile.js";
+import { resolveResourceSelector } from "./catalog.js";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
+import { globalAgentProfilePath } from "./storage.js";
 import { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 import { showText } from "./preview.js";
 export function registerProfileCommand(pi, state, deps) {
@@ -20,9 +23,8 @@ function profileArgumentCompletions(state, prefix) {
     const command = parts[0];
     if (["use", "preview", "validate"].includes(command)) {
         const fragment = parts[1] ?? "";
-        return state.profiles
-            .map((loaded) => loaded.profile.id)
-            .filter((id, index, ids) => ids.indexOf(id) === index && id.startsWith(fragment))
+        return profileSelectorCandidates(state)
+            .filter((id) => id.startsWith(fragment))
             .map((id) => ({ value: `${command} ${id}`, label: id }));
     }
     if (command === "save" && parts.length > 2) {
@@ -54,12 +56,10 @@ async function handleProfileCommand(pi, state, deps, args, ctx) {
             await validateProfiles(state, deps, rest[0], ctx);
             return;
         case "reload":
-            if (!ctx.isProjectTrusted()) {
-                ctx.ui.notify("pi-forge: project is not trusted; agent profiles remain disabled.", "warning");
-                return;
-            }
             await deps.reloadProfiles(ctx);
-            ctx.ui.notify(`pi-forge: reloaded ${state.profiles.length} agent profile(s); no profile was applied.`, "info");
+            ctx.ui.notify(ctx.isProjectTrusted()
+                ? `pi-forge: reloaded ${state.profiles.length} agent profile(s); no profile was applied.`
+                : `pi-forge: reloaded ${state.profiles.length} global agent profile(s); application and delegation remain disabled in this untrusted project.`, ctx.isProjectTrusted() ? "info" : "warning");
             return;
         case "forget":
             forgetProfileProvenance(pi, state, ctx);
@@ -103,12 +103,19 @@ async function useProfile(pi, state, deps, id, ctx) {
     ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
 }
 async function saveProfile(pi, state, deps, rest, ctx) {
-    const id = rest[0];
+    const selectorText = rest[0];
     const flags = new Set(rest.slice(1));
-    if (!id || [...flags].some((flag) => flag !== "--overwrite")) {
-        ctx.ui.notify("Usage: /profile save <id> [--overwrite]", "warning");
+    if (!selectorText || [...flags].some((flag) => flag !== "--overwrite")) {
+        ctx.ui.notify("Usage: /profile save <id|global:id> [--overwrite]", "warning");
         return;
     }
+    const parsedSelector = parseResourceSelector(selectorText);
+    if (!parsedSelector.ok) {
+        ctx.ui.notify(parsedSelector.error, "error");
+        return;
+    }
+    const id = parsedSelector.selector.id;
+    const targetScope = parsedSelector.selector.scope ?? "project";
     if (!isValidAgentProfileId(id)) {
         ctx.ui.notify("Profile id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.", "error");
         return;
@@ -121,13 +128,13 @@ async function saveProfile(pi, state, deps, rest, ctx) {
         ctx.ui.notify("pi-forge: cannot save a profile because no model is currently selected.", "error");
         return;
     }
-    const existingMatches = state.profiles.filter((loaded) => loaded.profile.id === id);
+    const existingMatches = state.profiles.filter((loaded) => loaded.scope === targetScope && loaded.profile.id === id);
     if (existingMatches.length > 1) {
-        ctx.ui.notify(`pi-forge: cannot save profile ${id} while duplicate profile ids exist.`, "error");
+        ctx.ui.notify(`pi-forge: cannot save profile ${id} while duplicate ${targetScope} profile ids exist.`, "error");
         return;
     }
     const existing = existingMatches[0];
-    const filePath = existing?.filePath ?? agentProfilePath(ctx.cwd, id);
+    const filePath = existing?.filePath ?? (targetScope === "project" ? agentProfilePath(ctx.cwd, id) : globalAgentProfilePath(id));
     let overwrite = flags.has("--overwrite");
     if (existsSync(filePath) && !overwrite) {
         if (!ctx.hasUI) {
@@ -140,17 +147,17 @@ async function saveProfile(pi, state, deps, rest, ctx) {
             return;
         }
     }
-    const capture = captureAgentProfile(id, {
+    const capture = captureAgentProfile(id, targetScope, {
         model: { provider: ctx.model.provider, id: ctx.model.id },
         thinkingLevel: pi.getThinkingLevel(),
-        promptStack: state.active?.stack.id ?? null,
+        promptStack: state.active?.key ?? null,
     }, existing);
     if (!capture.ok) {
         ctx.ui.notify(`pi-forge: current runtime could not be saved as profile ${id}.`, "error");
         await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(capture.diagnostics));
         return;
     }
-    const write = writeAgentProfile(ctx.cwd, capture.profile, { filePath, overwrite });
+    const write = writeAgentProfile(ctx.cwd, capture.profile, { filePath, overwrite, scope: targetScope });
     if (!write.ok) {
         if (write.reason === "exists") {
             ctx.ui.notify(`pi-forge: profile ${id} already exists; re-run with --overwrite.`, "error");
@@ -185,7 +192,7 @@ async function previewProfile(pi, state, deps, id, ctx) {
     await showText(ctx, `pi-forge profile preview: ${id}`, renderProfilePreview(preview));
 }
 async function validateProfiles(state, deps, id, ctx) {
-    const targets = id ? state.profiles.filter((loaded) => loaded.profile.id === id) : state.profiles;
+    const targets = id ? [findProfile(state, id)].filter((loaded) => !!loaded) : state.profiles;
     if (targets.length === 0) {
         ctx.ui.notify(id ? `Unknown agent profile: ${id}` : "No agent profiles found.", "warning");
         return;
@@ -264,14 +271,32 @@ function renderProfileStatus(pi, state, ctx) {
     lines.push(`Last applied profile: ${provenance.profileId}`, `Applied at: ${provenance.appliedAt}`, `Source: ${provenance.sourcePath}`, `Profile source: ${sourceState}`, "", "Runtime drift:", `  model: ${formatDrift(drift.model, modelReferenceLabel)}`, `  thinking level: ${formatDrift(drift.thinkingLevel, String)}`, `  prompt stack: ${formatDrift(drift.promptStack, (value) => value ?? "(none)")}`);
     return lines.join("\n");
 }
-function findProfile(state, id) {
-    return state.profiles.find((loaded) => loaded.profile.id === id);
+function profileSelectorCandidates(state) {
+    const collidingIds = new Set();
+    const byId = new Map();
+    for (const loaded of state.profiles) {
+        const count = (byId.get(loaded.profile.id) ?? 0) + 1;
+        byId.set(loaded.profile.id, count);
+        if (count === 2)
+            collidingIds.add(loaded.profile.id);
+    }
+    const candidates = [];
+    for (const loaded of state.profiles) {
+        candidates.push(collidingIds.has(loaded.profile.id) ? formatResourceKey(loaded.key) : loaded.profile.id);
+    }
+    return [...new Set(candidates)].sort();
+}
+function findProfile(state, selector) {
+    const parsed = parseResourceSelector(selector);
+    if (!parsed.ok)
+        return undefined;
+    return resolveResourceSelector(state.profiles, parsed.selector);
 }
 function currentRuntime(pi, state, ctx) {
     return {
         model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
         thinkingLevel: pi.getThinkingLevel(),
-        promptStack: state.active?.stack.id ?? null,
+        promptStack: state.active ? formatResourceKey(state.active.key) : null,
         effectiveTools: pi.getActiveTools(),
     };
 }

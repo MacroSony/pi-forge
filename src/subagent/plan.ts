@@ -30,7 +30,7 @@ export function createAgentExecutionPlan(input: {
 	validateFingerprint(input.conversationFingerprint, "conversationFingerprint", diagnostics);
 	validateFingerprint(input.executionFingerprint, "executionFingerprint", diagnostics);
 	if (input.runtime.model.provider !== input.preflight.model.provider || input.runtime.model.id !== input.preflight.model.id) diagnostics.push(error("plan.runtime-model", "Prompt runtime model does not match preflight model.", "runtime.model"));
-	if (input.request.profileId !== input.snapshot.profile.id) diagnostics.push(error("plan.profile-id", "Request profileId does not match the resolved snapshot.", "profileId"));
+	if (input.request.profileId !== input.snapshot.profileId) diagnostics.push(error("plan.profile-id", "Request profileId does not match the resolved snapshot.", "profileId"));
 	if (input.request.expectedProfileFingerprint && input.request.expectedProfileFingerprint !== input.snapshot.profileFingerprint) diagnostics.push(error("plan.profile-drift", "Resolved profile fingerprint does not match expectedProfileFingerprint.", "expectedProfileFingerprint"));
 	if (!isProtectedSubagentTaskPreserved(input.preparation.messages, input.request.input)) {
 		diagnostics.push(error("plan.protected-task", "Prepared messages do not preserve the delegated task as the final user message.", "messages"));

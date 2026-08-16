@@ -2,6 +2,7 @@ import { getMarkdownTheme, } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadForgeSubagentSettings, resolveSubagentProfilePolicy } from "./forge-config.js";
+import { formatResourceKey } from "./resource-identity.js";
 import { summarizeProfile } from "./subagent-profile-tool.js";
 import { sanitizePiSubprocessRunReport, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { isRecord } from "@zihanw/pi-subagent-runtime";
@@ -29,7 +30,7 @@ const ForgeSubagentParameters = Type.Object({
         description: "Backend ID to prepare and execute through (see /forge-agent backends). Honored only for interactively approved runs; trusted-project unattended invocation always uses the configured default backend.",
     })),
 });
-export function registerForgeSubagentTool(pi, runtime, profileIds, options = {}) {
+export function registerForgeSubagentTool(pi, runtime, profileIds, resolveProfileKey, options = {}) {
     // The description is static at registration time; re-registering the tool
     // by name replaces its definition and refreshes the tool registry. Track
     // the last embedded summary so lifecycle refreshes (every turn included)
@@ -65,11 +66,14 @@ export function registerForgeSubagentTool(pi, runtime, profileIds, options = {})
                 };
                 const knownProfileIds = profileIds();
                 const enabledProfileIds = knownProfileIds.filter((profileId) => resolveSubagentProfilePolicy(settings, profileId).enabled);
-                if (!knownProfileIds.includes(params.profileId)) {
+                const profileKey = resolveProfileKey(params.profileId);
+                if (!profileKey) {
                     const available = enabledProfileIds.join(", ") || "none";
                     return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Enabled subagent profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
                 }
-                const configuredPolicy = resolveSubagentProfilePolicy(settings, params.profileId);
+                const canonicalProfileId = formatResourceKey(profileKey);
+                baseDetails.profileId = canonicalProfileId;
+                const configuredPolicy = resolveSubagentProfilePolicy(settings, canonicalProfileId);
                 if (!configuredPolicy.enabled) {
                     return toolResult(`Pi Forge agent profile "${params.profileId}" is not enabled for subagent delegation. Use forge_subagent_profiles to discover enabled profiles.`, { ...baseDetails, status: "failed" }, true);
                 }
@@ -81,14 +85,14 @@ export function registerForgeSubagentTool(pi, runtime, profileIds, options = {})
                         approval: { required: false, approved: false, viewedFullPrompt: false, source: "trusted-project-config" },
                     }, true);
                 }
-                const runPolicy = resolveSubagentProfilePolicy(settings, params.profileId, approvalRequired ? params.backend : undefined);
+                const runPolicy = resolveSubagentProfilePolicy(settings, canonicalProfileId, approvalRequired ? params.backend : undefined);
                 if (approvalRequired && !ctx.hasUI) {
                     return toolResult("Subagent invocation was not run: interactive human approval is unavailable.", { ...baseDetails, status: "cancelled" });
                 }
                 onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
                 let prepared;
                 try {
-                    const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
+                    const preparation = await runtime.prepare(canonicalProfileId, params.task, ctx, {
                         backendId: runPolicy.backend.id,
                         timeoutMs: runPolicy.timeout.milliseconds,
                     });
@@ -209,7 +213,7 @@ export function renderEmbeddedSubagentSummary(settings, profiles, resolve) {
         return undefined;
     const summaries = [];
     for (const loaded of profiles) {
-        const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+        const policy = resolveSubagentProfilePolicy(settings, formatResourceKey(loaded.key));
         if (!policy.enabled)
             continue;
         summaries.push(summarizeProfile(loaded, resolve(loaded), policy));
@@ -268,7 +272,7 @@ export async function requestForgeSubagentApproval(prepared, task, ctx, signal) 
             const choice = await ctx.ui.select(renderApprovalSummary(prepared, task, ctx.cwd), [APPROVE, VIEW_FULL_PROMPT, REJECT], { signal });
             if (choice === VIEW_FULL_PROMPT) {
                 viewedFullPrompt = true;
-                await ctx.ui.editor(`Subagent approval details: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`, [
+                await ctx.ui.editor(`Subagent approval details: ${prepared.plan.profile.profileId} (view only; edits are ignored)`, [
                     renderApprovalDetails(prepared, task, ctx.cwd),
                     "",
                     renderFullForgeSubagentPrompt(prepared),
@@ -284,8 +288,8 @@ export function summarizeForgeSubagentPlan(prepared, cwd) {
     const plan = prepared.plan;
     return {
         backendId: plan.backendId,
-        profileId: plan.profile.profile.id,
-        promptStackId: plan.profile.promptStack?.id ?? null,
+        profileId: plan.profile.profileId,
+        promptStackId: plan.profile.promptStackId,
         provider: plan.model.provider,
         model: plan.model.id,
         thinkingLevel: plan.thinkingLevel,
@@ -362,7 +366,7 @@ export function renderFullForgeSubagentPrompt(prepared) {
         `# Exact provider-bound subagent prompt`,
         "",
         `Backend: ${plan.backendId}`,
-        `Profile: ${plan.profile.profile.id}`,
+        `Profile: ${plan.profile.profileId}`,
         `Provider/model: ${plan.model.provider}/${plan.model.id}`,
         `Thinking: ${plan.thinkingLevel}`,
         `Tools: ${toolNames(plan).join(", ") || "none"}`,

@@ -10,6 +10,7 @@ import {
 	isResolvedAgentProfileUsable,
 	loadAgentProfileFile,
 	validateAgentProfile,
+	validateAgentProfilePromptStackScope,
 	type AgentProfile,
 	type AgentProfileDiagnostic,
 	type AgentProfileModelReference,
@@ -18,7 +19,8 @@ import {
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.ts";
-import { isSafeAgentProfileMutationPath } from "./storage.ts";
+import { globalAgentProfilePath, isSafeAgentProfileMutationPath, isSafeGlobalAgentProfileMutationPath } from "./storage.ts";
+import { formatResourceKey, type ResourceKey, type ResourceScope } from "./resource-identity.ts";
 import type { LoadedPromptStack, PromptResourcePolicy } from "./types.ts";
 
 export interface AgentProfileCurrentRuntime {
@@ -31,7 +33,8 @@ export interface AgentProfileCurrentRuntime {
 export interface AgentProfileCaptureInput {
 	model: AgentProfileModelReference | null;
 	thinkingLevel: ThinkingLevel;
-	promptStack: string | null;
+	/** The active stack's scoped key, or null when no stack is active. */
+	promptStack: ResourceKey | null;
 }
 
 export type AgentProfileCaptureResult =
@@ -98,6 +101,7 @@ export interface AgentProfileRuntimeStatus {
 
 export function captureAgentProfile(
 	id: string,
+	targetScope: ResourceScope,
 	runtime: AgentProfileCaptureInput,
 	existing?: LoadedAgentProfile,
 ): AgentProfileCaptureResult {
@@ -105,6 +109,14 @@ export function captureAgentProfile(
 		return {
 			ok: false,
 			diagnostics: [{ level: "error", field: "model", message: "Cannot capture an agent profile without a selected model." }],
+		};
+	}
+
+	const promptStackReference = serializePromptStackReference(targetScope, runtime.promptStack);
+	if ("error" in promptStackReference) {
+		return {
+			ok: false,
+			diagnostics: [{ level: "error", field: "promptStack", message: promptStackReference.error }],
 		};
 	}
 
@@ -117,7 +129,7 @@ export function captureAgentProfile(
 		autoActivate: existing?.profile.autoActivate,
 		model: { ...runtime.model },
 		thinkingLevel: runtime.thinkingLevel,
-		promptStack: runtime.promptStack,
+		promptStack: promptStackReference.reference,
 	};
 	const diagnostics = validateAgentProfile(profile);
 	return hasAgentProfileErrors(diagnostics)
@@ -125,21 +137,46 @@ export function captureAgentProfile(
 		: { ok: true, profile, diagnostics };
 }
 
+/**
+ * Serialize the active stack reference relative to the profile's target scope.
+ * Same scope writes a bare ID; a project profile may reference a global stack
+ * with an explicit `global:<id>`; a global profile may never reference a
+ * project stack.
+ */
+function serializePromptStackReference(
+	targetScope: ResourceScope,
+	key: ResourceKey | null,
+): { reference: string | null } | { error: string } {
+	if (!key) return { reference: null };
+	if (key.scope === targetScope) return { reference: key.id };
+	if (targetScope === "project" && key.scope === "global") return { reference: formatResourceKey(key) };
+	return {
+		error: `Cannot capture a ${targetScope} profile referencing a ${key.scope} prompt stack ${key.id}.`,
+	};
+}
+
 export function writeAgentProfile(
 	cwd: string,
 	profile: AgentProfile,
-	options: { filePath?: string; overwrite?: boolean } = {},
+	options: { filePath?: string; overwrite?: boolean; scope?: ResourceScope } = {},
 ): AgentProfileWriteResult {
-	const diagnostics = validateAgentProfile(profile);
+	const scope = options.scope ?? "project";
+	const diagnostics = [
+		...validateAgentProfile(profile),
+		...validateAgentProfilePromptStackScope(profile, scope),
+	];
 	if (hasAgentProfileErrors(diagnostics)) return { ok: false, reason: "validation", diagnostics };
 
-	const filePath = options.filePath ?? agentProfilePath(cwd, profile.id);
-	if (!isSafeAgentProfileMutationPath(cwd, filePath)) {
+	const filePath = options.filePath ?? (scope === "project" ? agentProfilePath(cwd, profile.id) : globalAgentProfilePath(profile.id));
+	const safe = scope === "project"
+		? isSafeAgentProfileMutationPath(cwd, filePath)
+		: isSafeGlobalAgentProfileMutationPath(filePath);
+	if (!safe) {
 		return {
 			ok: false,
 			reason: "invalid-path",
 			diagnostics,
-			error: `Profile path is outside project agent-profile storage or traverses a symbolic link: ${filePath}`,
+			error: `Profile path is outside ${scope} agent-profile storage or traverses a symbolic link: ${filePath}`,
 		};
 	}
 	if (existsSync(filePath) && !options.overwrite) return { ok: false, reason: "exists", diagnostics };
@@ -157,7 +194,10 @@ export function writeAgentProfile(
 
 export function deleteAgentProfile(cwd: string, loaded: LoadedAgentProfile): AgentProfileDeleteResult {
 	const filePath = loaded.filePath;
-	if (!isSafeAgentProfileMutationPath(cwd, filePath)) return { ok: false, reason: "invalid-path", filePath };
+	const safe = loaded.scope === "project"
+		? isSafeAgentProfileMutationPath(cwd, filePath)
+		: isSafeGlobalAgentProfileMutationPath(filePath);
+	if (!safe) return { ok: false, reason: "invalid-path", filePath };
 	if (!existsSync(filePath)) return { ok: false, reason: "missing", filePath };
 	const current = loadAgentProfileFile(filePath);
 	if (
@@ -188,7 +228,7 @@ export async function applyResolvedAgentProfile(
 
 	const previousModel = ctx.model;
 	const previousThinkingLevel = pi.getThinkingLevel();
-	const previousPromptStack = state.active?.stack.id ?? null;
+	const previousPromptStack = state.active ? formatResourceKey(state.active.key) : null;
 	const modelChanged = !sameModelReference(previousModel, resolved.model);
 
 	try {
@@ -202,8 +242,9 @@ export async function applyResolvedAgentProfile(
 			throw new Error(`Pi applied thinking level ${actualThinkingLevel} instead of ${resolved.effectiveThinkingLevel}.`);
 		}
 
-		if (!deps.setActive(resolved.loaded.profile.promptStack ?? "none", ctx)) {
-			throw new Error(`Prompt stack ${String(resolved.loaded.profile.promptStack)} disappeared after preflight.`);
+		const resolvedStackSelector = resolved.promptStack ? formatResourceKey(resolved.promptStack.key) : "none";
+		if (!deps.setActive(resolvedStackSelector, ctx)) {
+			throw new Error(`Prompt stack ${resolvedStackSelector} disappeared after preflight.`);
 		}
 	} catch (error) {
 		const rollbackErrors = await rollbackAgentProfileApplication(pi, deps, ctx, {
@@ -217,13 +258,14 @@ export async function applyResolvedAgentProfile(
 
 	const provenance: AgentProfileProvenance = {
 		profileId: resolved.loaded.profile.id,
+		scope: resolved.loaded.scope,
 		sourcePath: resolved.loaded.filePath,
 		sourceFingerprint: agentProfileFingerprint(resolved.loaded.profile),
 		appliedAt: new Date().toISOString(),
 		snapshot: {
 			model: { provider: resolved.model.provider, id: resolved.model.id },
 			thinkingLevel: resolved.effectiveThinkingLevel,
-			promptStack: resolved.loaded.profile.promptStack,
+			promptStack: resolved.promptStack ? formatResourceKey(resolved.promptStack.key) : null,
 		},
 	};
 	state.lastAppliedProfile = provenance;

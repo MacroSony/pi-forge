@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createExecutionRuntime, error, } from "@zihanw/pi-subagent-runtime";
 import { PI_READ_ONLY_TOOL_CATALOG, PiSubprocessBackend, } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import { PiRpcBackend, } from "@zihanw/pi-subagent-runtime/backends/rpc";
+import { resolveResourceSelector } from "../catalog.js";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
 import { MAX_SUBAGENT_TIMEOUT_MS, MIN_SUBAGENT_TIMEOUT_MS, isValidSubagentTimeoutMs, loadForgeSubagentSettings, resolveSubagentProfilePolicy, } from "../forge-config.js";
 import { SUBAGENT_CONTRACT_VERSION, createAgentExecutionPlan, hasSubagentErrors, negotiateSubagentTools, } from "../subagent/contract.js";
 import { prepareSubagentHostPlan, resolveSubagentHostProfile } from "../subagent-host.js";
@@ -47,11 +49,16 @@ export function createForgeSubagentRuntime(state, options = {}) {
         const diagnostics = [];
         if (!ctx.isProjectTrusted())
             return { ok: false, diagnostics: [error("host.trust", "Project is not trusted; subagent profiles remain disabled.")] };
-        const matches = state.profiles.filter((candidate) => candidate.profile.id === profileId);
-        if (matches.length !== 1) {
-            return { ok: false, diagnostics: [error(matches.length === 0 ? "host.profile-missing" : "host.profile-ambiguous", matches.length === 0 ? `Unknown agent profile: ${profileId}` : `Agent profile id is ambiguous: ${profileId}`)] };
+        const parsedSelector = parseResourceSelector(profileId);
+        if (!parsedSelector.ok) {
+            return { ok: false, diagnostics: [error("host.profile-missing", `Unknown agent profile: ${profileId}`)] };
         }
-        const policy = resolveSubagentProfilePolicy(loadForgeSubagentSettings(ctx), profileId);
+        const loadedProfile = resolveResourceSelector(state.profiles, parsedSelector.selector);
+        if (!loadedProfile) {
+            return { ok: false, diagnostics: [error("host.profile-missing", `Unknown agent profile: ${profileId}`)] };
+        }
+        const canonicalProfileId = formatResourceKey(loadedProfile.key);
+        const policy = resolveSubagentProfilePolicy(loadForgeSubagentSettings(ctx), canonicalProfileId);
         if (!policy.enabled) {
             return {
                 ok: false,
@@ -65,7 +72,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
                 diagnostics: [error("host.timeout", `Subagent timeout must be an integer from ${MIN_SUBAGENT_TIMEOUT_MS} to ${MAX_SUBAGENT_TIMEOUT_MS} milliseconds.`)],
             };
         }
-        const resolution = resolveSubagentHostProfile(matches[0], { promptStacks: state.stacks });
+        const resolution = resolveSubagentHostProfile(loadedProfile, { promptStacks: state.stacks });
         diagnostics.push(...resolution.diagnostics);
         if (!resolution.snapshot || hasSubagentErrors(diagnostics))
             return { ok: false, diagnostics };
@@ -73,7 +80,7 @@ export function createForgeSubagentRuntime(state, options = {}) {
         const request = {
             schemaVersion: SUBAGENT_CONTRACT_VERSION,
             requestId: `request:${randomUUID()}`,
-            profileId,
+            profileId: canonicalProfileId,
             expectedProfileFingerprint: snapshot.profileFingerprint,
             input: { text: task },
             access: {
@@ -231,8 +238,9 @@ function executionIntentFor(request, snapshot) {
         limits: structuredClone(request.limits),
         provenance: {
             profile: snapshot.profileFingerprint,
-            profileId: snapshot.profile.id,
+            profileId: snapshot.profileId,
             ...(snapshot.promptStackFingerprint ? { promptStack: snapshot.promptStackFingerprint } : {}),
+            ...(snapshot.promptStackId ? { promptStackId: snapshot.promptStackId } : {}),
         },
     };
 }

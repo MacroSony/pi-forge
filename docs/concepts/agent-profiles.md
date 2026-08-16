@@ -6,7 +6,7 @@ An agent profile is a project-local, schema-versioned preset that references one
 
 ## Schema
 
-Profiles live in `.pi/forge/agent-profiles/*.json`:
+Profiles live in `.pi/forge/agent-profiles/*.json` (project scope) or `~/.pi/forge/agent-profiles/*.json` (global scope). Commands accept `reviewer`, `project:reviewer`, and `global:reviewer`; a project profile shadows a same-ID global profile for unqualified lookups. A profile's `promptStack` reference resolves relative to the profile's own scope: a project profile may reference its own project stack by bare ID or a global stack as `global:<id>`; a global profile may only reference global stacks.
 
 ```json
 {

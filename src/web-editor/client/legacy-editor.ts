@@ -167,8 +167,8 @@ async function loadStacks(preferId: any = selectedId) {
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
-  const next = stacks.find((stack: any) => stack.id === preferId) || stacks.find((stack: any) => stack.active) || stacks[0];
-  if (next) await selectStack(next.id, { keepDirty: false });
+  const next = stacks.find((stack: any) => (stack.selector || stack.id) === preferId) || stacks.find((stack: any) => stack.active) || stacks[0];
+  if (next) await selectStack(next.selector || next.id, { keepDirty: false });
   else renderEmpty();
 }
 
@@ -249,12 +249,13 @@ function renderStackList() {
   }
   for (const stack of stacks) {
     const row = document.createElement("button");
-    row.className = "stack-row" + (stack.active ? " active" : "") + (stack.id === selectedId ? " selected" : "");
+    row.className = "stack-row" + (stack.active ? " active" : "") + ((stack.selector || stack.id) === selectedId ? " selected" : "");
     const diag = stack.errors ? '<span class="badge error">' + stack.errors + ' error</span>' : stack.warnings ? '<span class="badge warning">' + stack.warnings + ' warning</span>' : "";
-    row.innerHTML = '<div class="stack-name">' + escapeHtml(stack.id) + (stack.active ? '<span class="badge">active</span>' : '') + diag + '</div>' +
+    const scopeBadge = stack.scope === "global" ? '<span class="badge">global</span>' : '';
+    row.innerHTML = '<div class="stack-name">' + escapeHtml(stack.id) + (stack.active ? '<span class="badge">active</span>' : '') + scopeBadge + diag + '</div>' +
       '<div class="stack-meta">' + escapeHtml(stack.name || "(unnamed)") + '</div>' +
       '<div class="stack-meta">' + stack.itemCount + ' items | ' + escapeHtml(stack.mode || "replace") + '</div>';
-    row.onclick = () => selectStack(stack.id);
+    row.onclick = () => selectStack(stack.selector || stack.id);
     list.appendChild(row);
   }
 }
@@ -556,7 +557,7 @@ async function saveStack() {
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId), { method: "PUT", body: { stack } });
   stacks = data.stacks || stacks;
-  selectedId = data.stack?.id || stack.id;
+  selectedId = data.stack?.selector || data.stack?.id || stack.id;
   currentStack = structuredClone(stack);
   dirty = false;
   renderDirtyState();
@@ -579,13 +580,14 @@ async function createStackRemote(stack: any, options: any = {}) {
 async function createAndOpenStack(stack: any, activate: any, actionLabel: any, extraOptions: any = {}) {
   const data = await createStackRemote(stack, { ...extraOptions, activate });
   stacks = data.stacks || stacks;
-  selectedId = data.stack?.id || stack.id;
+  selectedId = data.stack?.selector || data.stack?.id || stack.id;
   dirty = false;
   renderDirtyState();
   await selectStack(selectedId, { keepDirty: true });
+  const displayId = data.stack?.id || stack.id;
   const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
-  setStatus(actionLabel + converted + " " + selectedId, "success");
-  if (data.importReport) showImportReport(data.importReport, selectedId);
+  setStatus(actionLabel + converted + " " + displayId, "success");
+  if (data.importReport) showImportReport(data.importReport, displayId);
 }
 
 async function createNewStack() {
@@ -878,21 +880,22 @@ async function disableStacks() {
 
 async function deleteCurrentStack() {
   if (!currentStack) return;
-  const id = selectedId;
-  const message = "Delete prompt stack '" + id + "'?\n\nThis removes its JSON file from prompt-stack storage.";
+  const routeId = selectedId;
+  const displayId = currentStack.id;
+  const message = "Delete prompt stack '" + displayId + "'?\n\nThis removes its JSON file from prompt-stack storage.";
   if (!confirm(message)) return;
-  const data = await api("/api/stacks/" + encodeURIComponent(id), { method: "DELETE" });
+  const data = await api("/api/stacks/" + encodeURIComponent(routeId), { method: "DELETE" });
   stacks = data.stacks || [];
   dirty = false;
   renderDirtyState();
   const next = stacks.find((stack: any) => stack.active) || stacks[0];
   if (next) {
-    await selectStack(next.id, { keepDirty: true });
-    setStatus("Deleted " + id, "success");
+    await selectStack(next.selector || next.id, { keepDirty: true });
+    setStatus("Deleted " + displayId, "success");
   } else {
     renderStackList();
     renderEmpty();
-    setStatus("Deleted " + id + "; no stacks remain", "success");
+    setStatus("Deleted " + displayId + "; no stacks remain", "success");
   }
 }
 

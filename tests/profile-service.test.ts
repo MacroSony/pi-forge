@@ -56,13 +56,15 @@ function profile(id = "worker"): AgentProfile {
 test("profile service captures runtime state while preserving editable metadata", () => {
 	const existing = {
 		filePath: "/tmp/worker.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: profile().id },
 		profile: profile(),
 		diagnostics: [],
 	};
-	const captured = captureAgentProfile("worker", {
+	const captured = captureAgentProfile("worker", "project", {
 		model: { provider: "test", id: "replacement" },
 		thinkingLevel: "medium",
-		promptStack: "reviewer",
+		promptStack: { scope: "project", id: "reviewer" },
 	}, existing);
 
 	assert.equal(captured.ok, true);
@@ -74,7 +76,7 @@ test("profile service captures runtime state while preserving editable metadata"
 	assert.equal(captured.profile.thinkingLevel, "medium");
 	assert.equal(captured.profile.promptStack, "reviewer");
 
-	const missingModel = captureAgentProfile("worker", { model: null, thinkingLevel: "off", promptStack: null });
+	const missingModel = captureAgentProfile("worker", "project", { model: null, thinkingLevel: "off", promptStack: null });
 	assert.equal(missingModel.ok, false);
 	assert.match(missingModel.diagnostics[0]?.message ?? "", /without a selected model/);
 });
@@ -195,4 +197,45 @@ test("profile service applies and forgets provenance independently of command re
 	assert.equal(forgetAgentProfileProvenance(pi as any, state), true);
 	assert.deepEqual(appended.at(-1), { type: PROFILE_ENTRY_TYPE, data: { provenance: null } });
 	assert.equal(forgetAgentProfileProvenance(pi as any, state), false);
+});
+
+test("captureAgentProfile serializes promptStack relative to target scope", () => {
+	const runtime = {
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off" as const,
+	};
+
+	// Same scope -> bare ID.
+	const projectSame = captureAgentProfile("worker", "project", {
+		...runtime,
+		promptStack: { scope: "project", id: "reviewer" },
+	});
+	assert.equal(projectSame.ok, true);
+	if (projectSame.ok) assert.equal(projectSame.profile.promptStack, "reviewer");
+
+	// Project profile referencing a global stack -> qualified.
+	const projectToGlobal = captureAgentProfile("worker", "project", {
+		...runtime,
+		promptStack: { scope: "global", id: "reviewer" },
+	});
+	assert.equal(projectToGlobal.ok, true);
+	if (projectToGlobal.ok) assert.equal(projectToGlobal.profile.promptStack, "global:reviewer");
+
+	// Global profile referencing a project stack is rejected.
+	const globalToProject = captureAgentProfile("worker", "global", {
+		...runtime,
+		promptStack: { scope: "project", id: "reviewer" },
+	});
+	assert.equal(globalToProject.ok, false);
+	if (!globalToProject.ok) {
+		assert.match(globalToProject.diagnostics[0]?.message ?? "", /Cannot capture a global profile referencing a project prompt stack/);
+	}
+
+	// Global profile with its own global stack -> bare ID.
+	const globalSame = captureAgentProfile("worker", "global", {
+		...runtime,
+		promptStack: { scope: "global", id: "reviewer" },
+	});
+	assert.equal(globalSame.ok, true);
+	if (globalSame.ok) assert.equal(globalSame.profile.promptStack, "reviewer");
 });

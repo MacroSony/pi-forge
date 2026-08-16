@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
 import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, type AgentProfile, type AgentProfileProvenance } from "../src/agent-profile.ts";
+import { GLOBAL_FORGE_DIR_ENV } from "../src/storage.ts";
 import { PROFILE_ENTRY_TYPE } from "../src/runtime-state.ts";
 import { createContext, createHarness, startSession, writeProfile, writeStack } from "./helpers/index-command-harness.ts";
 
@@ -101,7 +102,7 @@ test("/profile use applies once, previews effective tools, and reports runtime d
 	status = context.editors.at(-1)?.text ?? "";
 	assert.match(status, /test\/large → test\/small/);
 	assert.match(status, /high → low/);
-	assert.match(status, /reviewer-stack → \(none\)/);
+	assert.match(status, /project:reviewer-stack → \(none\)/);
 });
 
 test("fresh sessions auto-activate one profile instead of the standalone default stack", async () => {
@@ -110,6 +111,7 @@ test("fresh sessions auto-activate one profile instead of the standalone default
 	const targetModel = model("test", "target");
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "standalone-default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -196,6 +198,7 @@ test("an auto-activated profile with a null prompt stack suppresses standalone s
 	const targetModel = model("test", "target");
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "standalone-default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -215,6 +218,7 @@ test("ambiguous profile autoload fails closed instead of selecting a fallback st
 	const currentModel = model("test", "current");
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "standalone-default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -382,7 +386,50 @@ test("session restoration restores profile provenance without applying its runti
 	assert.match(status, /high → low/);
 });
 
-test("untrusted projects cannot apply, save, or reload profiles", async () => {
+test("untrusted fresh sessions browse but never auto-apply global profiles or stacks", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-global-"));
+	const previousGlobal = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		const globalStacks = join(globalDir, "prompt-stacks");
+		mkdirSync(globalStacks, { recursive: true });
+		writeFileSync(join(globalStacks, "auto.json"), JSON.stringify({
+			schemaVersion: 1,
+			autoActivate: true,
+			type: "pi-forge.prompt-stack",
+			id: "global-auto",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		}));
+		const globalProfiles = join(globalDir, "agent-profiles");
+		mkdirSync(globalProfiles, { recursive: true });
+		const currentModel = model("test", "current");
+		const targetModel = model("test", "global-target");
+		writeFileSync(join(globalProfiles, "global.json"), JSON.stringify({
+			schemaVersion: 1,
+			autoActivate: true,
+			type: AGENT_PROFILE_TYPE,
+			id: "global-profile",
+			model: { provider: targetModel.provider, id: targetModel.id },
+			thinkingLevel: "high",
+			promptStack: null,
+		}));
+
+		const harness = createHarness({ currentModel, models: [currentModel, targetModel], availableModels: [currentModel, targetModel], thinkingLevel: "low" });
+		const context = createContext(cwd, [], { trusted: false, modelRuntime: harness });
+		await startSession(harness, context.ctx);
+
+		assert.equal(harness.getCurrentModel(), currentModel);
+		assert.equal(harness.getThinkingLevel(), "low");
+		assert.equal(context.statuses["pi-forge"], undefined);
+		assert.equal(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE), false);
+	} finally {
+		if (previousGlobal === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobal;
+	}
+});
+
+test("untrusted projects cannot apply or save profiles, but reload stays global-only", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-profile-command-"));
 	const currentModel = model("test", "current");
 	const harness = createHarness({ currentModel, models: [currentModel], thinkingLevel: "off" });

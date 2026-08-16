@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type AgentProfile, type AgentProfileDiagnostic, type AgentProfileModelReference, type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
+import { type ResourceKey, type ResourceScope } from "./resource-identity.ts";
 import type { LoadedPromptStack, PromptResourcePolicy } from "./types.ts";
 export interface AgentProfileCurrentRuntime {
     model: AgentProfileModelReference | null;
@@ -11,7 +12,8 @@ export interface AgentProfileCurrentRuntime {
 export interface AgentProfileCaptureInput {
     model: AgentProfileModelReference | null;
     thinkingLevel: ThinkingLevel;
-    promptStack: string | null;
+    /** The active stack's scoped key, or null when no stack is active. */
+    promptStack: ResourceKey | null;
 }
 export type AgentProfileCaptureResult = {
     ok: true;
@@ -90,10 +92,11 @@ export interface AgentProfileRuntimeStatus {
         };
     };
 }
-export declare function captureAgentProfile(id: string, runtime: AgentProfileCaptureInput, existing?: LoadedAgentProfile): AgentProfileCaptureResult;
+export declare function captureAgentProfile(id: string, targetScope: ResourceScope, runtime: AgentProfileCaptureInput, existing?: LoadedAgentProfile): AgentProfileCaptureResult;
 export declare function writeAgentProfile(cwd: string, profile: AgentProfile, options?: {
     filePath?: string;
     overwrite?: boolean;
+    scope?: ResourceScope;
 }): AgentProfileWriteResult;
 export declare function deleteAgentProfile(cwd: string, loaded: LoadedAgentProfile): AgentProfileDeleteResult;
 export declare function applyResolvedAgentProfile(pi: ExtensionAPI, state: AgentProfileApplicationState, deps: AgentProfileApplicationDeps, resolved: ResolvedAgentProfile, ctx: ExtensionContext): Promise<AgentProfileApplicationResult>;

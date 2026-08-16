@@ -12,8 +12,10 @@ import {
 	hasAutoActivateAgentProfile,
 	isResolvedAgentProfileUsable,
 	isUsableAgentProfile,
+	loadAgentProfileFile,
 	loadAgentProfiles,
 	resolveAgentProfile,
+	validateAgentProfilePromptStackScope,
 } from "../src/agent-profile.ts";
 import { loadPromptStacks, promptStacksDir } from "../src/loader.ts";
 
@@ -143,7 +145,7 @@ test("loadAgentProfiles reports invalid JSON and duplicate profile ids", () => {
 	assert.match(broken.diagnostics[0]?.message ?? "", /Failed to parse JSON/);
 	assert.equal(duplicates.length, 2);
 	for (const loaded of duplicates) {
-		assert.match(loaded.diagnostics.find((diagnostic) => /Duplicate profile id/.test(diagnostic.message))?.message ?? "", /a\.json, b\.json/);
+		assert.match(loaded.diagnostics.find((diagnostic) => /Duplicate (project )?profile id/.test(diagnostic.message))?.message ?? "", /a\.json, b\.json/);
 	}
 });
 
@@ -246,4 +248,83 @@ test("resolveAgentProfile warns when allowed tool patterns match no registered t
 
 	assert.equal(isResolvedAgentProfileUsable(resolved), true);
 	assert.match(resolved.diagnostics.find((diagnostic) => diagnostic.level === "warning")?.message ?? "", /web_\*.*matches no registered tools/);
+});
+
+test("resolveAgentProfile resolves promptStack relative to profile scope", () => {
+	const targetModel = model();
+	const resources = (stacks: Array<{ scope: "global" | "project"; id: string }>) => ({
+		models: [targetModel],
+		availableModels: [targetModel],
+		promptStacks: stacks.map(({ scope, id }) => ({
+			scope,
+			key: { scope, id },
+			filePath: `/${scope}/${id}.json`,
+			diagnostics: [],
+			stack: { schemaVersion: 1 as const, type: "pi-forge.prompt-stack" as const, id, items: [] },
+		})),
+	});
+
+	function loaded(scope: "global" | "project", id: string, promptStack: string | null): ReturnType<typeof loadAgentProfileFile> {
+		return {
+			scope,
+			key: { scope, id },
+			filePath: `/${scope}/${id}.json`,
+			diagnostics: [],
+			profile: {
+				schemaVersion: 1,
+				type: AGENT_PROFILE_TYPE,
+				id,
+				model: { provider: targetModel.provider, id: targetModel.id },
+				thinkingLevel: "high",
+				promptStack,
+			},
+		};
+	}
+
+	// Project profile with bare id resolves its own project stack, not a same-ID global stack.
+	const collision = resources([{ scope: "global", id: "reviewer" }, { scope: "project", id: "reviewer" }]);
+	const projectBare = resolveAgentProfile(loaded("project", "p", "reviewer"), collision);
+	assert.equal(projectBare.promptStack?.scope, "project");
+
+	// Project profile can explicitly reference a global stack.
+	const globalExplicit = resolveAgentProfile(loaded("project", "p", "global:reviewer"), collision);
+	assert.equal(globalExplicit.promptStack?.scope, "global");
+
+	// Project profile with a missing project stack gets a global suggestion, no fallback.
+	const missing = resolveAgentProfile(loaded("project", "p", "missing"), collision);
+	assert.equal(missing.promptStack, undefined);
+	assert.match(
+		missing.diagnostics.find((diagnostic) => diagnostic.field === "promptStack")?.message ?? "",
+		/Unknown prompt stack: missing/,
+	);
+
+	// Global profile referencing a project stack is rejected.
+	const globalToProject = resolveAgentProfile(loaded("global", "g", "project:reviewer"), collision);
+	assert.equal(globalToProject.promptStack, undefined);
+	assert.match(
+		globalToProject.diagnostics.find((diagnostic) => diagnostic.field === "promptStack")?.message ?? "",
+		/cannot reference project prompt stack/,
+	);
+
+	// Global profile with a bare id resolves its own global stack.
+	const globalOnly = resources([{ scope: "global", id: "reviewer" }]);
+	const globalBare = resolveAgentProfile(loaded("global", "g", "reviewer"), globalOnly);
+	assert.equal(globalBare.promptStack?.scope, "global");
+});
+
+test("validateAgentProfilePromptStackScope rejects global-to-project references", () => {
+	const base = {
+		schemaVersion: 1 as const,
+		type: AGENT_PROFILE_TYPE,
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "high" as const,
+		promptStack: null,
+	};
+	assert.deepEqual(validateAgentProfilePromptStackScope(base, "global"), []);
+	assert.deepEqual(validateAgentProfilePromptStackScope({ ...base, promptStack: "shared" }, "global"), []);
+	assert.deepEqual(validateAgentProfilePromptStackScope({ ...base, promptStack: "global:shared" }, "project"), []);
+	const rejected = validateAgentProfilePromptStackScope({ ...base, promptStack: "project:shared" }, "global");
+	assert.equal(rejected.length, 1);
+	assert.match(rejected[0]?.message ?? "", /cannot reference project prompt stack/);
 });

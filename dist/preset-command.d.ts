@@ -10,5 +10,5 @@ export interface PresetCommandDeps {
 }
 export declare function registerPresetCommand(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: PresetCommandDeps): void;
 export declare function selectedActiveId(state: PiForgeRuntimeState): string | undefined;
-export declare function findStack(state: PiForgeRuntimeState, id: string): LoadedPromptStack | undefined;
+export declare function findStack(state: PiForgeRuntimeState, selector: string): LoadedPromptStack | undefined;
 //# sourceMappingURL=preset-command.d.ts.map

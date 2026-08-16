@@ -56,7 +56,10 @@ export interface ForgeSubagentApprovalResult {
 export interface ForgeSubagentToolRegistrationOptions {
     summarize?: (ctx: ExtensionContext) => string | undefined;
 }
-export declare function registerForgeSubagentTool(pi: ExtensionAPI, runtime: ForgeSubagentRuntime, profileIds: () => string[], options?: ForgeSubagentToolRegistrationOptions): (ctx: ExtensionContext) => void;
+export declare function registerForgeSubagentTool(pi: ExtensionAPI, runtime: ForgeSubagentRuntime, profileIds: () => string[], resolveProfileKey: (selector: string) => {
+    scope: "global" | "project";
+    id: string;
+} | undefined, options?: ForgeSubagentToolRegistrationOptions): (ctx: ExtensionContext) => void;
 /**
  * Compact summary of enabled subagent profiles for the forge_subagent tool
  * description. Rendered only when subagents.summaryInToolDescription

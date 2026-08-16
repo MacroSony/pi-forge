@@ -1,7 +1,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { resolveResourceSelector } from "../catalog.ts";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "../forge-extensions.ts";
-import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "../loader.ts";
+import {
+	chooseDefaultStack,
+	isDisabledPromptStackId,
+	loadGlobalPromptStacks,
+	loadPromptStacksScoped,
+} from "../loader.ts";
 import { selectedActiveId as selectedActiveIdForState } from "../preset-command.ts";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.ts";
 import { STATE_ENTRY_TYPE, type PiForgeRuntimeState } from "../runtime-state.ts";
 import type { PromptStackDiagnostic } from "../types.ts";
 
@@ -9,7 +16,7 @@ export interface PromptStackRuntime {
 	dispose(): PromptStackDiagnostic[];
 	activeId(): string | undefined;
 	selectedActiveId(): string | undefined;
-	persistActiveSelection(id: string): void;
+	persistActiveSelection(): void;
 	setActive(id: string | undefined, ctx?: ExtensionContext): boolean;
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
 	updateStatus(ctx: ExtensionContext): void;
@@ -42,25 +49,31 @@ export function createPromptStackRuntime(
 		return selectedActiveIdForState(state);
 	}
 
-	function persistActiveSelection(id: string): void {
-		if (id === state.lastPersistedActiveId) return;
-		pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: id });
-		state.lastPersistedActiveId = id;
+	function persistActiveSelection(): void {
+		const canonical = state.active ? formatResourceKey(state.active.key) : "none";
+		if (canonical === state.lastPersistedActiveId) return;
+		pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: canonical });
+		state.lastPersistedActiveId = canonical;
 	}
 
 	function setActive(id: string | undefined, ctx?: ExtensionContext): boolean {
 		if (!id || isDisabledPromptStackId(id)) {
 			state.active = undefined;
-			if (id) persistActiveSelection("none");
+			if (id) persistActiveSelection();
 			if (ctx) updateStatus(ctx);
 			deps.syncToolPolicy(ctx);
 			return true;
 		}
 
-		const found = state.stacks.find((candidate) => candidate.stack.id === id);
+		if (ctx && !ctx.isProjectTrusted()) return false;
+
+		const parsed = parseResourceSelector(id);
+		if (!parsed.ok) return false;
+		const found = resolveResourceSelector(state.stacks, parsed.selector);
 		if (!found) return false;
+
 		state.active = found;
-		persistActiveSelection(found.stack.id);
+		persistActiveSelection();
 		if (ctx) updateStatus(ctx);
 		deps.syncToolPolicy(ctx);
 		return true;
@@ -74,11 +87,13 @@ export function createPromptStackRuntime(
 		if (!ctx.isProjectTrusted()) {
 			state.forgeExtensionDiagnostics = unloadForgeExtensions(forgeExtensionState);
 			state.forgeExtensionPaths = [];
-			state.stacks = [];
-			state.profiles = [];
+			// Global stacks are user-owned and remain browsable/previewable, but
+			// activation is refused until the project is trusted.
+			state.stacks = loadGlobalPromptStacks();
+			deps.reloadProfiles(ctx);
 			state.active = undefined;
 			if (!options.deferToolPolicy) deps.syncToolPolicy(ctx);
-			ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
+			ctx.ui.notify("pi-forge: project is not trusted; project prompt stacks are disabled (global stacks remain browsable).", "warning");
 			updateStatus(ctx);
 			return;
 		}
@@ -86,7 +101,7 @@ export function createPromptStackRuntime(
 		const extensionResult = await reloadForgeExtensions(ctx.cwd, forgeExtensionState);
 		state.forgeExtensionDiagnostics = extensionResult.diagnostics;
 		state.forgeExtensionPaths = extensionResult.loadedPaths;
-		state.stacks = loadPromptStacks(ctx.cwd);
+		state.stacks = loadPromptStacksScoped(ctx.cwd);
 		deps.reloadProfiles(ctx);
 		if (state.forgeExtensionDiagnostics.length > 0) {
 			for (const loaded of state.stacks) loaded.diagnostics.unshift(...state.forgeExtensionDiagnostics);

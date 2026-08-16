@@ -16,7 +16,7 @@ export interface LifecycleDeps {
     restoreActiveToolPolicy(): void;
     toolPolicyBlockReason(toolName: string): string | undefined;
     activeId(): string | undefined;
-    persistActiveSelection(id: string): void;
+    persistActiveSelection(): void;
     recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void;

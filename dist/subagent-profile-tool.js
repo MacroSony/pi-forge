@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { formatResourceKey } from "./resource-identity.js";
 import { DEFAULT_SUBAGENT_TIMEOUT_MS, loadForgeSubagentSettings, resolveSubagentBackend, resolveSubagentProfilePolicy, } from "./forge-config.js";
 import { isResolvedAgentProfileUsable, } from "./agent-profile.js";
 const MAX_VISIBLE_DESCRIPTION_CHARS = 1_000;
@@ -29,7 +30,7 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
             const approvalMode = settings.allowAgentInvocationWithoutApproval ? "unattended-config" : "interactive";
             const defaultBackend = resolveSubagentBackend(settings);
             const summaries = profiles().flatMap((loaded) => {
-                const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+                const policy = resolveSubagentProfilePolicy(settings, formatResourceKey(loaded.key));
                 return policy.enabled ? [summarizeProfile(loaded, resolveProfile(loaded, ctx), policy)] : [];
             });
             const timeout = { milliseconds: settings.timeoutMs, source: settings.timeoutSource };
@@ -39,7 +40,7 @@ export function registerForgeSubagentProfilesTool(pi, profiles, resolveProfile) 
 }
 export function summarizeProfile(loaded, resolved, policy) {
     return {
-        id: loaded.profile.id,
+        id: formatResourceKey(loaded.key),
         name: loaded.profile.name,
         description: loaded.profile.description,
         model: structuredClone(loaded.profile.model),

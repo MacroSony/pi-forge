@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isValidAgentProfileId } from "./agent-profile.ts";
+import { formatResourceKey, parseResourceSelector, type ResourceScope } from "./resource-identity.ts";
 import { globalForgeDir } from "./storage.ts";
 
 /** Backend used when neither a per-run override nor a configured default applies. */
@@ -21,11 +22,12 @@ export const GLOBAL_FORGE_CONFIG_PATH_ENV = "PI_FORGE_GLOBAL_CONFIG_PATH";
 export type ForgeSubagentBackendSource =
 	| "explicit"
 	| "project-profile"
+	| "global-profile"
 	| "project"
 	| "global"
 	| "built-in";
 export type ForgeSubagentConfigSource = "project" | "global";
-export type ForgeSubagentProfileSource = "project-profile";
+export type ForgeSubagentProfileSource = "project-profile" | "global-profile";
 
 export interface ForgeSubagentProfileSettings {
 	enabled?: boolean;
@@ -53,7 +55,11 @@ export interface ForgeSubagentSettings {
 	 */
 	summaryInToolDescription: boolean;
 	summaryInToolDescriptionSource?: ForgeSubagentConfigSource;
-	/** Per-profile delegation allowlist and execution overrides. Unlisted profiles are not delegatable. */
+	/**
+	 * Per-profile delegation allowlist and execution overrides, keyed by
+	 * canonical scoped selector (`global:<id>` or `project:<id>`). Unlisted
+	 * profiles are not delegatable.
+	 */
 	profiles: Record<string, ForgeSubagentProfileSettings>;
 	configPath: string;
 	globalConfigPath: string;
@@ -71,6 +77,7 @@ export interface ResolvedSubagentTimeout {
 }
 
 export interface ResolvedSubagentProfilePolicy {
+	/** The selector used to resolve this policy, e.g. `reviewer` or `global:reviewer`. */
 	profileId: string;
 	enabled: boolean;
 	enabledSource: ForgeSubagentProfileSource | "built-in";
@@ -80,7 +87,7 @@ export interface ResolvedSubagentProfilePolicy {
 
 /**
  * Resolve the effective backend for one run: explicit per-run override, then
- * a trusted-project per-profile override, then trusted-project/global defaults,
+ * a matching-scope per-profile override, then trusted-project/global defaults,
  * then the built-in subprocess backend. There is deliberately no fallback when
  * the resolved backend is missing or rejects the intent.
  */
@@ -90,14 +97,14 @@ export function resolveSubagentBackend(
 	profileId?: string,
 ): ResolvedSubagentBackend {
 	if (explicitBackend) return { id: explicitBackend, source: "explicit" };
-	const profile = profileId ? configuredProfile(settings, profileId) : undefined;
+	const profile = profileId ? configuredProfileForSelector(settings, profileId) : undefined;
 	if (profile?.backend) return { id: profile.backend, source: profile.backendSource ?? "project-profile" };
 	if (settings.backend) return { id: settings.backend, source: settings.backendSource ?? "global" };
 	return { id: DEFAULT_SUBAGENT_BACKEND_ID, source: "built-in" };
 }
 
 export function resolveSubagentTimeout(settings: ForgeSubagentSettings, profileId?: string): ResolvedSubagentTimeout {
-	const profile = profileId ? configuredProfile(settings, profileId) : undefined;
+	const profile = profileId ? configuredProfileForSelector(settings, profileId) : undefined;
 	if (profile?.timeoutMs !== undefined) {
 		return { milliseconds: profile.timeoutMs, source: profile.timeoutSource ?? "project-profile" };
 	}
@@ -109,7 +116,7 @@ export function resolveSubagentProfilePolicy(
 	profileId: string,
 	explicitBackend?: string,
 ): ResolvedSubagentProfilePolicy {
-	const profile = configuredProfile(settings, profileId);
+	const profile = configuredProfileForSelector(settings, profileId);
 	return {
 		profileId,
 		enabled: profile?.enabled === true,
@@ -133,19 +140,21 @@ export function loadForgeSubagentSettings(ctx: ExtensionContext): ForgeSubagentS
 		warnings: [],
 	};
 
-	// The global config is user-owned and always applies. The project config is
-	// honored only for trusted projects and overrides global values.
+	// The global config is user-owned and always applies. Its `profiles` map
+	// authorizes `global:<id>` profiles only. The project config is honored
+	// only for trusted projects; its `profiles` map authorizes `project:<id>`
+	// profiles only. Same-ID profiles never inherit policy from each other.
 	const globalSection = readSubagentsSection(globalConfigPath, settings.warnings);
 	applyBackend(globalSection, globalConfigPath, "global", settings);
 	applyTimeout(globalSection, globalConfigPath, "global", settings);
 	applyEmbedProfileSummary(globalSection, globalConfigPath, "global", settings);
-	warnIgnoredGlobalProfiles(globalSection, globalConfigPath, settings);
+	applyProfiles(globalSection, globalConfigPath, "global-profile", "global", settings);
 	if (!ctx.isProjectTrusted()) return settings;
 	const projectSection = readSubagentsSection(configPath, settings.warnings);
 	applyBackend(projectSection, configPath, "project", settings);
 	applyTimeout(projectSection, configPath, "project", settings);
 	applyEmbedProfileSummary(projectSection, configPath, "project", settings);
-	applyProjectProfiles(projectSection, configPath, settings);
+	applyProfiles(projectSection, configPath, "project-profile", "project", settings);
 	applyUnattended(projectSection, configPath, settings);
 	return settings;
 }
@@ -223,20 +232,11 @@ function applyEmbedProfileSummary(
 	settings.summaryInToolDescriptionSource = source;
 }
 
-function warnIgnoredGlobalProfiles(
+function applyProfiles(
 	section: Record<string, unknown> | undefined,
 	configPath: string,
-	settings: ForgeSubagentSettings,
-): void {
-	if (!section || section.profiles === undefined) return;
-	settings.warnings.push(
-		`pi-forge: ${configPath} subagents.profiles is project-only and ignored; configure profile delegation in the trusted project's .pi/forge/config.json.`,
-	);
-}
-
-function applyProjectProfiles(
-	section: Record<string, unknown> | undefined,
-	configPath: string,
+	source: ForgeSubagentProfileSource,
+	scope: ResourceScope,
 	settings: ForgeSubagentSettings,
 ): void {
 	if (!section || section.profiles === undefined) return;
@@ -258,14 +258,14 @@ function applyProjectProfiles(
 			if (field === "enabled" || field === "backend" || field === "timeoutMs") continue;
 			settings.warnings.push(`pi-forge: ${configPath} ${path}.${field} is unsupported and ignored.`);
 		}
-		const target = configuredProfile(settings, profileId) ?? {};
-		const profileSource: ForgeSubagentProfileSource = "project-profile";
+		const key = formatResourceKey({ scope, id: profileId });
+		const target = configuredProfile(settings, key) ?? {};
 		if (rawProfile.enabled !== undefined) {
 			if (typeof rawProfile.enabled !== "boolean") {
 				settings.warnings.push(`pi-forge: ${configPath} ${path}.enabled must be boolean; the configured value is ignored.`);
 			} else {
 				target.enabled = rawProfile.enabled;
-				target.enabledSource = profileSource;
+				target.enabledSource = source;
 			}
 		}
 		if (rawProfile.backend !== undefined) {
@@ -273,7 +273,7 @@ function applyProjectProfiles(
 				settings.warnings.push(`pi-forge: ${configPath} ${path}.backend must be a non-empty string; the configured value is ignored.`);
 			} else {
 				target.backend = rawProfile.backend;
-				target.backendSource = profileSource;
+				target.backendSource = source;
 			}
 		}
 		if (rawProfile.timeoutMs !== undefined) {
@@ -283,10 +283,10 @@ function applyProjectProfiles(
 				);
 			} else {
 				target.timeoutMs = rawProfile.timeoutMs;
-				target.timeoutSource = profileSource;
+				target.timeoutSource = source;
 			}
 		}
-		if (Object.keys(target).length > 0) settings.profiles[profileId] = target;
+		if (Object.keys(target).length > 0) settings.profiles[key] = target;
 	}
 }
 
@@ -311,7 +311,7 @@ export function isValidSubagentTimeoutMs(value: unknown): value is number {
 }
 
 /**
- * One trusted-project per-profile delegation update. `enabled: false`,
+ * One scoped per-profile delegation update. `enabled: false`,
  * `backend: null`, and `timeoutMs: null` remove the explicit value; entries
  * that become empty are removed so the file only records real overrides.
  */
@@ -325,16 +325,27 @@ export type ForgeSubagentProfileConfigResult =
 	| { ok: true; configPath: string }
 	| { ok: false; error: string };
 
+export function globalForgeConfigPath(): string {
+	return process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] ?? join(globalForgeDir(), "config.json");
+}
+
+export function projectForgeConfigPath(cwd: string): string {
+	return join(cwd, ".pi", "forge", "config.json");
+}
+
 /**
- * Update `subagents.profiles.<id>` in the project's `.pi/forge/config.json`,
- * preserving unknown top-level, `subagents`, and per-entry fields. Callers
- * must gate this on project trust; the project config is ignored otherwise.
+ * Update `subagents.profiles.<id>` in the selected scope's config file,
+ * preserving unknown top-level, `subagents`, and per-entry fields. Project
+ * config updates must be gated on project trust by the caller; global config
+ * is user-owned and always writable.
  */
 export function updateForgeSubagentProfileConfig(
 	cwd: string,
 	profileId: string,
 	update: ForgeSubagentProfileConfigUpdate,
+	options: { scope?: ResourceScope } = {},
 ): ForgeSubagentProfileConfigResult {
+	const scope = options.scope ?? "project";
 	if (!isValidAgentProfileId(profileId)) {
 		return { ok: false, error: `Invalid agent profile id: ${profileId}` };
 	}
@@ -348,7 +359,7 @@ export function updateForgeSubagentProfileConfig(
 		};
 	}
 
-	const configPath = join(cwd, ".pi", "forge", "config.json");
+	const configPath = scope === "project" ? projectForgeConfigPath(cwd) : globalForgeConfigPath();
 	let root: Record<string, unknown> = {};
 	if (existsSync(configPath)) {
 		let raw: unknown;
@@ -407,8 +418,28 @@ export function updateForgeSubagentProfileConfig(
 	}
 }
 
-function configuredProfile(settings: ForgeSubagentSettings, profileId: string): ForgeSubagentProfileSettings | undefined {
-	return Object.hasOwn(settings.profiles, profileId) ? settings.profiles[profileId] : undefined;
+/**
+ * Resolve the configured per-profile settings for a profile selector. Bare
+ * selectors use project-first effective lookup; qualified selectors address
+ * the exact scope. Returns undefined for unknown or malformed selectors.
+ */
+export function configuredProfileForSelector(
+	settings: ForgeSubagentSettings,
+	profileId: string,
+): ForgeSubagentProfileSettings | undefined {
+	const parsed = parseResourceSelector(profileId);
+	if (!parsed.ok) return undefined;
+	if (parsed.selector.scope) {
+		return configuredProfile(settings, formatResourceKey({ scope: parsed.selector.scope, id: parsed.selector.id }));
+	}
+	// A bare selector is intentionally project-only here. Callers that resolve
+	// a bare ID to a loaded global profile must pass the exact `global:<id>`
+	// selector; never infer global delegation authority from a bare ID.
+	return configuredProfile(settings, formatResourceKey({ scope: "project", id: parsed.selector.id }));
+}
+
+function configuredProfile(settings: ForgeSubagentSettings, key: string): ForgeSubagentProfileSettings | undefined {
+	return Object.hasOwn(settings.profiles, key) ? settings.profiles[key] : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

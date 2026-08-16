@@ -162,6 +162,8 @@ test("forge_subagent_profiles reports per-profile backend and timeout overrides"
 function loadedProfile(id: string, description: string, name?: string): LoadedAgentProfile {
 	return {
 		filePath: `/workspace/.pi/forge/agent-profiles/${id}.json`,
+		scope: "project",
+		key: { scope: "project", id },
 		diagnostics: [],
 		profile: {
 			schemaVersion: 1,

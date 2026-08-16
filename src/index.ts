@@ -9,6 +9,8 @@ import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.ts";
 import { registerForgeSubagentCommand } from "./subagent-command.ts";
 import { registerForgeSubagentTool, renderEmbeddedSubagentSummary } from "./subagent-tool.ts";
 import { loadForgeSubagentSettings } from "./forge-config.ts";
+import { resolveResourceSelector } from "./catalog.ts";
+import { formatResourceKey, parseResourceSelector, type ResourceKey } from "./resource-identity.ts";
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.ts";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
@@ -16,6 +18,28 @@ import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.ts";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createRuntimeState } from "./runtime-state.ts";
 
+export {
+	formatResourceKey,
+	formatResourceSelector,
+	isResourceScope,
+	isValidResourceId,
+	parseResourceSelector,
+	resourceKey,
+	RESOURCE_ID_PATTERN,
+	type ResourceKey,
+	type ResourceScope,
+	type ResourceSelector,
+	type ResourceSelectorParseResult,
+} from "./resource-identity.ts";
+export {
+	computeEffectiveView,
+	createResourceCatalog,
+	resolveEffectiveResource,
+	resolveExactResource,
+	resolveResourceSelector,
+	type ResourceCatalog,
+	type ScopedResource,
+} from "./catalog.ts";
 export {
 	getRegisteredMacros,
 	registerMacro,
@@ -42,6 +66,16 @@ export {
 	type ForgeExtensionRegister,
 } from "./forge-extensions.ts";
 export {
+	chooseAutoActivateStack,
+	chooseDefaultStack,
+	isDisabledPromptStackId,
+	isUsablePromptStack,
+	isValidPromptStackId,
+	loadPromptStacks,
+	loadPromptStacksScoped,
+	validatePromptStack,
+} from "./loader.ts";
+export {
 	AGENT_PROFILE_THINKING_LEVELS,
 	AGENT_PROFILE_TYPE,
 	agentProfileFingerprint,
@@ -55,9 +89,11 @@ export {
 	isValidAgentProfileId,
 	loadAgentProfileFile,
 	loadAgentProfiles,
+	loadAgentProfilesScoped,
 	renderAgentProfileDiagnostics,
 	resolveAgentProfile,
 	validateAgentProfile,
+	validateAgentProfilePromptStackScope,
 	type AgentProfile,
 	type AgentProfileDiagnostic,
 	type AgentProfileDiagnosticLevel,
@@ -139,7 +175,7 @@ export default function piForge(pi: ExtensionAPI) {
 		getCurrentProfileRuntime: () => ({
 			model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
 			thinkingLevel: pi.getThinkingLevel(),
-			promptStack: state.active?.stack.id ?? null,
+			promptStack: state.active ? formatResourceKey(state.active.key) : null,
 			effectiveTools: pi.getActiveTools(),
 		}),
 		getSubagentBackends: () => {
@@ -182,10 +218,19 @@ export default function piForge(pi: ExtensionAPI) {
 	// Registration returns a refresh function the lifecycle wiring calls with
 	// a context whenever profiles, stacks, or configuration may have changed;
 	// the tool re-registers only when the rendered summary actually changed.
+	const profileSelectors = () => state.profiles.map((profile) => formatResourceKey(profile.key));
+	const resolveProfileKey = (selector: string): ResourceKey | undefined => {
+		const parsed = parseResourceSelector(selector);
+		if (!parsed.ok) return undefined;
+		const loaded = resolveResourceSelector(state.profiles, parsed.selector);
+		return loaded?.key;
+	};
+
 	const refreshSubagentToolDescriptions = registerForgeSubagentTool(
 		pi,
 		subagentRuntime,
-		() => state.profiles.map((profile) => profile.profile.id),
+		profileSelectors,
+		resolveProfileKey,
 		{
 			summarize: (ctx) => renderEmbeddedSubagentSummary(
 				loadForgeSubagentSettings(ctx),
@@ -225,6 +270,6 @@ export default function piForge(pi: ExtensionAPI) {
 		setActive: stackRuntime.setActive,
 		previewToolNames: toolPolicy.previewToolNames,
 	});
-	registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+	registerForgeSubagentCommand(pi, subagentRuntime, profileSelectors, resolveProfileKey);
 	registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
 }

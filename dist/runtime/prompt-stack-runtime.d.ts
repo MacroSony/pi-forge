@@ -5,7 +5,7 @@ export interface PromptStackRuntime {
     dispose(): PromptStackDiagnostic[];
     activeId(): string | undefined;
     selectedActiveId(): string | undefined;
-    persistActiveSelection(id: string): void;
+    persistActiveSelection(): void;
     setActive(id: string | undefined, ctx?: ExtensionContext): boolean;
     reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: {
         deferToolPolicy?: boolean;

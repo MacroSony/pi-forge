@@ -114,7 +114,7 @@ async function applySelectedProfile(): Promise<void> {
 	profileActionError.value = "";
 	try {
 		const result = await api<{ ok: true } & WebEditorProfileMutation>(
-			`/api/profiles/${encodeURIComponent(target.profile.id)}/apply`,
+			`/api/profiles/${encodeURIComponent(target.selector)}/apply`,
 			{ method: "POST" },
 		);
 		collection.value = result.collection;
@@ -161,7 +161,7 @@ async function deleteSelectedProfile(): Promise<void> {
 	profileActionError.value = "";
 	try {
 		const result = await api<{ ok: true } & WebEditorProfileMutation>(
-			`/api/profiles/${encodeURIComponent(target.profile.id)}`,
+			`/api/profiles/${encodeURIComponent(target.selector)}`,
 			{ method: "DELETE" },
 		);
 		collection.value = result.collection;
@@ -190,6 +190,12 @@ function profileState(entry: WebEditorProfileEntry): string {
 
 function driftLabel(changed: boolean): string {
 	return changed ? "drifted" : "unchanged";
+}
+
+function shadowRelationship(entry: WebEditorProfileEntry): string {
+	const other = collection.value?.profiles.find((candidate) => candidate.profile.id === entry.profile.id && candidate.scope !== entry.scope);
+	if (!other) return "";
+	return entry.scope === "project" ? `shadows ${other.selector}` : `shadowed by ${other.selector}`;
 }
 </script>
 
@@ -222,12 +228,12 @@ function driftLabel(changed: boolean): string {
 
 		<div v-if="loadError" class="profile-message error">{{ loadError }}</div>
 		<div v-else-if="collection && !collection.trusted" class="profile-message warning">
-			This project is not trusted, so project agent profiles are not loaded.
+			This project is not trusted; only user-global agent profiles are shown and applying profiles is disabled.
 		</div>
-		<div v-else-if="collection" class="profile-layout">
+		<div v-if="collection" class="profile-layout">
 			<aside class="profile-sidebar">
 				<div class="side-head">
-					<div class="side-title">Project profiles</div>
+					<div class="side-title">Agent profiles</div>
 					<div class="cwd">{{ collection.profileDirectory }}</div>
 				</div>
 				<div class="profile-list">
@@ -244,6 +250,8 @@ function driftLabel(changed: boolean): string {
 					>
 						<span class="profile-row-title">
 							{{ entry.profile.id }}
+							<span class="badge scope" :class="entry.scope">{{ entry.scope }}</span>
+							<span v-if="shadowRelationship(entry)" class="badge shadow">{{ shadowRelationship(entry) }}</span>
 							<span v-if="entry.profile.autoActivate" class="badge">auto</span>
 							<span v-if="entry.subagent.enabled" class="badge">subagent</span>
 							<span v-if="entry.lastApplied" class="badge">last applied</span>
@@ -260,7 +268,7 @@ function driftLabel(changed: boolean): string {
 						</span>
 					</button>
 					<div v-if="!collection.profiles.length" class="profile-empty">
-						No project agent profiles found.
+						No agent profiles found.
 					</div>
 				</div>
 			</aside>
@@ -272,6 +280,7 @@ function driftLabel(changed: boolean): string {
 					:mode="editorMode"
 					:collection="collection"
 					:source="editorMode === 'edit' ? selected?.profile : undefined"
+					:source-selector="editorMode === 'edit' ? selected?.selector : undefined"
 					@cancel="editorMode = undefined"
 					@saved="handleProfileSaved"
 				/>

@@ -158,6 +158,8 @@ function fixtureState(): PiForgeRuntimeState {
 			items: [{ kind: "block", id: "system", role: "system", content: "You are the Fixture migration worker." }],
 		},
 		filePath: "/fixture/worker.md",
+		scope: "project",
+		key: { scope: "project", id: "fixture-worker" },
 		diagnostics: [],
 	};
 	const profile: LoadedAgentProfile = {
@@ -170,11 +172,14 @@ function fixtureState(): PiForgeRuntimeState {
 			promptStack: "fixture-worker",
 		},
 		filePath: "/fixture/worker.profile.md",
+		scope: "project",
+		key: { scope: "project", id: "fixture-worker" },
 		diagnostics: [],
 	};
 	const disabledProfile: LoadedAgentProfile = {
 		...structuredClone(profile),
 		profile: { ...structuredClone(profile.profile), id: "disabled-worker" },
+		key: { scope: "project", id: "disabled-worker" },
 	};
 	return {
 		stacks: [stack],

@@ -8,6 +8,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadForgeSubagentSettings, resolveSubagentProfilePolicy, type ForgeSubagentSettings } from "./forge-config.ts";
+import { formatResourceKey } from "./resource-identity.ts";
 import type { LoadedAgentProfile, ResolvedAgentProfile } from "./agent-profile.ts";
 import { summarizeProfile, type ForgeSubagentProfileSummary } from "./subagent-profile-tool.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime, SubagentBackendExecutionUpdate } from "./runtime/subagent-runtime.ts";
@@ -104,6 +105,7 @@ export function registerForgeSubagentTool(
 	pi: ExtensionAPI,
 	runtime: ForgeSubagentRuntime,
 	profileIds: () => string[],
+	resolveProfileKey: (selector: string) => { scope: "global" | "project"; id: string } | undefined,
 	options: ForgeSubagentToolRegistrationOptions = {},
 ): (ctx: ExtensionContext) => void {
 	// The description is static at registration time; re-registering the tool
@@ -145,11 +147,14 @@ export function registerForgeSubagentTool(
 				const enabledProfileIds = knownProfileIds.filter((profileId) =>
 					resolveSubagentProfilePolicy(settings, profileId).enabled
 				);
-				if (!knownProfileIds.includes(params.profileId)) {
+				const profileKey = resolveProfileKey(params.profileId);
+				if (!profileKey) {
 					const available = enabledProfileIds.join(", ") || "none";
 					return toolResult(`Unknown Pi Forge agent profile: ${params.profileId}. Enabled subagent profiles: ${available}.`, { ...baseDetails, status: "failed" }, true);
 				}
-				const configuredPolicy = resolveSubagentProfilePolicy(settings, params.profileId);
+				const canonicalProfileId = formatResourceKey(profileKey);
+				baseDetails.profileId = canonicalProfileId;
+				const configuredPolicy = resolveSubagentProfilePolicy(settings, canonicalProfileId);
 				if (!configuredPolicy.enabled) {
 					return toolResult(
 						`Pi Forge agent profile "${params.profileId}" is not enabled for subagent delegation. Use forge_subagent_profiles to discover enabled profiles.`,
@@ -171,7 +176,7 @@ export function registerForgeSubagentTool(
 				}
 				const runPolicy = resolveSubagentProfilePolicy(
 					settings,
-					params.profileId,
+					canonicalProfileId,
 					approvalRequired ? params.backend : undefined,
 				);
 				if (approvalRequired && !ctx.hasUI) {
@@ -181,7 +186,7 @@ export function registerForgeSubagentTool(
 				onUpdate?.(toolResult("Preparing the exact subagent prompt; provider transport is still closed.", baseDetails));
 				let prepared: ForgeSubagentPreparedRun | undefined;
 				try {
-					const preparation = await runtime.prepare(params.profileId, params.task, ctx, {
+					const preparation = await runtime.prepare(canonicalProfileId, params.task, ctx, {
 						backendId: runPolicy.backend.id,
 						timeoutMs: runPolicy.timeout.milliseconds,
 					});
@@ -317,7 +322,7 @@ export function renderEmbeddedSubagentSummary(
 	if (!settings.summaryInToolDescription) return undefined;
 	const summaries: ForgeSubagentProfileSummary[] = [];
 	for (const loaded of profiles) {
-		const policy = resolveSubagentProfilePolicy(settings, loaded.profile.id);
+		const policy = resolveSubagentProfilePolicy(settings, formatResourceKey(loaded.key));
 		if (!policy.enabled) continue;
 		summaries.push(summarizeProfile(loaded, resolve(loaded), policy));
 	}
@@ -389,7 +394,7 @@ export async function requestForgeSubagentApproval(
 			if (choice === VIEW_FULL_PROMPT) {
 				viewedFullPrompt = true;
 				await ctx.ui.editor(
-					`Subagent approval details: ${prepared.plan.profile.profile.id} (view only; edits are ignored)`,
+					`Subagent approval details: ${prepared.plan.profile.profileId} (view only; edits are ignored)`,
 					[
 						renderApprovalDetails(prepared, task, ctx.cwd),
 						"",
@@ -408,8 +413,8 @@ export function summarizeForgeSubagentPlan(prepared: ForgeSubagentPreparedRun, c
 	const plan = prepared.plan;
 	return {
 		backendId: plan.backendId,
-		profileId: plan.profile.profile.id,
-		promptStackId: plan.profile.promptStack?.id ?? null,
+		profileId: plan.profile.profileId,
+		promptStackId: plan.profile.promptStackId,
 		provider: plan.model.provider,
 		model: plan.model.id,
 		thinkingLevel: plan.thinkingLevel,
@@ -489,7 +494,7 @@ export function renderFullForgeSubagentPrompt(prepared: ForgeSubagentPreparedRun
 		`# Exact provider-bound subagent prompt`,
 		"",
 		`Backend: ${plan.backendId}`,
-		`Profile: ${plan.profile.profile.id}`,
+		`Profile: ${plan.profile.profileId}`,
 		`Provider/model: ${plan.model.provider}/${plan.model.id}`,
 		`Thinking: ${plan.thinkingLevel}`,
 		`Tools: ${toolNames(plan).join(", ") || "none"}`,

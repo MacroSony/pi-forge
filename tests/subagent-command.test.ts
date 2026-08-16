@@ -24,6 +24,7 @@ test.after(() => {
 });
 
 import { registerForgeSubagentCommand } from "../src/subagent-command.ts";
+import { parseResourceSelector, type ResourceKey } from "../src/resource-identity.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "../src/runtime/subagent-runtime.ts";
 import type { SubagentBackendDescriptor } from "../src/subagent/contract.ts";
 import { createFakeExecutionPlan } from "./helpers/fake-subagent-fixture.ts";
@@ -90,7 +91,16 @@ test("/forge-agent exposes backend/profile completions, dry planning, and explic
 		dispose: async () => undefined,
 	};
 	const commands: Record<string, any> = {};
-	registerForgeSubagentCommand({ registerCommand: (name: string, command: unknown) => { commands[name] = command; } } as any, runtime, () => ["reviewer", "image-viewer", "hidden"]);
+	registerForgeSubagentCommand(
+		{ registerCommand: (name: string, command: unknown) => { commands[name] = command; } } as any,
+		runtime,
+		() => ["reviewer", "image-viewer", "hidden"],
+		(selector: string): ResourceKey | undefined => {
+			const parsed = parseResourceSelector(selector);
+			if (!parsed.ok || parsed.selector.scope === "global") return undefined;
+			return { scope: "project", id: parsed.selector.id };
+		},
+	);
 	const command = commands["forge-agent"];
 	assert.ok(command);
 	assert.deepEqual(command.getArgumentCompletions("pl"), [{ value: "plan", label: "plan" }]);

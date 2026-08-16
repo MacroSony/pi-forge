@@ -14,7 +14,7 @@ Stable 0.4 does not imply that the subagent adapter or runtime has become stable
 
 ### Scoped global profiles and stacks
 
-If cross-project presets are added, introduce global profiles and stacks together. Preserve source scope, let same-ID project resources shadow global resources, and apply delegation policy only within the matching scope. Define discovery, auto-activation, reference, and editor behavior before implementation.
+Introduce global profiles and stacks together. Preserve source scope, let same-ID project resources shadow global resources for unqualified interactive lookup, keep stored dependencies deterministic, and apply delegation policy only within the matching scope. The accepted resolution model and implementation slices are in [scoped global profiles and prompt stacks](scoped-global-profiles-stacks.md).
 
 ### Sandbox and staged writes
 

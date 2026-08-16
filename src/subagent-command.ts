@@ -5,12 +5,18 @@ import {
 	resolveSubagentProfilePolicy,
 	type ResolvedSubagentBackend,
 } from "./forge-config.ts";
+import { formatResourceKey, type ResourceKey } from "./resource-identity.ts";
 import { showText } from "./preview.ts";
 import type { ForgeSubagentPreparedRun, ForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
 import { requestForgeSubagentApproval } from "./subagent-tool.ts";
 import type { AgentResponse, SubagentDiagnostic } from "./subagent/contract.ts";
 
-export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSubagentRuntime, profileIds: () => string[]): void {
+export function registerForgeSubagentCommand(
+	pi: ExtensionAPI,
+	runtime: ForgeSubagentRuntime,
+	profileIds: () => string[],
+	resolveProfileKey: (selector: string) => ResourceKey | undefined,
+): void {
 	pi.registerCommand("forge-agent", {
 		description: "Plan or run a foreground human-approved read-only agent profile",
 		getArgumentCompletions: (prefix) => completeForgeAgentArguments(prefix, profileIds(), runtime.backendIds()),
@@ -60,11 +66,13 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 				return;
 			}
 			for (const warning of settings.warnings) ctx.ui.notify(warning, "warning");
-			if (!profileIds().includes(parsed.profileId)) {
+			const profileKey = resolveProfileKey(parsed.profileId);
+			if (!profileKey) {
 				ctx.ui.notify(`pi-forge: unknown agent profile: ${parsed.profileId}`, "error");
 				return;
 			}
-			const policy = resolveSubagentProfilePolicy(settings, parsed.profileId, parsed.backend);
+			const canonicalProfileId = formatResourceKey(profileKey);
+			const policy = resolveSubagentProfilePolicy(settings, canonicalProfileId, parsed.backend);
 			if (!policy.enabled) {
 				ctx.ui.notify(`pi-forge: agent profile "${parsed.profileId}" is not enabled for subagent delegation in subagents.profiles.`, "error");
 				return;
@@ -76,7 +84,7 @@ export function registerForgeSubagentCommand(pi: ExtensionAPI, runtime: ForgeSub
 			ctx.ui.setStatus("pi-forge-subagent", ctx.ui.theme.fg("accent", parsed.command === "plan" ? "agent:preparing" : "agent:running"));
 			let prepared: ForgeSubagentPreparedRun | undefined;
 			try {
-				const result = await runtime.prepare(parsed.profileId, parsed.task, ctx, {
+				const result = await runtime.prepare(canonicalProfileId, parsed.task, ctx, {
 					backendId: policy.backend.id,
 					timeoutMs: policy.timeout.milliseconds,
 				});
@@ -192,8 +200,8 @@ function renderPlan(prepared: ForgeSubagentPreparedRun): string {
 		`Backend: ${plan.backendId}`,
 		`Model: ${plan.model.provider}/${plan.model.id}`,
 		`Thinking: ${plan.thinkingLevel}`,
-		`Profile: ${plan.profile.profile.id}`,
-		`Prompt stack: ${plan.profile.promptStack?.id ?? "none"}`,
+		`Profile: ${plan.profile.profileId}`,
+		`Prompt stack: ${plan.profile.promptStackId ?? "none"}`,
 		`Access: ${plan.access.level}; network ${plan.access.network}; process ${plan.access.process ? "allowed" : "denied"}`,
 		`Timeout: ${plan.limits.timeoutMs ? `${plan.limits.timeoutMs.value} ms (${plan.limits.timeoutMs.enforcement})` : "none"}`,
 		`Effective tools: ${plan.effectiveToolIds.join(", ") || "none"}`,

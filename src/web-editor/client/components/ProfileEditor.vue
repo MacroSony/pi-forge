@@ -13,6 +13,7 @@ const props = defineProps<{
 	mode: "create" | "edit";
 	collection: WebEditorProfileCollection;
 	source?: AgentProfile;
+	sourceSelector?: string;
 }>();
 const emit = defineEmits<{
 	cancel: [];
@@ -38,6 +39,12 @@ const status = ref("");
 const error = ref("");
 const busy = ref(false);
 
+const editScope = computed<"project" | "global">(() => {
+	if (props.mode !== "edit") return "project";
+	return (props.sourceSelector ?? "").startsWith("global:") ? "global" : "project";
+});
+const scopeLabel = computed(() => editScope.value === "global" ? "user-global" : "project-local");
+
 const providerOptions = computed(() => {
 	return [...new Set(props.collection.models.map((model) => model.provider))].sort();
 });
@@ -47,11 +54,27 @@ const modelOptions = computed(() => {
 		.sort((left, right) => left.id.localeCompare(right.id));
 });
 const promptStackOptions = computed(() => {
-	const options = [...props.collection.promptStacks];
-	if (draft.promptStack && !options.some((stack) => stack.id === draft.promptStack)) {
-		options.push({ id: draft.promptStack });
+	const options = props.collection.promptStacks
+		.filter((stack) => editScope.value !== "global" || stack.scope === "global")
+		.map((stack) => ({
+			id: stack.id,
+			name: stack.name,
+			selector: stack.selector,
+			scope: stack.scope,
+			value: stack.scope === editScope.value ? stack.id : stack.selector,
+		}));
+	if (draft.promptStack && !options.some((stack) => stack.value === draft.promptStack)) {
+		options.push({
+			id: draft.promptStack,
+			name: undefined,
+			selector: draft.promptStack,
+			scope: draft.promptStack.startsWith("global:")
+				? "global"
+				: draft.promptStack.startsWith("project:") ? "project" : editScope.value,
+			value: draft.promptStack,
+		});
 	}
-	return options.sort((left, right) => left.id.localeCompare(right.id));
+	return options.sort((left, right) => left.value.localeCompare(right.value));
 });
 const typedModelUnavailable = computed(() => {
 	const provider = draft.provider.trim();
@@ -79,8 +102,13 @@ function defaultProfile(): AgentProfile {
 			id: fallbackModel?.id ?? "",
 		},
 		thinkingLevel: current.thinkingLevel,
-		promptStack: current.promptStack,
+		promptStack: normalizeProjectStackReference(current.promptStack),
 	};
+}
+
+function normalizeProjectStackReference(reference: string | null): string | null {
+	if (!reference || !reference.startsWith("project:")) return reference;
+	return reference.slice("project:".length);
 }
 
 function profileFromDraft(): AgentProfile {
@@ -126,7 +154,7 @@ async function validateDraft(): Promise<WebEditorProfileValidation | undefined> 
 			method: "POST",
 			body: {
 				profile: profileFromDraft(),
-				existingId: props.mode === "edit" ? props.source?.id : undefined,
+				existingId: props.mode === "edit" ? (props.sourceSelector ?? props.source?.id) : undefined,
 			},
 		});
 		validation.value = result;
@@ -152,7 +180,7 @@ async function saveDraft(): Promise<void> {
 		const profile = profileFromDraft();
 		const path = props.mode === "create"
 			? "/api/profiles"
-			: `/api/profiles/${encodeURIComponent(props.source!.id)}`;
+			: `/api/profiles/${encodeURIComponent(props.sourceSelector ?? props.source!.id)}`;
 		const result = await api<{ ok: true } & WebEditorProfileMutation>(path, {
 			method: props.mode === "create" ? "POST" : "PUT",
 			body: { profile },
@@ -172,7 +200,7 @@ async function saveDraft(): Promise<void> {
 			<div>
 				<div class="profile-editor-title">{{ mode === "create" ? "New agent profile" : `Edit ${source?.id}` }}</div>
 				<div class="profile-editor-note">
-					Profile application is preflighted separately; saving only updates the project-local definition.
+					Profile application is preflighted separately; saving only updates the {{ scopeLabel }} definition.
 				</div>
 			</div>
 			<span class="action-spacer"></span>
@@ -238,16 +266,18 @@ async function saveDraft(): Promise<void> {
 				<span>Prompt stack</span>
 				<select id="profilePromptStack" v-model="draft.promptStack">
 					<option value="">(none)</option>
-					<option v-for="stack in promptStackOptions" :key="stack.id" :value="stack.id">
-						{{ stack.name ? `${stack.id} — ${stack.name}` : stack.id }}
+					<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
+						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
 					</option>
 				</select>
+				<small v-if="editScope === 'global'">Global profiles may only reference user-global prompt stacks.</small>
+				<small v-else>Project profiles may reference project stacks or explicitly qualified global stacks.</small>
 			</label>
 			<label class="profile-check profile-field-wide">
 				<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
 				<span>
 					<strong>Auto-activate on a fresh session</strong>
-					<small>Only one project profile may request auto-activation.</small>
+					<small>Only one {{ editScope }} profile may request auto-activation.</small>
 				</span>
 			</label>
 		</div>

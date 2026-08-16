@@ -30,7 +30,7 @@ Profiles are not delegatable by default. Enable each eligible ID in the trusted 
 }
 ```
 
-Enablement and per-profile overrides are project-only because profiles are project-local. A global `~/.pi/forge/config.json` may define general `backend` and `timeoutMs` defaults; global `profiles` entries warn and are ignored. Disabled or unlisted IDs are hidden from discovery and rejected even if guessed.
+Enablement follows the profile's scope. A global `~/.pi/forge/config.json` may define general `backend` and `timeoutMs` defaults and may authorize `global:<id>` profiles through its own `profiles` map. The trusted project's `.pi/forge/config.json` authorizes `project:<id>` profiles. Same-ID global and project profiles never inherit enablement, backend, or timeout policy from one another. Disabled or unlisted profiles are hidden from discovery and rejected even if guessed.
 
 ## Discover, plan, and run
 
@@ -44,6 +44,8 @@ Humans use:
 ```
 
 `plan` resolves the profile and stack, compiles and validates the exact immutable provider-bound plan, displays it, and discards it without provider transport.
+
+Profile selectors accept the same grammar everywhere: `reviewer` (project first), `project:reviewer`, or `global:reviewer`. When both scopes expose the same ID, the project profile keeps the concise selector and the global profile remains callable as `global:<id>`.
 
 The parent model uses `forge_subagent_profiles` to discover enabled profiles and `forge_subagent` to invoke one. A restrictive parent stack must allow both tool names. Discovery is local/no-egress and reports metadata, resolution readiness, effective backend/timeout, approval mode, and whether parent tool policy permits invocation.
 

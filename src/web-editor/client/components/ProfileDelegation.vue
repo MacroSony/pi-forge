@@ -96,7 +96,7 @@ async function save(): Promise<void> {
 	emit("update:busy", true);
 	try {
 		const result = await api<{ ok: true } & WebEditorProfileMutation>(
-			`/api/profiles/${encodeURIComponent(props.entry.profile.id)}/subagent`,
+			`/api/profiles/${encodeURIComponent(props.entry.selector)}/subagent`,
 			{
 				method: "PUT",
 				body: {

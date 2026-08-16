@@ -81,12 +81,14 @@ function profile(promptStack: string | null = "worker"): AgentProfile {
 }
 
 function loadedProfile(promptStack: string | null = "worker"): LoadedAgentProfile {
-	return { profile: profile(promptStack), filePath: "/project/.pi/forge/agent-profiles/worker.json", diagnostics: [] };
+	return { profile: profile(promptStack), filePath: "/project/.pi/forge/agent-profiles/worker.json", scope: "project", key: { scope: "project", id: "worker" }, diagnostics: [] };
 }
 
 function promptStack(overrides: Partial<PromptStack> = {}): LoadedPromptStack {
 	return {
 		filePath: "/project/.pi/forge/prompt-stacks/worker.json",
+		scope: "project",
+		key: { scope: "project", id: "worker" },
 		diagnostics: [],
 		stack: {
 			schemaVersion: 1,
@@ -107,7 +109,7 @@ function request(overrides: Partial<AgentRequest> = {}): AgentRequest {
 	return {
 		schemaVersion: SUBAGENT_CONTRACT_VERSION,
 		requestId: "req-1",
-		profileId: "worker",
+		profileId: "project:worker",
 		input: { text: "Do the task." },
 		access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
 		limits: { timeoutMs: { value: 1_000, enforcement: "best-effort" } },
@@ -231,6 +233,33 @@ test("host resolution is model-registry independent and records custom dependenc
 	});
 	assert.equal(invalidMode.snapshot, undefined);
 	assert.equal(invalidMode.diagnostics.some((item) => item.code === "profile.stack-mode"), true);
+});
+
+test("snapshot validation accepts project and global qualified stack references", () => {
+	const registrations = { macros: [{ name: "customMacro", source: "fixture" }], slots: [{ name: "custom-slot", source: "fixture" }] };
+	const projectShared: LoadedPromptStack = {
+		...promptStack({ id: "shared" }),
+		filePath: "/project/.pi/forge/prompt-stacks/shared.json",
+		scope: "project",
+		key: { scope: "project", id: "shared" },
+	};
+	const globalShared: LoadedPromptStack = {
+		...promptStack({ id: "shared" }),
+		filePath: "/global/.pi/forge/prompt-stacks/shared.json",
+		scope: "global",
+		key: { scope: "global", id: "shared" },
+	};
+
+	for (const reference of ["global:shared", "project:shared"]) {
+		const resolved = resolveSubagentHostProfile(loadedProfile(reference), {
+			promptStacks: [projectShared, globalShared],
+			registrations,
+		});
+		assert.equal(hasSubagentErrors(resolved.diagnostics), false, reference);
+		assert.equal(resolved.snapshot?.promptStackId, reference);
+		assert.equal(resolved.snapshot?.promptStack?.id, "shared");
+		assert.deepEqual(validateAgentProfileSnapshot(resolved.snapshot), []);
+	}
 });
 
 test("dependency scanning handles nested macros, static variables, and anonymous registrations", () => {

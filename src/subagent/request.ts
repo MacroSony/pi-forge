@@ -1,4 +1,5 @@
 import { validateAgentProfile, type AgentProfile } from "../agent-profile.ts";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.ts";
 import type { PromptStack } from "../types.ts";
 import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint } from "./canonical.ts";
 import { SUBAGENT_CONTRACT_VERSION, type AgentProfileSnapshot, type AgentRequest, type SubagentDiagnostic } from "./types.ts";
@@ -50,6 +51,7 @@ export function validateAgentProfileSnapshot(value: unknown): SubagentDiagnostic
 	const diagnostics: SubagentDiagnostic[] = [];
 	if (!isRecord(value)) return [error("snapshot.type", "AgentProfileSnapshot must be an object.", "$")];
 	if (value.schemaVersion !== SUBAGENT_CONTRACT_VERSION) diagnostics.push(error("snapshot.schema-version", "schemaVersion must be 1.", "schemaVersion"));
+	if (typeof value.profileId !== "string" || !parseResourceSelector(value.profileId).ok) diagnostics.push(error("snapshot.profile-id", "profileId must be a valid scoped profile selector.", "profileId"));
 	if (!isRecord(value.profile)) diagnostics.push(error("snapshot.profile", "profile must be an object.", "profile"));
 	else {
 		try {
@@ -79,6 +81,9 @@ export function validateAgentProfileSnapshot(value: unknown): SubagentDiagnostic
 		});
 	}
 	validateFingerprint(value.profileFingerprint, "profileFingerprint", diagnostics);
+	if (value.promptStackId !== null && (typeof value.promptStackId !== "string" || !parseResourceSelector(value.promptStackId).ok)) {
+		diagnostics.push(error("snapshot.stack-id", "promptStackId must be a valid scoped prompt-stack selector or null.", "promptStackId"));
+	}
 	if (value.promptStackFingerprint !== null) validateFingerprint(value.promptStackFingerprint, "promptStackFingerprint", diagnostics);
 	if (isRecord(value.profile) && isFingerprint(value.profileFingerprint)) {
 		if (subagentSourceProfileFingerprint(value.profile as unknown as AgentProfile) !== value.profileFingerprint) {
@@ -95,8 +100,32 @@ export function validateAgentProfileSnapshot(value: unknown): SubagentDiagnostic
 	}
 	if (isRecord(value.profile)) {
 		const referencedStack = value.profile.promptStack;
-		if (referencedStack === null && value.promptStack !== null) diagnostics.push(error("snapshot.unexpected-stack", "Profile references no prompt stack, but the snapshot contains one.", "promptStack"));
-		if (typeof referencedStack === "string" && (!isRecord(value.promptStack) || value.promptStack.id !== referencedStack)) diagnostics.push(error("snapshot.stack-reference", "Snapshot promptStack does not match profile.promptStack.", "promptStack"));
+		if (referencedStack === null) {
+			if (value.promptStack !== null) diagnostics.push(error("snapshot.unexpected-stack", "Profile references no prompt stack, but the snapshot contains one.", "promptStack"));
+			if (value.promptStackId !== null) diagnostics.push(error("snapshot.null-stack-id", "A null promptStack must have a null promptStackId.", "promptStackId"));
+		} else if (typeof referencedStack === "string") {
+			const parsedReference = parseResourceSelector(referencedStack);
+			if (!parsedReference.ok) {
+				diagnostics.push(error("snapshot.stack-reference", parsedReference.error, "promptStack"));
+			} else {
+				const parsedProfile = parseResourceSelector(typeof value.profileId === "string" ? value.profileId : "");
+				const profileScope = parsedProfile.ok ? (parsedProfile.selector.scope ?? "project") : "project";
+				if (profileScope === "global" && parsedReference.selector.scope === "project") {
+					diagnostics.push(error("snapshot.stack-reference", `Global profile cannot reference project prompt stack ${parsedReference.selector.id}.`, "promptStack"));
+				}
+				const expectedPromptStackId = formatResourceKey({
+					scope: parsedReference.selector.scope ?? profileScope,
+					id: parsedReference.selector.id,
+				});
+				const resolvedPromptStack = isRecord(value.promptStack) ? value.promptStack : undefined;
+				if (!resolvedPromptStack || resolvedPromptStack.id !== parsedReference.selector.id) {
+					diagnostics.push(error("snapshot.stack-reference", "Snapshot promptStack does not match profile.promptStack.", "promptStack"));
+				}
+				if (value.promptStackId !== expectedPromptStackId) {
+					diagnostics.push(error("snapshot.stack-reference-scope", "Snapshot promptStackId does not match the profile.promptStack selector scope.", "promptStackId"));
+				}
+			}
+		}
 	}
 	return diagnostics;
 }

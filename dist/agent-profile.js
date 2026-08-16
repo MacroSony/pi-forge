@@ -2,19 +2,45 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { resourcePatternMatches } from "./policy.js";
-import { agentProfilesDir } from "./storage.js";
+import { formatResourceKey, isResourceScope, isValidResourceId, parseResourceSelector } from "./resource-identity.js";
+import { agentProfilesDir, globalAgentProfilesDir } from "./storage.js";
 export const AGENT_PROFILE_TYPE = "pi-forge.agent-profile";
 export const AGENT_PROFILE_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const VALID_THINKING_LEVELS = new Set(AGENT_PROFILE_THINKING_LEVELS);
-const PROFILE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PROFILE_FIELDS = new Set(["schemaVersion", "type", "id", "name", "description", "model", "thinkingLevel", "promptStack", "autoActivate"]);
 const MODEL_FIELDS = new Set(["provider", "id"]);
 export { agentProfilePath, agentProfilesDir } from "./storage.js";
 export function isValidAgentProfileId(id) {
-    return PROFILE_ID_PATTERN.test(id);
+    return isValidResourceId(id);
 }
 export function loadAgentProfiles(cwd) {
-    const dir = agentProfilesDir(cwd);
+    const profiles = loadAgentProfilesFromDir(agentProfilesDir(cwd), "project");
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+/**
+ * Load both global and project profiles. Global definitions are user-owned
+ * and always load; project definitions load from the trusted project dirs.
+ * The caller decides whether project trust applies before calling.
+ */
+export function loadAgentProfilesScoped(cwd, globalDir = globalAgentProfilesDir()) {
+    const profiles = [
+        ...loadAgentProfilesFromDir(globalDir, "global"),
+        ...loadAgentProfilesFromDir(agentProfilesDir(cwd), "project"),
+    ];
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+/** Load only the user-owned global profiles, used by untrusted projects. */
+export function loadGlobalAgentProfiles(globalDir = globalAgentProfilesDir()) {
+    const profiles = loadAgentProfilesFromDir(globalDir, "global");
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+function loadAgentProfilesFromDir(dir, scope) {
     if (!existsSync(dir))
         return [];
     let entries;
@@ -24,19 +50,26 @@ export function loadAgentProfiles(cwd) {
     catch {
         return [];
     }
-    const profiles = entries.map((name) => loadAgentProfileFile(join(dir, name)));
-    annotateDuplicateProfileIds(profiles);
-    annotateAutoActivateConflicts(profiles);
-    return profiles;
+    return entries.map((name) => loadAgentProfileFile(join(dir, name), scope));
 }
 export function chooseAutoActivateAgentProfile(profiles) {
-    const candidates = profiles.filter((loaded) => loaded.profile.autoActivate === true);
-    return candidates.length === 1 ? candidates[0] : undefined;
+    // Project auto-activation has explicit precedence. An invalid or ambiguous
+    // project candidate fails closed instead of falling back to a global one.
+    const projectCandidates = profiles.filter((loaded) => loaded.scope === "project" && loaded.profile.autoActivate === true);
+    if (projectCandidates.length > 0) {
+        return projectCandidates.length === 1 && !hasAgentProfileErrors(projectCandidates[0].diagnostics)
+            ? projectCandidates[0]
+            : undefined;
+    }
+    const globalCandidates = profiles.filter((loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true);
+    return globalCandidates.length === 1 && !hasAgentProfileErrors(globalCandidates[0].diagnostics)
+        ? globalCandidates[0]
+        : undefined;
 }
 export function hasAutoActivateAgentProfile(profiles) {
     return profiles.some((loaded) => loaded.profile.autoActivate === true);
 }
-export function loadAgentProfileFile(filePath) {
+export function loadAgentProfileFile(filePath, scope = "project") {
     const diagnostics = [];
     let raw;
     try {
@@ -45,6 +78,8 @@ export function loadAgentProfileFile(filePath) {
     catch (error) {
         return {
             filePath,
+            scope,
+            key: { scope, id: basename(filePath, ".json") },
             profile: fallbackProfile(filePath),
             diagnostics: [{
                     level: "error",
@@ -54,7 +89,7 @@ export function loadAgentProfileFile(filePath) {
     }
     const profile = normalizeAgentProfile(raw, filePath, diagnostics);
     diagnostics.push(...validateAgentProfile(profile));
-    return { filePath, profile, diagnostics };
+    return { filePath, scope, key: { scope, id: profile.id }, profile, diagnostics };
 }
 export function validateAgentProfile(profile) {
     const diagnostics = [];
@@ -80,6 +115,28 @@ export function validateAgentProfile(profile) {
         diagnostics.push({ level: "error", field: "promptStack", message: "promptStack must be a non-empty stack id or null." });
     }
     return diagnostics;
+}
+/**
+ * Validate the profile's stored `promptStack` selector against the profile's
+ * own scope. Bare references stay scope-relative; only global profiles are
+ * prohibited from referencing project stacks explicitly. Used by write paths
+ * so edited JSON cannot persist a scope-unsafe dependency.
+ */
+export function validateAgentProfilePromptStackScope(profile, scope) {
+    if (profile.promptStack === null)
+        return [];
+    const parsed = parseResourceSelector(profile.promptStack);
+    if (!parsed.ok) {
+        return [{ level: "error", field: "promptStack", message: parsed.error }];
+    }
+    if (scope === "global" && parsed.selector.scope === "project") {
+        return [{
+                level: "error",
+                field: "promptStack",
+                message: `Global profile ${profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
+            }];
+    }
+    return [];
 }
 export function resolveAgentProfile(loaded, resources) {
     const diagnostics = [...loaded.diagnostics];
@@ -112,15 +169,10 @@ export function resolveAgentProfile(loaded, resources) {
     }
     let promptStack;
     if (loaded.profile.promptStack !== null) {
-        promptStack = resources.promptStacks.find((candidate) => candidate.stack.id === loaded.profile.promptStack);
-        if (!promptStack) {
-            diagnostics.push({
-                level: "error",
-                field: "promptStack",
-                message: `Unknown prompt stack: ${loaded.profile.promptStack}`,
-            });
-        }
-        else {
+        const resolution = resolveProfilePromptStack(loaded, resources.promptStacks);
+        diagnostics.push(...resolution.diagnostics);
+        promptStack = resolution.stack;
+        if (promptStack) {
             for (const diagnostic of promptStack.diagnostics) {
                 diagnostics.push({
                     level: diagnostic.level,
@@ -168,6 +220,7 @@ export function isAgentProfileProvenance(value) {
         return false;
     return typeof value.profileId === "string"
         && isValidAgentProfileId(value.profileId)
+        && (value.scope === undefined || isResourceScope(value.scope))
         && typeof value.sourcePath === "string"
         && typeof value.sourceFingerprint === "string"
         && typeof value.appliedAt === "string"
@@ -177,36 +230,93 @@ export function isAgentProfileProvenance(value) {
         && VALID_THINKING_LEVELS.has(value.snapshot.thinkingLevel)
         && (value.snapshot.promptStack === null || !!nonEmptyString(value.snapshot.promptStack));
 }
+/**
+ * Resolve a profile's stored `promptStack` reference relative to the profile's
+ * own scope. Bare IDs resolve to the profile scope; explicit qualification
+ * overrides that scope. A global profile can never reference a project stack.
+ */
+function resolveProfilePromptStack(loaded, promptStacks) {
+    const diagnostics = [];
+    const reference = loaded.profile.promptStack;
+    const parsed = parseResourceSelector(reference);
+    if (!parsed.ok) {
+        diagnostics.push({ level: "error", field: "promptStack", message: parsed.error });
+        return { stack: undefined, diagnostics };
+    }
+    if (loaded.scope === "global" && parsed.selector.scope === "project") {
+        diagnostics.push({
+            level: "error",
+            field: "promptStack",
+            message: `Global profile ${loaded.profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
+        });
+        return { stack: undefined, diagnostics };
+    }
+    const scope = parsed.selector.scope ?? loaded.scope;
+    const matches = promptStacks.filter((candidate) => candidate.scope === scope && candidate.stack.id === parsed.selector.id);
+    if (matches.length === 1)
+        return { stack: matches[0], diagnostics };
+    if (matches.length === 0) {
+        const suggestion = loaded.scope === "project" && scope === "project"
+            && promptStacks.some((candidate) => candidate.scope === "global" && candidate.stack.id === parsed.selector.id)
+            ? ` Use ${formatResourceKey({ scope: "global", id: parsed.selector.id })} to reference the global stack.`
+            : "";
+        diagnostics.push({
+            level: "error",
+            field: "promptStack",
+            message: `Unknown prompt stack: ${reference}.${suggestion}`,
+        });
+        return { stack: undefined, diagnostics };
+    }
+    diagnostics.push({
+        level: "error",
+        field: "promptStack",
+        message: `Prompt stack id is ambiguous: ${reference}`,
+    });
+    return { stack: undefined, diagnostics };
+}
 function findModel(models, reference) {
     return models.find((model) => model.provider === reference.provider && model.id === reference.id);
 }
 function annotateDuplicateProfileIds(profiles) {
-    const byId = new Map();
+    const byScopeId = new Map();
     for (const loaded of profiles) {
-        const matches = byId.get(loaded.profile.id) ?? [];
+        const key = `${loaded.scope}\0${loaded.profile.id}`;
+        const matches = byScopeId.get(key) ?? [];
         matches.push(loaded);
-        byId.set(loaded.profile.id, matches);
+        byScopeId.set(key, matches);
     }
-    for (const [id, matches] of byId) {
+    for (const matches of byScopeId.values()) {
         if (matches.length <= 1)
             continue;
         const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
         for (const loaded of matches) {
-            loaded.diagnostics.push({ level: "error", message: `Duplicate profile id: ${id} appears in multiple files (${files}).` });
+            loaded.diagnostics.push({
+                level: "error",
+                message: `Duplicate ${loaded.scope} profile id: ${loaded.profile.id} appears in multiple files (${files}).`,
+            });
         }
     }
 }
 function annotateAutoActivateConflicts(profiles) {
-    const candidates = profiles.filter((loaded) => loaded.profile.autoActivate === true);
-    if (candidates.length <= 1)
-        return;
-    const files = candidates.map((loaded) => basename(loaded.filePath)).join(", ");
-    for (const loaded of candidates) {
-        loaded.diagnostics.push({
-            level: "error",
-            field: "autoActivate",
-            message: `Multiple profiles request auto-activation (${files}); exactly one is allowed.`,
-        });
+    const byScope = new Map();
+    for (const loaded of profiles) {
+        if (loaded.profile.autoActivate !== true)
+            continue;
+        const matches = byScope.get(loaded.scope) ?? [];
+        matches.push(loaded);
+        byScope.set(loaded.scope, matches);
+    }
+    for (const [scope, candidates] of byScope) {
+        if (candidates.length <= 1)
+            continue;
+        const files = candidates.map((loaded) => basename(loaded.filePath)).join(", ");
+        for (const loaded of candidates) {
+            loaded.diagnostics.push({
+                level: "error",
+                field: "autoActivate",
+                message: `Multiple ${scope} profiles request auto-activation (${files}); exactly one is allowed.`,
+            });
+        }
     }
 }
 function normalizeAgentProfile(raw, filePath, diagnostics) {

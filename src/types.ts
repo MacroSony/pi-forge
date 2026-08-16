@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { BuildSystemPromptOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ResourceKey, ResourceScope } from "./resource-identity.ts";
 
 export type PromptStackMode = "replace" | "append" | "prepend";
 
@@ -158,6 +159,8 @@ export interface PromptStack {
 export interface LoadedPromptStack {
 	stack: PromptStack;
 	filePath: string;
+	scope: ResourceScope;
+	key: ResourceKey;
 	diagnostics: PromptStackDiagnostic[];
 }
 

@@ -50,9 +50,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
     });
     pi.on("turn_start", async () => {
         deps.syncActiveToolPolicy();
-        const id = deps.activeId();
-        if (id)
-            deps.persistActiveSelection(id);
+        deps.persistActiveSelection();
     });
     pi.on("input", async () => {
         deps.syncActiveToolPolicy();

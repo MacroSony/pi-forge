@@ -169,7 +169,11 @@ export interface SubagentPromptDependency {
 
 export interface AgentProfileSnapshot {
 	schemaVersion: typeof SUBAGENT_CONTRACT_VERSION;
+	/** Canonical scoped selector of the resolved profile (`project:<id>` or `global:<id>`). */
+	profileId: string;
 	profile: AgentProfile;
+	/** Canonical scoped selector of the resolved prompt stack, or null. */
+	promptStackId: string | null;
 	promptStack: PromptStack | null;
 	dependencies: SubagentPromptDependency[];
 	profileFingerprint: SubagentFingerprint;

@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isDisabledPromptStackId, promptStackPath, promptStackReadDirs } from "./loader.js";
+import { isDisabledPromptStackId, isSafePromptStackMutationPath, promptStackPath, promptStackReadDirs } from "./loader.js";
+import { resolveResourceSelector } from "./catalog.js";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { renderDiagnostics, renderPreview, showText } from "./preview.js";
 import { importSillyTavernPreset } from "./sillytavern-importer.js";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.js";
@@ -17,7 +19,7 @@ export function registerPresetCommand(pi, state, deps) {
             const first = parts[0];
             if (["use", "preview", "validate"].includes(first)) {
                 const fragment = parts[1] ?? "";
-                const ids = ["none", ...state.stacks.map((loaded) => loaded.stack.id)];
+                const ids = ["none", ...stackSelectorCandidates(state)];
                 return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
             }
             if (first === "ui" && parts.length <= 2) {
@@ -61,7 +63,11 @@ async function handlePresetCommand(state, deps, args, ctx) {
         case "use": {
             const id = rest[0];
             if (!id) {
-                ctx.ui.notify("Usage: /preset use <id|none>", "warning");
+                ctx.ui.notify("Usage: /preset use <id|none|project:id|global:id>", "warning");
+                return;
+            }
+            if (!ctx.isProjectTrusted()) {
+                ctx.ui.notify("pi-forge: project is not trusted; refusing to activate a prompt stack.", "warning");
                 return;
             }
             if (!deps.setActive(id, ctx)) {
@@ -72,7 +78,7 @@ async function handlePresetCommand(state, deps, args, ctx) {
             return;
         }
         case "preview": {
-            const target = rest[0] ? state.stacks.find((loaded) => loaded.stack.id === rest[0]) : state.active;
+            const target = rest[0] ? findStack(state, rest[0]) : state.active;
             if (!target) {
                 ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
                 return;
@@ -81,7 +87,7 @@ async function handlePresetCommand(state, deps, args, ctx) {
             return;
         }
         case "validate": {
-            const target = rest[0] ? state.stacks.find((loaded) => loaded.stack.id === rest[0]) : state.active;
+            const target = rest[0] ? findStack(state, rest[0]) : state.active;
             if (!target) {
                 ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
                 return;
@@ -152,8 +158,12 @@ async function handleImportSilly(state, deps, rest, ctx) {
         ctx.ui.notify(`pi-forge import error: ${result.error}`, "error");
         return;
     }
-    const existingStack = state.stacks.find((candidate) => candidate.stack.id === result.stack.id);
+    const existingStack = state.stacks.find((candidate) => candidate.scope === "project" && candidate.stack.id === result.stack.id);
     const stackPath = existingStack?.filePath ?? promptStackPath(ctx.cwd, result.stack.id);
+    if (!isSafePromptStackMutationPath(ctx.cwd, stackPath)) {
+        ctx.ui.notify("pi-forge: refusing to import outside project prompt-stack storage or through a symbolic link.", "error");
+        return;
+    }
     const stacksDir = dirname(stackPath);
     const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
     const reportPath = join(reportDir, `${result.stack.id}.md`);
@@ -195,7 +205,7 @@ function renderStackList(state, ctx) {
         "",
     ];
     if (state.stacks.length === 0) {
-        lines.push("No prompt stacks found.", "Create .pi/forge/prompt-stacks/default.json to auto-activate a stack.");
+        lines.push("No prompt stacks found.", 'Create .pi/forge/prompt-stacks/<id>.json with "autoActivate": true to auto-activate a stack.');
         return lines.join("\n");
     }
     for (const loaded of state.stacks) {
@@ -221,12 +231,30 @@ function renderCurrentDiagnostics(state) {
     lines.push(renderDiagnostics(state.latestCompileDiagnostics));
     return lines.join("\n");
 }
+function stackSelectorCandidates(state) {
+    const collidingIds = new Set();
+    const byId = new Map();
+    for (const loaded of state.stacks) {
+        const count = (byId.get(loaded.stack.id) ?? 0) + 1;
+        byId.set(loaded.stack.id, count);
+        if (count === 2)
+            collidingIds.add(loaded.stack.id);
+    }
+    const candidates = [];
+    for (const loaded of state.stacks) {
+        candidates.push(collidingIds.has(loaded.stack.id) ? formatResourceKey(loaded.key) : loaded.stack.id);
+    }
+    return [...new Set(candidates)].sort();
+}
 export function selectedActiveId(state) {
     if (state.active)
-        return state.active.stack.id;
+        return formatResourceKey(state.active.key);
     return isDisabledPromptStackId(state.lastPersistedActiveId) ? "none" : undefined;
 }
-export function findStack(state, id) {
-    return state.stacks.find((candidate) => candidate.stack.id === id);
+export function findStack(state, selector) {
+    const parsed = parseResourceSelector(selector);
+    if (!parsed.ok)
+        return undefined;
+    return resolveResourceSelector(state.stacks, parsed.selector);
 }
 //# sourceMappingURL=preset-command.js.map

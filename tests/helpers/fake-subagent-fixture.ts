@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { AGENT_PROFILE_TYPE, type AgentProfile } from "../../src/agent-profile.ts";
+import { formatResourceKey } from "../../src/resource-identity.ts";
 import {
 	SUBAGENT_CONTRACT_VERSION,
 	createAgentExecutionPlan,
@@ -72,7 +73,9 @@ export function fakeSnapshot(stackOverrides: Partial<PromptStack> = {}): AgentPr
 	};
 	return {
 		schemaVersion: 1,
+		profileId: profile.id,
 		profile,
+		promptStackId: profile.promptStack ? formatResourceKey({ scope: "project", id: profile.promptStack }) : null,
 		promptStack,
 		dependencies: [],
 		profileFingerprint: subagentSourceProfileFingerprint(profile),

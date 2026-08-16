@@ -74,13 +74,18 @@ Stacks may use either `allow` or `deny` patterns for each resource. Tool policy 
 
 External tool additions are preserved in the baseline restored when a restrictive stack is disabled. See the exact behavior in [stack policy reference](../reference/stack-schema.md#tool-and-skill-policy).
 
+## Scopes and shadowing
+
+Stacks may live in the user-global `~/.pi/forge/prompt-stacks/` or the project `.pi/forge/prompt-stacks/`. A project stack shadows a same-ID global stack for unqualified commands. Selectors are `reviewer`, `project:reviewer`, or `global:reviewer`. Duplicate IDs are errors only within one scope.
+
 ## Activation and session behavior
 
-- `default.json` auto-activates unless its metadata opts out.
-- Another stack may set `autoActivate: true`; conflicting auto-activation is invalid.
+- A stack may set `autoActivate: true`; conflicting auto-activation in one scope is invalid and fails closed.
+- `default.json` has no special filename role anymore; missing `autoActivate` yields a migration warning.
 - `/preset use none` records an explicit session opt-out.
 - Active stack and session variables follow Pi's session-tree branch.
 - Restored branch state takes precedence over fresh-session auto-activation.
+- Project auto-activation candidates take precedence over global ones; an invalid or ambiguous project candidate never falls back to a global stack.
 - An auto-activated agent profile takes precedence over standalone stack autoload.
 
 ## Extensions and transforms

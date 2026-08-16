@@ -3,6 +3,8 @@ import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
     id: string;
+    selector: string;
+    scope: "global" | "project";
     name?: string;
     filePath: string;
     active: boolean;
@@ -67,6 +69,8 @@ export interface WebEditorHost {
 export interface WebEditorProfileEntry {
     profile: AgentProfile;
     filePath: string;
+    selector: string;
+    scope: "global" | "project";
     preview: AgentProfilePreview;
     errors: number;
     warnings: number;
@@ -79,7 +83,7 @@ export interface WebEditorSubagentBackendOption {
 }
 export interface WebEditorSubagentProfilePolicy {
     enabled: boolean;
-    enabledSource: "project-profile" | "built-in";
+    enabledSource: "project-profile" | "global-profile" | "built-in";
     backend: string;
     backendSource: string;
     backendRegistered: boolean;
@@ -114,6 +118,8 @@ export interface WebEditorProfileCollection {
     promptStacks: Array<{
         id: string;
         name?: string;
+        selector: string;
+        scope: "global" | "project";
     }>;
     subagents: WebEditorSubagentSummary;
 }

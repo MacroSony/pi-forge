@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, } from "./agent-profile.js";
+import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
 import { DEFAULT_SUBAGENT_BACKEND_ID, loadForgeSubagentSettings, resolveSubagentProfilePolicy, updateForgeSubagentProfileConfig, } from "./forge-config.js";
-import { isInsidePromptStackStorage, promptStackPath, validatePromptStack, } from "./loader.js";
+import { isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, isValidPromptStackId, promptStackPath, validatePromptStack, } from "./loader.js";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
+import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
@@ -10,21 +12,18 @@ export function createWebEditorHost(ctx, runtime) {
         listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
         listProfiles: () => profileCollection(ctx, runtime),
         reloadProfiles: async () => {
-            if (!ctx.isProjectTrusted()) {
-                return { ok: false, status: 403, error: "Project is not trusted; refusing to reload agent profiles." };
-            }
             await runtime.reloadProfiles();
             return { ok: true, ...profileCollection(ctx, runtime) };
         },
         validateProfile: (profile, existingId) => profileValidation(ctx, runtime, profile, existingId),
         createProfile: (profile) => createProfileFile(ctx, runtime, profile),
-        saveProfile: (id, profile) => saveProfileFile(ctx, runtime, id, profile),
-        applyProfile: (id) => applyProfileRuntime(ctx, runtime, id),
-        deleteProfile: (id) => deleteProfileFile(ctx, runtime, id),
-        updateSubagentPolicy: (id, update) => updateSubagentPolicy(ctx, runtime, id, update),
+        saveProfile: (selector, profile) => saveProfileFile(ctx, runtime, selector, profile),
+        applyProfile: (selector) => applyProfileRuntime(ctx, runtime, selector),
+        deleteProfile: (selector) => deleteProfileFile(ctx, runtime, selector),
+        updateSubagentPolicy: (selector, update) => updateSubagentPolicy(ctx, runtime, selector, update),
         listResources: () => runtime.getPolicyResources(),
-        getStack: (id) => {
-            const loaded = runtime.getStacks().find((candidate) => candidate.stack.id === id);
+        getStack: (selector) => {
+            const loaded = resolveStack(runtime, selector);
             return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;
         },
         createStack: (stack, options) => createStackFile(ctx, runtime, stack, options),
@@ -32,19 +31,19 @@ export function createWebEditorHost(ctx, runtime) {
         deleteStack: (id) => deleteStackFile(ctx, runtime, id),
         validateStack: (stack) => validatePromptStack(stack),
         previewStack: (id, stack) => {
-            const target = runtime.getStacks().find((candidate) => candidate.stack.id === id);
+            const target = resolveStack(runtime, id);
             if (!target)
                 return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
             const diagnostics = validatePromptStack(stack);
-            const preview = runtime.buildPreview({ stack, filePath: target.filePath, diagnostics });
+            const preview = runtime.buildPreview({ stack, filePath: target.filePath, scope: target.scope, key: target.key, diagnostics });
             return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
         },
         getPayload: () => runtime.getPayload(),
         armPayload: (savePath) => runtime.armPayload(savePath),
         clearPayload: () => runtime.clearPayload(),
-        activateStack: (id) => {
-            if (!runtime.setActive(id))
-                return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+        activateStack: (selector) => {
+            if (!runtime.setActive(selector))
+                return { ok: false, status: 404, error: `Unknown prompt stack: ${selector}` };
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
         disableStacks: () => {
@@ -56,6 +55,14 @@ export function createWebEditorHost(ctx, runtime) {
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
     };
+}
+/** Unqualified selectors address project profiles only; global profiles require `global:<id>`. */
+function resolveProfilesForMutation(runtime, selector) {
+    const parsed = parseResourceSelector(selector);
+    if (!parsed.ok)
+        return [];
+    const scope = parsed.selector.scope ?? "project";
+    return runtime.getProfiles().filter((loaded) => loaded.scope === scope && loaded.profile.id === parsed.selector.id);
 }
 function profileCollection(ctx, runtime) {
     const profiles = runtime.getProfiles();
@@ -77,11 +84,13 @@ function profileCollection(ctx, runtime) {
             return {
                 profile: structuredClone(loaded.profile),
                 filePath: loaded.filePath,
+                selector: formatResourceKey(loaded.key),
+                scope: loaded.scope,
                 preview,
                 errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
                 warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
                 lastApplied: lastApplied?.sourcePath === loaded.filePath,
-                subagent: subagentPolicySummary(subagentSettings, loaded.profile.id, registeredBackends),
+                subagent: subagentPolicySummary(subagentSettings, loaded, registeredBackends),
             };
         }),
         status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
@@ -94,6 +103,8 @@ function profileCollection(ctx, runtime) {
         promptStacks: runtime.getStacks().map((loaded) => ({
             id: loaded.stack.id,
             name: loaded.stack.name,
+            selector: formatResourceKey(loaded.key),
+            scope: loaded.scope,
         })),
         subagents: {
             defaultBackend: subagentSettings.backend ?? DEFAULT_SUBAGENT_BACKEND_ID,
@@ -106,9 +117,10 @@ function profileCollection(ctx, runtime) {
         },
     };
 }
-function subagentPolicySummary(settings, profileId, registeredBackends) {
-    const policy = resolveSubagentProfilePolicy(settings, profileId);
-    const configured = settings.profiles[profileId];
+function subagentPolicySummary(settings, loaded, registeredBackends) {
+    const selector = formatResourceKey(loaded.key);
+    const policy = resolveSubagentProfilePolicy(settings, selector);
+    const configured = settings.profiles[selector];
     return {
         enabled: policy.enabled,
         enabledSource: policy.enabledSource,
@@ -131,15 +143,20 @@ function configuredSubagentProfile(configured) {
 }
 function profileValidation(ctx, runtime, profile, existingId) {
     const profiles = runtime.getProfiles();
-    const existingMatches = existingId
-        ? profiles.filter((loaded) => loaded.profile.id === existingId)
+    const existingSelector = existingId ? parseResourceSelector(existingId) : undefined;
+    const existingMatches = existingSelector?.ok
+        ? profiles.filter((loaded) => loaded.scope === (existingSelector.selector.scope ?? "project") && loaded.profile.id === existingSelector.selector.id)
         : [];
     const existing = existingMatches.length === 1 ? existingMatches[0] : undefined;
+    const scope = existing?.scope ?? "project";
     const filePath = existing?.filePath ?? agentProfilePath(ctx.cwd, profile.id);
-    const diagnostics = validateAgentProfile(profile);
+    const diagnostics = [
+        ...validateAgentProfile(profile),
+        ...validateAgentProfilePromptStackScope(profile, scope),
+    ];
     const otherProfiles = existing
-        ? profiles.filter((loaded) => loaded.filePath !== filePath)
-        : profiles;
+        ? profiles.filter((loaded) => loaded.scope === scope && loaded.filePath !== filePath)
+        : profiles.filter((loaded) => loaded.scope === scope);
     if (otherProfiles.some((loaded) => loaded.profile.id === profile.id)) {
         diagnostics.push({
             level: "error",
@@ -161,7 +178,7 @@ function profileValidation(ctx, runtime, profile, existingId) {
             message: "Multiple profiles request auto-activation; exactly one is allowed.",
         });
     }
-    const resolved = runtime.resolveProfile({ profile, filePath, diagnostics });
+    const resolved = runtime.resolveProfile({ profile, filePath, scope: existing?.scope ?? "project", key: { scope: existing?.scope ?? "project", id: profile.id }, diagnostics });
     const targetEffectiveTools = resolved.promptStack || profile.promptStack === null
         ? runtime.previewToolNames(resolved.promptStack?.stack)
         : [];
@@ -177,10 +194,10 @@ async function createProfileFile(ctx, runtime, profile) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to create agent profiles." };
     }
-    if (runtime.getProfiles().some((loaded) => loaded.profile.id === profile.id)) {
+    if (runtime.getProfiles().some((loaded) => loaded.scope === "project" && loaded.profile.id === profile.id)) {
         return { ok: false, status: 409, error: `Agent profile already exists: ${profile.id}` };
     }
-    const conflict = autoActivateConflictError(runtime.getProfiles(), profile);
+    const conflict = autoActivateConflictError(runtime.getProfiles(), profile, "project");
     if (conflict)
         return { ok: false, status: 409, error: conflict };
     const result = writeAgentProfile(ctx.cwd, profile);
@@ -197,21 +214,22 @@ async function saveProfileFile(ctx, runtime, id, profile) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to save agent profiles." };
     }
-    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    const matches = resolveProfilesForMutation(runtime, id);
     if (matches.length === 0)
         return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
     if (matches.length > 1) {
         return { ok: false, status: 409, error: `Cannot save agent profile ${id} while duplicate profile ids exist.` };
     }
-    if (profile.id !== id) {
+    if (profile.id !== matches[0].profile.id) {
         return { ok: false, status: 400, error: "Profile id is immutable during save; create a new profile to use a different id." };
     }
-    const conflict = autoActivateConflictError(runtime.getProfiles(), profile, id);
+    const conflict = autoActivateConflictError(runtime.getProfiles(), profile, matches[0].scope, matches[0].profile.id);
     if (conflict)
         return { ok: false, status: 409, error: conflict };
     const result = writeAgentProfile(ctx.cwd, profile, {
         filePath: matches[0].filePath,
         overwrite: true,
+        scope: matches[0].scope,
     });
     if (!result.ok)
         return profileWriteError(id, result);
@@ -226,13 +244,13 @@ async function updateSubagentPolicy(ctx, runtime, id, update) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to change subagent delegation." };
     }
-    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    const matches = resolveProfilesForMutation(runtime, id);
     if (matches.length === 0)
         return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
     if (matches.length > 1) {
         return { ok: false, status: 409, error: `Cannot configure subagent delegation for ${id} while duplicate profile ids exist.` };
     }
-    const result = updateForgeSubagentProfileConfig(ctx.cwd, id, update);
+    const result = updateForgeSubagentProfileConfig(ctx.cwd, matches[0].profile.id, update, { scope: matches[0].scope });
     if (!result.ok)
         return { ok: false, status: 400, error: result.error };
     return {
@@ -241,12 +259,12 @@ async function updateSubagentPolicy(ctx, runtime, id, update) {
         selectedPath: matches[0].filePath,
     };
 }
-function autoActivateConflictError(profiles, profile, excludeId) {
+function autoActivateConflictError(profiles, profile, scope, excludeId) {
     if (profile.autoActivate !== true)
         return undefined;
-    const conflict = profiles.find((loaded) => loaded.profile.autoActivate === true && loaded.profile.id !== excludeId);
+    const conflict = profiles.find((loaded) => loaded.scope === scope && loaded.profile.autoActivate === true && loaded.profile.id !== excludeId);
     return conflict
-        ? `Multiple profiles request auto-activation; exactly one is allowed (already requested by ${conflict.profile.id}).`
+        ? `Multiple ${scope} profiles request auto-activation; exactly one is allowed (already requested by ${conflict.profile.id}).`
         : undefined;
 }
 async function applyProfileRuntime(ctx, runtime, id) {
@@ -256,7 +274,7 @@ async function applyProfileRuntime(ctx, runtime, id) {
     if (!runtime.isIdle()) {
         return { ok: false, status: 409, error: "Wait for the current agent operation to finish before applying a profile." };
     }
-    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    const matches = resolveProfilesForMutation(runtime, id);
     if (matches.length === 0)
         return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
     if (matches.length > 1) {
@@ -283,7 +301,7 @@ async function deleteProfileFile(ctx, runtime, id) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to delete agent profiles." };
     }
-    const matches = runtime.getProfiles().filter((loaded) => loaded.profile.id === id);
+    const matches = resolveProfilesForMutation(runtime, id);
     if (matches.length === 0)
         return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
     if (matches.length > 1) {
@@ -301,12 +319,12 @@ async function deleteProfileFile(ctx, runtime, id) {
         }
         return { ok: false, status: 500, error: result.error ?? `Failed to delete agent profile ${id}.` };
     }
-    if (Object.hasOwn(subagentSettings.profiles, id)) {
-        const cleared = updateForgeSubagentProfileConfig(ctx.cwd, id, {
+    if (Object.hasOwn(subagentSettings.profiles, formatResourceKey(matches[0].key))) {
+        const cleared = updateForgeSubagentProfileConfig(ctx.cwd, matches[0].profile.id, {
             enabled: false,
             backend: null,
             timeoutMs: null,
-        });
+        }, { scope: matches[0].scope });
         if (!cleared.ok) {
             await runtime.reloadProfiles();
             return {
@@ -341,11 +359,19 @@ function profileWriteError(id, result) {
 function modelKey(provider, id) {
     return `${provider}\0${id}`;
 }
+function resolveStack(runtime, selector) {
+    const parsed = parseResourceSelector(selector);
+    if (!parsed.ok)
+        return undefined;
+    return resolveResourceSelector(runtime.getStacks(), parsed.selector);
+}
 export function stackSummary(loaded, active) {
     const errors = loaded.diagnostics.filter((d) => d.level === "error").length;
     const warnings = loaded.diagnostics.filter((d) => d.level === "warning").length;
     return {
         id: loaded.stack.id,
+        selector: formatResourceKey(loaded.key),
+        scope: loaded.scope,
         name: loaded.stack.name,
         filePath: loaded.filePath,
         active: loaded === active,
@@ -397,22 +423,26 @@ async function saveStackFile(ctx, runtime, id, stack) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
     }
-    const target = runtime.getStacks().find((candidate) => candidate.stack.id === id);
+    const target = resolveStack(runtime, id);
     if (!target)
         return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
     const idError = validateWebStackId(stack.id);
     if (idError)
         return { ok: false, status: 400, error: idError };
-    if (stack.id !== id) {
+    if (stack.id !== target.stack.id) {
         return { ok: false, status: 400, error: "Stack id is immutable during save; fork the stack to create a new id." };
     }
-    if (!isInsidePromptStackStorage(ctx.cwd, target.filePath)) {
-        return { ok: false, status: 403, error: "Refusing to save outside prompt-stack storage." };
+    const safe = target.scope === "project"
+        ? isSafePromptStackMutationPath(ctx.cwd, target.filePath)
+        : isSafeGlobalPromptStackMutationPath(target.filePath);
+    if (!safe) {
+        return { ok: false, status: 403, error: "Refusing to save outside prompt-stack storage or through a symbolic link." };
     }
     writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-    const preferredId = runtime.getActive()?.stack.id === id ? stack.id : runtime.getSelectedActiveId();
+    const preferredId = runtime.getActive() === target ? formatResourceKey(target.key) : runtime.getSelectedActiveId();
     await runtime.reloadStacks(preferredId);
-    const saved = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id) ?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
+    const saved = runtime.getStacks().find((candidate) => candidate.scope === target.scope && candidate.stack.id === target.stack.id)
+        ?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
     if (!saved)
         return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
     return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
@@ -424,13 +454,13 @@ async function createStackFile(ctx, runtime, stack, options) {
     const idError = validateWebStackId(stack.id);
     if (idError)
         return { ok: false, status: 400, error: idError };
-    const existingById = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id);
+    const existingById = runtime.getStacks().find((candidate) => candidate.scope === "project" && candidate.stack.id === stack.id);
     if (existingById && !options.overwrite) {
         return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
     }
     const targetPath = existingById && options.overwrite ? existingById.filePath : promptStackPath(ctx.cwd, stack.id);
-    if (!isInsidePromptStackStorage(ctx.cwd, targetPath)) {
-        return { ok: false, status: 403, error: "Refusing to create outside prompt-stack storage." };
+    if (!isSafePromptStackMutationPath(ctx.cwd, targetPath)) {
+        return { ok: false, status: 403, error: "Refusing to create outside prompt-stack storage or through a symbolic link." };
     }
     if (!existingById && existsSync(targetPath) && !options.overwrite) {
         return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
@@ -441,7 +471,7 @@ async function createStackFile(ctx, runtime, stack, options) {
     await runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
     if (options.activate)
         runtime.setActive(stack.id);
-    const created = runtime.getStacks().find((candidate) => candidate.stack.id === stack.id);
+    const created = runtime.getStacks().find((candidate) => candidate.scope === "project" && candidate.filePath === targetPath);
     if (!created)
         return { ok: false, status: 500, error: "Created stack could not be reloaded." };
     return { ok: true, stack: stackSummary(created, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
@@ -450,13 +480,16 @@ async function deleteStackFile(ctx, runtime, id) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
     }
-    const target = runtime.getStacks().find((candidate) => candidate.stack.id === id);
+    const target = resolveStack(runtime, id);
     if (!target)
         return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-    if (!isInsidePromptStackStorage(ctx.cwd, target.filePath)) {
-        return { ok: false, status: 403, error: "Refusing to delete outside prompt-stack storage." };
+    const safe = target.scope === "project"
+        ? isSafePromptStackMutationPath(ctx.cwd, target.filePath)
+        : isSafeGlobalPromptStackMutationPath(target.filePath);
+    if (!safe) {
+        return { ok: false, status: 403, error: "Refusing to delete outside prompt-stack storage or through a symbolic link." };
     }
-    const wasActive = runtime.getActive()?.stack.id === id;
+    const wasActive = runtime.getActive() === target;
     unlinkSync(target.filePath);
     if (wasActive) {
         runtime.setActive("none");
@@ -470,8 +503,8 @@ async function deleteStackFile(ctx, runtime, id) {
 function validateWebStackId(id) {
     if (!id.trim())
         return "Stack id must not be empty.";
-    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
-        return "Stack id may only contain letters, numbers, underscore, and dash.";
+    if (!isValidPromptStackId(id)) {
+        return "Stack id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.";
     }
     return undefined;
 }

@@ -9,6 +9,9 @@ import {
 	type LoadedAgentProfile,
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
+import { resolveResourceSelector } from "./catalog.ts";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
+import { globalAgentProfilePath } from "./storage.ts";
 import {
 	applyResolvedAgentProfile,
 	captureAgentProfile,
@@ -51,9 +54,8 @@ function profileArgumentCompletions(state: PiForgeRuntimeState, prefix: string) 
 	const command = parts[0];
 	if (["use", "preview", "validate"].includes(command)) {
 		const fragment = parts[1] ?? "";
-		return state.profiles
-			.map((loaded) => loaded.profile.id)
-			.filter((id, index, ids) => ids.indexOf(id) === index && id.startsWith(fragment))
+		return profileSelectorCandidates(state)
+			.filter((id) => id.startsWith(fragment))
 			.map((id) => ({ value: `${command} ${id}`, label: id }));
 	}
 	if (command === "save" && parts.length > 2) {
@@ -99,12 +101,11 @@ async function handleProfileCommand(
 			return;
 
 		case "reload":
-			if (!ctx.isProjectTrusted()) {
-				ctx.ui.notify("pi-forge: project is not trusted; agent profiles remain disabled.", "warning");
-				return;
-			}
 			await deps.reloadProfiles(ctx);
-			ctx.ui.notify(`pi-forge: reloaded ${state.profiles.length} agent profile(s); no profile was applied.`, "info");
+			ctx.ui.notify(ctx.isProjectTrusted()
+				? `pi-forge: reloaded ${state.profiles.length} agent profile(s); no profile was applied.`
+				: `pi-forge: reloaded ${state.profiles.length} global agent profile(s); application and delegation remain disabled in this untrusted project.`,
+				ctx.isProjectTrusted() ? "info" : "warning");
 			return;
 
 		case "forget":
@@ -168,12 +169,19 @@ async function saveProfile(
 	rest: string[],
 	ctx: ExtensionCommandContext,
 ): Promise<void> {
-	const id = rest[0];
+	const selectorText = rest[0];
 	const flags = new Set(rest.slice(1));
-	if (!id || [...flags].some((flag) => flag !== "--overwrite")) {
-		ctx.ui.notify("Usage: /profile save <id> [--overwrite]", "warning");
+	if (!selectorText || [...flags].some((flag) => flag !== "--overwrite")) {
+		ctx.ui.notify("Usage: /profile save <id|global:id> [--overwrite]", "warning");
 		return;
 	}
+	const parsedSelector = parseResourceSelector(selectorText);
+	if (!parsedSelector.ok) {
+		ctx.ui.notify(parsedSelector.error, "error");
+		return;
+	}
+	const id = parsedSelector.selector.id;
+	const targetScope = parsedSelector.selector.scope ?? "project";
 	if (!isValidAgentProfileId(id)) {
 		ctx.ui.notify("Profile id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.", "error");
 		return;
@@ -187,13 +195,13 @@ async function saveProfile(
 		return;
 	}
 
-	const existingMatches = state.profiles.filter((loaded) => loaded.profile.id === id);
+	const existingMatches = state.profiles.filter((loaded) => loaded.scope === targetScope && loaded.profile.id === id);
 	if (existingMatches.length > 1) {
-		ctx.ui.notify(`pi-forge: cannot save profile ${id} while duplicate profile ids exist.`, "error");
+		ctx.ui.notify(`pi-forge: cannot save profile ${id} while duplicate ${targetScope} profile ids exist.`, "error");
 		return;
 	}
 	const existing = existingMatches[0];
-	const filePath = existing?.filePath ?? agentProfilePath(ctx.cwd, id);
+	const filePath = existing?.filePath ?? (targetScope === "project" ? agentProfilePath(ctx.cwd, id) : globalAgentProfilePath(id));
 	let overwrite = flags.has("--overwrite");
 	if (existsSync(filePath) && !overwrite) {
 		if (!ctx.hasUI) {
@@ -207,10 +215,10 @@ async function saveProfile(
 		}
 	}
 
-	const capture = captureAgentProfile(id, {
+	const capture = captureAgentProfile(id, targetScope, {
 		model: { provider: ctx.model.provider, id: ctx.model.id },
 		thinkingLevel: pi.getThinkingLevel(),
-		promptStack: state.active?.stack.id ?? null,
+		promptStack: state.active?.key ?? null,
 	}, existing);
 	if (!capture.ok) {
 		ctx.ui.notify(`pi-forge: current runtime could not be saved as profile ${id}.`, "error");
@@ -218,7 +226,7 @@ async function saveProfile(
 		return;
 	}
 
-	const write = writeAgentProfile(ctx.cwd, capture.profile, { filePath, overwrite });
+	const write = writeAgentProfile(ctx.cwd, capture.profile, { filePath, overwrite, scope: targetScope });
 	if (!write.ok) {
 		if (write.reason === "exists") {
 			ctx.ui.notify(`pi-forge: profile ${id} already exists; re-run with --overwrite.`, "error");
@@ -264,7 +272,7 @@ async function validateProfiles(
 	id: string | undefined,
 	ctx: ExtensionCommandContext,
 ): Promise<void> {
-	const targets = id ? state.profiles.filter((loaded) => loaded.profile.id === id) : state.profiles;
+	const targets = id ? [findProfile(state, id)].filter((loaded): loaded is LoadedAgentProfile => !!loaded) : state.profiles;
 	if (targets.length === 0) {
 		ctx.ui.notify(id ? `Unknown agent profile: ${id}` : "No agent profiles found.", "warning");
 		return;
@@ -374,15 +382,33 @@ function renderProfileStatus(pi: ExtensionAPI, state: PiForgeRuntimeState, ctx: 
 	return lines.join("\n");
 }
 
-function findProfile(state: PiForgeRuntimeState, id: string): LoadedAgentProfile | undefined {
-	return state.profiles.find((loaded) => loaded.profile.id === id);
+function profileSelectorCandidates(state: PiForgeRuntimeState): string[] {
+	const collidingIds = new Set<string>();
+	const byId = new Map<string, number>();
+	for (const loaded of state.profiles) {
+		const count = (byId.get(loaded.profile.id) ?? 0) + 1;
+		byId.set(loaded.profile.id, count);
+		if (count === 2) collidingIds.add(loaded.profile.id);
+	}
+
+	const candidates: string[] = [];
+	for (const loaded of state.profiles) {
+		candidates.push(collidingIds.has(loaded.profile.id) ? formatResourceKey(loaded.key) : loaded.profile.id);
+	}
+	return [...new Set(candidates)].sort();
+}
+
+function findProfile(state: PiForgeRuntimeState, selector: string): LoadedAgentProfile | undefined {
+	const parsed = parseResourceSelector(selector);
+	if (!parsed.ok) return undefined;
+	return resolveResourceSelector(state.profiles, parsed.selector);
 }
 
 function currentRuntime(pi: ExtensionAPI, state: PiForgeRuntimeState, ctx: ExtensionContext): AgentProfileCurrentRuntime {
 	return {
 		model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
 		thinkingLevel: pi.getThinkingLevel(),
-		promptStack: state.active?.stack.id ?? null,
+		promptStack: state.active ? formatResourceKey(state.active.key) : null,
 		effectiveTools: pi.getActiveTools(),
 	};
 }

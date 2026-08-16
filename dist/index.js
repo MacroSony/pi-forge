@@ -8,15 +8,20 @@ import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.js";
 import { registerForgeSubagentCommand } from "./subagent-command.js";
 import { registerForgeSubagentTool, renderEmbeddedSubagentSummary } from "./subagent-tool.js";
 import { loadForgeSubagentSettings } from "./forge-config.js";
+import { resolveResourceSelector } from "./catalog.js";
+import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
 import { createRuntimeState } from "./runtime-state.js";
+export { formatResourceKey, formatResourceSelector, isResourceScope, isValidResourceId, parseResourceSelector, resourceKey, RESOURCE_ID_PATTERN, } from "./resource-identity.js";
+export { computeEffectiveView, createResourceCatalog, resolveEffectiveResource, resolveExactResource, resolveResourceSelector, } from "./catalog.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
-export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, isAgentProfileProvenance, } from "./agent-profile.js";
+export { chooseAutoActivateStack, chooseDefaultStack, isDisabledPromptStackId, isUsablePromptStack, isValidPromptStackId, loadPromptStacks, loadPromptStacksScoped, validatePromptStack, } from "./loader.js";
+export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, loadAgentProfilesScoped, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, validateAgentProfilePromptStackScope, isAgentProfileProvenance, } from "./agent-profile.js";
 export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, deleteAgentProfile, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
 export * from "./subagent/contract.js";
@@ -48,7 +53,7 @@ export default function piForge(pi) {
         getCurrentProfileRuntime: () => ({
             model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
             thinkingLevel: pi.getThinkingLevel(),
-            promptStack: state.active?.stack.id ?? null,
+            promptStack: state.active ? formatResourceKey(state.active.key) : null,
             effectiveTools: pi.getActiveTools(),
         }),
         getSubagentBackends: () => {
@@ -85,7 +90,15 @@ export default function piForge(pi) {
     // Registration returns a refresh function the lifecycle wiring calls with
     // a context whenever profiles, stacks, or configuration may have changed;
     // the tool re-registers only when the rendered summary actually changed.
-    const refreshSubagentToolDescriptions = registerForgeSubagentTool(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id), {
+    const profileSelectors = () => state.profiles.map((profile) => formatResourceKey(profile.key));
+    const resolveProfileKey = (selector) => {
+        const parsed = parseResourceSelector(selector);
+        if (!parsed.ok)
+            return undefined;
+        const loaded = resolveResourceSelector(state.profiles, parsed.selector);
+        return loaded?.key;
+    };
+    const refreshSubagentToolDescriptions = registerForgeSubagentTool(pi, subagentRuntime, profileSelectors, resolveProfileKey, {
         summarize: (ctx) => renderEmbeddedSubagentSummary(loadForgeSubagentSettings(ctx), state.profiles, (loaded) => profileRuntime.resolveProfile(loaded, ctx)),
     });
     registerLifecycleHandlers(pi, state, {
@@ -118,7 +131,7 @@ export default function piForge(pi) {
         setActive: stackRuntime.setActive,
         previewToolNames: toolPolicy.previewToolNames,
     });
-    registerForgeSubagentCommand(pi, subagentRuntime, () => state.profiles.map((profile) => profile.profile.id));
+    registerForgeSubagentCommand(pi, subagentRuntime, profileSelectors, resolveProfileKey);
     registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
 }
 //# sourceMappingURL=index.js.map

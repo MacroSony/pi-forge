@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { GLOBAL_FORGE_CONFIG_PATH_ENV } from "../src/forge-config.ts";
 import { legacyPromptStacksDir, promptStacksDir } from "../src/loader.ts";
+import { GLOBAL_FORGE_DIR_ENV, globalPromptStacksDir } from "../src/storage.ts";
 import {
 	bindAvailablePort,
 	createContext,
@@ -34,6 +36,7 @@ test("/preset completions preserve second-level subcommand text", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -59,6 +62,7 @@ test("/preset import-silly protects existing generated files unless confirmed", 
 	});
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -84,6 +88,7 @@ test("/preset use, disable, and reload persist selection and update footer", asy
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -103,7 +108,7 @@ test("/preset use, disable, and reload persist selection and update footer", asy
 
 	await harness.commands.preset.handler("use other", ctx);
 	assert.equal(statuses["pi-forge"], "stack:other");
-	assert.deepEqual(harness.appended.at(-1), { type: "pi-forge-prompt-stack-state", data: { activeStackId: "other" } });
+	assert.deepEqual(harness.appended.at(-1), { type: "pi-forge-prompt-stack-state", data: { activeStackId: "project:other" } });
 
 	await harness.commands.preset.handler("use none", ctx);
 	assert.equal(statuses["pi-forge"], undefined);
@@ -117,6 +122,7 @@ test("active stack tool policy filters and restores active tools", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		tools: {
@@ -141,6 +147,7 @@ test("session_shutdown restores tool policy baseline before reload", async () =>
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		tools: {
@@ -181,6 +188,7 @@ test("late extension tool configuration is filtered after reload and preserved a
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		tools: {
@@ -217,6 +225,7 @@ test("tool policy reasserts before input and blocks disallowed tool calls", asyn
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		tools: {
@@ -277,6 +286,7 @@ export default function register(api: any) {
 `);
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [
@@ -357,6 +367,7 @@ export default function register(api: any) {
 `);
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [
@@ -400,6 +411,7 @@ test("session_start restores active stack and typed variables", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -434,6 +446,7 @@ test("/preset validate shows requested stack diagnostics", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -461,6 +474,7 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [
@@ -497,6 +511,7 @@ test("message_end applies destructive finalize regex to assistant messages", asy
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		regex: {
@@ -581,6 +596,7 @@ test("web editor resources and preview survive lifecycle-only host refreshes", a
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -637,6 +653,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		name: "Original",
@@ -994,7 +1011,8 @@ test("/preset ui profile mutations remain token-gated and fail closed for untrus
 			method: "POST",
 			headers: { "x-pi-forge-token": token },
 		});
-		assert.equal(reloadResponse.status, 403);
+		assert.equal(reloadResponse.status, 200);
+		assert.match(await reloadResponse.text(), /"trusted":false/);
 
 		const applyResponse = await fetch(new URL("/api/profiles/blocked/apply", editorUrl), {
 			method: "POST",
@@ -1069,7 +1087,7 @@ test("/preset ui accepts at most one auto-activation profile", async () => {
 
 		const second = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second", true) }) });
 		assert.equal(second.status, 409);
-		assert.match(await second.text(), /Multiple profiles request auto-activation/);
+		assert.match(await second.text(), /Multiple project profiles request auto-activation/);
 		assert.equal(existsSync(join(cwd, ".pi", "forge", "agent-profiles", "second.json")), false);
 
 		const plain = await fetch(profilesUrl, { method: "POST", headers, body: JSON.stringify({ profile: profile("second") }) });
@@ -1237,6 +1255,124 @@ test("/preset ui removes delegation settings with a deleted profile", async () =
 	}
 });
 
+test("/preset ui removes global delegation settings with a deleted global profile", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobalDir = process.env[GLOBAL_FORGE_DIR_ENV];
+	const previousGlobalConfig = process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = join(globalDir, "config.json");
+	const profile = {
+		schemaVersion: 1,
+		type: "pi-forge.agent-profile",
+		id: "reviewer",
+		model: { provider: "test", id: "model" },
+		thinkingLevel: "off",
+		promptStack: null,
+	};
+	const globalProfilesDir = join(globalDir, "agent-profiles");
+	mkdirSync(globalProfilesDir, { recursive: true });
+	writeFileSync(join(globalProfilesDir, "reviewer.json"), JSON.stringify(profile, null, 2));
+
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+
+		const enabled = await fetch(new URL("/api/profiles/global:reviewer/subagent", editorUrl), {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ enabled: true }),
+		});
+		assert.equal(enabled.status, 200);
+		assert.equal(JSON.parse(readFileSync(join(globalDir, "config.json"), "utf8")).subagents.profiles.reviewer.enabled, true);
+
+		const deleted = await fetch(new URL("/api/profiles/global:reviewer", editorUrl), {
+			method: "DELETE",
+			headers,
+		});
+		assert.equal(deleted.status, 200);
+		assert.equal(existsSync(join(globalProfilesDir, "reviewer.json")), false);
+		assert.equal(JSON.parse(readFileSync(join(globalDir, "config.json"), "utf8")).subagents, undefined);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+		if (previousGlobalDir === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalDir;
+		if (previousGlobalConfig === undefined) delete process.env[GLOBAL_FORGE_CONFIG_PATH_ENV];
+		else process.env[GLOBAL_FORGE_CONFIG_PATH_ENV] = previousGlobalConfig;
+	}
+});
+
+test("/preset ui returns the project shadow after stack create and save", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobalDir = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		const globalStacksDir = join(globalDir, "prompt-stacks");
+		mkdirSync(globalStacksDir, { recursive: true });
+		writeFileSync(join(globalStacksDir, "same.json"), JSON.stringify({
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "same",
+			name: "Global Same",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		}, null, 2));
+
+		const harness = createHarness();
+		const context = createContext(cwd);
+		await startSession(harness, context.ctx);
+
+		try {
+			await harness.commands.preset.handler("ui", context.ctx);
+			const editorUrl = latestEditorUrl(context.editors);
+			const token = editorUrl.searchParams.get("token")!;
+			const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+			const projectStack = {
+				schemaVersion: 1,
+				type: "pi-forge.prompt-stack",
+				id: "same",
+				name: "Project Same",
+				items: [{ kind: "block", id: "system", role: "system", content: "Project shadow." }],
+			};
+
+			const createResponse = await fetch(new URL("/api/stacks", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ stack: projectStack }),
+			});
+			assert.equal(createResponse.status, 200);
+			const created = await createResponse.json() as { stack: { id: string; scope: string; selector: string; name?: string } };
+			assert.equal(created.stack.id, "same");
+			assert.equal(created.stack.scope, "project");
+			assert.equal(created.stack.selector, "project:same");
+			assert.equal(created.stack.name, "Project Same");
+
+			const saveResponse = await fetch(new URL("/api/stacks/same", editorUrl), {
+				method: "PUT",
+				headers,
+				body: JSON.stringify({ stack: { ...projectStack, name: "Project Same Saved" } }),
+			});
+			assert.equal(saveResponse.status, 200);
+			const saved = await saveResponse.json() as { stack: { id: string; scope: string; selector: string; name?: string } };
+			assert.equal(saved.stack.id, "same");
+			assert.equal(saved.stack.scope, "project");
+			assert.equal(saved.stack.selector, "project:same");
+			assert.equal(saved.stack.name, "Project Same Saved");
+		} finally {
+			await harness.commands.preset.handler("ui stop", context.ctx);
+		}
+	} finally {
+		if (previousGlobalDir === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalDir;
+	}
+});
+
 function lifecycleOnlyContext(ctx: Record<string, unknown>): Record<string, unknown> {
 	const lifecycle = { ...ctx };
 	for (const key of ["getSystemPromptOptions", "waitForIdle", "newSession", "fork"]) delete lifecycle[key];
@@ -1292,6 +1428,7 @@ test("/preset ui honors preferred port and falls back when it is occupied", asyn
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -1325,6 +1462,7 @@ test("/preset ui reuses an existing server after extension reinitialization", as
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -1360,6 +1498,7 @@ test("turn_start persists default active stack only once", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
@@ -1371,7 +1510,7 @@ test("turn_start persists default active stack only once", async () => {
 	await harness.events.turn_start({ type: "turn_start", turnIndex: 1, timestamp: 1 }, ctx);
 	await harness.events.turn_start({ type: "turn_start", turnIndex: 2, timestamp: 2 }, ctx);
 
-	assert.deepEqual(harness.appended, [{ type: "pi-forge-prompt-stack-state", data: { activeStackId: "default" } }]);
+	assert.deepEqual(harness.appended, [{ type: "pi-forge-prompt-stack-state", data: { activeStackId: "project:default" } }]);
 });
 
 test("/preset import-silly supports dry-run, overwrite flag, and untrusted write refusal", async () => {
@@ -1453,6 +1592,7 @@ test("session_tree restores macro session variables from the current branch only
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [
@@ -1484,6 +1624,7 @@ test("session_tree before any variable entry clears restored macro variables", a
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
+		autoActivate: true,
 		type: "pi-forge.prompt-stack",
 		id: "default",
 		items: [
@@ -1511,3 +1652,67 @@ test("session_tree before any variable entry clears restored macro variables", a
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+test("/preset use persists qualified scope and restores legacy bare IDs", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-scoped-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobal = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		const globalStacks = join(globalDir, "prompt-stacks");
+		mkdirSync(globalStacks, { recursive: true });
+		writeFileSync(join(globalStacks, "reviewer.json"), JSON.stringify({
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "reviewer",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		}));
+
+		const harness = createHarness();
+		const { ctx, statuses } = createContext(cwd);
+		await startSession(harness, ctx);
+
+		// Global stack is selectable through an exact qualified selector.
+		await harness.commands.preset.handler("use global:reviewer", ctx);
+		assert.equal(statuses["pi-forge"], "stack:reviewer");
+		assert.deepEqual(harness.appended.at(-1), { type: "pi-forge-prompt-stack-state", data: { activeStackId: "global:reviewer" } });
+
+		// A bare legacy ID restores through effective lookup.
+		const harness2 = createHarness();
+		const { ctx: ctx2, statuses: statuses2 } = createContext(cwd, [
+			{ type: "custom", customType: "pi-forge-prompt-stack-state", data: { activeStackId: "reviewer" } },
+		]);
+		await startSession(harness2, ctx2);
+		assert.equal(statuses2["pi-forge"], "stack:reviewer");
+	} finally {
+		process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobal;
+	}
+});
+
+test("untrusted projects browse global stacks but cannot activate them", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-untrusted-scope-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-untrusted-global-"));
+	const previousGlobal = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		mkdirSync(join(globalDir, "prompt-stacks"), { recursive: true });
+		writeFileSync(join(globalDir, "prompt-stacks", "reviewer.json"), JSON.stringify({
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "reviewer",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		}));
+		const harness = createHarness();
+		const { ctx, editors, notifications, statuses } = createContext(cwd, [], { trusted: false });
+		await startSession(harness, ctx);
+
+		await harness.commands.preset.handler("list", ctx);
+		assert.match(editors.at(-1)?.text ?? "", /reviewer/);
+
+		await harness.commands.preset.handler("use global:reviewer", ctx);
+		assert.equal(statuses["pi-forge"], undefined);
+		assert.match(notifications.at(-1)?.message ?? "", /not trusted/);
+	} finally {
+		process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobal;
+	}
+});

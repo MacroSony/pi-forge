@@ -24,7 +24,7 @@ export interface LifecycleDeps {
 	restoreActiveToolPolicy(): void;
 	toolPolicyBlockReason(toolName: string): string | undefined;
 	activeId(): string | undefined;
-	persistActiveSelection(id: string): void;
+	persistActiveSelection(): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
 }
 
@@ -79,8 +79,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("turn_start", async () => {
 		deps.syncActiveToolPolicy();
-		const id = deps.activeId();
-		if (id) deps.persistActiveSelection(id);
+		deps.persistActiveSelection();
 	});
 
 	pi.on("input", async () => {

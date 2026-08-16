@@ -193,19 +193,26 @@ test("subagent profiles are trusted-project-only opt-ins with backend and timeou
 		});
 		assert.equal(resolveSubagentProfilePolicy(layered, "image-viewer").enabled, false);
 		assert.equal(resolveSubagentProfilePolicy(layered, "unknown").enabled, false);
-		assert.match(layered.warnings.join("\n"), /subagents\.profiles is project-only and ignored/);
+		// Same-ID global and project profiles keep independent authorization.
+		const globalReviewer = resolveSubagentProfilePolicy(layered, "global:reviewer");
+		assert.equal(globalReviewer.enabled, true);
+		assert.deepEqual(globalReviewer.backend, { id: "global-reviewer", source: "global-profile" });
+		assert.deepEqual(globalReviewer.timeout, { milliseconds: 300_000, source: "global-profile" });
+		assert.doesNotMatch(layered.warnings.join("\n"), /project-only and ignored/);
 
 		const untrusted = loadForgeSubagentSettings(context(cwd, false));
 		assert.equal(resolveSubagentProfilePolicy(untrusted, "image-viewer").enabled, false);
-		assert.deepEqual(resolveSubagentProfilePolicy(untrusted, "image-viewer").backend, {
+		const untrustedGlobal = resolveSubagentProfilePolicy(untrusted, "global:image-viewer");
+		assert.equal(untrustedGlobal.enabled, true);
+		assert.deepEqual(untrustedGlobal.backend, {
 			id: "global-default",
 			source: "global",
 		});
-		assert.deepEqual(resolveSubagentProfilePolicy(untrusted, "image-viewer").timeout, {
-			milliseconds: 90_000,
-			source: "global",
+		assert.deepEqual(untrustedGlobal.timeout, {
+			milliseconds: 180_000,
+			source: "global-profile",
 		});
-		assert.match(untrusted.warnings.join("\n"), /subagents\.profiles is project-only and ignored/);
+		assert.doesNotMatch(untrusted.warnings.join("\n"), /project-only and ignored/);
 
 		writeFileSync(projectConfigPath, JSON.stringify({
 			subagents: {

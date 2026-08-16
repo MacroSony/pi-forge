@@ -1,6 +1,8 @@
+import { resolveResourceSelector } from "../catalog.js";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "../forge-extensions.js";
-import { chooseDefaultStack, isDisabledPromptStackId, loadPromptStacks } from "../loader.js";
+import { chooseDefaultStack, isDisabledPromptStackId, loadGlobalPromptStacks, loadPromptStacksScoped, } from "../loader.js";
 import { selectedActiveId as selectedActiveIdForState } from "../preset-command.js";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
 import { STATE_ENTRY_TYPE } from "../runtime-state.js";
 export function createPromptStackRuntime(pi, state, deps) {
     const forgeExtensionState = createForgeExtensionState();
@@ -16,27 +18,33 @@ export function createPromptStackRuntime(pi, state, deps) {
     function selectedActiveId() {
         return selectedActiveIdForState(state);
     }
-    function persistActiveSelection(id) {
-        if (id === state.lastPersistedActiveId)
+    function persistActiveSelection() {
+        const canonical = state.active ? formatResourceKey(state.active.key) : "none";
+        if (canonical === state.lastPersistedActiveId)
             return;
-        pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: id });
-        state.lastPersistedActiveId = id;
+        pi.appendEntry(STATE_ENTRY_TYPE, { activeStackId: canonical });
+        state.lastPersistedActiveId = canonical;
     }
     function setActive(id, ctx) {
         if (!id || isDisabledPromptStackId(id)) {
             state.active = undefined;
             if (id)
-                persistActiveSelection("none");
+                persistActiveSelection();
             if (ctx)
                 updateStatus(ctx);
             deps.syncToolPolicy(ctx);
             return true;
         }
-        const found = state.stacks.find((candidate) => candidate.stack.id === id);
+        if (ctx && !ctx.isProjectTrusted())
+            return false;
+        const parsed = parseResourceSelector(id);
+        if (!parsed.ok)
+            return false;
+        const found = resolveResourceSelector(state.stacks, parsed.selector);
         if (!found)
             return false;
         state.active = found;
-        persistActiveSelection(found.stack.id);
+        persistActiveSelection();
         if (ctx)
             updateStatus(ctx);
         deps.syncToolPolicy(ctx);
@@ -46,19 +54,21 @@ export function createPromptStackRuntime(pi, state, deps) {
         if (!ctx.isProjectTrusted()) {
             state.forgeExtensionDiagnostics = unloadForgeExtensions(forgeExtensionState);
             state.forgeExtensionPaths = [];
-            state.stacks = [];
-            state.profiles = [];
+            // Global stacks are user-owned and remain browsable/previewable, but
+            // activation is refused until the project is trusted.
+            state.stacks = loadGlobalPromptStacks();
+            deps.reloadProfiles(ctx);
             state.active = undefined;
             if (!options.deferToolPolicy)
                 deps.syncToolPolicy(ctx);
-            ctx.ui.notify("pi-forge: project is not trusted; prompt stacks are disabled.", "warning");
+            ctx.ui.notify("pi-forge: project is not trusted; project prompt stacks are disabled (global stacks remain browsable).", "warning");
             updateStatus(ctx);
             return;
         }
         const extensionResult = await reloadForgeExtensions(ctx.cwd, forgeExtensionState);
         state.forgeExtensionDiagnostics = extensionResult.diagnostics;
         state.forgeExtensionPaths = extensionResult.loadedPaths;
-        state.stacks = loadPromptStacks(ctx.cwd);
+        state.stacks = loadPromptStacksScoped(ctx.cwd);
         deps.reloadProfiles(ctx);
         if (state.forgeExtensionDiagnostics.length > 0) {
             for (const loaded of state.stacks)

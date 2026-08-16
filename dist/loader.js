@@ -1,22 +1,43 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { resolveResourceSelector } from "./catalog.js";
 import { hasResourcePolicy } from "./policy.js";
 import { validateRegexConfig } from "./regex.js";
-import { promptStackReadDirs } from "./storage.js";
+import { isValidResourceId, parseResourceSelector } from "./resource-identity.js";
+import { globalPromptStacksDir, promptStackReadDirs } from "./storage.js";
 import { SUPPORTED_SLOTS } from "./types.js";
 const VALID_ROLES = new Set(["system", "user", "assistant", "custom"]);
 const VALID_CHAT_HISTORY_TOOL_MODES = new Set(["keep", "drop"]);
-export { isInsidePromptStackStorage, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir } from "./storage.js";
+export { globalPromptStacksDir, isInsideGlobalPromptStackStorage, isInsidePromptStackStorage, isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir, } from "./storage.js";
+export { isValidResourceId as isValidPromptStackId } from "./resource-identity.js";
 export function loadPromptStacks(cwd) {
-    const files = promptStackFiles(cwd);
-    const loaded = files.map(loadPromptStackFile);
+    const loaded = promptStackFiles(promptStackReadDirs(cwd)).map((file) => loadPromptStackFile(file, "project"));
     annotateDuplicateStackIds(loaded);
     return loaded;
 }
-function promptStackFiles(cwd) {
+/**
+ * Load both global and project prompt stacks. Global definitions are
+ * user-owned and always load; project definitions load from the trusted
+ * project directories plus the legacy project directory.
+ */
+export function loadPromptStacksScoped(cwd, globalDir = globalPromptStacksDir()) {
+    const loaded = [
+        ...promptStackFiles([globalDir]).map((file) => loadPromptStackFile(file, "global")),
+        ...promptStackFiles(promptStackReadDirs(cwd)).map((file) => loadPromptStackFile(file, "project")),
+    ];
+    annotateDuplicateStackIds(loaded);
+    return loaded;
+}
+/** Load only the user-owned global stacks, used by untrusted projects. */
+export function loadGlobalPromptStacks(globalDir = globalPromptStacksDir()) {
+    const loaded = promptStackFiles([globalDir]).map((file) => loadPromptStackFile(file, "global"));
+    annotateDuplicateStackIds(loaded);
+    return loaded;
+}
+function promptStackFiles(dirs) {
     const files = [];
     const shadowedNames = new Set();
-    for (const dir of promptStackReadDirs(cwd)) {
+    for (const dir of dirs) {
         if (!existsSync(dir))
             continue;
         let entries;
@@ -36,21 +57,23 @@ function promptStackFiles(cwd) {
     return files;
 }
 function annotateDuplicateStackIds(stacks) {
-    const byId = new Map();
+    const byScopeId = new Map();
     for (const loaded of stacks) {
-        const id = loaded.stack.id;
-        const matches = byId.get(id) ?? [];
+        const key = `${loaded.scope}\0${loaded.stack.id}`;
+        const matches = byScopeId.get(key) ?? [];
         matches.push(loaded);
-        byId.set(id, matches);
+        byScopeId.set(key, matches);
     }
-    for (const [id, matches] of byId) {
+    for (const matches of byScopeId.values()) {
         if (matches.length <= 1)
             continue;
+        const id = matches[0].stack.id;
+        const scope = matches[0].scope;
         const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
         for (const loaded of matches) {
             loaded.diagnostics.push({
                 level: "error",
-                message: `Duplicate stack id: ${id} appears in multiple files (${files}).`,
+                message: `Duplicate ${scope} stack id: ${id} appears in multiple files (${files}).`,
             });
         }
     }
@@ -59,16 +82,37 @@ export function chooseDefaultStack(stacks, preferredId) {
     if (isDisabledPromptStackId(preferredId))
         return undefined;
     if (preferredId) {
-        const preferred = stacks.find((loaded) => loaded.stack.id === preferredId);
-        if (preferred && isUsablePromptStack(preferred))
-            return preferred;
+        const parsed = parseResourceSelector(preferredId);
+        if (parsed.ok) {
+            const preferred = resolveResourceSelector(stacks, parsed.selector);
+            if (preferred && isUsablePromptStack(preferred))
+                return preferred;
+        }
     }
-    const defaultStack = stacks.find((loaded) => basename(loaded.filePath) === "default.json" &&
-        loaded.stack.autoActivate !== false &&
-        isUsablePromptStack(loaded));
-    if (defaultStack)
-        return defaultStack;
-    return stacks.find((loaded) => loaded.stack.autoActivate === true && isUsablePromptStack(loaded));
+    return chooseAutoActivateStack(stacks);
+}
+/**
+ * Standalone prompt-stack auto-activation with project-over-global scope
+ * precedence. Only `autoActivate: true` participates. A project scope with
+ * an invalid or ambiguous candidate fails closed instead of falling back to
+ * a global candidate.
+ */
+export function chooseAutoActivateStack(stacks) {
+    // A project scope with any auto-activation candidate fails closed on
+    // ambiguity or invalidity; it never falls back to a global candidate.
+    const projectCandidates = stacks.filter((loaded) => loaded.scope === "project" && loaded.stack.autoActivate === true);
+    if (projectCandidates.length > 0) {
+        return projectCandidates.length === 1 && isUsablePromptStack(projectCandidates[0])
+            ? projectCandidates[0]
+            : undefined;
+    }
+    // A same-ID project stack shadows a global stack even when the project
+    // stack opted out or is invalid, so those global candidates never apply.
+    const projectIds = new Set(stacks.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.stack.id));
+    const globalCandidates = stacks.filter((loaded) => loaded.scope === "global" && loaded.stack.autoActivate === true && !projectIds.has(loaded.stack.id));
+    return globalCandidates.length === 1 && isUsablePromptStack(globalCandidates[0])
+        ? globalCandidates[0]
+        : undefined;
 }
 export function isUsablePromptStack(loaded) {
     return !loaded.diagnostics.some((diagnostic) => diagnostic.level === "error");
@@ -76,7 +120,7 @@ export function isUsablePromptStack(loaded) {
 export function isDisabledPromptStackId(id) {
     return id === "none" || id === "off";
 }
-function loadPromptStackFile(filePath) {
+function loadPromptStackFile(filePath, scope) {
     const diagnostics = [];
     let raw;
     try {
@@ -85,6 +129,8 @@ function loadPromptStackFile(filePath) {
     catch (error) {
         return {
             filePath,
+            scope,
+            key: { scope, id: basename(filePath, ".json") },
             stack: fallbackStack(filePath),
             diagnostics: [
                 {
@@ -97,7 +143,13 @@ function loadPromptStackFile(filePath) {
     diagnostics.push(...validateRawPromptStackShape(raw));
     const stack = normalizeStack(raw, filePath, diagnostics);
     diagnostics.push(...validatePromptStack(stack));
-    return { filePath, stack, diagnostics };
+    if (basename(filePath) === "default.json" && isPlainObject(raw) && !Object.prototype.hasOwnProperty.call(raw, "autoActivate")) {
+        diagnostics.push({
+            level: "warning",
+            message: 'default.json no longer auto-activates by filename; set "autoActivate": true to keep auto-activating this stack.',
+        });
+    }
+    return { filePath, scope, key: { scope, id: stack.id }, stack, diagnostics };
 }
 function fallbackStack(filePath) {
     return {
@@ -114,7 +166,14 @@ function normalizeStack(raw, filePath, diagnostics) {
         return fallbackStack(filePath);
     }
     const obj = raw;
-    const id = typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : basename(filePath, ".json");
+    const rawId = typeof obj.id === "string" && obj.id.trim() ? obj.id.trim() : undefined;
+    const id = rawId && isValidResourceId(rawId) ? rawId : basename(filePath, ".json");
+    if (rawId && !isValidResourceId(rawId)) {
+        diagnostics.push({
+            level: "error",
+            message: `Stack id ${rawId} must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens; falling back to ${id}.`,
+        });
+    }
     const schemaVersion = 1;
     if (obj.schemaVersion !== 1) {
         diagnostics.push({ level: "warning", message: "Missing or unsupported schemaVersion; assuming 1." });

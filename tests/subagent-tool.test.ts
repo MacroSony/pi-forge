@@ -10,11 +10,13 @@ import {
 	renderApprovalSummary,
 	renderEmbeddedSubagentSummary,
 	renderEmbeddedSummaryText,
+	summarizeForgeSubagentPlan,
 } from "../src/subagent-tool.ts";
 import type { AgentResponse } from "../src/subagent/contract.ts";
 import type { PiSubprocessRunReport } from "@zihanw/pi-subagent-runtime/backends/subprocess";
 import type { ForgeSubagentSettings } from "../src/forge-config.ts";
 import type { LoadedAgentProfile, ResolvedAgentProfile } from "../src/agent-profile.ts";
+import { parseResourceSelector, type ResourceKey } from "../src/resource-identity.ts";
 import type { ForgeSubagentProfileSummary } from "../src/subagent-profile-tool.ts";
 import { createContext, createHarness, startSession, writeForgeConfig, writeProfile } from "./helpers/index-command-harness.ts";
 import {
@@ -67,7 +69,7 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 		dispose: async () => undefined,
 	};
 	const registered: Record<string, any> = {};
-	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId]);
+	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId], projectKey);
 	const tool = registered.forge_subagent;
 	assert.ok(tool);
 	assert.equal(tool.executionMode, "parallel");
@@ -113,6 +115,12 @@ test("forge_subagent prepares, previews the full prompt on demand, approves, str
 	assert.match(expandedText, /Image data omitted/);
 });
 
+test("plan summaries retain the resolved prompt-stack scope", async () => {
+	const fixture = await toolFixture();
+	const summary = summarizeForgeSubagentPlan(fixture.prepared, TEST_CWD);
+	assert.equal(summary.promptStackId, "project:worker");
+});
+
 test("parallel forge_subagent calls serialize approval dialogs but execute concurrently", async () => {
 	const fixture = await toolFixture();
 	let markFirstEntered!: () => void;
@@ -135,7 +143,7 @@ test("parallel forge_subagent calls serialize approval dialogs but execute concu
 		dispose: async () => undefined,
 	};
 	const registered: Record<string, any> = {};
-	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId]);
+	registerForgeSubagentTool({ registerTool: (tool: any) => { registered[tool.name] = tool; } } as any, runtime, () => [fixture.profileId], projectKey);
 	const tool = registered.forge_subagent;
 	assert.equal(tool.executionMode, "parallel");
 
@@ -203,7 +211,7 @@ test("forge_subagent rejects a prepared plan without transport and fails closed 
 		dispose: async () => undefined,
 	};
 	let tool: any;
-	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId]);
+	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId], projectKey);
 
 	const rejected = toolContext(["Reject"]);
 	const rejection = await tool.execute("reject", { profileId: fixture.profileId, task: "Do not run." }, undefined, undefined, rejected.ctx);
@@ -221,7 +229,7 @@ test("forge_subagent rejects a prepared plan without transport and fails closed 
 	assert.equal(calls.prepare, 1);
 
 	let filteredTool: any;
-	registerForgeSubagentTool({ registerTool: (definition: any) => { filteredTool = definition; } } as any, runtime, () => [fixture.profileId, "hidden"]);
+	registerForgeSubagentTool({ registerTool: (definition: any) => { filteredTool = definition; } } as any, runtime, () => [fixture.profileId, "hidden"], projectKey);
 	const hidden = await filteredTool.execute("hidden", { profileId: "hidden", task: "Must not prepare." }, undefined, undefined, rejected.ctx);
 	assert.equal(hidden.details.status, "failed");
 	assert.match(hidden.content[0].text, /not enabled for subagent delegation/);
@@ -252,7 +260,7 @@ test("forge_subagent can run without per-invocation UI only after trusted-projec
 		dispose: async () => undefined,
 	};
 	let tool: any;
-	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId]);
+	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId], projectKey);
 	const context = toolContext([]);
 	context.ctx.cwd = cwd;
 	context.ctx.hasUI = false;
@@ -311,7 +319,7 @@ test("forge_subagent pins unattended invocation to the configured backend and ho
 		dispose: async () => undefined,
 	};
 	let tool: any;
-	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId]);
+	registerForgeSubagentTool({ registerTool: (definition: any) => { tool = definition; } } as any, runtime, () => [fixture.profileId], projectKey);
 	const context = toolContext(["Approve and run"]);
 	context.ctx.cwd = cwd;
 	try {
@@ -359,6 +367,8 @@ function subagentSettings(overrides: Partial<ForgeSubagentSettings> = {}): Forge
 function loadedProfile(id: string): LoadedAgentProfile {
 	return {
 		filePath: `/tmp/${id}.json`,
+		scope: "project",
+		key: { scope: "project", id },
 		diagnostics: [],
 		profile: {
 			schemaVersion: 1,
@@ -431,9 +441,9 @@ test("renderEmbeddedSubagentSummary gates on the config flag, delegation policy,
 	const settings = subagentSettings({
 		summaryInToolDescription: true,
 		profiles: {
-			reviewer: { enabled: true },
-			broken: { enabled: true },
-			hidden: { enabled: false },
+			"project:reviewer": { enabled: true },
+			"project:broken": { enabled: true },
+			"project:hidden": { enabled: false },
 		},
 	});
 	const profiles = [loadedProfile("reviewer"), loadedProfile("broken"), loadedProfile("hidden")];
@@ -465,13 +475,14 @@ test("forge_subagent re-registers its description only when the embedded summary
 	};
 	let settings = subagentSettings({
 		summaryInToolDescription: true,
-		profiles: { reviewer: { enabled: true } },
+		profiles: { "project:reviewer": { enabled: true } },
 	});
 	const profiles = [loadedProfile("reviewer")];
 	const refresh = registerForgeSubagentTool(
 		{ registerTool: (definition: any) => { registered.push(definition); } } as any,
 		runtime,
 		() => profiles.map((profile) => profile.profile.id),
+		projectKey,
 		{
 			summarize: () => renderEmbeddedSubagentSummary(settings, profiles, (loaded) => resolvedProfile(loaded)),
 		},
@@ -485,7 +496,7 @@ test("forge_subagent re-registers its description only when the embedded summary
 	refresh({} as any);
 	assert.equal(registered.length, 2);
 	assert.match(registered[1].description, /Enabled subagent profiles:/);
-	assert.match(registered[1].description, /- reviewer — reviewer name: test-provider\/test-model · thinking high · stack reviewer-stack; backend pi-subprocess-readonly · 60s/);
+	assert.match(registered[1].description, /- project:reviewer — reviewer name: test-provider\/test-model · thinking high · stack reviewer-stack; backend pi-subprocess-readonly · 60s/);
 	assert.match(registered[1].description, /run forge_subagent_profiles for full descriptions/);
 	assert.doesNotMatch(registered[1].description, /Use forge_subagent_profiles first/);
 
@@ -515,6 +526,7 @@ test("forge_subagent keeps its initial registration when the embedded summary st
 		{ registerTool: (definition: any) => { registered.push(definition); } } as any,
 		runtime,
 		() => [],
+		projectKey,
 		{ summarize: () => undefined },
 	);
 
@@ -560,7 +572,7 @@ test("forge_subagent embeds the enabled profile summary through the full extensi
 
 		await startSession(harness, context.ctx);
 		assert.match(harness.tools.forge_subagent.description, /Enabled subagent profiles:/);
-		assert.match(harness.tools.forge_subagent.description, /- reviewer — Review specialist: test\/reviewer-model · thinking high · stack none; backend pi-subprocess-readonly · 60s/);
+		assert.match(harness.tools.forge_subagent.description, /- project:reviewer — Review specialist: test\/reviewer-model · thinking high · stack none; backend pi-subprocess-readonly · 60s/);
 
 		// Firing an agent turn with unchanged state does not churn the tool registry.
 		const toolsBefore = Object.keys(harness.tools).length;
@@ -584,7 +596,13 @@ test("forge_subagent embeds the enabled profile summary through the full extensi
 	}
 });
 
-async function toolFixture() {
+function projectKey(selector: string): ResourceKey | undefined {
+	const parsed = parseResourceSelector(selector);
+	if (!parsed.ok || parsed.selector.scope === "global") return undefined;
+	return { scope: "project", id: parsed.selector.id };
+}
+
+function toolFixture() {
 	const request = fakeRequest({
 		limits: { timeoutMs: { value: 300_000, enforcement: "best-effort" } },
 	});
