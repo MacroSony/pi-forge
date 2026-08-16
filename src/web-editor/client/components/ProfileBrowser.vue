@@ -21,6 +21,7 @@ const selectedPath = ref("");
 const loadError = ref("");
 const loading = ref(false);
 const editorMode = ref<"create" | "edit">();
+const createScope = ref<"project" | "global">("project");
 const profileActionStatus = ref("");
 const profileActionError = ref("");
 const profileActionBusy = ref(false);
@@ -212,6 +213,10 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 			<span id="profilesStatus" class="status">
 				{{ loading || profileActionBusy ? "Working" : loadError || profileActionError || profileActionStatus || `${collection?.profiles.length || 0} profile(s)` }}
 			</span>
+			<select id="profileCreateScope" v-model="createScope" title="Scope for new profiles" :disabled="loading || profileActionBusy || !!editorMode">
+				<option value="project">project</option>
+				<option value="global">global</option>
+			</select>
 			<button
 				id="profileNewBtn"
 				data-icon="+"
@@ -281,6 +286,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					:collection="collection"
 					:source="editorMode === 'edit' ? selected?.profile : undefined"
 					:source-selector="editorMode === 'edit' ? selected?.selector : undefined"
+					:create-scope="createScope"
 					@cancel="editorMode = undefined"
 					@saved="handleProfileSaved"
 				/>
@@ -432,6 +438,15 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+}
+
+.profile-toolbar .status {
+	flex: 1 1 120px;
+}
+
+#profileCreateScope {
+	flex: 0 0 auto;
+	width: 110px;
 }
 
 .profile-heading {

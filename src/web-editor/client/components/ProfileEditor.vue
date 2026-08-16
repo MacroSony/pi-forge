@@ -14,6 +14,7 @@ const props = defineProps<{
 	collection: WebEditorProfileCollection;
 	source?: AgentProfile;
 	sourceSelector?: string;
+	createScope?: "project" | "global";
 }>();
 const emit = defineEmits<{
 	cancel: [];
@@ -40,7 +41,7 @@ const error = ref("");
 const busy = ref(false);
 
 const editScope = computed<"project" | "global">(() => {
-	if (props.mode !== "edit") return "project";
+	if (props.mode !== "edit") return props.createScope ?? "project";
 	return (props.sourceSelector ?? "").startsWith("global:") ? "global" : "project";
 });
 const scopeLabel = computed(() => editScope.value === "global" ? "user-global" : "project-local");
@@ -102,13 +103,21 @@ function defaultProfile(): AgentProfile {
 			id: fallbackModel?.id ?? "",
 		},
 		thinkingLevel: current.thinkingLevel,
-		promptStack: normalizeProjectStackReference(current.promptStack),
+		promptStack: normalizeProfilePromptStackReference(current.promptStack, props.createScope ?? "project"),
 	};
 }
 
-function normalizeProjectStackReference(reference: string | null): string | null {
-	if (!reference || !reference.startsWith("project:")) return reference;
-	return reference.slice("project:".length);
+function normalizeProfilePromptStackReference(reference: string | null, targetScope: "project" | "global"): string | null {
+	if (!reference) return reference;
+	if (reference.startsWith("project:")) {
+		if (targetScope === "project") return reference.slice("project:".length);
+		// A project stack cannot initialize a global profile; leave the new draft unset.
+		return null;
+	}
+	if (reference.startsWith("global:")) {
+		return targetScope === "global" ? reference.slice("global:".length) : reference;
+	}
+	return reference;
 }
 
 function profileFromDraft(): AgentProfile {
@@ -155,6 +164,7 @@ async function validateDraft(): Promise<WebEditorProfileValidation | undefined> 
 			body: {
 				profile: profileFromDraft(),
 				existingId: props.mode === "edit" ? (props.sourceSelector ?? props.source?.id) : undefined,
+				scope: props.mode === "create" ? editScope.value : undefined,
 			},
 		});
 		validation.value = result;
@@ -183,7 +193,7 @@ async function saveDraft(): Promise<void> {
 			: `/api/profiles/${encodeURIComponent(props.sourceSelector ?? props.source!.id)}`;
 		const result = await api<{ ok: true } & WebEditorProfileMutation>(path, {
 			method: props.mode === "create" ? "POST" : "PUT",
-			body: { profile },
+			body: { profile, scope: props.mode === "create" ? editScope.value : undefined },
 		});
 		emit("saved", result);
 	} catch (caught) {

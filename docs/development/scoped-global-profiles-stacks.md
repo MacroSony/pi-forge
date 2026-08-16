@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [Roadmap](roadmap.md)
 
-Status: accepted design; core implementation landed (identity, catalogs, scoped stacks/profiles, persistence, auto-activation, delegation). Remaining: zh-CN docs, global create/fork/import UI, and final packaging review.
+Status: accepted design; implementation complete for 0.4.1 (identity, catalogs, scoped stacks/profiles, persistence, auto-activation, delegation, zh-CN docs, and web-editor global create/fork/import with explicit scope).
 
 ## Confirmed design decisions
 

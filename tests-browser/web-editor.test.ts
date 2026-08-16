@@ -106,6 +106,11 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		const download = await downloadPromise;
 		assert.equal(download.suggestedFilename(), "default.json");
 
+		page.once("dialog", async (dialog) => {
+			assert.equal(dialog.type(), "confirm");
+			assert.match(dialog.message(), /Activate imported stack now/);
+			await dialog.dismiss();
+		});
 		await page.locator("#importFileInput").setInputFiles({
 			name: "imported-browser.json",
 			mimeType: "application/json",

@@ -58,7 +58,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-本地编辑器可以新建、fork、校验、预览、导入、导出和删除 prompt stack。切换到 **Agent profiles** 可以管理一次性模型/思考等级/stack 预设，以及实验性 delegation 配置。写入操作要求项目已被信任。
+本地编辑器可以新建、fork、校验、预览、导入、导出和删除 prompt stack，并可在新建/fork/导入时明确选择写入项目或用户全局存储。切换到 **Agent profiles** 可以浏览项目与全局 profile、编辑和删除全局 profile（通过显式 `global:<id>` 路由），并管理实验性 delegation 配置。写入操作要求项目已被信任。
 
 ### 3. 保存 profile
 
@@ -82,7 +82,7 @@ Prompt stack 是一个有序 JSON 文档，包含：
 
 Stack 可以 `replace`、`append` 或 `prepend` Pi 的基础 system prompt。编译时，pi-forge 会展开宏、插入对话、执行工具策略、过滤自己渲染的 skill 列表，并应用已启用的 regex 规则。
 
-Agent profile 是项目级预设，引用精确 provider/model、思考等级和 prompt stack。它不会重复保存工具或 skill 策略；被引用的 stack 始终是唯一来源。
+Agent profile 是项目级或用户全局预设，引用精确 provider/model、思考等级和 prompt stack。它不会重复保存工具或 skill 策略；被引用的 stack 始终是唯一来源。项目 profile 和 stack 可以遮蔽同 ID 的全局资源；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
 
 推荐从这些示例开始：
 
@@ -113,7 +113,7 @@ Agent profile 是项目级预设，引用精确 provider/model、思考等级和
 
 pi-forge 可以把明确授权的 profile 作为干净、前台运行的 Pi 子进程。模型通过 `forge_subagent_profiles` 发现可用 profile，再用 `forge_subagent` 调用；用户可以使用 `/forge-agent plan` 和 `/forge-agent run`。
 
-此功能仍是**实验性功能**，profile 默认不能委派。请在受信任项目的 `.pi/forge/config.json` 或 Web 编辑器 delegation 卡片中逐个启用。除非项目明确授权无人值守的模型调用，否则执行前会显示与不可变计划绑定的审批界面。
+此功能仍是**实验性功能**，profile 默认不能委派。请在可信项目的 `.pi/forge/config.json`（授权 `project:<id>`）或用户全局 `~/.pi/forge/config.json`（授权 `global:<id>`）中逐个启用，也可以使用 Web 编辑器 delegation 卡片。除非项目明确授权无人值守的模型调用，否则执行前会显示与不可变计划绑定的审批界面。
 
 > **安全边界：** 当前 backend 是 shared-user 进程，不是操作系统沙箱。“只读”只描述模型可见工具策略。Child 仍有启动用户的 OS 读取权限；可读内容可能发送给所选 provider，并保留在 Pi session 数据中。Timeout 和取消仅为 best effort，`/tree` 不能撤销 provider 请求、计费或外部影响。
 

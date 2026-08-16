@@ -327,6 +327,12 @@ test("web editor navigates project profile resolution without losing stack state
 			/last applied/,
 		);
 
+		await page.locator("#profileCreateScope").selectOption("global");
+		await page.locator("#profileNewBtn").click();
+		assert.equal(await page.locator("#profilePromptStack").inputValue(), "");
+		await page.locator("#profileCancelBtn").click();
+		await page.locator("#profileCreateScope").selectOption("project");
+
 		page.once("dialog", async (dialog) => {
 			await dialog.dismiss();
 		});

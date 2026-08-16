@@ -80,16 +80,27 @@ async function handleRequest(host, token, req, res) {
             return;
         }
         const existingId = isPlainObject(body) && typeof body.existingId === "string" ? body.existingId : undefined;
-        sendJson(res, 200, host.validateProfile(parsed.profile, existingId));
+        const scopeResult = isPlainObject(body) ? parseScope(body.scope) : { ok: true, scope: undefined };
+        if (!scopeResult.ok) {
+            sendJson(res, 400, { error: scopeResult.error });
+            return;
+        }
+        sendJson(res, 200, host.validateProfile(parsed.profile, existingId, scopeResult.scope ?? "project"));
         return;
     }
     if (req.method === "POST" && parts[1] === "profiles" && parts.length === 2) {
-        const parsed = readProfilePayload(await readJsonBody(req));
+        const body = await readJsonBody(req);
+        const parsed = readProfilePayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
             return;
         }
-        sendOperation(res, await host.createProfile(parsed.profile));
+        const scopeResult = isPlainObject(body) ? parseScope(body.scope) : { ok: true, scope: undefined };
+        if (!scopeResult.ok) {
+            sendJson(res, 400, { error: scopeResult.error });
+            return;
+        }
+        sendOperation(res, await host.createProfile(parsed.profile, scopeResult.scope ?? "project"));
         return;
     }
     if (req.method === "PUT" && parts[1] === "profiles" && parts.length === 3) {
@@ -129,8 +140,17 @@ async function handleRequest(host, token, req, res) {
             sendJson(res, 400, { error: parsed.error });
             return;
         }
+        const scopeResult = isPlainObject(body) ? parseScope(body.scope) : { ok: true, scope: undefined };
+        if (!scopeResult.ok) {
+            sendJson(res, 400, { error: scopeResult.error });
+            return;
+        }
         const options = isPlainObject(body)
-            ? { activate: body.activate === true, overwrite: body.overwrite === true }
+            ? {
+                activate: body.activate === true,
+                overwrite: body.overwrite === true,
+                scope: scopeResult.scope,
+            }
             : {};
         const result = await host.createStack(parsed.stack, options);
         if (result.ok && parsed.importFormat) {
@@ -404,6 +424,13 @@ function closeServer(server, sockets) {
         for (const socket of sockets)
             socket.destroy();
     });
+}
+function parseScope(value) {
+    if (value === undefined)
+        return { ok: true };
+    if (value === "project" || value === "global")
+        return { ok: true, scope: value };
+    return { ok: false, error: 'scope must be "project" or "global".' };
 }
 function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);

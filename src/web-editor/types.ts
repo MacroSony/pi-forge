@@ -22,8 +22,8 @@ export interface WebEditorHost {
 	listStacks(): WebEditorStackSummary[];
 	listProfiles(): WebEditorProfileCollection;
 	reloadProfiles(): Promise<WebEditorOperationResult<WebEditorProfileCollection>>;
-	validateProfile(profile: AgentProfile, existingId?: string): WebEditorProfileValidation;
-	createProfile(profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
+	validateProfile(profile: AgentProfile, existingId?: string, scope?: "global" | "project"): WebEditorProfileValidation;
+	createProfile(profile: AgentProfile, scope?: "global" | "project"): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
@@ -158,6 +158,8 @@ export type WebEditorPayloadSnapshot =
 export interface WebEditorCreateStackOptions {
 	activate?: boolean;
 	overwrite?: boolean;
+	/** Explicit target scope. Defaults to project for unqualified web create routes. */
+	scope?: "global" | "project";
 }
 
 export interface WebEditorPolicyResource {

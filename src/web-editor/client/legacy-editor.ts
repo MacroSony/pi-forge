@@ -577,6 +577,11 @@ async function createStackRemote(stack: any, options: any = {}) {
   }
 }
 
+function chooseCreateScope(): "global" | "project" {
+  const select = el("stackCreateScope") as HTMLSelectElement | null;
+  return select?.value === "global" ? "global" : "project";
+}
+
 async function createAndOpenStack(stack: any, activate: any, actionLabel: any, extraOptions: any = {}) {
   const data = await createStackRemote(stack, { ...extraOptions, activate });
   stacks = data.stacks || stacks;
@@ -600,8 +605,9 @@ async function createNewStack() {
   const promptedName = prompt("Stack display name", "Default Pi Prompt Mirror");
   if (promptedName === null) return;
   const stack = defaultNewStack(id, promptedName.trim() || id);
+  const scope = chooseCreateScope();
   const activate = stacks.length === 0 || confirm("Activate new stack now?");
-  await createAndOpenStack(stack, activate, "Created");
+  await createAndOpenStack(stack, activate, "Created", { scope });
 }
 
 function defaultNewStack(id: any, name: any) {
@@ -754,8 +760,9 @@ async function handleImportFile(event: any) {
   if (isSillyTavernImport(imported)) {
     const characterId = promptSillyTavernCharacterId(imported);
     if (characterId === null) return;
+    const scope = chooseCreateScope();
     const activate = confirm("Convert and activate imported SillyTavern stack now?");
-    await createAndOpenStack(imported, activate, "Imported", { sourceName: file.name, characterId });
+    await createAndOpenStack(imported, activate, "Imported", { sourceName: file.name, characterId, scope });
     return;
   }
 
@@ -768,8 +775,9 @@ async function handleImportFile(event: any) {
   if (!Array.isArray(stack.items)) throw new Error("Imported stack must contain an items array.");
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
+  const scope = chooseCreateScope();
   const activate = confirm("Activate imported stack now?");
-  await createAndOpenStack(stack, activate, "Imported");
+  await createAndOpenStack(stack, activate, "Imported", { scope });
 }
 
 function isSillyTavernImport(value: any) {
@@ -802,8 +810,9 @@ async function forkStack() {
   fork.id = forkId.trim();
   if (forkName && forkName.trim()) fork.name = forkName;
   fork.autoActivate = false;
+  const scope = chooseCreateScope();
   const activate = confirm("Activate fork now?");
-  await createAndOpenStack(fork, activate, "Forked");
+  await createAndOpenStack(fork, activate, "Forked", { scope });
 }
 
 async function exportStackJson() {

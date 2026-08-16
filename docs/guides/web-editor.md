@@ -43,21 +43,21 @@ The stack workspace provides:
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.
 
-Existing IDs are immutable during edit. Use **Fork** to create a different ID without breaking profile references or the active selection. New stacks, imports, and forks write to `.pi/forge/prompt-stacks`; legacy stacks remain editable in place.
+Existing IDs are immutable during edit. Use **Fork** to create a different ID without breaking profile references or the active selection. The toolbar scope selector (default `project`) chooses where new stacks, imports, and forks are written: `global` targets the user-global `~/.pi/forge/prompt-stacks`, `project` targets `.pi/forge/prompt-stacks`. Stack rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy stacks remain editable in place.
 
 Saves, imports, forks, and deletes reload stack state into the current Pi session. When another surface changes a referenced stack, returning to profiles refreshes profile resolution without discarding unsaved delegation fields.
 
 ## Agent-profile workspace
 
-The profile list shows each profile's ID, display metadata, model, thinking level, stack, resolution state, auto-activation, last-applied provenance, and delegation status.
+The profile list shows each profile's ID, display metadata, model, thinking level, stack, resolution state, auto-activation, last-applied provenance, delegation status, and a `project`/`global` scope badge. Same-ID shadow pairs are marked `shadows global:<id>` or `shadowed by project:<id>`.
 
-Trusted projects can create, edit, validate, save, apply once, and delete profiles. Model choices come from Pi's model registry, thinking choices reflect model support, and stack choices come from the shared repository. The editor rejects a second auto-activation profile.
+Trusted projects can create profiles in either scope: the scope selector beside **New profile** (default `project`) chooses whether to write the user-global `~/.pi/forge/agent-profiles` or the project `.pi/forge/agent-profiles`. Global profiles can be edited, validated, saved, applied once, and deleted through explicit `global:<id>` routes; unqualified routes stay project-only. When editing a global profile, the prompt-stack dropdown offers only global stacks. Model choices come from Pi's model registry, thinking choices reflect model support, and stack choices come from the shared repository. The editor rejects a second auto-activation profile within the same scope.
 
 The runtime/provenance card separates current runtime state, last-applied snapshot, source-definition changes, and field-level runtime drift.
 
 ## Delegation card
 
-The profile delegation card edits only project-level `subagents.profiles.<id>` values: enablement, backend override, and timeout override. General defaults and `allowAgentInvocationWithoutApproval` remain config-file-only because they affect broader authorization.
+The profile delegation card edits the `subagents.profiles.<id>` values for the selected profile's scope: project profiles write to `.pi/forge/config.json`, global profiles write to `~/.pi/forge/config.json`. General defaults and `allowAgentInvocationWithoutApproval` remain config-file-only because they affect broader authorization.
 
 Unsaved delegation changes are guarded when selecting another profile, starting another profile operation, refreshing, deleting, or leaving/reloading the page. The card shows effective values and the source of each inherited or overridden setting.
 

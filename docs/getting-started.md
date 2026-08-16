@@ -62,7 +62,7 @@ Select the model, thinking level, and prompt stack you want in Pi, then save the
 /profile use reviewer
 ```
 
-Profiles live in `.pi/forge/agent-profiles/*.json`. Applying one is a preflighted, one-shot operation: later manual model/thinking changes remain until you apply the profile again. Read [agent-profile concepts](concepts/agent-profiles.md) for validation, auto-activation, and drift semantics.
+Profiles live in `.pi/forge/agent-profiles/*.json` by default; `/profile save global:<id>` writes to `~/.pi/forge/agent-profiles`. Applying one is a preflighted, one-shot operation: later manual model/thinking changes remain until you apply the profile again. Read [agent-profile concepts](concepts/agent-profiles.md) for validation, auto-activation, and drift semantics.
 
 ## Storage and migration
 
@@ -70,12 +70,14 @@ Profiles live in `.pi/forge/agent-profiles/*.json`. Applying one is a preflighte
 |---|---|
 | `.pi/forge/prompt-stacks/` | Project prompt stacks |
 | `.pi/forge/agent-profiles/` | Project agent profiles |
-| `.pi/forge/config.json` | Trusted project configuration and delegation authorization |
+| `.pi/forge/config.json` | Trusted project configuration and `project:<id>` delegation authorization |
 | `.pi/forge/extensions/` | Trusted project macro/slot registration code |
-| `~/.pi/forge/config.json` | User defaults |
+| `~/.pi/forge/prompt-stacks/` | User-global prompt stacks |
+| `~/.pi/forge/agent-profiles/` | User-global agent profiles |
+| `~/.pi/forge/config.json` | User defaults and `global:<id>` delegation authorization |
 | `~/.pi/forge/extensions/` | Trusted user macro/slot registration code |
 
-Legacy `.pi/prompt-stacks/*.json` files remain readable. New stacks go to `.pi/forge/prompt-stacks`, and same-named new-location files shadow legacy ones. Migrate safely with:
+Legacy `.pi/prompt-stacks/*.json` files remain readable. Command-created stacks go to `.pi/forge/prompt-stacks`; use the web editor's `global` scope selector to create stacks in `~/.pi/forge/prompt-stacks`. Same-named new-location files shadow legacy ones. Migrate safely with:
 
 ```text
 /preset migrate-stacks --dry-run

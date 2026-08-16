@@ -8,13 +8,11 @@ This file contains forward-looking product work only. Completed capability belon
 
 The profile UI, foreground-delegation dogfooding, dependency compatibility work, and documentation reorganization are complete and merged to `main`. Runtime beta.2 is published, and the packed 0.4.0 extension passes the full verification surface against the documented Pi versions.
 
+The 0.4.1 release adds scoped global profiles and prompt stacks with project-over-global shadowing, exact `project:<id>`/`global:<id>` selectors, scoped delegation authorization, untrusted-project global browsing, web-editor global create/fork/import, and zh-CN documentation. The accepted resolution model is archived in [scoped global profiles and prompt stacks](scoped-global-profiles-stacks.md).
+
 Stable 0.4 does not imply that the subagent adapter or runtime has become stable. Prompt stacks and ordinary profile use remain independent of delegation.
 
 ## Near-term candidates
-
-### Scoped global profiles and stacks
-
-Introduce global profiles and stacks together. Preserve source scope, let same-ID project resources shadow global resources for unqualified interactive lookup, keep stored dependencies deterministic, and apply delegation policy only within the matching scope. The accepted resolution model and implementation slices are in [scoped global profiles and prompt stacks](scoped-global-profiles-stacks.md).
 
 ### Sandbox and staged writes
 

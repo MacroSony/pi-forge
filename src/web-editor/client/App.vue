@@ -71,6 +71,10 @@ onUnmounted(() => {
 			</aside>
 			<main class="main">
 				<div class="main-actions">
+					<select id="stackCreateScope" title="Scope for new stacks, imports, and forks">
+						<option value="project">project</option>
+						<option value="global">global</option>
+					</select>
 					<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)">New stack</button>
 					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session">Activate</button>
 					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)">Save</button>

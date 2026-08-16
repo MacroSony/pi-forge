@@ -2,7 +2,7 @@
 
 [中文文档](../README.md) · [English](../../concepts/agent-profiles.md)
 
-Agent profile 是项目级、带 schema version 的预设，只引用一个精确模型、思考等级和 prompt stack。
+Agent profile 是项目级或用户全局、带 schema version 的预设，只引用一个精确模型、思考等级和 prompt stack。项目 profile 位于 `.pi/forge/agent-profiles/`，全局 profile 位于 `~/.pi/forge/agent-profiles/`。命令接受 `reviewer`、`project:reviewer` 和 `global:reviewer`；未限定 ID 优先解析项目 profile，项目 profile 会遮蔽同 ID 全局 profile。
 
 ```json
 {
@@ -23,6 +23,8 @@ Agent profile 是项目级、带 schema version 的预设，只引用一个精�
 
 `promptStack` 可以是 `null`。Profile v1 不保存生成参数、工具、skills、backend 或 runner policy；不支持字段会直接报错。工具/skill 策略只属于引用的 stack。
 
+`promptStack` 引用相对 profile 自身 scope 解析：项目 profile 用裸 ID 引用项目 stack，也可用 `global:<id>` 显式引用全局 stack；全局 profile 只能引用全局 stack，`project:<id>` 会被拒绝。
+
 ## 应用
 
 ```text
@@ -41,4 +43,4 @@ Agent profile 是项目级、带 schema version 的预设，只引用一个精�
 
 `/profile status` 会把 profile 源定义变化和当前模型/思考等级/stack drift 分开显示。Provenance 只用于 branch 状态报告；reload、resume、tree navigation 和 compaction 不会重新应用 profile。
 
-普通 profile 默认不能委派。Delegation 使用独立的可信项目授权；删除 profile 也会清除其授权，防止以后同 ID profile 继承权限。启用前见[前台 delegation](../guides/delegation.md)。
+普通 profile 默认不能委派。Delegation 授权跟随 profile scope：可信项目 `.pi/forge/config.json` 的 `subagents.profiles.<id>` 只授权 `project:<id>`，用户全局 `~/.pi/forge/config.json` 的 `subagents.profiles.<id>` 只授权 `global:<id>`；同 ID 的全局和项目 profile 永不互相继承授权。删除 profile 会清除同 scope 的授权，防止以后同 ID profile 继承权限。启用前见[前台 delegation](../guides/delegation.md)。

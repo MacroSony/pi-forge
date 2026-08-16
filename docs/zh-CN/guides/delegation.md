@@ -8,7 +8,7 @@ pi-forge 可以把明确授权的 agent profile 作为独立、干净、一次�
 
 ## 启用 profile
 
-Profile 默认不能委派。请在可信项目的 `.pi/forge/config.json` 中逐个启用，或使用 `/preset ui` 的 delegation 卡片：
+Profile 默认不能委派。请在可信项目的 `.pi/forge/config.json` 中逐个启用项目 profile，在用户全局 `~/.pi/forge/config.json` 中逐个启用全局 profile；也可以使用 `/preset ui` 的 delegation 卡片：
 
 ```json
 {
@@ -25,7 +25,7 @@ Profile 默认不能委派。请在可信项目的 `.pi/forge/config.json` 中�
 }
 ```
 
-Profile 授权只允许出现在项目配置，因为 profile 本身也是项目资源。全局 `~/.pi/forge/config.json` 可以设置通用 backend/timeout；全局 `profiles` 会警告并被忽略。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
+授权跟随 profile scope：项目 config 的 `subagents.profiles.<id>` 只授权 `project:<id>`，全局 config 的 `subagents.profiles.<id>` 只授权 `global:<id>`。同 ID 的全局和项目 profile 不会互相继承 enable/backend/timeout。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
 
 ## Plan 与运行
 
@@ -35,7 +35,7 @@ Profile 授权只允许出现在项目配置，因为 profile 本身也是项目
 /forge-agent run reviewer 检查这个 API 设计。
 ```
 
-`plan` 会解析 profile/stack、编译并校验不可变的实际 provider-bound 计划，然后在不联系 provider 的情况下丢弃。
+`plan` 会解析 profile/stack、编译并校验不可变的实际 provider-bound 计划，然后在不联系 provider 的情况下丢弃。Profile selector 在所有入口使用同一语法：`reviewer`（项目优先）、`project:reviewer` 或 `global:reviewer`。同 ID 冲突时，项目 profile 保持简写 selector，全局 profile 仍通过 `global:<id>` 调用。
 
 父模型使用无数据外发的 `forge_subagent_profiles` 做 discovery，再用 `forge_subagent` 执行。限制严格的父 stack 必须允许这两个工具名。
 

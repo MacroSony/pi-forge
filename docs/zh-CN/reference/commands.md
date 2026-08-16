@@ -2,6 +2,8 @@
 
 [中文文档](../README.md) · [English](../../reference/commands.md)
 
+方括号参数可选。写项目文件的命令要求项目已被信任。未限定的 `<id>` 使用项目优先的有效查找；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
+
 ## Prompt stack
 
 | 命令 | 行为 |
@@ -31,7 +33,7 @@
 |---|---|
 | `/profile list` | 列出 profile 和解析诊断 |
 | `/profile use <id>` | preflight 并一次性应用 |
-| `/profile save <id> [--overwrite]` | 捕获当前模型、thinking 和 stack |
+| `/profile save <id\|global:id> [--overwrite]` | 捕获当前模型、thinking 和 stack；`global:<id>` 写入用户全局目录 |
 | `/profile status` | 比较当前 runtime 和 last-applied provenance |
 | `/profile preview <id>` | 不应用地解析模型/auth/thinking/stack/tools |
 | `/profile validate [id]` | 校验一个或全部 profile |
@@ -46,7 +48,7 @@
 | `/forge-agent plan <profile> [--backend <id>] <task>` | 准备、显示并丢弃计划，不联系 provider |
 | `/forge-agent run <profile> [--backend <id>] <task>` | 审批并执行前台只读任务 |
 
-只接受项目明确授权的 profile。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
+只接受匹配 scope 明确授权的 profile：项目 config 授权 `project:<id>`，全局 config 授权 `global:<id>`。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
 
 ## Payload
 

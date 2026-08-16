@@ -1308,6 +1308,230 @@ test("/preset ui removes global delegation settings with a deleted global profil
 	}
 });
 
+test("/preset ui can create a user-global stack through an explicit scope", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobalDir = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		const harness = createHarness();
+		const context = createContext(cwd);
+		await startSession(harness, context.ctx);
+
+		try {
+			await harness.commands.preset.handler("ui", context.ctx);
+			const editorUrl = latestEditorUrl(context.editors);
+			const token = editorUrl.searchParams.get("token")!;
+			const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+			const stack = {
+				schemaVersion: 1,
+				type: "pi-forge.prompt-stack",
+				id: "shared",
+				name: "User-Global Shared",
+				items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+			};
+
+			const createResponse = await fetch(new URL("/api/stacks", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ stack, scope: "global" }),
+			});
+			assert.equal(createResponse.status, 200);
+			const created = await createResponse.json() as { stack: { id: string; scope: string; selector: string; name?: string } };
+			assert.equal(created.stack.id, "shared");
+			assert.equal(created.stack.scope, "global");
+			assert.equal(created.stack.selector, "global:shared");
+			assert.equal(created.stack.name, "User-Global Shared");
+			assert.equal(existsSync(join(globalDir, "prompt-stacks", "shared.json")), true);
+		} finally {
+			await harness.commands.preset.handler("ui stop", context.ctx);
+		}
+	} finally {
+		if (previousGlobalDir === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalDir;
+	}
+});
+
+test("/preset ui can create a user-global profile through an explicit scope", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobalDir = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		const harness = createHarness();
+		const context = createContext(cwd);
+		await startSession(harness, context.ctx);
+
+		try {
+			await harness.commands.preset.handler("ui", context.ctx);
+			const editorUrl = latestEditorUrl(context.editors);
+			const token = editorUrl.searchParams.get("token")!;
+			const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+			const profile = {
+				schemaVersion: 1,
+				type: "pi-forge.agent-profile",
+				id: "global-reviewer",
+				model: { provider: "test", id: "model" },
+				thinkingLevel: "off",
+				promptStack: null,
+			};
+
+			const createResponse = await fetch(new URL("/api/profiles", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ profile, scope: "global" }),
+			});
+			assert.equal(createResponse.status, 200);
+			const created = await createResponse.json() as {
+				collection: { profiles: Array<{ profile: { id: string }; scope: string; selector: string }> };
+			};
+			const saved = created.collection.profiles.find((entry) => entry.profile.id === "global-reviewer");
+			assert.equal(saved?.scope, "global");
+			assert.equal(saved?.selector, "global:global-reviewer");
+			assert.equal(existsSync(join(globalDir, "agent-profiles", "global-reviewer.json")), true);
+		} finally {
+			await harness.commands.preset.handler("ui stop", context.ctx);
+		}
+	} finally {
+		if (previousGlobalDir === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalDir;
+	}
+});
+
+test("/preset ui validates new global profiles against global scope", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));
+	const previousGlobalDir = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalDir;
+	try {
+		// Same-ID project profile plus a global stack: the global draft must not
+		// collide with the project file and must resolve the global stack.
+		writeProfile(cwd, "worker.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "worker",
+			model: { provider: "test", id: "model" },
+			thinkingLevel: "off",
+			promptStack: null,
+		});
+		const globalStacksDir = join(globalDir, "prompt-stacks");
+		mkdirSync(globalStacksDir, { recursive: true });
+		writeFileSync(join(globalStacksDir, "shared.json"), JSON.stringify({
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "shared",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		}));
+
+		const harness = createHarness();
+		const context = createContext(cwd);
+		await startSession(harness, context.ctx);
+
+		try {
+			await harness.commands.preset.handler("ui", context.ctx);
+			const editorUrl = latestEditorUrl(context.editors);
+			const token = editorUrl.searchParams.get("token")!;
+			const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+			const profile = {
+				schemaVersion: 1,
+				type: "pi-forge.agent-profile",
+				id: "worker",
+				model: { provider: "test", id: "model" },
+				thinkingLevel: "off",
+				promptStack: "shared",
+			};
+
+			const validateResponse = await fetch(new URL("/api/profiles/validate", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ profile, scope: "global" }),
+			});
+			assert.equal(validateResponse.status, 200);
+			const validation = await validateResponse.json() as { diagnostics: Array<{ message: string }> };
+			assert.equal(validation.diagnostics.some((diagnostic) => /Profile file already exists/.test(diagnostic.message)), false);
+			assert.equal(validation.diagnostics.some((diagnostic) => /Unknown prompt stack/.test(diagnostic.message)), false);
+
+			const createResponse = await fetch(new URL("/api/profiles", editorUrl), {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ profile, scope: "global" }),
+			});
+			assert.equal(createResponse.status, 200);
+			const created = await createResponse.json() as {
+				collection: {
+					profiles: Array<{
+						profile: { id: string; promptStack: string | null };
+						scope: string;
+						selector: string;
+						preview: { diagnostics: Array<{ message: string }> };
+					}>;
+				};
+			};
+			const createdGlobal = created.collection.profiles.find((entry) => entry.selector === "global:worker");
+			assert.equal(createdGlobal?.scope, "global");
+			assert.equal(createdGlobal?.profile.promptStack, "shared");
+			assert.equal(createdGlobal?.preview.diagnostics.some((diagnostic) => /Unknown prompt stack/.test(diagnostic.message)), false);
+			assert.equal(existsSync(join(globalDir, "agent-profiles", "worker.json")), true);
+		} finally {
+			await harness.commands.preset.handler("ui stop", context.ctx);
+		}
+	} finally {
+		if (previousGlobalDir === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalDir;
+	}
+});
+
+test("/preset ui rejects malformed API scope values with 400", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "content-type": "application/json", "x-pi-forge-token": token };
+		const stack = {
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "bad-scope-stack",
+			items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+		};
+		const profile = {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "bad-scope-profile",
+			model: { provider: "test", id: "model" },
+			thinkingLevel: "off",
+			promptStack: null,
+		};
+
+		const badStack = await fetch(new URL("/api/stacks", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ stack, scope: "bogus" }),
+		});
+		assert.equal(badStack.status, 400);
+
+		const badProfile = await fetch(new URL("/api/profiles/validate", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile, scope: "bogus" }),
+		});
+		assert.equal(badProfile.status, 400);
+
+		const badProfileCreate = await fetch(new URL("/api/profiles", editorUrl), {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ profile, scope: "bogus" }),
+		});
+		assert.equal(badProfileCreate.status, 400);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 test("/preset ui returns the project shadow after stack create and save", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	const globalDir = mkdtempSync(join(tmpdir(), "pi-forge-global-"));

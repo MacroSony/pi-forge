@@ -10,7 +10,7 @@ pi-forge 需要 Node.js 22.19 或更高版本，并作为 Pi extension 运行：
 pi install npm:@zihanw/pi-forge
 ```
 
-安装或更新后请重启 Pi。Pi host 会提供运行时 SDK；精确 package 版本只用于可复现的开发测试。项目被 Pi 信任后，pi-forge 才会加载项目 stack、profile 和 config。
+安装或更新后请重启 Pi。Pi host 会提供运行时 SDK；精确 package 版本只用于可复现的开发测试。用户全局 stack/profile 始终可以浏览；项目 stack、profile 和 config 只在 Pi 信任项目后加载和写入。
 
 ## 第一个 stack
 
@@ -28,7 +28,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset use default
 ```
 
-如果没有恢复的 session 选择或明确 opt-out，`default.json` 会自动启用。设置 `"autoActivate": false` 可以关闭此行为。
+示例中的 `default.json` 带 `"autoActivate": true`，因此没有恢复的 session 选择或明确 opt-out 时会自动启用。设置 `"autoActivate": false` 可以关闭此行为；文件名本身没有特殊作用。
 
 ## 编辑和检查
 
@@ -36,7 +36,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-编辑器运行在带 token 的本地 `127.0.0.1` URL，支持结构化/原始 JSON 编辑、排序、校验、完整预览、策略、regex、导入导出、fork 和 profile 管理。
+编辑器运行在带 token 的本地 `127.0.0.1` URL，支持结构化/原始 JSON 编辑、排序、校验、完整预览、策略、regex、导入导出、fork 和 profile 管理。工具栏的 scope 下拉（默认 `project`）决定新建、fork 和导入 stack 写入项目 `.pi/forge/prompt-stacks` 还是用户全局 `~/.pi/forge/prompt-stacks`。
 
 命令行也可以检查：
 
@@ -56,7 +56,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /profile use reviewer
 ```
 
-Profile 保存在 `.pi/forge/agent-profiles/*.json`。应用是经过 preflight 的一次性操作；之后的手动设置不会被自动覆盖。
+Profile 默认保存在 `.pi/forge/agent-profiles/*.json`。`/profile save global:reviewer` 会写入用户全局 `~/.pi/forge/agent-profiles`。应用是经过 preflight 的一次性操作；之后的手动设置不会被自动覆盖。
 
 ## 存储与迁移
 
@@ -64,12 +64,14 @@ Profile 保存在 `.pi/forge/agent-profiles/*.json`。应用是经过 preflight 
 |---|---|
 | `.pi/forge/prompt-stacks/` | 项目 prompt stacks |
 | `.pi/forge/agent-profiles/` | 项目 agent profiles |
-| `.pi/forge/config.json` | 项目配置和 delegation 授权 |
+| `.pi/forge/config.json` | 项目配置和 `project:<id>` delegation 授权 |
 | `.pi/forge/extensions/` | 可信项目 macro/slot 代码 |
-| `~/.pi/forge/config.json` | 用户默认配置 |
+| `~/.pi/forge/prompt-stacks/` | 用户全局 prompt stacks |
+| `~/.pi/forge/agent-profiles/` | 用户全局 agent profiles |
+| `~/.pi/forge/config.json` | 用户默认配置和 `global:<id>` delegation 授权 |
 | `~/.pi/forge/extensions/` | 可信用户 macro/slot 代码 |
 
-旧的 `.pi/prompt-stacks/*.json` 仍可读取；新 stack 会写到 `.pi/forge/prompt-stacks`。安全迁移方式：
+旧的 `.pi/prompt-stacks/*.json` 仍可读取；命令创建的 stack 会写到 `.pi/forge/prompt-stacks`，使用 Web 编辑器的 `global` scope 下拉可创建到用户全局 `~/.pi/forge/prompt-stacks`。安全迁移方式：
 
 ```text
 /preset migrate-stacks --dry-run

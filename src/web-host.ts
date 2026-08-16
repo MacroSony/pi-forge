@@ -28,7 +28,7 @@ import {
 	promptStackPath,
 	validatePromptStack,
 } from "./loader.ts";
-import { globalPromptStacksDir } from "./storage.ts";
+import { globalAgentProfilePath, globalPromptStacksDir } from "./storage.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { resolveResourceSelector } from "./catalog.ts";
 import {
@@ -92,8 +92,8 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 			await runtime.reloadProfiles();
 			return { ok: true, ...profileCollection(ctx, runtime) };
 		},
-		validateProfile: (profile, existingId) => profileValidation(ctx, runtime, profile, existingId),
-		createProfile: (profile) => createProfileFile(ctx, runtime, profile),
+		validateProfile: (profile, existingId, scope) => profileValidation(ctx, runtime, profile, existingId, scope),
+		createProfile: (profile, scope) => createProfileFile(ctx, runtime, profile, scope),
 		saveProfile: (selector, profile) => saveProfileFile(ctx, runtime, selector, profile),
 		applyProfile: (selector) => applyProfileRuntime(ctx, runtime, selector),
 		deleteProfile: (selector) => deleteProfileFile(ctx, runtime, selector),
@@ -230,6 +230,7 @@ function profileValidation(
 	runtime: WebHostRuntime,
 	profile: AgentProfile,
 	existingId?: string,
+	validationScope?: "global" | "project",
 ): WebEditorProfileValidation {
 	const profiles = runtime.getProfiles();
 	const existingSelector = existingId ? parseResourceSelector(existingId) : undefined;
@@ -237,8 +238,8 @@ function profileValidation(
 		? profiles.filter((loaded) => loaded.scope === (existingSelector.selector.scope ?? "project") && loaded.profile.id === existingSelector.selector.id)
 		: [];
 	const existing = existingMatches.length === 1 ? existingMatches[0] : undefined;
-	const scope = existing?.scope ?? "project";
-	const filePath = existing?.filePath ?? agentProfilePath(ctx.cwd, profile.id);
+	const scope = existing?.scope ?? validationScope ?? "project";
+	const filePath = existing?.filePath ?? (scope === "global" ? globalAgentProfilePath(profile.id) : agentProfilePath(ctx.cwd, profile.id));
 	const diagnostics = [
 		...validateAgentProfile(profile),
 		...validateAgentProfilePromptStackScope(profile, scope),
@@ -269,7 +270,7 @@ function profileValidation(
 		});
 	}
 
-	const resolved = runtime.resolveProfile({ profile, filePath, scope: existing?.scope ?? "project", key: { scope: existing?.scope ?? "project", id: profile.id }, diagnostics });
+	const resolved = runtime.resolveProfile({ profile, filePath, scope, key: { scope, id: profile.id }, diagnostics });
 	const targetEffectiveTools = resolved.promptStack || profile.promptStack === null
 		? runtime.previewToolNames(resolved.promptStack?.stack)
 		: [];
@@ -286,17 +287,18 @@ async function createProfileFile(
 	ctx: ExtensionContext,
 	runtime: WebHostRuntime,
 	profile: AgentProfile,
+	scope: "global" | "project" = "project",
 ): Promise<WebEditorOperationResult<WebEditorProfileMutation>> {
 	if (!ctx.isProjectTrusted()) {
 		return { ok: false, status: 403, error: "Project is not trusted; refusing to create agent profiles." };
 	}
-	if (runtime.getProfiles().some((loaded) => loaded.scope === "project" && loaded.profile.id === profile.id)) {
+	if (runtime.getProfiles().some((loaded) => loaded.scope === scope && loaded.profile.id === profile.id)) {
 		return { ok: false, status: 409, error: `Agent profile already exists: ${profile.id}` };
 	}
-	const conflict = autoActivateConflictError(runtime.getProfiles(), profile, "project");
+	const conflict = autoActivateConflictError(runtime.getProfiles(), profile, scope);
 	if (conflict) return { ok: false, status: 409, error: conflict };
 
-	const result = writeAgentProfile(ctx.cwd, profile);
+	const result = writeAgentProfile(ctx.cwd, profile, { scope });
 	if (!result.ok) return profileWriteError(profile.id, result);
 	await runtime.reloadProfiles();
 	return {
@@ -594,14 +596,22 @@ async function createStackFile(
 	const idError = validateWebStackId(stack.id);
 	if (idError) return { ok: false, status: 400, error: idError };
 
-	const existingById = runtime.getStacks().find((candidate) => candidate.scope === "project" && candidate.stack.id === stack.id);
+	const scope = options.scope ?? "project";
+	const existingById = runtime.getStacks().find((candidate) => candidate.scope === scope && candidate.stack.id === stack.id);
 	if (existingById && !options.overwrite) {
 		return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
 	}
 
-	const targetPath = existingById && options.overwrite ? existingById.filePath : promptStackPath(ctx.cwd, stack.id);
-	if (!isSafePromptStackMutationPath(ctx.cwd, targetPath)) {
-		return { ok: false, status: 403, error: "Refusing to create outside prompt-stack storage or through a symbolic link." };
+	const targetPath = existingById && options.overwrite
+		? existingById.filePath
+		: scope === "global"
+			? join(globalPromptStacksDir(), `${stack.id}.json`)
+			: promptStackPath(ctx.cwd, stack.id);
+	const safe = scope === "project"
+		? isSafePromptStackMutationPath(ctx.cwd, targetPath)
+		: isSafeGlobalPromptStackMutationPath(targetPath);
+	if (!safe) {
+		return { ok: false, status: 403, error: `Refusing to create outside ${scope} prompt-stack storage or through a symbolic link.` };
 	}
 
 	if (!existingById && existsSync(targetPath) && !options.overwrite) {
@@ -609,12 +619,13 @@ async function createStackFile(
 	}
 
 	const previousSelection = runtime.getSelectedActiveId();
+	const createdSelector = formatResourceKey({ scope, id: stack.id });
 	mkdirSync(dirname(targetPath), { recursive: true });
 	writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
-	await runtime.reloadStacks(options.activate ? stack.id : (previousSelection ?? "none"));
-	if (options.activate) runtime.setActive(stack.id);
+	await runtime.reloadStacks(options.activate ? createdSelector : (previousSelection ?? "none"));
+	if (options.activate) runtime.setActive(createdSelector);
 
-	const created = runtime.getStacks().find((candidate) => candidate.scope === "project" && candidate.filePath === targetPath);
+	const created = runtime.getStacks().find((candidate) => candidate.scope === scope && candidate.filePath === targetPath);
 	if (!created) return { ok: false, status: 500, error: "Created stack could not be reloaded." };
 	return { ok: true, stack: stackSummary(created, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
