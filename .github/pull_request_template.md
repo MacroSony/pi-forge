@@ -2,28 +2,13 @@
 
 Describe the outcome and why this change is needed.
 
-## Change classification
+## Breaking impact
 
-- [ ] Local: stays within one accepted component and preserves boundaries/contracts.
-- [ ] Boundary-affecting: changes ownership, dependency direction, state, or an application port.
-- [ ] Product-affecting: changes features, schemas, persistence, trust, public API, or packages.
+List schema, persistence, public API, package, command, or user-visible behavior changes. Write `None` when not applicable.
 
-Affected components:
+## Architecture decision
 
-Architecture decision or 0.5 plan section (required for boundary/product changes):
-
-## Architecture impact
-
-- [ ] Dependency direction remains valid.
-- [ ] Mutable state has one named owner.
-- [ ] Domain resources are persisted only through repositories.
-- [ ] Commands/HTTP/browser code contains no new domain workflow.
-- [ ] Public exports and persisted schemas are unchanged, or migration notes are included.
-- [ ] Current/target diagrams remain accurate, or this PR updates them.
-
-## Compatibility and migration
-
-Describe breaking behavior, migration, temporary compatibility code, its named consumer, and its removal condition. Write `None` when not applicable.
+For boundary- or product-affecting changes, link to the accepted section of the [lean 0.5 plan](../docs/design/architecture-0.5.md) or to another accepted decision. Write `None` for local changes.
 
 ## Verification
 

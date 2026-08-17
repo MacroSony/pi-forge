@@ -4,23 +4,34 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## 0.5.0 architecture stabilization
+## 0.5.0 breaking cleanup (lean)
 
-0.5.0 is a deliberately breaking cleanup release. Net-new feature work is frozen while the repository establishes one-directional component boundaries, repository-owned persistence, coherent workspace state, deterministic compilation, and optional subagent packaging.
+0.5.0 is a deliberately breaking cleanup release plus the minimum foundation for 0.5.x. Net-new feature work is frozen.
 
-The authoritative scope, diagrams, breaking-change disposition, phases, open implementation gates, and release criteria are in the [0.5 architecture plan](../design/architecture-0.5.md). Confirmed planning decisions are recorded there; template language and cross-extension host discovery remain pending spikes. Development and agent work follow the [architecture rules](architecture-rules.md).
+The authoritative scope, accepted decisions, implementation lanes, and release gates are in the [lean 0.5 architecture plan](../design/architecture-0.5.md). The original six-phase architecture target remains the long-term goal and is archived in the [full proposal](../design/archive/0.5-full-proposal/README.md).
 
-The implementation order is:
+Implementation order:
 
-1. Freeze, inventory, characterize, and run the remaining spikes (template language, host discovery) before affected phases start.
-2. Extract shared resource codecs and repositories.
-3. Establish `ForgeWorkspace`, `PromptStackService`, and `AgentProfileService`.
-4. Introduce prompt-stack schema v2 and deterministic immutable-context compilation; remove mutable variables.
-5. Simplify lifecycle, command, HTTP, and browser adapters; remove rejected compatibility/features.
-6. Extract `pi-forge-subagents` behind a versioned host port.
-7. Freeze explicit public entry points, remove `src/*`, document migration, and release.
+0. Documentation convergence: archive the full proposal and make the lean plan active.
+1a. Removals only: remove SillyTavern, mutable variable state/macros/slot, variable session entries, and regex `display`/`both`.
+1b. Compiler, schema v2, and extension contract: implement `forge-v1`, frozen `PromptEnvironment`, immutable `parameters`, and the redesigned trusted extension port; retain `finalize` under lifecycle-adapter ownership.
+1c. Migration and documentation: v1-to-v2 utility, example migration, and English/Chinese breaking notes.
+2a. Minimal repositories and codecs: make repositories/codecs the only stack/profile read/write path; defer fingerprint and atomic writes.
+2b. ForgeWorkspace and host port v1: minimal snapshot owner plus `/subagent` discovery, profile listing/snapshot, and prepare with mandatory lifecycle semantics.
+3. Subagent extraction: move subagent code into `pi-forge-subagents`; remove the main-package hard dependency and delegation UI; optional package owns dedicated `subagents.json` files.
+4. Public surface and release: root default, root named extension API, and `/subagent` only; migration notes, packed-install verification, 0.5.0 release.
 
-Only one boundary-changing initiative should be active at a time. Sandbox, staged writes, new prompt features, and richer imports remain deferred until this sequence is complete.
+Only one lane is active at a time. Sandbox, staged writes, new prompt features, richer imports, and the remaining full-plan architecture work remain deferred until after this sequence.
+
+## 0.5.x continuation
+
+After 0.5.0, continue toward the archived full target in small increments:
+
+- expected-fingerprint writes, codec fingerprinting, and atomic persistence;
+- full `PromptStackService` / `AgentProfileService` / `ForgeWorkspace` ownership;
+- physical `pi-forge-core` boundaries and dependency-direction checking;
+- complete host RPC catalogue, progress events, and optional subagent UI;
+- public-surface classification and rolling Pi compatibility matrix.
 
 ## 0.4 baseline
 
@@ -38,7 +49,7 @@ Evaluate an optional backend that can honestly enforce roots, process behavior, 
 
 ### History and prompt diagnostics
 
-Candidate history controls need concrete use cases and dangling tool-pair tests. Provider-payload rewriting and display-only streaming regex remain deferred until a stable, previewable lifecycle hook exists. SillyTavern fidelity is no longer a core roadmap goal; 0.5 removes it or retains only a separately accepted minimal stateless converter.
+Candidate history controls need concrete use cases and dangling tool-pair tests. Provider-payload rewriting and display-only streaming regex remain deferred until a stable, previewable lifecycle hook exists. SillyTavern fidelity is no longer a core roadmap goal; 0.5 removes it.
 
 ## Product guardrails
 
@@ -47,7 +58,7 @@ Candidate history controls need concrete use cases and dangling tool-pair tests.
 - Profiles remain one-shot presets, not continuous runtime owners.
 - Tool and skill policy stays in prompt stacks, not profiles.
 - Skill filtering is model-visible prompt filtering, not an invocation or security boundary.
-- Delegation remains opt-in, foreground, clean-context, and fail-closed on missing capabilities, and moves to an optional package.
+- Delegation remains opt-in, foreground, clean-context, and fail-closed on missing capabilities, and lives in the optional package.
 - Do not report shared-user read-only policy as an OS sandbox.
 - New editor product workflows are frozen; migration changes retain real-browser coverage.
 - Run the full verification and package checks before release.

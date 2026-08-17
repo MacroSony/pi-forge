@@ -10,7 +10,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Planning
 
-- Established the proposed breaking 0.5.0 architecture plan and development rules: feature work is frozen while resource repositories, coherent workspace ownership, immutable prompt compilation, mutable-variable removal, optional subagent packaging, SillyTavern cleanup, and explicit public entry points are designed and implemented in gated phases. Confirmed decisions include immutable `parameters`, `ForgeWorkspace`-owned extension registration, tool-policy port, subagent entry-point/dependency cleanup, and pending template/host-discovery spikes.
+- Replaced the proposed six-phase 0.5.0 plan with the accepted [lean 0.5.0 architecture plan](docs/design/architecture-0.5.md). The original full proposal and Phase-0 evidence are archived under [docs/design/archive/0.5-full-proposal/](docs/design/archive/0.5-full-proposal/README.md) and remain the long-term target.
+- Accepted lean 0.5.0 decisions: complete SillyTavern removal; mutable-variable removal; `forge-v1` with a redesigned pure trusted-extension port; regex `display`/`both` removal while `finalize` is retained under lifecycle-adapter ownership; minimal repositories/codecs with fingerprint and atomic writes deferred; minimal `ForgeWorkspace`; versioned `/subagent` host port with mandatory lifecycle semantics; optional `pi-forge-subagents` package without main-package delegation UI and with dedicated `subagents.json` files; explicit root default, root named extension API, and `/subagent` surfaces.
 
 ## [0.4.1] - 2026-08-17
 

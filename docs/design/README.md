@@ -2,15 +2,25 @@
 
 [Documentation](../README.md)
 
-The proposed plan defines candidate forward-looking architecture. Archived documents preserve decisions, reviews, spikes, and implementation history; they are not the authoritative description of current user behavior. Use the [guides](../README.md#guides) and [reference](../README.md#reference) for released behavior.
+The active plan defines the executable forward-looking work. Archived documents preserve the long-term target, decisions, reviews, spikes, and implementation history; they are not the authoritative description of current user behavior. Use the [guides](../README.md#guides) and [reference](../README.md#reference) for released behavior.
 
-## Proposed 0.5 architecture
+## Active 0.5.0 plan
 
-- [0.5 architecture plan](architecture-0.5.md) — target packages and components, breaking cleanup, implementation phases, open gates, and release criteria.
-- [Architecture and development rules](../development/architecture-rules.md) — dependency direction, state/persistence ownership, decision triggers, and definition of done.
-- [Architecture decision template](decision-template.md) — required structure for boundary and product decisions.
+- [Lean 0.5.0 architecture plan](architecture-0.5.md) — executable breaking-cleanup scope, accepted decisions, four implementation lanes, and release gates.
+- [Architecture and development rules](../development/architecture-rules.md) — dependency direction and ownership rules for the full target.
+- [Architecture decision template](decision-template.md) — structure for future boundary/product decisions.
 
-## Historical archive
+## Archived 0.5 full proposal
+
+The original six-phase target remains the long-term goal and is preserved here:
+
+- [Full proposal index](archive/0.5-full-proposal/README.md)
+- [Full 0.5 architecture plan](archive/0.5-full-proposal/architecture-0.5.md)
+- [Migration inventory](archive/0.5-full-proposal/0.5-inventory.md)
+- [Public-consumer audit](archive/0.5-full-proposal/0.5-consumer-audit.md)
+- [Phase-0 decision drafts](archive/0.5-full-proposal/0.5-phase0-decision-drafts.md)
+- [Template-language spike](archive/0.5-full-proposal/template-language-spike.md)
+- [Pi host-discovery spike](archive/0.5-full-proposal/host-discovery-spike.md)
 
 ## Subagent design history
 

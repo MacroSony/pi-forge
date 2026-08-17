@@ -59,9 +59,9 @@ Until the target directory/package structure exists, apply the rule to logical o
 ### Persistence
 
 - All profile and stack reads/writes/deletes go through repositories.
-- Repositories use codecs as the single source of parsing, normalization, validation, serialization, and fingerprinting.
-- Mutations validate scope and containment and use expected fingerprints where overwriting or deleting stale data would lose external edits.
-- Prefer atomic file replacement. No adapter may call `writeFileSync` or `unlinkSync` for a domain resource.
+- Repositories use codecs as the single source of parsing, normalization, validation, and serialization.
+- Mutations validate scope and containment. No adapter may call `writeFileSync` or `unlinkSync` for a domain resource.
+- **Lean 0.5.0 interim:** repositories and codecs are introduced in minimal form. Expected-fingerprint writes, fingerprinting in codecs, and guaranteed atomic file replacement are 0.5.x work. Current replacement semantics remain characterized by tests until then.
 
 ### State
 
@@ -118,16 +118,9 @@ Use the [architecture decision template](../design/decision-template.md). Small 
 
 ## Pull-request requirements
 
-Every pull request states:
+During lean 0.5.0, every pull request states summary, breaking impact, and verification, as in the repository template. Boundary- or product-affecting changes must link to the accepted decision in the [lean 0.5 plan](../design/architecture-0.5.md); a separate decision document is not required for decisions already accepted there.
 
-- change classification;
-- affected components;
-- whether dependency direction, state ownership, schemas, persisted state, or public API changed;
-- linked decision for boundary/product changes;
-- migration and documentation impact;
-- verification performed.
-
-The repository pull-request template mirrors these requirements.
+For full-target 0.5.x work, pull requests additionally state change classification, affected components, dependency-direction/state/schema/public-API impact, and the linked decision.
 
 ## Definition of done
 
