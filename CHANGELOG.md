@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+### Planning
+
+- Established the breaking 0.5 architecture plan and development rules: feature work is frozen while resource repositories, coherent workspace ownership, immutable prompt compilation, mutable-variable removal, optional subagent packaging, SillyTavern cleanup, and explicit public entry points are designed and implemented in gated phases.
+
 ## [0.4.1] - 2026-08-17
 
 ### Added

@@ -144,9 +144,11 @@ Read [foreground delegation and its safety model](docs/guides/delegation.md) bef
 ### Develop and design
 
 - [Development setup](docs/development/setup.md)
+- [Architecture and development rules](docs/development/architecture-rules.md)
+- [0.5 architecture plan](docs/design/architecture-0.5.md)
 - [Release process](docs/development/release.md)
 - [Roadmap](docs/development/roadmap.md)
-- [Historical design archive](docs/design/README.md)
+- [Architecture and design index](docs/design/README.md)
 
 Chinese user documentation starts at [docs/zh-CN/README.md](docs/zh-CN/README.md).
 

@@ -32,10 +32,12 @@ Use this page as the documentation map. Each subject has one authoritative home;
 ## Development
 
 - [Development setup and verification](development/setup.md)
+- [Architecture and development rules](development/architecture-rules.md)
+- [0.5 architecture plan](design/architecture-0.5.md)
 - [Release process](development/release.md)
 - [Roadmap](development/roadmap.md)
 - [Complexity review](development/complexity-review.md)
 
-## Design archive
+## Architecture and design
 
-[The design archive](design/README.md) records decisions and completed investigations. It is historical context, not current user guidance. Current behavior is documented in the guides and reference pages above.
+[Architecture and design](design/README.md) contains the active 0.5 plan plus historical decisions and investigations. Current released behavior remains documented in the guides and reference pages above.

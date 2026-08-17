@@ -1,8 +1,16 @@
-# Design archive
+# Architecture and design
 
 [Documentation](../README.md)
 
-These documents preserve decisions, reviews, spikes, and implementation history. They are not the authoritative description of current user behavior; use the [guides](../README.md#guides) and [reference](../README.md#reference) for that.
+The proposed plan defines candidate forward-looking architecture. Archived documents preserve decisions, reviews, spikes, and implementation history; they are not the authoritative description of current user behavior. Use the [guides](../README.md#guides) and [reference](../README.md#reference) for released behavior.
+
+## Proposed 0.5 architecture
+
+- [0.5 architecture plan](architecture-0.5.md) — target packages and components, breaking cleanup, implementation phases, open gates, and release criteria.
+- [Architecture and development rules](../development/architecture-rules.md) — dependency direction, state/persistence ownership, decision triggers, and definition of done.
+- [Architecture decision template](decision-template.md) — required structure for boundary and product decisions.
+
+## Historical archive
 
 ## Subagent design history
 
@@ -14,4 +22,4 @@ These documents preserve decisions, reviews, spikes, and implementation history.
 
 - [0.4 roadmap and implementation log](roadmap-0.4-archive.md)
 
-The current exported semantics are in the [subagent adapter contract](../reference/subagent-adapter.md); forward-looking work is in the [roadmap](../development/roadmap.md).
+The current 0.4 exported semantics are in the [subagent adapter contract](../reference/subagent-adapter.md); accepted work ordering is in the [roadmap](../development/roadmap.md).

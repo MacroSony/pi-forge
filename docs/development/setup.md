@@ -14,6 +14,8 @@ pi
 
 Trust the project in Pi and use `/reload` when needed.
 
+Before making structural changes, read the [architecture and development rules](architecture-rules.md) and the active [0.5 architecture plan](../design/architecture-0.5.md). Boundary, schema, persistence, public API, and product changes require an accepted architecture decision before implementation.
+
 The npm package loads compiled `dist/index.js` and intentionally omits physical `src/` files. Clone or fork the repository to inspect or modify source; do not edit generated files in `node_modules`.
 
 ## Load the extension
