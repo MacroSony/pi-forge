@@ -4,13 +4,13 @@ These instructions apply to the entire repository. They are intentionally strict
 
 ## Current development mode
 
-pi-forge is in a 0.5 stabilization and architecture phase. Do not add net-new product features unless the work is explicitly accepted in the [0.5 architecture plan](docs/design/architecture-0.5.md) or a separate accepted architecture decision.
+pi-forge is in a 0.5.0 stabilization and architecture phase. Do not add net-new product features unless the work is explicitly listed in the [0.5 architecture plan](docs/design/architecture-0.5.md) (currently proposed) or accepted by a maintainer as a separate architecture decision.
 
 Prefer removing accidental complexity, preserving characterized behavior, and establishing the target boundaries over expanding the 0.4 design.
 
 ## Sources of truth
 
-- [0.5 architecture plan](docs/design/architecture-0.5.md): target components, package boundaries, breaking changes, migration phases, and release gates.
+- [0.5 architecture plan](docs/design/architecture-0.5.md): proposed target components, package boundaries, breaking changes, migration phases, confirmed decisions, and release gates.
 - [Architecture and development rules](docs/development/architecture-rules.md): dependency rules, state ownership, decision gates, and definition of done.
 - [Roadmap](docs/development/roadmap.md): accepted work ordering.
 - User guides and reference documentation: current released 0.4 behavior until a 0.5 change is implemented.

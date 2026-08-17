@@ -4,15 +4,15 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## 0.5 architecture stabilization
+## 0.5.0 architecture stabilization
 
-0.5 is a deliberately breaking cleanup release. Net-new feature work is frozen while the repository establishes one-directional component boundaries, repository-owned persistence, coherent workspace state, deterministic compilation, and optional subagent packaging.
+0.5.0 is a deliberately breaking cleanup release. Net-new feature work is frozen while the repository establishes one-directional component boundaries, repository-owned persistence, coherent workspace state, deterministic compilation, and optional subagent packaging.
 
-The authoritative scope, diagrams, breaking-change disposition, phases, open implementation gates, and release criteria are in the [0.5 architecture plan](../design/architecture-0.5.md). Development and agent work follow the [architecture rules](architecture-rules.md).
+The authoritative scope, diagrams, breaking-change disposition, phases, open implementation gates, and release criteria are in the [0.5 architecture plan](../design/architecture-0.5.md). Confirmed planning decisions are recorded there; template language and cross-extension host discovery remain pending spikes. Development and agent work follow the [architecture rules](architecture-rules.md).
 
 The implementation order is:
 
-1. Freeze, inventory, characterize, and decide the remaining template/parameter/import/host-discovery gates.
+1. Freeze, inventory, characterize, and run the remaining spikes (template language, host discovery) before affected phases start.
 2. Extract shared resource codecs and repositories.
 3. Establish `ForgeWorkspace`, `PromptStackService`, and `AgentProfileService`.
 4. Introduce prompt-stack schema v2 and deterministic immutable-context compilation; remove mutable variables.

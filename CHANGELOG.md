@@ -10,7 +10,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Planning
 
-- Established the breaking 0.5 architecture plan and development rules: feature work is frozen while resource repositories, coherent workspace ownership, immutable prompt compilation, mutable-variable removal, optional subagent packaging, SillyTavern cleanup, and explicit public entry points are designed and implemented in gated phases.
+- Established the proposed breaking 0.5.0 architecture plan and development rules: feature work is frozen while resource repositories, coherent workspace ownership, immutable prompt compilation, mutable-variable removal, optional subagent packaging, SillyTavern cleanup, and explicit public entry points are designed and implemented in gated phases. Confirmed decisions include immutable `parameters`, `ForgeWorkspace`-owned extension registration, tool-policy port, subagent entry-point/dependency cleanup, and pending template/host-discovery spikes.
 
 ## [0.4.1] - 2026-08-17
 

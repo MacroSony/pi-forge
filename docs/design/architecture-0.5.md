@@ -1,4 +1,4 @@
-# pi-forge 0.5 architecture plan
+# pi-forge 0.5.0 architecture plan
 
 [Documentation](../README.md) · [Development rules](../development/architecture-rules.md) · [Roadmap](../development/roadmap.md)
 
@@ -51,16 +51,13 @@ The following 0.4 behavior is removed from the 0.5 core design:
 - the `variables` slot;
 - render-time mutation through custom macro/slot contexts.
 
-Templates receive an immutable context containing built-in runtime values. Static reusable values, if retained, become immutable stack parameters; whether parameters justify their schema cost is an implementation-gate decision, not an assumption.
+Templates receive an immutable context containing built-in runtime values. Static reusable values are retained as an immutable `parameters` object in stack schema v2; the v1 `stack.variables` string/JSON inconsistency is resolved by the v2 codec.
 
 ### SillyTavern is not a core architecture driver
 
-The current fidelity-oriented importer, regex translation, report surface, command, guide, and dedicated example are removed from the core 0.5 scope. Before deletion lands, one decision will choose between:
+The current fidelity-oriented importer, regex translation, report surface, command, guide, and dedicated example are removed from the core 0.5 scope.
 
-1. removing import completely and documenting 0.4 as the last supported conversion path; or
-2. retaining a small stateless best-effort converter that maps only ordered enabled text blocks and a history marker, with no SillyTavern variable or regex emulation.
-
-The default recommendation is complete removal. A richer converter can later live in a separate package without shaping the prompt compiler.
+Decision: **complete removal**. 0.4 is documented as the last supported conversion path. A richer converter can later live in a separate package without shaping the prompt compiler.
 
 ### Subagents become optional integration
 
@@ -68,9 +65,47 @@ The main extension retains profile/stack resolution and prompt preparation. A se
 
 The extraction must use a versioned Forge host port. It may not import internal runtime state, duplicate the active resource workspace, or make ordinary stack/profile usage depend on a subagent package.
 
+Confirmed decisions:
+
+- `@zihanw/pi-forge/subagent` remains a main-package entry point, but is cleaned into a versioned host port / host-neutral contract rather than re-exporting internal host preparation modules.
+- The main package removes the hard dependency on `@zihanw/pi-subagent-runtime`; that dependency moves to `pi-forge-subagents` or becomes an optional peer dependency.
+- The optional package may depend on the main package only through documented public ports.
+
 ### Schemas and public APIs restart deliberately
 
 Prompt-stack schema v2 describes the cleaned compiler and template model. Agent-profile v2 is introduced only if its stored shape must change. The package no longer exports implementation modules through `src/*`; public surfaces are explicit entry points with documented stability.
+
+## Confirmed 0.5.0 planning decisions
+
+The following decisions were confirmed while this plan was in proposed status. Items still open are marked explicitly.
+
+### Architecture direction
+
+- A1: Target diagrams use port dependencies: `PromptStackService` / `AgentProfileService` depend on repository/host ports; `StackRepo` / `ProfileRepo` implement those ports.
+- A2: Add an automatic dependency-direction check (`check:architecture`) during Phase 1/2.
+- A3: When `src/*` exports are removed, update `scripts/check-package.mjs`, `docs/reference/public-api.md`, and public-API tests in the same change.
+- A4: The release is referred to consistently as 0.5.0.
+
+### Component ownership
+
+- B1: `@zihanw/pi-forge/subagent` remains in the main package as a versioned host port / host-neutral contract, but its internal implementation surface is cleaned.
+- B2: Remove the main package hard dependency on `@zihanw/pi-subagent-runtime`.
+- B3: Forge extension loading/unloading and registry coordination are owned by `ForgeWorkspace`.
+- B4: Tool-policy synchronization is defined as a port (`ToolPolicyPort`), called by `PromptStackService`; Pi adapter implements it.
+- B5: Debug/payload/browser presentation state is a separate state slice, not part of the `ForgeWorkspace` resource snapshot.
+
+### Schema and feature decisions
+
+- B6: SillyTavern is removed completely from 0.5.0 core; 0.4 is the last supported conversion path.
+- B7: Template language is still open; it will be decided after a spike.
+- B8: Static reusable values are retained as immutable `parameters` in stack schema v2; the v1 `variables` codec inconsistency is fixed in v2.
+- B9: Cross-extension host discovery will be decided after a focused spike; no final mechanism is assumed yet.
+
+### Process decisions
+
+- C1: Phase 0 produces an explicit inventory deliverable (for example `docs/design/0.5-inventory.md` or a comparable checklist).
+- C2: Chinese documentation is updated for user-facing breaking changes; internal architecture documentation is not required to be fully synchronized.
+- C3: No formal owner field is used; maintainer and agents together drive and review decisions.
 
 ## Current 0.4 architecture
 
@@ -159,12 +194,12 @@ flowchart TB
 
     StackService --> StackDomain
     StackService --> Compiler
-    StackService --> StackRepo
+    StackService --> Ports
     ProfileService --> ProfileDomain
-    ProfileService --> ProfileRepo
+    ProfileService --> Ports
     PiPorts --> Ports
-    StackRepo --> Ports
-    ProfileRepo --> Ports
+    StackRepo -.->|implements| Ports
+    ProfileRepo -.->|implements| Ports
 
     subgraph Optional["pi-forge-subagents"]
         SubAdapters["Commands + tools + approval UI"]
@@ -185,7 +220,7 @@ flowchart TB
 ### ForgeWorkspace
 
 - Own one immutable workspace snapshot containing scoped stack/profile catalogs and active selection/provenance references.
-- Coordinate extension registration, resource reload, and snapshot publication without circular runtime callbacks.
+- Own Forge extension loading/unloading and registry coordination; coordinate resource reload and snapshot publication without circular runtime callbacks.
 - Expose application services and resource-change subscriptions to adapters.
 - Keep payload debugging and browser presentation state outside the resource snapshot.
 
@@ -193,7 +228,7 @@ flowchart TB
 
 - List, resolve, validate, create, update, fork, delete, activate, preview, and compile stacks.
 - Own auto-activation selection and active-stack state transitions.
-- Coordinate tool-policy changes through a Pi runtime port rather than calling UI or persistence code.
+- Coordinate tool-policy changes through a `ToolPolicyPort` rather than calling UI, Pi API, or persistence code directly.
 
 ### AgentProfileService
 
@@ -260,13 +295,13 @@ Moving to a workspace is an implementation choice, not permission to move files 
 | Web stack/profile editor | Keep as adapters over services; simplify during migration |
 | Prompt preview and redacted payload debugging | Keep; isolate debugging state |
 | Turn/session variables and mutation macros | Remove |
-| Static stack variables | Decide whether to remove or replace with immutable parameters |
+| Static stack variables | Keep as immutable `parameters` in schema v2; fix the v1 string/JSON codec inconsistency |
 | Current custom macro API | Break and replace with the template/slot extension contract |
-| SillyTavern fidelity importer and regex emulation | Remove from core; minimal converter requires a separate decision |
+| SillyTavern fidelity importer and regex emulation | Remove completely; 0.4 is the last supported conversion path |
 | Regex history/compiled transforms | Keep initially; no new modes during 0.5 |
 | Destructive finalized-transcript regex | Audit separately before schema v2 is frozen |
-| Foreground subagent integration | Move to optional `pi-forge-subagents` |
-| `src/*` package exports | Remove |
+| Foreground subagent integration | Move to optional `pi-forge-subagents`; `@zihanw/pi-forge/subagent` remains as a versioned host port/contract |
+| `src/*` package exports | Remove; update `check-package.mjs`, public API docs/tests in the same change |
 | Legacy prompt-stack storage migration command | Remove after documenting the required pre-0.5 migration path |
 
 ## Implementation phases
@@ -274,9 +309,10 @@ Moving to a workspace is an implementation choice, not permission to move files 
 ### Phase 0: freeze and characterize
 
 - Announce the 0.5 feature freeze in repository guidance and roadmap.
-- Inventory public exports, persisted entries, commands, schemas, examples, and real internal consumers.
+- Produce an explicit inventory deliverable covering public exports, persisted entries, commands, schemas, examples, and real internal consumers.
 - Add characterization tests around any behavior that will move before changing ownership.
-- Decide the four implementation gates listed under open decisions.
+- Run the template-language spike and cross-extension host-discovery spike; record their findings before the affected phases start.
+- Decide the remaining implementation gates listed under open decisions.
 
 Exit: the removal/migration inventory is reviewed, and no unplanned feature work is in flight.
 
@@ -285,6 +321,7 @@ Exit: the removal/migration inventory is reviewed, and no unplanned feature work
 - Introduce common diagnostic and loaded-resource envelopes.
 - Extract stack/profile codecs.
 - Implement repository ports and guarded filesystem repositories.
+- Add the automatic dependency-direction check (`check:architecture`) so adapter/domain boundaries are enforced from this phase onward.
 - Move all stack mutations out of `web-host.ts` and import commands.
 
 Exit: every domain resource mutation uses a repository and has consistent stale-write/path-safety behavior.
@@ -294,8 +331,8 @@ Exit: every domain resource mutation uses a repository and has consistent stale-
 - Consolidate stack operations into `PromptStackService`.
 - Consolidate profile operations into `AgentProfileService`.
 - Introduce `ForgeWorkspace` and publish coherent reload snapshots.
-- Split debug/browser state away from resource state.
-- Replace circular stack/profile runtime wiring.
+- Split debug/browser state away from resource state into a separate state slice.
+- Replace circular stack/profile runtime wiring with workspace-owned services and ports.
 
 Exit: commands, lifecycle, and web host use services; `PiForgeRuntimeState` is removed or reduced to adapter-owned state with no domain ownership.
 
@@ -314,14 +351,15 @@ Exit: compilation is deterministic over immutable inputs, previews and runtime u
 - Reduce Pi lifecycle modules to event adaptation.
 - Reduce commands and HTTP handlers to parsing/result rendering.
 - Split web view-model construction from application workflows.
-- Remove SillyTavern and other rejected compatibility/product surfaces.
+- Remove SillyTavern surfaces from commands, web editor, docs, examples, and tests; update Chinese user docs for user-facing breaking changes.
 
 Exit: dependency checks show adapters pointing inward with no direct resource persistence.
 
 ### Phase 5: subagent extraction and packages
 
 - Validate cross-extension capability discovery with a focused spike.
-- Publish the versioned Forge host port.
+- Publish the versioned Forge host port and clean `@zihanw/pi-forge/subagent` into that stable surface.
+- Remove the main package hard dependency on `@zihanw/pi-subagent-runtime`.
 - Move subagent configuration, commands, tools, UI, and runtime adaptation into `pi-forge-subagents`.
 - Ensure main pi-forge installs and runs without subagent dependencies.
 - Remove subagent UI/configuration from the core web editor unless an explicit contribution port is accepted.
@@ -331,20 +369,20 @@ Exit: ordinary stacks/profiles have no dependency on the optional package, and t
 ### Phase 6: public surface and release
 
 - Replace root re-export sprawl with explicit package entry points.
-- Remove `src/*` aliases and 0.4 compatibility barrels.
-- Complete migration guide, changelog, package checks, and documentation rewrite.
+- Remove `src/*` aliases and 0.4 compatibility barrels; update `check-package.mjs`, public API docs, and public API tests in the same change.
+- Complete migration guide, changelog, package checks, and documentation rewrite; use 0.5.0 naming consistently.
 - Run packed-install tests against supported Pi versions with and without `pi-forge-subagents`.
 
 Exit: all release gates below pass.
 
 ## Open implementation-gate decisions
 
-These must be accepted during Phase 0, before their implementation begins:
+These are the remaining decisions that must be resolved before their affected implementation phases begin:
 
-1. **Template language:** restricted Jinja-compatible syntax, a smaller Forge syntax, or another parsed engine. Required properties are deterministic rendering, strict undefined behavior, AST dependency analysis, no arbitrary includes/evaluation, and an immutable context.
-2. **Static parameters:** remove them entirely or retain a JSON-compatible immutable `parameters` object in stack schema v2.
-3. **SillyTavern migration:** complete removal or a minimal stateless block/history converter. The converter must not reintroduce variable or regex emulation.
-4. **Cross-extension host discovery:** prefer a Pi-native service mechanism if available; otherwise specify a versioned single-owner process registry with duplicate-version detection and disposal semantics.
+1. **Template language (open, spike pending):** restricted Jinja-compatible syntax, a smaller Forge syntax, or another parsed engine. Required properties are deterministic rendering, strict undefined behavior, AST dependency analysis, no arbitrary includes/evaluation, and an immutable context. A spike will be run before this is decided.
+2. **Static parameters (decided):** retain a JSON-compatible immutable `parameters` object in stack schema v2; do not remove static reusable values.
+3. **SillyTavern migration (decided):** complete removal; 0.4 is the last supported conversion path. No converter is retained in 0.5.0 core.
+4. **Cross-extension host discovery (spike pending):** a focused spike will determine whether to prefer a Pi-native service mechanism or specify a versioned single-owner process registry with duplicate-version detection and disposal semantics.
 
 ## Migration policy
 
@@ -352,7 +390,7 @@ These must be accepted during Phase 0, before their implementation begins:
 - Mutable variable behavior that cannot be preserved becomes an explicit migration diagnostic, not a silent approximation.
 - Recommend running the final 0.4 release to convert legacy `.pi/prompt-stacks` storage before upgrading if 0.5 removes that migration command.
 - Agent profiles retain IDs and scoped stack references where possible; migration rewrites only schema fields that actually change.
-- SillyTavern users either convert with 0.4 before upgrading or use a separately retained minimal converter if that decision is accepted.
+- SillyTavern users must convert with 0.4 before upgrading; 0.5.0 core does not retain a converter.
 - No compatibility shim is accepted without a named consumer, test, warning/removal version, and owner.
 
 ## Release gates
@@ -368,7 +406,7 @@ These must be accepted during Phase 0, before their implementation begins:
 - main pi-forge passes verification without installing the subagent extension/runtime;
 - the optional subagent package passes host-version, preparation, approval, cancellation, and packed-install tests;
 - current and target architecture diagrams match the implementation;
-- English user documentation is updated and the required Chinese documentation scope is explicitly decided for the breaking release;
+- English user documentation is updated and Chinese user-facing documentation is updated for breaking changes (internal architecture docs are not required to be fully synchronized);
 - `npm run verify` and packed-install smoke tests pass on the documented Pi compatibility range.
 
 ## Deferred until after 0.5
