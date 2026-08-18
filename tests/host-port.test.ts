@@ -7,6 +7,7 @@ import {
 	FORGE_HOST_CHANNEL,
 	FORGE_HOST_PORT_OPERATIONS,
 	validatePrepareRequest,
+	validatePrepareResponse,
 	type ForgeHostTransport,
 } from "../src/subagent/host-port.ts";
 
@@ -300,7 +301,7 @@ test("host port v1: stale-generation and wrong-host requests never reach the han
 	host.stop();
 });
 
-test("host port validators reject the old internal-shaped prepare payload and non-JSON values", () => {
+test("host port validators enforce exact nested shapes and reject non-JSON values", () => {
 	const oldShape = {
 		request: { input: { text: "x" } },
 		snapshot: { promptStack: {} },
@@ -318,24 +319,66 @@ test("host port validators reject the old internal-shaped prepare payload and no
 	assert.equal(rejectedLegacyBasePrompt.ok, false);
 	assert.match(rejectedLegacyBasePrompt.error, /unsupported fields: baseSystemPrompt/);
 
-	const nonJson = {
+	// The old runtime property name must not pass: the DTO is allowProcess.
+	const rejectedOldAccessKey = validatePrepareRequest({
 		...validPrepareBase(),
-		limits: { nested: { fn: () => undefined } },
+		access: { level: "none", network: "allow", process: true },
+	});
+	assert.equal(rejectedOldAccessKey.ok, false);
+	assert.match(rejectedOldAccessKey.error, /unsupported fields: process/);
+
+	// Wrong enum values are rejected, not merely non-string.
+	const rejectedEnum = validatePrepareRequest({
+		...validPrepareBase(),
+		access: { ...validPrepareAccess(), level: "root" },
+	});
+	assert.equal(rejectedEnum.ok, false);
+	assert.match(rejectedEnum.error, /access.level must be one of/);
+
+	const valid = validatePrepareRequest(validPrepareBase());
+	assert.equal(valid.ok, true);
+
+	// Non-plain object values inside an otherwise valid request are rejected.
+	// A class instance anywhere inside the request must be rejected (structurally
+	// or by the JSON-compatibility guard) rather than silently crossing.
+	const nonPlain = {
+		...validPrepareBase(),
+		backend: { ...validPrepareBackend(), thinkingLevel: new String("high") },
 	};
-	const rejectedNonJson = validatePrepareRequest(nonJson);
-	assert.equal(rejectedNonJson.ok, false);
-	assert.match(rejectedNonJson.error, /not JSON-compatible/);
+	const rejectedNonPlain = validatePrepareRequest(nonPlain);
+	assert.equal(rejectedNonPlain.ok, false);
+
+	// Response validation rejects non-plain object messages.
+	const responseRejected = validatePrepareResponse({
+		profileId: "worker",
+		model: { provider: "t", id: "m" },
+		thinkingLevel: "high",
+		systemPrompt: "",
+		messages: [new Map()],
+		effectiveToolIds: [],
+		effectiveToolNames: [],
+		diagnostics: [],
+		profileSnapshot: {},
+		preparedAt: "2026-07-14T00:00:00.000Z",
+	});
+	assert.equal(responseRejected.ok, false);
+	assert.match(responseRejected.error, /JSON-compatible/);
 });
+
+function validPrepareAccess(): { level: "none"; network: "deny"; allowProcess: boolean } {
+	return { level: "none", network: "deny", allowProcess: false };
+}
+
+function validPrepareBackend(): object {
+	return { model: { provider: "t", id: "m" }, thinkingLevel: "high", toolCatalog: [] };
+}
 
 function validPrepareBase(): object {
 	return {
 		profile: "worker",
 		task: { text: "x" },
-		access: { level: "none", workspaces: [], network: "deny" },
-		limits: {},
+		access: { level: "none", network: "deny", allowProcess: false },
 		backend: { model: { provider: "t", id: "m" }, thinkingLevel: "high", toolCatalog: [] },
-		resultProjection: { maxChars: 4000 },
-		parent: { depth: 0, maxDepth: 2 },
-		remoteEgressConsent: true,
 	};
 }
+

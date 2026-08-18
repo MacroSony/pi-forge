@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createPromptStackFault, parsePromptStack, serializePromptStack } from "../codecs/prompt-stack.ts";
 import type { ResourceScope } from "../resource-identity.ts";
@@ -6,6 +6,7 @@ import {
 	globalPromptStacksDir,
 	isSafeGlobalPromptStackMutationPath,
 	isSafePromptStackMutationPath,
+	legacyPromptStacksDir,
 	promptStackPath,
 	promptStackReadDirs,
 } from "../storage.ts";
@@ -161,3 +162,80 @@ export function deletePromptStackFile(
 	}
 }
 
+
+// ---------------------------------------------------------------------------
+// Legacy migration (byte-preserving exception).
+//
+// Migration moves legacy `.pi/prompt-stacks/*.json` into canonical storage as
+// raw bytes so v1 files round-trip unmodified; canonicalization (parse/
+// normalize/validate/serialize) happens on every subsequent read through the
+// codec. The raw IO still lives in this repository, never at the adapter layer.
+// ---------------------------------------------------------------------------
+
+export interface LegacyPromptStackSource {
+	name: string;
+	sourcePath: string;
+}
+
+export function readLegacyPromptStackSources(cwd: string): LegacyPromptStackSource[] {
+	const dir = legacyPromptStacksDir(cwd);
+	if (!existsSync(dir)) return [];
+	let entries: string[];
+	try {
+		entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+	} catch {
+		return [];
+	}
+	return entries.map((name) => ({ name, sourcePath: join(dir, name) }));
+}
+
+export type LegacyCopyResult =
+	| { ok: true; filePath: string; action: "copy" | "overwrite" }
+	| { ok: false; reason: "invalid-path" | "exists" | "io"; error: string };
+
+export function copyLegacyPromptStackFile(
+	cwd: string,
+	sourcePath: string,
+	targetPath: string,
+	options: { overwrite: boolean; dryRun?: boolean },
+): LegacyCopyResult {
+	if (!isSafePromptStackMutationPath(cwd, sourcePath) || !isSafePromptStackMutationPath(cwd, targetPath)) {
+		return { ok: false, reason: "invalid-path", error: "Legacy migration path is outside prompt-stack storage or traverses a symbolic link." };
+	}
+	const targetExists = existsSync(targetPath);
+	if (targetExists && !options.overwrite) {
+		return { ok: false, reason: "exists", error: `Target already exists: ${targetPath}` };
+	}
+	if (!options.dryRun) {
+		try {
+			mkdirSync(dirname(targetPath), { recursive: true });
+			copyFileSync(sourcePath, targetPath);
+		} catch (error) {
+			return { ok: false, reason: "io", error: `Failed to copy ${sourcePath} -> ${targetPath}: ${error instanceof Error ? error.message : String(error)}` };
+		}
+	}
+	return { ok: true, filePath: targetPath, action: targetExists ? "overwrite" : "copy" };
+}
+
+export type LegacyDeleteResult =
+	| { ok: true; filePath: string }
+	| { ok: false; reason: "invalid-path" | "missing" | "io"; error: string };
+
+export function deleteLegacyPromptStackFile(
+	cwd: string,
+	sourcePath: string,
+	options: { dryRun?: boolean } = {},
+): LegacyDeleteResult {
+	if (!isSafePromptStackMutationPath(cwd, sourcePath)) {
+		return { ok: false, reason: "invalid-path", error: "Legacy delete path is outside prompt-stack storage or traverses a symbolic link." };
+	}
+	if (!existsSync(sourcePath)) return { ok: false, reason: "missing", error: `Legacy source does not exist: ${sourcePath}` };
+	if (!options.dryRun) {
+		try {
+			unlinkSync(sourcePath);
+		} catch (error) {
+			return { ok: false, reason: "io", error: `Failed to delete ${sourcePath}: ${error instanceof Error ? error.message : String(error)}` };
+		}
+	}
+	return { ok: true, filePath: sourcePath };
+}

@@ -1,8 +1,14 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { isSafePromptStackMutationPath, legacyPromptStacksDir, promptStacksDir } from "./storage.js";
+import { join } from "node:path";
+import { promptStacksDir } from "./storage.js";
+import { copyLegacyPromptStackFile, deleteLegacyPromptStackFile, readLegacyPromptStackSources, } from "./repositories/prompt-stack.js";
+/**
+ * Orchestrate the legacy `.pi/prompt-stacks` -> `.pi/forge/prompt-stacks`
+ * migration. All filesystem IO (raw byte-preserving reads, copies, deletes)
+ * lives in the prompt-stack repository; this command owns only reporting,
+ * overwrite policy, dry-run, and deletion ordering.
+ */
 export function migrateLegacyPromptStacks(cwd, options = {}) {
-    const sourceDir = legacyPromptStacksDir(cwd);
+    const sourceDir = join(cwd, ".pi", "prompt-stacks");
     const targetDir = promptStacksDir(cwd);
     const report = {
         sourceDir,
@@ -17,32 +23,25 @@ export function migrateLegacyPromptStacks(cwd, options = {}) {
         errors: 0,
         deletedLegacy: 0,
     };
-    if (!existsSync(sourceDir))
-        return report;
-    let entries;
+    let sources;
     try {
-        entries = readdirSync(sourceDir).filter((name) => name.endsWith(".json")).sort();
+        sources = readLegacyPromptStackSources(cwd);
     }
-    catch (error) {
-        report.files.push({
-            name: "(legacy directory)",
-            sourcePath: sourceDir,
-            targetPath: targetDir,
-            action: "error",
-            reason: error instanceof Error ? error.message : String(error),
-            deleteLegacy: false,
-        });
-        report.errors++;
+    catch {
+        sources = [];
+    }
+    if (sources.length === 0)
         return report;
-    }
-    for (const name of entries) {
-        const sourcePath = join(sourceDir, name);
-        const targetPath = join(targetDir, name);
-        const targetExists = existsSync(targetPath);
-        if (targetExists && !report.overwrite) {
+    for (const source of sources) {
+        const targetPath = join(targetDir, source.name);
+        const copy = copyLegacyPromptStackFile(cwd, source.sourcePath, targetPath, {
+            overwrite: report.overwrite,
+            dryRun: report.dryRun,
+        });
+        if (!copy.ok && copy.reason === "exists") {
             report.files.push({
-                name,
-                sourcePath,
+                name: source.name,
+                sourcePath: source.sourcePath,
                 targetPath,
                 action: "skip",
                 reason: "target already exists",
@@ -51,59 +50,37 @@ export function migrateLegacyPromptStacks(cwd, options = {}) {
             report.skipped++;
             continue;
         }
-        const action = targetExists ? "overwrite" : "copy";
-        const safePaths = (() => {
-            try {
-                return isSafePromptStackMutationPath(cwd, sourcePath) && isSafePromptStackMutationPath(cwd, targetPath);
-            }
-            catch {
-                return false;
-            }
-        })();
-        if (!safePaths) {
+        if (!copy.ok) {
             report.files.push({
-                name,
-                sourcePath,
+                name: source.name,
+                sourcePath: source.sourcePath,
                 targetPath,
                 action: "error",
-                reason: "Migration path is outside prompt-stack storage or traverses a symbolic link.",
-                deleteLegacy: report.deleteLegacy,
+                reason: copy.error,
+                deleteLegacy: false,
             });
             report.errors++;
             continue;
         }
-        try {
-            if (!report.dryRun) {
-                mkdirSync(dirname(targetPath), { recursive: true });
-                copyFileSync(sourcePath, targetPath);
-                if (report.deleteLegacy) {
-                    unlinkSync(sourcePath);
-                    report.deletedLegacy++;
-                }
+        if (copy.action === "overwrite")
+            report.overwritten++;
+        else
+            report.copied++;
+        let deletedLegacy = false;
+        if (report.deleteLegacy) {
+            const deleted = deleteLegacyPromptStackFile(cwd, source.sourcePath, { dryRun: report.dryRun });
+            if (deleted.ok) {
+                deletedLegacy = true;
+                report.deletedLegacy++;
             }
-            if (action === "overwrite")
-                report.overwritten++;
-            else
-                report.copied++;
-            report.files.push({
-                name,
-                sourcePath,
-                targetPath,
-                action,
-                deleteLegacy: report.deleteLegacy,
-            });
         }
-        catch (error) {
-            report.files.push({
-                name,
-                sourcePath,
-                targetPath,
-                action: "error",
-                reason: error instanceof Error ? error.message : String(error),
-                deleteLegacy: false,
-            });
-            report.errors++;
-        }
+        report.files.push({
+            name: source.name,
+            sourcePath: source.sourcePath,
+            targetPath,
+            action: copy.action,
+            deleteLegacy: deletedLegacy,
+        });
     }
     return report;
 }

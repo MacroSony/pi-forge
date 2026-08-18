@@ -104,12 +104,15 @@ export interface ForgeProfileSummary {
 export interface ForgeListProfilesResponse {
     profiles: ForgeProfileSummary[];
 }
-export interface ForgeAccessRequest {
-    level: string;
-    workspaces: string[];
-    network: string;
-    executionBoundary?: string;
-    process?: boolean;
+/**
+ * Prompt-compilation access facts only — what Forge's tool negotiation reads.
+ * This intentionally is NOT the runtime `AgentRequest.access`; the optional
+ * package projects its own runtime access request onto these three facts.
+ */
+export interface ForgePromptAccessFacts {
+    level: "none" | "read-only" | "workspace-write";
+    network: "deny" | "allow";
+    allowProcess: boolean;
 }
 export interface ForgeBackendTool {
     id: string;
@@ -129,17 +132,8 @@ export interface ForgePrepareRequest {
     task: {
         text: string;
     };
-    access: ForgeAccessRequest;
-    limits: Record<string, unknown>;
+    access: ForgePromptAccessFacts;
     backend: ForgeBackendFacts;
-    resultProjection: {
-        maxChars: number;
-    };
-    parent: {
-        depth: number;
-        maxDepth: number;
-    };
-    remoteEgressConsent: boolean;
 }
 export interface ForgePrepareResponse {
     profileId: string;

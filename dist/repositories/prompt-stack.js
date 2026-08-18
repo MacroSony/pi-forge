@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { createPromptStackFault, parsePromptStack, serializePromptStack } from "../codecs/prompt-stack.js";
-import { globalPromptStacksDir, isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, promptStackPath, promptStackReadDirs, } from "../storage.js";
+import { globalPromptStacksDir, isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, } from "../storage.js";
 // ---------------------------------------------------------------------------
 // Read (the only scoped read path).
 // ---------------------------------------------------------------------------
@@ -123,5 +123,53 @@ export function deletePromptStackFile(cwd, scope, filePath) {
     catch (error) {
         return { ok: false, reason: "io", error: `Failed to delete prompt stack ${filePath}: ${error instanceof Error ? error.message : String(error)}` };
     }
+}
+export function readLegacyPromptStackSources(cwd) {
+    const dir = legacyPromptStacksDir(cwd);
+    if (!existsSync(dir))
+        return [];
+    let entries;
+    try {
+        entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+    }
+    catch {
+        return [];
+    }
+    return entries.map((name) => ({ name, sourcePath: join(dir, name) }));
+}
+export function copyLegacyPromptStackFile(cwd, sourcePath, targetPath, options) {
+    if (!isSafePromptStackMutationPath(cwd, sourcePath) || !isSafePromptStackMutationPath(cwd, targetPath)) {
+        return { ok: false, reason: "invalid-path", error: "Legacy migration path is outside prompt-stack storage or traverses a symbolic link." };
+    }
+    const targetExists = existsSync(targetPath);
+    if (targetExists && !options.overwrite) {
+        return { ok: false, reason: "exists", error: `Target already exists: ${targetPath}` };
+    }
+    if (!options.dryRun) {
+        try {
+            mkdirSync(dirname(targetPath), { recursive: true });
+            copyFileSync(sourcePath, targetPath);
+        }
+        catch (error) {
+            return { ok: false, reason: "io", error: `Failed to copy ${sourcePath} -> ${targetPath}: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    return { ok: true, filePath: targetPath, action: targetExists ? "overwrite" : "copy" };
+}
+export function deleteLegacyPromptStackFile(cwd, sourcePath, options = {}) {
+    if (!isSafePromptStackMutationPath(cwd, sourcePath)) {
+        return { ok: false, reason: "invalid-path", error: "Legacy delete path is outside prompt-stack storage or traverses a symbolic link." };
+    }
+    if (!existsSync(sourcePath))
+        return { ok: false, reason: "missing", error: `Legacy source does not exist: ${sourcePath}` };
+    if (!options.dryRun) {
+        try {
+            unlinkSync(sourcePath);
+        }
+        catch (error) {
+            return { ok: false, reason: "io", error: `Failed to delete ${sourcePath}: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    return { ok: true, filePath: sourcePath };
 }
 //# sourceMappingURL=prompt-stack.js.map

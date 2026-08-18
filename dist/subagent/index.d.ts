@@ -11,6 +11,6 @@
  */
 export * from "./contract.ts";
 export { FORGE_HOST_CHANNEL, FORGE_HOST_PORT_NAMESPACE, FORGE_HOST_PORT_OPERATIONS, FORGE_HOST_PORT_VERSION, ForgeHost, ForgeHostClient, ForgeHostPortError, validateListProfilesRequest, validateListProfilesResponse, validatePrepareRequest, validatePrepareResponse, } from "./host-port.ts";
-export type { ForgeAccessRequest, ForgeBackendFacts, ForgeBackendTool, ForgeHostConnection, ForgeHostClientOptions, ForgeHostOptions, ForgeHostPortOperation, ForgeHostPortResult, ForgeHostTransport, ForgePrepareRequest, ForgePrepareResponse, ForgeProfileSummary, } from "./host-port.ts";
+export type { ForgePromptAccessFacts, ForgeBackendFacts, ForgeBackendTool, ForgeHostConnection, ForgeHostClientOptions, ForgeHostOptions, ForgeHostPortOperation, ForgeHostPortResult, ForgeHostTransport, ForgePrepareRequest, ForgePrepareResponse, ForgeProfileSummary, } from "./host-port.ts";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, type SubagentHostResolution, type SubagentPromptRegistration, type SubagentPromptRegistrationCatalog, } from "../subagent-host.ts";
 //# sourceMappingURL=index.d.ts.map

@@ -130,16 +130,25 @@ export class ForgeWorkspace {
         if (!resolved.snapshot)
             throw new Error(`Profile ${request.profile} could not be resolved for preparation.`);
         const requestId = randomUUID();
+        // The host only needs the access facts for tool negotiation; the full
+        // runtime access/limit/execution request belongs to the backend and is
+        // reconstructed there, not sent across this port.
         const agentRequest = {
             schemaVersion: SUBAGENT_CONTRACT_VERSION,
             requestId,
             profileId: request.profile,
             input: request.task,
-            access: request.access,
-            limits: request.limits,
-            resultProjection: request.resultProjection,
-            parent: request.parent,
-            remoteEgressConsent: request.remoteEgressConsent,
+            access: {
+                level: request.access.level,
+                network: request.access.network,
+                allowProcess: request.access.allowProcess,
+                executionBoundary: "shared-user",
+                workspaces: [],
+            },
+            limits: {},
+            resultProjection: { maxChars: 0 },
+            parent: { depth: 0, maxDepth: 0 },
+            remoteEgressConsent: false,
         };
         const preflight = {
             status: "accepted",
@@ -181,10 +190,10 @@ export class ForgeWorkspace {
                 level: request.access.level,
                 mounts: [],
                 network: request.access.network,
-                process: request.access.process ?? false,
-                executionBoundary: (request.access.executionBoundary ?? "isolated"),
+                process: false,
+                executionBoundary: "shared-user",
             },
-            limits: request.limits,
+            limits: {},
             diagnostics: [],
         };
         const runtime = {

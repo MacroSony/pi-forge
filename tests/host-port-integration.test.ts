@@ -68,12 +68,8 @@ test("external consumer discovers the wired runtime host, lists profiles, prepar
 		const prepared = await client.request(connection, "prepare", {
 			profile: "project:worker",
 			task: { text: "Review this task." },
-			access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
-			limits: {},
+			access: { level: "read-only", network: "deny", allowProcess: false },
 			backend: { model: { provider: "test-provider", id: "model-x" }, thinkingLevel: "high", toolCatalog: [] },
-			resultProjection: { maxChars: 4000 },
-			parent: { depth: 0, maxDepth: 2 },
-			remoteEgressConsent: false,
 		});
 		assert.equal(prepared.ok, true, (prepared as { error?: string }).error ?? "prepare expected ok");
 		const prepareValidated = validatePrepareResponse(prepared.data);

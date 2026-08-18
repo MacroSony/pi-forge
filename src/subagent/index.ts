@@ -24,7 +24,7 @@ export {
 	validatePrepareResponse,
 } from "./host-port.ts";
 export type {
-	ForgeAccessRequest,
+	ForgePromptAccessFacts,
 	ForgeBackendFacts,
 	ForgeBackendTool,
 	ForgeHostConnection,

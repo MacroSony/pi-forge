@@ -24,6 +24,12 @@ export interface PromptStackMigrationReport {
     errors: number;
     deletedLegacy: number;
 }
+/**
+ * Orchestrate the legacy `.pi/prompt-stacks` -> `.pi/forge/prompt-stacks`
+ * migration. All filesystem IO (raw byte-preserving reads, copies, deletes)
+ * lives in the prompt-stack repository; this command owns only reporting,
+ * overwrite policy, dry-run, and deletion ordering.
+ */
 export declare function migrateLegacyPromptStacks(cwd: string, options?: PromptStackMigrationOptions): PromptStackMigrationReport;
 export declare function renderMigrationReport(report: PromptStackMigrationReport): string;
 //# sourceMappingURL=stack-migration.d.ts.map

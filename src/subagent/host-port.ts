@@ -80,12 +80,15 @@ export interface ForgeListProfilesResponse {
 	profiles: ForgeProfileSummary[];
 }
 
-export interface ForgeAccessRequest {
-	level: string;
-	workspaces: string[];
-	network: string;
-	executionBoundary?: string;
-	process?: boolean;
+/**
+ * Prompt-compilation access facts only — what Forge's tool negotiation reads.
+ * This intentionally is NOT the runtime `AgentRequest.access`; the optional
+ * package projects its own runtime access request onto these three facts.
+ */
+export interface ForgePromptAccessFacts {
+	level: "none" | "read-only" | "workspace-write";
+	network: "deny" | "allow";
+	allowProcess: boolean;
 }
 
 export interface ForgeBackendTool {
@@ -103,12 +106,8 @@ export interface ForgeBackendFacts {
 export interface ForgePrepareRequest {
 	profile: string;
 	task: { text: string };
-	access: ForgeAccessRequest;
-	limits: Record<string, unknown>;
+	access: ForgePromptAccessFacts;
 	backend: ForgeBackendFacts;
-	resultProjection: { maxChars: number };
-	parent: { depth: number; maxDepth: number };
-	remoteEgressConsent: boolean;
 }
 
 export interface ForgePrepareResponse {
@@ -167,45 +166,87 @@ export function validateListProfilesResponse(value: unknown): ValidationResult {
 }
 
 const FORGE_PREPARE_REQUEST_FIELDS = new Set([
-	"profile", "task", "access", "limits", "backend", "resultProjection", "parent", "remoteEgressConsent",
+	"profile", "task", "access", "backend",
 ]);
+
+const FORGE_ACCESS_LEVELS = new Set(["none", "read-only", "workspace-write"]);
+const FORGE_NETWORK_POLICIES = new Set(["deny", "allow"]);
+const FORGE_TASK_FIELDS = new Set(["text"]);
+const FORGE_ACCESS_FIELDS = new Set(["level", "network", "allowProcess"]);
+const FORGE_BACKEND_FIELDS = new Set(["model", "thinkingLevel", "toolCatalog"]);
+const FORGE_MODEL_FIELDS = new Set(["provider", "id"]);
+const FORGE_TOOL_FIELDS = new Set(["id", "name", "effects"]);
+
+function assertExactKeys(record: Record<string, unknown>, fields: ReadonlySet<string>, path: string): ValidationResult | undefined {
+	const unknown = Object.keys(record).filter((key) => !fields.has(key));
+	if (unknown.length > 0) {
+		return { ok: false, error: `${path} contains unsupported fields: ${unknown.join(", ")}.` };
+	}
+	return undefined;
+}
 
 export function validatePrepareRequest(value: unknown): ValidationResult {
 	if (!isRecord(value)) return { ok: false, error: "prepare request must be an object." };
-	const unknown = Object.keys(value).filter((key) => !FORGE_PREPARE_REQUEST_FIELDS.has(key));
-	if (unknown.length > 0) {
-		return { ok: false, error: `prepare request contains unsupported fields: ${unknown.join(", ")}.` };
-	}
+	const top = assertExactKeys(value, FORGE_PREPARE_REQUEST_FIELDS, "prepare request");
+	if (top) return top;
+
 	if (typeof value.profile !== "string" || !value.profile.trim()) {
 		return { ok: false, error: "prepare request requires a non-empty profile selector." };
 	}
-	if (!isRecord(value.task) || typeof value.task.text !== "string") {
-		return { ok: false, error: "prepare request requires task.text." };
+
+	if (!isRecord(value.task)) return { ok: false, error: "prepare request requires task to be an object." };
+	const task = assertExactKeys(value.task, FORGE_TASK_FIELDS, "prepare request task");
+	if (task) return task;
+	if (typeof value.task.text !== "string") {
+		return { ok: false, error: "prepare request requires task.text to be a string." };
 	}
-	if (!isRecord(value.access) || typeof value.access.level !== "string" || !Array.isArray(value.access.workspaces)
-		|| typeof value.access.network !== "string") {
-		return { ok: false, error: "prepare request requires access with level, workspaces, and network." };
+
+	if (!isRecord(value.access)) return { ok: false, error: "prepare request requires access to be an object." };
+	const access = assertExactKeys(value.access, FORGE_ACCESS_FIELDS, "prepare request access");
+	if (access) return access;
+	if (typeof value.access.level !== "string" || !FORGE_ACCESS_LEVELS.has(value.access.level)) {
+		return { ok: false, error: "prepare request access.level must be one of none/read-only/workspace-write." };
 	}
-	if (!isRecord(value.limits)) return { ok: false, error: "prepare request requires limits to be an object." };
-	if (!isRecord(value.resultProjection) || typeof value.resultProjection.maxChars !== "number") {
-		return { ok: false, error: "prepare request requires resultProjection.maxChars." };
+	if (typeof value.access.network !== "string" || !FORGE_NETWORK_POLICIES.has(value.access.network)) {
+		return { ok: false, error: "prepare request access.network must be deny or allow." };
 	}
-	if (!isRecord(value.parent) || typeof value.parent.depth !== "number" || typeof value.parent.maxDepth !== "number") {
-		return { ok: false, error: "prepare request requires parent.depth and parent.maxDepth." };
+	if (typeof value.access.allowProcess !== "boolean") {
+		return { ok: false, error: "prepare request access.allowProcess must be a boolean." };
 	}
-	if (typeof value.remoteEgressConsent !== "boolean") {
-		return { ok: false, error: "prepare request requires remoteEgressConsent to be a boolean." };
+
+	if (!isRecord(value.backend)) return { ok: false, error: "prepare request requires backend to be an object." };
+	const backend = assertExactKeys(value.backend, FORGE_BACKEND_FIELDS, "prepare request backend");
+	if (backend) return backend;
+	if (!isRecord(value.backend.model)) return { ok: false, error: "prepare request backend.model must be an object." };
+	const model = assertExactKeys(value.backend.model, FORGE_MODEL_FIELDS, "prepare request backend.model");
+	if (model) return model;
+	if (typeof value.backend.model.provider !== "string" || !value.backend.model.provider.trim()) {
+		return { ok: false, error: "prepare request backend.model.provider must be a non-empty string." };
 	}
-	if (!isRecord(value.backend) || !isRecord(value.backend.model)
-		|| typeof value.backend.model.provider !== "string" || typeof value.backend.model.id !== "string"
-		|| typeof value.backend.thinkingLevel !== "string" || !Array.isArray(value.backend.toolCatalog)) {
-		return { ok: false, error: "prepare request requires backend.model, backend.thinkingLevel, and backend.toolCatalog." };
+	if (typeof value.backend.model.id !== "string" || !value.backend.model.id.trim()) {
+		return { ok: false, error: "prepare request backend.model.id must be a non-empty string." };
 	}
-	for (const tool of value.backend.toolCatalog) {
-		if (!isRecord(tool) || typeof tool.id !== "string") {
-			return { ok: false, error: "prepare request backend.toolCatalog contains a malformed tool." };
+	if (typeof value.backend.thinkingLevel !== "string" || !value.backend.thinkingLevel.trim()) {
+		return { ok: false, error: "prepare request backend.thinkingLevel must be a non-empty string." };
+	}
+	if (!Array.isArray(value.backend.toolCatalog)) {
+		return { ok: false, error: "prepare request backend.toolCatalog must be an array." };
+	}
+	for (const [index, tool] of value.backend.toolCatalog.entries()) {
+		if (!isRecord(tool)) return { ok: false, error: `prepare request backend.toolCatalog[${index}] must be an object.` };
+		const toolKeys = assertExactKeys(tool, FORGE_TOOL_FIELDS, `prepare request backend.toolCatalog[${index}]`);
+		if (toolKeys) return toolKeys;
+		if (typeof tool.id !== "string" || !tool.id.trim()) {
+			return { ok: false, error: `prepare request backend.toolCatalog[${index}].id must be a non-empty string.` };
+		}
+		if (tool.name !== undefined && typeof tool.name !== "string") {
+			return { ok: false, error: `prepare request backend.toolCatalog[${index}].name must be a string when provided.` };
+		}
+		if (tool.effects !== undefined && (!Array.isArray(tool.effects) || tool.effects.some((effect) => typeof effect !== "string"))) {
+			return { ok: false, error: `prepare request backend.toolCatalog[${index}].effects must be an array of strings when provided.` };
 		}
 	}
+
 	if (!isJsonCompatible(value)) return { ok: false, error: "prepare request is not JSON-compatible." };
 	return { ok: true, data: value };
 }
@@ -237,6 +278,9 @@ function isJsonCompatible(value: unknown, seen = new Set<object>()): boolean {
 	if (seen.has(value)) return false;
 	seen.add(value);
 	if (Array.isArray(value)) return value.every((item) => isJsonCompatible(item, seen));
+	const prototype = Object.getPrototypeOf(value);
+	// Only plain JSON object records; reject Date/Map/Set/class instances.
+	if (prototype !== Object.prototype && prototype !== null) return false;
 	return Object.values(value).every((item) => isJsonCompatible(item, seen));
 }
 

@@ -190,12 +190,8 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 		const payload = {
 			profile: "project:worker",
 			task: { text: "Do the task." },
-			access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
-			limits: {},
+			access: { level: "read-only", network: "deny", allowProcess: false },
 			backend: { model: { provider: "test", id: "m" }, thinkingLevel: "high", toolCatalog: [] },
-			resultProjection: { maxChars: 4000 },
-			parent: { depth: 0, maxDepth: 2 },
-			remoteEgressConsent: false,
 		};
 
 		const bus = new MemoryTransport();

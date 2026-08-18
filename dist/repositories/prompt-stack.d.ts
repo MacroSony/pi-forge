@@ -25,4 +25,33 @@ export declare function writePromptStackFile(cwd: string, scope: RepositoryScope
     overwrite: boolean;
 }): PromptStackWriteResult;
 export declare function deletePromptStackFile(cwd: string, scope: RepositoryScope, filePath: string): PromptStackDeleteResult;
+export interface LegacyPromptStackSource {
+    name: string;
+    sourcePath: string;
+}
+export declare function readLegacyPromptStackSources(cwd: string): LegacyPromptStackSource[];
+export type LegacyCopyResult = {
+    ok: true;
+    filePath: string;
+    action: "copy" | "overwrite";
+} | {
+    ok: false;
+    reason: "invalid-path" | "exists" | "io";
+    error: string;
+};
+export declare function copyLegacyPromptStackFile(cwd: string, sourcePath: string, targetPath: string, options: {
+    overwrite: boolean;
+    dryRun?: boolean;
+}): LegacyCopyResult;
+export type LegacyDeleteResult = {
+    ok: true;
+    filePath: string;
+} | {
+    ok: false;
+    reason: "invalid-path" | "missing" | "io";
+    error: string;
+};
+export declare function deleteLegacyPromptStackFile(cwd: string, sourcePath: string, options?: {
+    dryRun?: boolean;
+}): LegacyDeleteResult;
 //# sourceMappingURL=prompt-stack.d.ts.map
