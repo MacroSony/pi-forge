@@ -186,7 +186,6 @@ export default function piForge(pi: ExtensionAPI) {
 		activeStackId: () => stackRuntime.activeId() ?? null,
 		lastAppliedProfile: () => state.lastAppliedProfile,
 	});
-	forgeWorkspace.startHostPort(pi.events);
 	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
 		getStacks: () => state.stacks,
 		getActive: () => state.active,
@@ -280,7 +279,10 @@ export default function piForge(pi: ExtensionAPI) {
 		activeId: stackRuntime.activeId,
 		persistActiveSelection: stackRuntime.persistActiveSelection,
 		recordCompileDiagnostics: stackRuntime.recordCompileDiagnostics,
-		reloadForgeWorkspace: (ctx) => forgeWorkspace.reload(ctx.cwd),
+		reloadForgeWorkspace: (ctx) => {
+			forgeWorkspace.reload(ctx.cwd, { trusted: ctx.isProjectTrusted() });
+			forgeWorkspace.startHostPort(pi.events);
+		},
 		disposeForgeWorkspace: () => forgeWorkspace.dispose(),
 	});
 	registerPayloadRequestHandler(pi, state, () => state.active);

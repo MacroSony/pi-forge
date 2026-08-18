@@ -1,6 +1,11 @@
 import type { AgentProfile } from "../agent-profile.ts";
+import { type LoadedAgentProfile } from "../codecs/agent-profile.ts";
 import type { ResourceScope } from "../resource-identity.ts";
 export type RepositoryScope = Extract<ResourceScope, "project" | "global">;
+export declare function readAgentProfiles(cwd: string): LoadedAgentProfile[];
+export declare function readAgentProfilesScoped(cwd: string, globalDir?: string): LoadedAgentProfile[];
+export declare function readGlobalAgentProfiles(globalDir?: string): LoadedAgentProfile[];
+export declare function readSingleAgentProfileFile(filePath: string, scope?: "global" | "project"): LoadedAgentProfile;
 export type AgentProfileWriteResult = {
     ok: true;
     filePath: string;

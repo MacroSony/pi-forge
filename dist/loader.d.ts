@@ -2,14 +2,11 @@ import type { LoadedPromptStack } from "./types.ts";
 export { globalPromptStacksDir, isInsideGlobalPromptStackStorage, isInsidePromptStackStorage, isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir, } from "./storage.ts";
 export { isValidResourceId as isValidPromptStackId } from "./resource-identity.ts";
 export { validatePromptStack } from "./codecs/prompt-stack.ts";
+/** Read project stacks (delegated to the repository read path). */
 export declare function loadPromptStacks(cwd: string): LoadedPromptStack[];
-/**
- * Load both global and project prompt stacks. Global definitions are
- * user-owned and always load; project definitions load from the trusted
- * project directories plus the legacy project directory.
- */
+/** Read both global and project stacks (delegated to the repository read path). */
 export declare function loadPromptStacksScoped(cwd: string, globalDir?: string): LoadedPromptStack[];
-/** Load only the user-owned global stacks, used by untrusted projects. */
+/** Read only the user-owned global stacks (delegated to the repository read path). */
 export declare function loadGlobalPromptStacks(globalDir?: string): LoadedPromptStack[];
 export declare function chooseDefaultStack(stacks: LoadedPromptStack[], preferredId?: string): LoadedPromptStack | undefined;
 /**

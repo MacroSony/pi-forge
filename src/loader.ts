@@ -1,13 +1,12 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
 import { resolveResourceSelector } from "./catalog.ts";
 import { parseResourceSelector } from "./resource-identity.ts";
 import { globalPromptStacksDir, promptStackReadDirs } from "./storage.ts";
-import { createPromptStackFault, parsePromptStack } from "./codecs/prompt-stack.ts";
-import type {
-	LoadedPromptStack,
-	PromptStackDiagnostic,
-} from "./types.ts";
+import {
+	readGlobalPromptStacks as readGlobalStacks,
+	readPromptStacks as readProjectStacks,
+	readPromptStacksScoped as readScopedStacks,
+} from "./repositories/prompt-stack.ts";
+import type { LoadedPromptStack } from "./types.ts";
 
 export {
 	globalPromptStacksDir,
@@ -25,78 +24,19 @@ export { isValidResourceId as isValidPromptStackId } from "./resource-identity.t
 
 export { validatePromptStack } from "./codecs/prompt-stack.ts";
 
+/** Read project stacks (delegated to the repository read path). */
 export function loadPromptStacks(cwd: string): LoadedPromptStack[] {
-	const loaded = promptStackFiles(promptStackReadDirs(cwd)).map((file) => loadPromptStackFile(file, "project"));
-	annotateDuplicateStackIds(loaded);
-	return loaded;
+	return readProjectStacks(cwd);
 }
 
-/**
- * Load both global and project prompt stacks. Global definitions are
- * user-owned and always load; project definitions load from the trusted
- * project directories plus the legacy project directory.
- */
+/** Read both global and project stacks (delegated to the repository read path). */
 export function loadPromptStacksScoped(cwd: string, globalDir: string = globalPromptStacksDir()): LoadedPromptStack[] {
-	const loaded = [
-		...promptStackFiles([globalDir]).map((file) => loadPromptStackFile(file, "global")),
-		...promptStackFiles(promptStackReadDirs(cwd)).map((file) => loadPromptStackFile(file, "project")),
-	];
-	annotateDuplicateStackIds(loaded);
-	return loaded;
+	return readScopedStacks(cwd, globalDir);
 }
 
-/** Load only the user-owned global stacks, used by untrusted projects. */
+/** Read only the user-owned global stacks (delegated to the repository read path). */
 export function loadGlobalPromptStacks(globalDir: string = globalPromptStacksDir()): LoadedPromptStack[] {
-	const loaded = promptStackFiles([globalDir]).map((file) => loadPromptStackFile(file, "global"));
-	annotateDuplicateStackIds(loaded);
-	return loaded;
-}
-
-function promptStackFiles(dirs: string[]): string[] {
-	const files: string[] = [];
-	const shadowedNames = new Set<string>();
-
-	for (const dir of dirs) {
-		if (!existsSync(dir)) continue;
-
-		let entries: string[];
-		try {
-			entries = readdirSync(dir).filter((name) => name.endsWith(".json"));
-		} catch {
-			continue;
-		}
-
-		for (const name of entries.sort()) {
-			if (shadowedNames.has(name)) continue;
-			shadowedNames.add(name);
-			files.push(join(dir, name));
-		}
-	}
-
-	return files;
-}
-
-function annotateDuplicateStackIds(stacks: LoadedPromptStack[]): void {
-	const byScopeId = new Map<string, LoadedPromptStack[]>();
-	for (const loaded of stacks) {
-		const key = `${loaded.scope}\0${loaded.stack.id}`;
-		const matches = byScopeId.get(key) ?? [];
-		matches.push(loaded);
-		byScopeId.set(key, matches);
-	}
-
-	for (const matches of byScopeId.values()) {
-		if (matches.length <= 1) continue;
-		const id = matches[0]!.stack.id;
-		const scope = matches[0]!.scope;
-		const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
-		for (const loaded of matches) {
-			loaded.diagnostics.push({
-				level: "error",
-				message: `Duplicate ${scope} stack id: ${id} appears in multiple files (${files}).`,
-			});
-		}
-	}
+	return readGlobalStacks(globalDir);
 }
 
 export function chooseDefaultStack(
@@ -104,7 +44,6 @@ export function chooseDefaultStack(
 	preferredId?: string,
 ): LoadedPromptStack | undefined {
 	if (isDisabledPromptStackId(preferredId)) return undefined;
-
 	if (preferredId) {
 		const parsed = parseResourceSelector(preferredId);
 		if (parsed.ok) {
@@ -112,7 +51,6 @@ export function chooseDefaultStack(
 			if (preferred && isUsablePromptStack(preferred)) return preferred;
 		}
 	}
-
 	return chooseAutoActivateStack(stacks);
 }
 
@@ -123,16 +61,12 @@ export function chooseDefaultStack(
  * a global candidate.
  */
 export function chooseAutoActivateStack(stacks: LoadedPromptStack[]): LoadedPromptStack | undefined {
-	// A project scope with any auto-activation candidate fails closed on
-	// ambiguity or invalidity; it never falls back to a global candidate.
 	const projectCandidates = stacks.filter((loaded) => loaded.scope === "project" && loaded.stack.autoActivate === true);
 	if (projectCandidates.length > 0) {
 		return projectCandidates.length === 1 && isUsablePromptStack(projectCandidates[0]!)
 			? projectCandidates[0]
 			: undefined;
 	}
-	// A same-ID project stack shadows a global stack even when the project
-	// stack opted out or is invalid, so those global candidates never apply.
 	const projectIds = new Set(
 		stacks.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.stack.id),
 	);
@@ -150,18 +84,4 @@ export function isUsablePromptStack(loaded: LoadedPromptStack): boolean {
 
 export function isDisabledPromptStackId(id: string | undefined): boolean {
 	return id === "none" || id === "off";
-}
-
-function loadPromptStackFile(filePath: string, scope: "global" | "project"): LoadedPromptStack {
-	let source: string;
-	try {
-		source = readFileSync(filePath, "utf8");
-	} catch (error) {
-		return createPromptStackFault(
-			filePath,
-			scope,
-			`Failed to read prompt stack: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-	return parsePromptStack(source, filePath, scope);
 }

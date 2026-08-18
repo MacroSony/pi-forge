@@ -109,7 +109,6 @@ export interface ForgePrepareRequest {
 	resultProjection: { maxChars: number };
 	parent: { depth: number; maxDepth: number };
 	remoteEgressConsent: boolean;
-	baseSystemPrompt?: string;
 }
 
 export interface ForgePrepareResponse {
@@ -142,10 +141,14 @@ type ValidationResult =
 	| { ok: false; error: string };
 
 export function validateListProfilesRequest(value: unknown): ValidationResult {
-	if (value === undefined || (value !== null && typeof value === "object" && !Array.isArray(value))) {
-		return { ok: true, data: {} };
+	if (value === undefined || value === null) return { ok: true, data: {} };
+	if (!isRecord(value)) return { ok: false, error: "listProfiles request must be an empty object." };
+	// The request intentionally carries no fields; reject any unknown fields so a
+	// future/old consumer cannot silently send material that the host must own.
+	if (Object.keys(value).length > 0) {
+		return { ok: false, error: `listProfiles request must be empty; unexpected fields: ${Object.keys(value).join(", ")}` };
 	}
-	return { ok: false, error: "listProfiles request must be an empty object." };
+	return { ok: true, data: {} };
 }
 
 export function validateListProfilesResponse(value: unknown): ValidationResult {
@@ -163,8 +166,16 @@ export function validateListProfilesResponse(value: unknown): ValidationResult {
 	return { ok: true, data: value };
 }
 
+const FORGE_PREPARE_REQUEST_FIELDS = new Set([
+	"profile", "task", "access", "limits", "backend", "resultProjection", "parent", "remoteEgressConsent",
+]);
+
 export function validatePrepareRequest(value: unknown): ValidationResult {
 	if (!isRecord(value)) return { ok: false, error: "prepare request must be an object." };
+	const unknown = Object.keys(value).filter((key) => !FORGE_PREPARE_REQUEST_FIELDS.has(key));
+	if (unknown.length > 0) {
+		return { ok: false, error: `prepare request contains unsupported fields: ${unknown.join(", ")}.` };
+	}
 	if (typeof value.profile !== "string" || !value.profile.trim()) {
 		return { ok: false, error: "prepare request requires a non-empty profile selector." };
 	}

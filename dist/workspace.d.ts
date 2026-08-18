@@ -26,9 +26,16 @@ export declare class ForgeWorkspace {
     private host?;
     constructor(sources?: ForgeWorkspaceStateSources);
     get snapshotKnown(): boolean;
-    reload(cwd: string): ForgeWorkspaceSnapshot;
+    reload(cwd: string, options?: {
+        trusted?: boolean;
+    }): ForgeWorkspaceSnapshot;
     snapshot(): ForgeWorkspaceSnapshot;
-    /** Register the host port for the current snapshot. Returns the live host. */
+    /**
+     * Register the host port for the current snapshot. Idempotent: the host is
+     * only started once the first snapshot exists, so `available` never implies
+     * an unloaded workspace. On reload the live host is kept (its generation
+     * only changes via dispose).
+     */
     startHostPort(transport: ForgeHostTransport): ForgeHost;
     /** Invoke the minimal-operation surface against the current snapshot. */
     operate(operation: string, payload: unknown): ForgeHostPortResult;

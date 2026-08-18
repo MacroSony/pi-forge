@@ -196,7 +196,6 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 			resultProjection: { maxChars: 4000 },
 			parent: { depth: 0, maxDepth: 2 },
 			remoteEgressConsent: false,
-			baseSystemPrompt: "base",
 		};
 
 		const bus = new MemoryTransport();
@@ -207,7 +206,7 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 		assert.equal(prepared.ok, true, (prepared as { error?: string }).error ?? "prepare ok");
 		const data = prepared.data as { profileId: string; systemPrompt: string; messages: unknown[]; profileSnapshot: unknown };
 		assert.equal(data.profileId, "project:worker");
-		assert.equal(data.systemPrompt, "base");
+		assert.equal(typeof data.systemPrompt, "string");
 		assert.ok(Array.isArray(data.messages));
 		assert.ok(!!data.profileSnapshot);
 		client.disconnect();
@@ -218,11 +217,6 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
-
-// helper to satisfy the type used above without extra machinery
-function newWorkspace(): { startHostPort(bus: { on(channel: string, handler: (data: unknown) => void): () => void; emit(channel: string, data: unknown): void }): void; dispose(): void; snapshot(): { stacks: unknown[]; profiles: unknown[] } } {
-	return undefined as never;
-}
 
 test("ForgeWorkspace snapshot is genuinely immutable", () => {
 	const cwd = tempCwd();
@@ -238,6 +232,49 @@ test("ForgeWorkspace snapshot is genuinely immutable", () => {
 		assert.throws(() => {
 			(snapshot.stacks[0]!.stack as { items: unknown[] }).items.push({ id: "mutated", content: "" });
 		}, TypeError);
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("ForgeWorkspace startHostPort requires a prior snapshot", () => {
+	const workspace = new ForgeWorkspace();
+	assert.throws(() => workspace.startHostPort(new MemoryTransport()), /before starting the host port/);
+});
+
+test("ForgeWorkspace untrusted reload reads global resources only", () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	const globalRoot = join(cwd, ".pi", "forge", "global-root");
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalRoot;
+	try {
+		mkdirSync(join(globalRoot, "prompt-stacks"), { recursive: true });
+		mkdirSync(join(globalRoot, "agent-profiles"), { recursive: true });
+		writeFileSync(
+			join(globalRoot, "prompt-stacks", "global-stack.json"),
+			JSON.stringify({ schemaVersion: 1, type: "pi-forge.prompt-stack", id: "global-stack", items: [] }),
+			"utf8",
+		);
+		writeFileSync(
+			join(globalRoot, "agent-profiles", "global-worker.json"),
+			JSON.stringify({
+				schemaVersion: 1,
+				type: "pi-forge.agent-profile",
+				id: "global-worker",
+				model: { provider: "test", id: "m" },
+				thinkingLevel: "high",
+				promptStack: "global-stack",
+			}),
+			"utf8",
+		);
+
+		const workspace = new ForgeWorkspace();
+		workspace.reload(cwd, { trusted: false });
+		const snapshot = workspace.snapshot();
+		assert.deepEqual(snapshot.stacks.map((s) => s.stack.id), ["global-stack"]);
+		assert.deepEqual(snapshot.profiles.map((p) => p.profile.id), ["global-worker"]);
 	} finally {
 		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
 		else process.env[GLOBAL_FORGE_DIR_ENV] = original;

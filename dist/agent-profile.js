@@ -1,10 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { resourcePatternMatches } from "./policy.js";
 import { formatResourceKey, isResourceScope, isValidResourceId, parseResourceSelector } from "./resource-identity.js";
-import { agentProfilesDir, globalAgentProfilesDir } from "./storage.js";
-import { AGENT_PROFILE_THINKING_LEVELS, createAgentProfileFault, parseAgentProfile, } from "./codecs/agent-profile.js";
+import { globalAgentProfilesDir } from "./storage.js";
+import { readAgentProfiles as readProjects, readAgentProfilesScoped as readScoped, readGlobalAgentProfiles as readGlobals, readSingleAgentProfileFile, } from "./repositories/agent-profile.js";
+import { AGENT_PROFILE_THINKING_LEVELS, } from "./codecs/agent-profile.js";
 export { AGENT_PROFILE_TYPE, AGENT_PROFILE_THINKING_LEVELS, validateAgentProfile, validateAgentProfilePromptStackScope } from "./codecs/agent-profile.js";
 const VALID_THINKING_LEVELS = new Set(AGENT_PROFILE_THINKING_LEVELS);
 function isPlainObject(value) {
@@ -14,39 +13,20 @@ function nonEmptyString(value) {
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 export function loadAgentProfileFile(filePath, scope = "project") {
-    let source;
-    try {
-        source = readFileSync(filePath, "utf8");
-    }
-    catch (error) {
-        return createAgentProfileFault(filePath, scope, `Failed to read agent profile: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    return parseAgentProfile(source, filePath, scope);
+    return readSingleAgentProfileFile(filePath, scope);
 }
 export { agentProfilePath, agentProfilesDir } from "./storage.js";
 export function isValidAgentProfileId(id) {
     return isValidResourceId(id);
 }
 export function loadAgentProfiles(cwd) {
-    const profiles = loadAgentProfilesFromDir(agentProfilesDir(cwd), "project");
-    annotateDuplicateProfileIds(profiles);
-    annotateAutoActivateConflicts(profiles);
-    return profiles;
+    return readProjects(cwd);
 }
 export function loadAgentProfilesScoped(cwd, globalDir = globalAgentProfilesDir()) {
-    const profiles = [
-        ...loadAgentProfilesFromDir(globalDir, "global"),
-        ...loadAgentProfilesFromDir(agentProfilesDir(cwd), "project"),
-    ];
-    annotateDuplicateProfileIds(profiles);
-    annotateAutoActivateConflicts(profiles);
-    return profiles;
+    return readScoped(cwd, globalDir);
 }
 export function loadGlobalAgentProfiles(globalDir = globalAgentProfilesDir()) {
-    const profiles = loadAgentProfilesFromDir(globalDir, "global");
-    annotateDuplicateProfileIds(profiles);
-    annotateAutoActivateConflicts(profiles);
-    return profiles;
+    return readGlobals(globalDir);
 }
 export function chooseAutoActivateAgentProfile(profiles) {
     // Project auto-activation has explicit precedence. An invalid or ambiguous
@@ -157,18 +137,6 @@ export function isAgentProfileProvenance(value) {
         && VALID_THINKING_LEVELS.has(value.snapshot.thinkingLevel)
         && (value.snapshot.promptStack === null || !!nonEmptyString(value.snapshot.promptStack));
 }
-function loadAgentProfilesFromDir(dir, scope) {
-    if (!existsSync(dir))
-        return [];
-    let entries;
-    try {
-        entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
-    }
-    catch {
-        return [];
-    }
-    return entries.map((name) => loadAgentProfileFile(join(dir, name), scope));
-}
 function resolveProfilePromptStack(loaded, promptStacks) {
     const diagnostics = [];
     const reference = loaded.profile.promptStack;
@@ -210,47 +178,5 @@ function resolveProfilePromptStack(loaded, promptStacks) {
 }
 function findModel(models, reference) {
     return models.find((model) => model.provider === reference.provider && model.id === reference.id);
-}
-function annotateDuplicateProfileIds(profiles) {
-    const byScopeId = new Map();
-    for (const loaded of profiles) {
-        const key = `${loaded.scope}\0${loaded.profile.id}`;
-        const matches = byScopeId.get(key) ?? [];
-        matches.push(loaded);
-        byScopeId.set(key, matches);
-    }
-    for (const matches of byScopeId.values()) {
-        if (matches.length <= 1)
-            continue;
-        const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
-        for (const loaded of matches) {
-            loaded.diagnostics.push({
-                level: "error",
-                message: `Duplicate ${loaded.scope} profile id: ${loaded.profile.id} appears in multiple files (${files}).`,
-            });
-        }
-    }
-}
-function annotateAutoActivateConflicts(profiles) {
-    const byScope = new Map();
-    for (const loaded of profiles) {
-        if (loaded.profile.autoActivate !== true)
-            continue;
-        const matches = byScope.get(loaded.scope) ?? [];
-        matches.push(loaded);
-        byScope.set(loaded.scope, matches);
-    }
-    for (const [scope, candidates] of byScope) {
-        if (candidates.length <= 1)
-            continue;
-        const files = candidates.map((loaded) => basename(loaded.filePath)).join(", ");
-        for (const loaded of candidates) {
-            loaded.diagnostics.push({
-                level: "error",
-                field: "autoActivate",
-                message: `Multiple ${scope} profiles request auto-activation (${files}); exactly one is allowed.`,
-            });
-        }
-    }
 }
 //# sourceMappingURL=agent-profile.js.map

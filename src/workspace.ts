@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createResourceCatalog } from "./catalog.ts";
-import { hasAgentProfileErrors, loadAgentProfilesScoped, type AgentProfileProvenance, type LoadedAgentProfile } from "./agent-profile.ts";
-import { loadPromptStacksScoped } from "./loader.ts";
+import { hasAgentProfileErrors, type AgentProfileProvenance, type LoadedAgentProfile } from "./agent-profile.ts";
+import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.ts";
+import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.ts";
 import { parseResourceSelector } from "./resource-identity.ts";
 import type { LoadedPromptStack } from "./types.ts";
 import {
@@ -65,9 +66,11 @@ export class ForgeWorkspace {
 		return this.current !== undefined;
 	}
 
-	reload(cwd: string): ForgeWorkspaceSnapshot {
-		const stacks = loadPromptStacksScoped(cwd);
-		const profiles = loadAgentProfilesScoped(cwd);
+	reload(cwd: string, options: { trusted?: boolean } = {}): ForgeWorkspaceSnapshot {
+		// Untrusted projects must not expose project resources to in-process
+		// consumers; mirror the runtime's global-only gating for those workspaces.
+		const stacks = options.trusted === false ? readGlobalPromptStacks() : readPromptStacksScoped(cwd);
+		const profiles = options.trusted === false ? readGlobalAgentProfiles() : readAgentProfilesScoped(cwd);
 		const snapshot: ForgeWorkspaceSnapshot = {
 			cwd,
 			stacks,
@@ -85,9 +88,15 @@ export class ForgeWorkspace {
 		return this.current;
 	}
 
-	/** Register the host port for the current snapshot. Returns the live host. */
+	/**
+	 * Register the host port for the current snapshot. Idempotent: the host is
+	 * only started once the first snapshot exists, so `available` never implies
+	 * an unloaded workspace. On reload the live host is kept (its generation
+	 * only changes via dispose).
+	 */
 	startHostPort(transport: ForgeHostTransport): ForgeHost {
-		if (this.host?.isLive) throw new Error("ForgeWorkspace host port is already live.");
+		if (!this.current) throw new Error("ForgeWorkspace must be reloaded before starting the host port.");
+		if (this.host?.isLive) return this.host;
 		const host = new ForgeHost(transport, {
 			capabilities: ["listProfiles", "prepare"],
 			handle: (operation, payload) => this.operate(operation, payload),
@@ -218,7 +227,7 @@ export class ForgeWorkspace {
 		};
 
 		const runtime: SubagentPreparationInput["runtime"] = {
-			baseSystemPrompt: request.baseSystemPrompt ?? "",
+			baseSystemPrompt: "",
 			options: {
 				selectedTools: [],
 				toolSnippets: {},

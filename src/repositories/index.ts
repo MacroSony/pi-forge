@@ -1,10 +1,17 @@
 export {
 	deletePromptStackFile,
 	promptStackTargetPath,
+	readGlobalPromptStacks,
+	readPromptStacks,
+	readPromptStacksScoped,
 	writePromptStackFile,
 } from "./prompt-stack.ts";
 export {
 	deleteAgentProfileFile,
 	agentProfileTargetPath,
+	readAgentProfiles,
+	readAgentProfilesScoped,
+	readGlobalAgentProfiles,
+	readSingleAgentProfileFile,
 	writeAgentProfileFile,
 } from "./agent-profile.ts";

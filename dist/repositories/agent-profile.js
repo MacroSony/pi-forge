@@ -1,7 +1,95 @@
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { serializeAgentProfile } from "../codecs/agent-profile.js";
-import { agentProfilePath, globalAgentProfilePath, isSafeAgentProfileMutationPath, isSafeGlobalAgentProfileMutationPath, } from "../storage.js";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { createAgentProfileFault, parseAgentProfile, serializeAgentProfile, } from "../codecs/agent-profile.js";
+import { agentProfilePath, agentProfilesDir, globalAgentProfilePath, globalAgentProfilesDir, isSafeAgentProfileMutationPath, isSafeGlobalAgentProfileMutationPath, } from "../storage.js";
+// ---------------------------------------------------------------------------
+// Read (the only scoped read path).
+// ---------------------------------------------------------------------------
+export function readAgentProfiles(cwd) {
+    const profiles = loadAgentProfilesFromDir(agentProfilesDir(cwd), "project");
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+export function readAgentProfilesScoped(cwd, globalDir = globalAgentProfilesDir()) {
+    const profiles = [
+        ...loadAgentProfilesFromDir(globalDir, "global"),
+        ...loadAgentProfilesFromDir(agentProfilesDir(cwd), "project"),
+    ];
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+export function readGlobalAgentProfiles(globalDir = globalAgentProfilesDir()) {
+    const profiles = loadAgentProfilesFromDir(globalDir, "global");
+    annotateDuplicateProfileIds(profiles);
+    annotateAutoActivateConflicts(profiles);
+    return profiles;
+}
+export function readSingleAgentProfileFile(filePath, scope = "project") {
+    let source;
+    try {
+        source = readFileSync(filePath, "utf8");
+    }
+    catch (error) {
+        return createAgentProfileFault(filePath, scope, `Failed to read agent profile: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return parseAgentProfile(source, filePath, scope);
+}
+function loadAgentProfilesFromDir(dir, scope) {
+    if (!existsSync(dir))
+        return [];
+    let entries;
+    try {
+        entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+    }
+    catch {
+        return [];
+    }
+    return entries.map((name) => readSingleAgentProfileFile(join(dir, name), scope));
+}
+function annotateDuplicateProfileIds(profiles) {
+    const byScopeId = new Map();
+    for (const loaded of profiles) {
+        const key = `${loaded.scope}\0${loaded.profile.id}`;
+        const matches = byScopeId.get(key) ?? [];
+        matches.push(loaded);
+        byScopeId.set(key, matches);
+    }
+    for (const matches of byScopeId.values()) {
+        if (matches.length <= 1)
+            continue;
+        const files = matches.map((loaded) => basename(loaded.filePath)).join(", ");
+        for (const loaded of matches) {
+            loaded.diagnostics.push({
+                level: "error",
+                message: `Duplicate ${loaded.scope} profile id: ${loaded.profile.id} appears in multiple files (${files}).`,
+            });
+        }
+    }
+}
+function annotateAutoActivateConflicts(profiles) {
+    const byScope = new Map();
+    for (const loaded of profiles) {
+        if (loaded.profile.autoActivate !== true)
+            continue;
+        const matches = byScope.get(loaded.scope) ?? [];
+        matches.push(loaded);
+        byScope.set(loaded.scope, matches);
+    }
+    for (const [scope, candidates] of byScope) {
+        if (candidates.length <= 1)
+            continue;
+        const files = candidates.map((loaded) => basename(loaded.filePath)).join(", ");
+        for (const loaded of candidates) {
+            loaded.diagnostics.push({
+                level: "error",
+                field: "autoActivate",
+                message: `Multiple ${scope} profiles request auto-activation (${files}); exactly one is allowed.`,
+            });
+        }
+    }
+}
 export function agentProfileTargetPath(cwd, scope, id) {
     return scope === "global" ? globalAgentProfilePath(id) : agentProfilePath(cwd, id);
 }

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { createResourceCatalog } from "./catalog.js";
-import { hasAgentProfileErrors, loadAgentProfilesScoped } from "./agent-profile.js";
-import { loadPromptStacksScoped } from "./loader.js";
+import { hasAgentProfileErrors } from "./agent-profile.js";
+import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.js";
+import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.js";
 import { parseResourceSelector } from "./resource-identity.js";
 import { validateListProfilesRequest, validatePrepareRequest, validatePrepareResponse, ForgeHost, } from "./subagent/host-port.js";
 import { currentSubagentPromptRegistrationCatalog, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "./subagent-host.js";
@@ -23,9 +24,11 @@ export class ForgeWorkspace {
     get snapshotKnown() {
         return this.current !== undefined;
     }
-    reload(cwd) {
-        const stacks = loadPromptStacksScoped(cwd);
-        const profiles = loadAgentProfilesScoped(cwd);
+    reload(cwd, options = {}) {
+        // Untrusted projects must not expose project resources to in-process
+        // consumers; mirror the runtime's global-only gating for those workspaces.
+        const stacks = options.trusted === false ? readGlobalPromptStacks() : readPromptStacksScoped(cwd);
+        const profiles = options.trusted === false ? readGlobalAgentProfiles() : readAgentProfilesScoped(cwd);
         const snapshot = {
             cwd,
             stacks,
@@ -42,10 +45,17 @@ export class ForgeWorkspace {
             throw new Error("ForgeWorkspace has not been reloaded.");
         return this.current;
     }
-    /** Register the host port for the current snapshot. Returns the live host. */
+    /**
+     * Register the host port for the current snapshot. Idempotent: the host is
+     * only started once the first snapshot exists, so `available` never implies
+     * an unloaded workspace. On reload the live host is kept (its generation
+     * only changes via dispose).
+     */
     startHostPort(transport) {
+        if (!this.current)
+            throw new Error("ForgeWorkspace must be reloaded before starting the host port.");
         if (this.host?.isLive)
-            throw new Error("ForgeWorkspace host port is already live.");
+            return this.host;
         const host = new ForgeHost(transport, {
             capabilities: ["listProfiles", "prepare"],
             handle: (operation, payload) => this.operate(operation, payload),
@@ -178,7 +188,7 @@ export class ForgeWorkspace {
             diagnostics: [],
         };
         const runtime = {
-            baseSystemPrompt: request.baseSystemPrompt ?? "",
+            baseSystemPrompt: "",
             options: {
                 selectedTools: [],
                 toolSnippets: {},

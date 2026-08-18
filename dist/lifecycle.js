@@ -11,9 +11,11 @@ export function registerLifecycleHandlers(pi, state, deps) {
         // replacement pi-forge instance can capture a complete baseline.
         startupToolPolicyPending = false;
         deps.restoreActiveToolPolicy();
+        // Tear down the host first so a throwing subagent disposal cannot leak a
+        // live host that keeps advertising the stale snapshot.
+        deps.disposeForgeWorkspace();
         deps.disposePromptStackRuntime();
         await deps.disposeSubagentRuntime();
-        deps.disposeForgeWorkspace();
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;

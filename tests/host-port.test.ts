@@ -309,9 +309,26 @@ test("host port validators reject the old internal-shaped prepare payload and no
 	};
 	const rejected = validatePrepareRequest(oldShape);
 	assert.equal(rejected.ok, false);
-	assert.match(rejected.error, /prepare request/);
+	assert.match(rejected.error, /unsupported fields: request, snapshot, preflight, runtime/);
+
+	const rejectedLegacyBasePrompt = validatePrepareRequest({
+		...validPrepareBase(),
+		baseSystemPrompt: "base",
+	});
+	assert.equal(rejectedLegacyBasePrompt.ok, false);
+	assert.match(rejectedLegacyBasePrompt.error, /unsupported fields: baseSystemPrompt/);
 
 	const nonJson = {
+		...validPrepareBase(),
+		limits: { nested: { fn: () => undefined } },
+	};
+	const rejectedNonJson = validatePrepareRequest(nonJson);
+	assert.equal(rejectedNonJson.ok, false);
+	assert.match(rejectedNonJson.error, /not JSON-compatible/);
+});
+
+function validPrepareBase(): object {
+	return {
 		profile: "worker",
 		task: { text: "x" },
 		access: { level: "none", workspaces: [], network: "deny" },
@@ -320,9 +337,5 @@ test("host port validators reject the old internal-shaped prepare payload and no
 		resultProjection: { maxChars: 4000 },
 		parent: { depth: 0, maxDepth: 2 },
 		remoteEgressConsent: true,
-		callback: () => undefined,
 	};
-	const rejectedNonJson = validatePrepareRequest(nonJson);
-	assert.equal(rejectedNonJson.ok, false);
-	assert.match(rejectedNonJson.error, /not JSON-compatible/);
-});
+}

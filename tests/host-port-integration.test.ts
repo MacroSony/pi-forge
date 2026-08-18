@@ -8,6 +8,7 @@ import test from "node:test";
 // compiler, or profile internals).
 import {
 	ForgeHostClient,
+	ForgeHostPortError,
 	validateListProfilesResponse,
 	validatePrepareResponse,
 } from "../src/subagent/index.ts";
@@ -73,7 +74,6 @@ test("external consumer discovers the wired runtime host, lists profiles, prepar
 			resultProjection: { maxChars: 4000 },
 			parent: { depth: 0, maxDepth: 2 },
 			remoteEgressConsent: false,
-			baseSystemPrompt: "base",
 		});
 		assert.equal(prepared.ok, true, (prepared as { error?: string }).error ?? "prepare expected ok");
 		const prepareValidated = validatePrepareResponse(prepared.data);
@@ -91,6 +91,52 @@ test("external consumer discovers the wired runtime host, lists profiles, prepar
 		await harness.events.session_shutdown?.({}, ctx);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		assert.equal(unavailable, 1, "external client must observe host disposal");
+		client.disconnect();
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("host is not advertised before the first workspace snapshot exists", async () => {
+	const cwd = contextCwd();
+	try {
+		writeStack(cwd, "worker.json", {
+			schemaVersion: 1,
+			type: "pi-forge.prompt-stack",
+			id: "worker",
+			items: [],
+		});
+		writeProfile(cwd, "worker.json", {
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "worker",
+			model: { provider: "test-provider", id: "model-x" },
+			thinkingLevel: "high",
+			promptStack: "worker",
+		});
+
+		const harness = createHarness({
+			models: [{ provider: "test-provider", id: "model-x" }],
+			availableModels: [{ provider: "test-provider", id: "model-x" }],
+			currentModel: { provider: "test-provider", id: "model-x" },
+			thinkingLevel: "high",
+		});
+		const { ctx } = createContext(cwd);
+
+		// Before any session start, the host must NOT be discoverable.
+		const early = new ForgeHostClient(harness.eventsBus as never, { defaultTimeoutMs: 150, discoverSettleMs: 2 });
+		await assert.rejects(early.discover(150), (error: unknown) => {
+			assert.ok(error instanceof ForgeHostPortError);
+			assert.equal(error.code, "timeout");
+			return true;
+		});
+
+		// After the first session start, the snapshot exists and the host serves.
+		await startSession(harness, ctx);
+		const client = new ForgeHostClient(harness.eventsBus as never, { defaultTimeoutMs: 300, discoverSettleMs: 2 });
+		const connection = client.connect(await client.discover());
+		const listed = await client.request(connection, "listProfiles", {});
+		assert.equal(listed.ok, true);
 		client.disconnect();
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });

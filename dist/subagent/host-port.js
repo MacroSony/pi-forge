@@ -34,10 +34,16 @@ export class ForgeHostPortError extends Error {
     }
 }
 export function validateListProfilesRequest(value) {
-    if (value === undefined || (value !== null && typeof value === "object" && !Array.isArray(value))) {
+    if (value === undefined || value === null)
         return { ok: true, data: {} };
+    if (!isRecord(value))
+        return { ok: false, error: "listProfiles request must be an empty object." };
+    // The request intentionally carries no fields; reject any unknown fields so a
+    // future/old consumer cannot silently send material that the host must own.
+    if (Object.keys(value).length > 0) {
+        return { ok: false, error: `listProfiles request must be empty; unexpected fields: ${Object.keys(value).join(", ")}` };
     }
-    return { ok: false, error: "listProfiles request must be an empty object." };
+    return { ok: true, data: {} };
 }
 export function validateListProfilesResponse(value) {
     if (!isRecord(value) || !Array.isArray(value.profiles)) {
@@ -54,9 +60,16 @@ export function validateListProfilesResponse(value) {
         return { ok: false, error: "listProfiles response is not JSON-compatible." };
     return { ok: true, data: value };
 }
+const FORGE_PREPARE_REQUEST_FIELDS = new Set([
+    "profile", "task", "access", "limits", "backend", "resultProjection", "parent", "remoteEgressConsent",
+]);
 export function validatePrepareRequest(value) {
     if (!isRecord(value))
         return { ok: false, error: "prepare request must be an object." };
+    const unknown = Object.keys(value).filter((key) => !FORGE_PREPARE_REQUEST_FIELDS.has(key));
+    if (unknown.length > 0) {
+        return { ok: false, error: `prepare request contains unsupported fields: ${unknown.join(", ")}.` };
+    }
     if (typeof value.profile !== "string" || !value.profile.trim()) {
         return { ok: false, error: "prepare request requires a non-empty profile selector." };
     }

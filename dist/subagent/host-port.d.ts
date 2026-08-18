@@ -140,7 +140,6 @@ export interface ForgePrepareRequest {
         maxDepth: number;
     };
     remoteEgressConsent: boolean;
-    baseSystemPrompt?: string;
 }
 export interface ForgePrepareResponse {
     profileId: string;
