@@ -96,7 +96,7 @@ function promptStack(overrides: Partial<PromptStack> = {}): LoadedPromptStack {
 			mode: "replace",
 			tools: { allow: ["read", "paint_*"] },
 			items: [
-				{ kind: "block", id: "system", role: "system", content: "Built in {{date}} and custom {{customMacro::{{upper::x}}}}." },
+				{ kind: "block", id: "system", role: "system", content: "Built in {{date}} and custom {{ extensions.customMacro }}." },
 				{ kind: "slot", id: "custom", role: "system", slot: "custom-slot" },
 				{ kind: "slot", id: "history", slot: "chat-history" },
 			],
@@ -263,10 +263,10 @@ test("snapshot validation accepts project and global qualified stack references"
 });
 
 test("dependency scanning handles nested macros, static variables, and anonymous registrations", () => {
-	assert.deepEqual(collectMacroCommandNames("{{outer::{{inner::x}}}} {{date}}"), ["date", "inner", "outer"]);
+	assert.deepEqual(collectMacroCommandNames("{{ extensions.outer }} {{ extensions.inner }} {{ date }}"), ["inner", "outer"]);
 	const result = collectSubagentPromptDependencies(promptStack({
 		variables: { local: "value" },
-		items: [{ kind: "block", id: "one", role: "system", content: "{{local}} {{anonymous}}" }],
+		items: [{ kind: "block", id: "one", role: "system", content: "{{local}} {{ extensions.anonymous }}" }],
 	}).stack, { macros: [{ name: "anonymous" }], slots: [] });
 	assert.deepEqual(result.dependencies.map((item) => item.identity), ["macro:anonymous:anonymous"]);
 	assert.equal(result.diagnostics.some((item) => item.code === "profile.dependency-anonymous"), true);

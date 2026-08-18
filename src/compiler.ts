@@ -11,7 +11,7 @@ import type {
 	PromptStackSlotItem,
 } from "./types.ts";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
-import { expandMacros } from "./macro-engine.ts";
+import { ForgeTemplateRenderer } from "./template-render.ts";
 import { renderSlotText } from "./slot-renderers.ts";
 
 const ZERO_USAGE = {
@@ -32,12 +32,13 @@ export function compileSystemPrompt(
 ): CompileSystemPromptResult {
 	const diagnostics: PromptStackDiagnostic[] = [];
 	const parts: string[] = [];
+	const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
 
 	for (const item of enabledItems(stack)) {
 		if (item.role !== "system") continue;
 
 		if (item.kind === "block") {
-			const text = expandMacros(item.content, stack, runtime, diagnostics, item.id).trim();
+			const text = templateRenderer.render(item.content, diagnostics, item.id).trim();
 			if (text) parts.push(text);
 			continue;
 		}
@@ -47,7 +48,7 @@ export function compileSystemPrompt(
 			continue;
 		}
 
-		const rendered = renderSlotText(item, stack, runtime, diagnostics).trim();
+		const rendered = renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment()).trim();
 		if (rendered) parts.push(rendered);
 	}
 
@@ -79,6 +80,7 @@ export function compileMessages(
 	let messages: AgentMessage[] = [];
 	let messageSources: CompileMessageSource[] = [];
 	let insertedHistory = false;
+	const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
 
 	for (const item of enabledItems(stack)) {
 		if (item.kind === "slot" && item.slot === "chat-history") {
@@ -101,8 +103,8 @@ export function compileMessages(
 		if (!item.role || item.role === "system") continue;
 
 		const content = item.kind === "block"
-			? expandMacros(item.content, stack, runtime, diagnostics, item.id)
-			: renderSlotText(item, stack, runtime, diagnostics);
+			? templateRenderer.render(item.content, diagnostics, item.id)
+			: renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
 
 		if (!content.trim()) continue;
 		const message = createSyntheticMessage(item.role, content, stack, runtime);

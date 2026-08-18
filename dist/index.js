@@ -19,6 +19,7 @@ import { createRuntimeState } from "./runtime-state.js";
 export { formatResourceKey, formatResourceSelector, isResourceScope, isValidResourceId, parseResourceSelector, resourceKey, RESOURCE_ID_PATTERN, } from "./resource-identity.js";
 export { computeEffectiveView, createResourceCatalog, resolveEffectiveResource, resolveExactResource, resolveResourceSelector, } from "./catalog.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
+export { FORGE_V1_FILTERS, FORGE_V1_MAX_EXTENSION_OUTPUT, FORGE_V1_MAX_TEMPLATE_OUTPUT, forgeV1, } from "./forge-v1/index.js";
 export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
 export { chooseAutoActivateStack, chooseDefaultStack, isDisabledPromptStackId, isUsablePromptStack, isValidPromptStackId, loadPromptStacks, loadPromptStacksScoped, validatePromptStack, } from "./loader.js";
 export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, loadAgentProfilesScoped, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, validateAgentProfilePromptStackScope, isAgentProfileProvenance, } from "./agent-profile.js";

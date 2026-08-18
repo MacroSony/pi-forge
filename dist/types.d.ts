@@ -98,7 +98,7 @@ export type PromptVariableValue = PromptVariablePrimitive | PromptVariableValue[
     [key: string]: PromptVariableValue;
 };
 export interface PromptStack {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     type?: "pi-forge.prompt-stack";
     id: string;
     name?: string;
@@ -110,6 +110,7 @@ export interface PromptStack {
     tools?: PromptResourcePolicy;
     skills?: PromptResourcePolicy;
     variables?: Record<string, string>;
+    parameters?: Record<string, PromptVariableValue>;
     regex?: PromptRegexConfig;
     items: PromptStackItem[];
     import?: Record<string, unknown>;

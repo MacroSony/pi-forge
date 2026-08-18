@@ -12,6 +12,7 @@ import type {
 	PromptStackDiagnostic,
 	PromptStackItem,
 	PromptStackRole,
+	PromptVariableValue,
 } from "./types.ts";
 import { SUPPORTED_SLOTS } from "./types.ts";
 
@@ -218,9 +219,11 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 			message: `Stack id ${rawId} must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens; falling back to ${id}.`,
 		});
 	}
-	const schemaVersion = 1;
-	if (obj.schemaVersion !== 1) {
-		diagnostics.push({ level: "warning", message: "Missing or unsupported schemaVersion; assuming 1." });
+	let schemaVersion: 1 | 2 = 1;
+	if (obj.schemaVersion === 2) {
+		schemaVersion = 2;
+	} else if (obj.schemaVersion !== undefined && obj.schemaVersion !== 1) {
+		diagnostics.push({ level: "warning", message: `Unsupported schemaVersion; assuming 1.` });
 	}
 
 	const items = Array.isArray(obj.items) ? obj.items.map((item, index) => normalizeItem(item, index, diagnostics)) : [];
@@ -247,7 +250,8 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		context: isPlainObject(obj.context) ? (obj.context as PromptStack["context"]) : undefined,
 		tools: normalizeResourcePolicy(obj.tools, "tools", diagnostics),
 		skills: normalizeResourcePolicy(obj.skills, "skills", diagnostics),
-		variables: normalizeStringRecord(obj.variables),
+		variables: schemaVersion === 1 ? normalizeStringRecord(obj.variables) : undefined,
+		parameters: schemaVersion === 2 ? normalizeParameterRecord(obj.parameters, diagnostics) : undefined,
 		regex: normalizeRegexConfig(obj.regex, diagnostics),
 		items,
 		import: isPlainObject(obj.import) ? (obj.import as Record<string, unknown>) : undefined,
@@ -372,6 +376,7 @@ function validateRawPromptStackShape(raw: unknown): PromptStackDiagnostic[] {
 	validateRawDefaults(raw.defaults, diagnostics);
 	validateRawContext(raw.context, diagnostics);
 	validateRawVariables(raw.variables, diagnostics);
+	validateRawParameters(raw, diagnostics);
 
 	if (!Array.isArray(raw.items)) return diagnostics;
 	for (const [index, item] of raw.items.entries()) {
@@ -449,6 +454,26 @@ function validateRawVariables(value: unknown, diagnostics: PromptStackDiagnostic
 	}
 }
 
+function validateRawParameters(raw: Record<string, unknown>, diagnostics: PromptStackDiagnostic[]): void {
+	const schemaVersion = raw.schemaVersion === 2 ? 2 : 1;
+	if (schemaVersion === 2 && raw.variables !== undefined) {
+		diagnostics.push({ level: "warning", message: "schemaVersion 2 stacks use parameters; variables is ignored." });
+	}
+	if (schemaVersion === 1 && raw.parameters !== undefined) {
+		diagnostics.push({ level: "warning", message: "schemaVersion 1 stacks use variables; parameters is ignored." });
+	}
+	if (raw.parameters === undefined) return;
+	if (!isPlainObject(raw.parameters)) {
+		diagnostics.push({ level: "error", message: "Stack parameters must be an object when provided." });
+		return;
+	}
+	for (const [name, value] of Object.entries(raw.parameters)) {
+		if (!isPromptVariableValue(value)) {
+			diagnostics.push({ level: "error", message: `Stack parameter ${name} must be a JSON-compatible value.` });
+		}
+	}
+}
+
 function validateOptionalString(
 	value: Record<string, unknown>,
 	key: string,
@@ -517,6 +542,25 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeParameterRecord(value: unknown, diagnostics: PromptStackDiagnostic[]): Record<string, PromptVariableValue> | undefined {
+	if (!isPlainObject(value)) return undefined;
+	const result: Record<string, PromptVariableValue> = {};
+	for (const [key, raw] of Object.entries(value)) {
+		if (isPromptVariableValue(raw)) result[key] = raw;
+	}
+	return result;
+}
+
+function isPromptVariableValue(value: unknown): value is PromptVariableValue {
+	if (value === null) return true;
+	const type = typeof value;
+	if (type === "string" || type === "boolean") return true;
+	if (type === "number") return Number.isFinite(value);
+	if (Array.isArray(value)) return value.every(isPromptVariableValue);
+	if (!value || typeof value !== "object") return false;
+	return Object.values(value as Record<string, unknown>).every(isPromptVariableValue);
 }
 
 function normalizeStringRecord(value: unknown): Record<string, string> | undefined {

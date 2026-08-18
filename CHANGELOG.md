@@ -13,6 +13,20 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - Replaced the proposed six-phase 0.5.0 plan with the accepted [lean 0.5.0 architecture plan](docs/design/architecture-0.5.md). The original full proposal and Phase-0 evidence are archived under [docs/design/archive/0.5-full-proposal/](docs/design/archive/0.5-full-proposal/README.md) and remain the long-term target.
 - Accepted lean 0.5.0 decisions: complete SillyTavern removal; mutable-variable removal; `forge-v1` with a redesigned pure trusted-extension port; regex `display`/`both` removal while `finalize` is retained under lifecycle-adapter ownership; minimal repositories/codecs with fingerprint and atomic writes deferred; minimal `ForgeWorkspace`; versioned `/subagent` host port with mandatory lifecycle semantics; optional `pi-forge-subagents` package without main-package delegation UI and with dedicated `subagents.json` files; explicit root default, root named extension API, and `/subagent` surfaces.
 
+### Removed
+
+- SillyTavern importer, `/preset import-silly`, its reports, guide, example, and tests are removed. 0.4 is the last supported conversion path.
+- Mutable turn/session variable stores, `pi-forge-variable-state` session entries, set/get/clear variable macros, and the `variables` slot are removed. Static reusable values now live on stack `parameters` in schema v2 or legacy `variables` in v1.
+- Regex `display` and `both` effects are removed and rejected as validation errors; only `outgoing` and `finalize` remain.
+
+### Changed
+
+- Prompt compilation uses the `forge-v1` parse/analyze/render engine with a frozen `PromptEnvironment` (`runtime.*`, `parameters.*`, `extensions.*`). Preview, runtime, and subagent preparation share the same compiler entry.
+- `registerMacro` and `registerSlot` move to a pure-contract extension port with immutable `env`, declared dependencies, bounded output, and strict undefined-path errors.
+- Prompt-stack schema v2 introduces immutable `parameters`; unversioned/v1 stacks continue to read through the legacy `variables` field.
+- `finalize` regex remains lifecycle-owned and is excluded from preview, which now reports an informational diagnostic.
+- Legacy 0.4 nested macro syntax (for example `{{upper::x}}`, `{{json::...}}`, `{{iftools::...}}`) is no longer executed by the compiler and must migrate to forge-v1 syntax.
+
 ## [0.4.1] - 2026-08-17
 
 ### Added

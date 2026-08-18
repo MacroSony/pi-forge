@@ -3,10 +3,7 @@ import { getRegisteredSlots, } from "./slot-renderers.js";
 import { compileMessages, compileSystemPrompt } from "./compiler.js";
 import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, negotiateSubagentTools, prepareSubagentInitialMessages, } from "./subagent/contract.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
-const BUILT_IN_MACROS = new Set([
-    "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
-    "trim", "upper", "lower", "json", "xml", "iftools", "ifslot",
-]);
+import { forgeV1 } from "./forge-v1/index.js";
 const BUILT_IN_SLOTS = new Set([
     "chat-history", "tools", "tool-guidelines", "skills", "project-context", "append-system-prompt",
     "date", "cwd", "date-cwd", "active-model", "pi-docs",
@@ -151,7 +148,10 @@ export function collectSubagentPromptDependencies(stack, registrations = current
     const missing = new Map();
     const macroCatalog = new Map(registrations.macros.map((entry) => [entry.name, entry]));
     const slotCatalog = new Map(registrations.slots.map((entry) => [entry.name, entry]));
-    const staticVariables = new Set(Object.keys(stack.variables ?? {}));
+    const parameters = new Set([
+        ...Object.keys(stack.parameters ?? {}),
+        ...Object.keys(stack.variables ?? {}),
+    ]);
     for (const item of stack.items) {
         if (item.kind === "slot") {
             if (BUILT_IN_SLOTS.has(item.slot))
@@ -159,8 +159,36 @@ export function collectSubagentPromptDependencies(stack, registrations = current
             addDependency("slot", item.slot, slotCatalog, dependencies, missing, diagnostics, `promptStack.items.${item.id}`);
             continue;
         }
-        for (const name of collectMacroCommandNames(item.content)) {
-            if (BUILT_IN_MACROS.has(name) || staticVariables.has(name))
+        const parsed = forgeV1.parse(item.content);
+        if (!parsed.ok) {
+            diagnostics.push({
+                level: "error",
+                code: "prompt-stack.template-parse",
+                path: `promptStack.items.${item.id}`,
+                message: parsed.error.message,
+            });
+            continue;
+        }
+        const analyzed = forgeV1.analyze(parsed.ast);
+        for (const error of analyzed.errors) {
+            diagnostics.push({
+                level: "error",
+                code: "prompt-stack.template-analyze",
+                path: `promptStack.items.${item.id}`,
+                message: error.message,
+            });
+        }
+        for (const dependency of analyzed.dependencies) {
+            let name;
+            if (dependency.kind === "extensions")
+                name = dependency.path?.[1];
+            if (dependency.kind === "legacy") {
+                const candidate = dependency.path?.[0];
+                if (!candidate || parameters.has(candidate) || LEGACY_BUILTIN_RUNTIME.has(candidate))
+                    continue;
+                name = candidate;
+            }
+            if (!name)
                 continue;
             addDependency("macro", name, macroCatalog, dependencies, missing, diagnostics, `promptStack.items.${item.id}`);
         }
@@ -171,9 +199,24 @@ export function collectSubagentPromptDependencies(stack, registrations = current
         diagnostics,
     };
 }
+const LEGACY_BUILTIN_RUNTIME = new Set([
+    "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
+]);
 export function collectMacroCommandNames(text) {
+    const parsed = forgeV1.parse(text);
+    if (!parsed.ok)
+        return [];
+    const analyzed = forgeV1.analyze(parsed.ast);
     const names = new Set();
-    collectMacroCommandsInto(text, names);
+    for (const dependency of analyzed.dependencies) {
+        if (dependency.kind === "extensions")
+            names.add(dependency.path?.[1] ?? "");
+        if (dependency.kind === "legacy") {
+            const candidate = dependency.path?.[0];
+            if (candidate && !LEGACY_BUILTIN_RUNTIME.has(candidate))
+                names.add(candidate);
+        }
+    }
     return [...names].sort();
 }
 export function appendProtectedAgentTask(compiledMessages, protectedTask) {
@@ -214,65 +257,6 @@ function addDependency(kind, name, catalog, dependencies, missing, diagnostics, 
     dependencies.set(key, { kind, name, identity, source: registration.source });
     if (!registration.source)
         diagnostics.push({ level: "warning", code: "profile.dependency-anonymous", path, message: `Custom ${kind} ${name} has no stable source identity.` });
-}
-function collectMacroCommandsInto(text, names) {
-    let index = 0;
-    while (index < text.length) {
-        const start = text.indexOf("{{", index);
-        if (start === -1)
-            return;
-        const end = findMacroEnd(text, start + 2);
-        if (end === undefined)
-            return;
-        const expression = text.slice(start + 2, end).trim();
-        const parts = splitMacroExpression(expression);
-        const command = parts[0]?.trim();
-        if (command && /^[A-Za-z][A-Za-z0-9_.-]*$/.test(command))
-            names.add(command);
-        for (const argument of parts.slice(1))
-            collectMacroCommandsInto(argument, names);
-        index = end + 2;
-    }
-}
-function findMacroEnd(text, start) {
-    let depth = 1;
-    for (let index = start; index < text.length - 1; index++) {
-        const pair = text.slice(index, index + 2);
-        if (pair === "{{") {
-            depth++;
-            index++;
-        }
-        else if (pair === "}}") {
-            depth--;
-            if (depth === 0)
-                return index;
-            index++;
-        }
-    }
-    return undefined;
-}
-function splitMacroExpression(expression) {
-    const parts = [];
-    let start = 0;
-    let depth = 0;
-    for (let index = 0; index < expression.length - 1; index++) {
-        const pair = expression.slice(index, index + 2);
-        if (pair === "{{") {
-            depth++;
-            index++;
-        }
-        else if (pair === "}}" && depth > 0) {
-            depth--;
-            index++;
-        }
-        else if (pair === "::" && depth === 0) {
-            parts.push(expression.slice(start, index));
-            start = index + 2;
-            index++;
-        }
-    }
-    parts.push(expression.slice(start));
-    return parts;
 }
 function findLastUserMessageIndex(messages) {
     for (let index = messages.length - 1; index >= 0; index--) {

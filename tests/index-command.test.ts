@@ -480,8 +480,8 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 		systemPrompt: "base",
 		systemPromptOptions: ctx.getSystemPromptOptions(),
 	}, ctx);
-	assert.equal(startResult.systemPrompt, "Hello {{missing}}");
-	assert.equal(statuses["pi-forge-diagnostics"], "forge:0e/1w");
+	assert.equal(startResult.systemPrompt, "base");
+	assert.equal(statuses["pi-forge-diagnostics"], "forge:1e/1w");
 
 	const firstContext = await harness.events.context({ type: "context", messages: [{ role: "user", content: "latest", timestamp: 1 }] }, ctx);
 	assert.equal(firstContext.messages.length, 2);
@@ -491,7 +491,7 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 	assert.equal(secondContext, undefined);
 
 	await harness.commands.preset.handler("diagnostics", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /Unresolved macro: \{\{missing\}\}/);
+	assert.match(editors.at(-1)?.text ?? "", /Undefined forge-v1 path: \{\{missing\}\}/);
 });
 
 test("message_end applies destructive finalize regex to assistant messages", async () => {

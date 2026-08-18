@@ -28,6 +28,14 @@ export function buildPreview(
 	const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
 	const messages = compileMessages(target.stack, runtime, sessionMessages);
 	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
+	for (const rule of target.stack.regex?.rules ?? []) {
+		if (rule.effect === "finalize" && rule.enabled !== false) {
+			diagnostics.push({
+				level: "info",
+				message: "finalize regex rules are not represented in preview.",
+			});
+		}
+	}
 	const messageSections = messages.messages.map((message, index) => {
 		const content = agentMessageToPreviewText(message);
 		const source = messages.messageSources[index];

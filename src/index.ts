@@ -48,6 +48,28 @@ export {
 	type PromptMacroRenderer,
 } from "./macro-engine.ts";
 export {
+	FORGE_V1_FILTERS,
+	FORGE_V1_MAX_EXTENSION_OUTPUT,
+	FORGE_V1_MAX_TEMPLATE_OUTPUT,
+	forgeV1,
+} from "./forge-v1/index.ts";
+export type {
+	ForgeV1Error,
+	ForgeV1ErrorKind,
+	ForgeV1TemplateEngine,
+	PromptEnvironment,
+	PromptEnvironmentValue,
+	TemplateDependency,
+	TemplateDependencyKind,
+	TemplateNode,
+	TemplateOutputNode,
+	TemplateParseResult,
+	TemplatePredicate,
+	TemplateRenderResult,
+	TemplateSourceSpan,
+	TemplateTextNode,
+} from "./forge-v1/index.ts";
+export {
 	getRegisteredSlots,
 	registerSlot,
 	type PromptSlotDefinition,

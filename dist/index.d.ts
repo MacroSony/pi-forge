@@ -2,6 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export { formatResourceKey, formatResourceSelector, isResourceScope, isValidResourceId, parseResourceSelector, resourceKey, RESOURCE_ID_PATTERN, type ResourceKey, type ResourceScope, type ResourceSelector, type ResourceSelectorParseResult, } from "./resource-identity.ts";
 export { computeEffectiveView, createResourceCatalog, resolveEffectiveResource, resolveExactResource, resolveResourceSelector, type ResourceCatalog, type ScopedResource, } from "./catalog.ts";
 export { getRegisteredMacros, registerMacro, type PromptMacroDefinition, type PromptMacroRenderContext, type PromptMacroRenderer, } from "./macro-engine.ts";
+export { FORGE_V1_FILTERS, FORGE_V1_MAX_EXTENSION_OUTPUT, FORGE_V1_MAX_TEMPLATE_OUTPUT, forgeV1, } from "./forge-v1/index.ts";
+export type { ForgeV1Error, ForgeV1ErrorKind, ForgeV1TemplateEngine, PromptEnvironment, PromptEnvironmentValue, TemplateDependency, TemplateDependencyKind, TemplateNode, TemplateOutputNode, TemplateParseResult, TemplatePredicate, TemplateRenderResult, TemplateSourceSpan, TemplateTextNode, } from "./forge-v1/index.ts";
 export { getRegisteredSlots, registerSlot, type PromptSlotDefinition, type PromptSlotRenderContext, type PromptSlotRenderer, } from "./slot-renderers.ts";
 export { type PromptExtensionArgumentDefinition, type PromptExtensionOptionDefinition, type PromptExtensionOptionsSchema, type PromptExtensionOptionType, type PromptRegistryEntry, } from "./extension-registry.ts";
 export { type ForgeExtensionApi, type ForgeExtensionRegister, } from "./forge-extensions.ts";

@@ -61,14 +61,14 @@ registerSlot({ name: "date-cwd", description: "Current date and working director
 registerSlot({ name: "active-model", description: "Current model provider/id.", render: ({ runtime }) => renderActiveModel(runtime) });
 registerSlot({ name: "pi-docs", description: "Pi documentation guidance.", render: () => renderPiDocsGuidance() });
 registeringBuiltInSlots = false;
-export function renderSlotText(item, stack, runtime, diagnostics) {
+export function renderSlotText(item, stack, runtime, diagnostics, env) {
     const definition = SLOT_RENDERERS.get(item.slot);
     if (!definition) {
         diagnostics.push({ level: "warning", message: `Unsupported slot: ${item.slot}`, itemId: item.id });
         return "";
     }
     try {
-        return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics)) ?? "";
+        return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
     }
     catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -95,11 +95,12 @@ export function registerSlot(definition) {
 export function getRegisteredSlots() {
     return [...SLOT_RENDERERS.values()];
 }
-function createSlotRenderContext(item, stack, runtime, diagnostics) {
+function createSlotRenderContext(item, stack, runtime, diagnostics, env) {
     return {
         item,
         stack,
         runtime,
+        env,
         diagnostics,
         options: item.options ?? {},
         helpers: promptRenderHelpers,

@@ -410,7 +410,7 @@ test("static stack variables resolve directly in templates", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
-test("macro arguments expand nested macros", () => {
+test("forge-v1 filters transform values", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "nested-macros",
@@ -420,7 +420,7 @@ test("macro arguments expand nested macros", () => {
 				id: "nested",
 				enabled: true,
 				role: "system",
-				content: "{{upper::{{lastUserMessage}}}}",
+				content: "{{ lastUserMessage | upper }}",
 			},
 		],
 	};
@@ -431,11 +431,12 @@ test("macro arguments expand nested macros", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
-test("macro filters transform expanded arguments", () => {
+test("forge-v1 pipelines combine filters", () => {
 	const latestUserMessage = ' Use "fast" & <plan> ';
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "macro-filters",
+		variables: { word: "LOUD" },
 		items: [
 			{
 				kind: "block",
@@ -443,10 +444,10 @@ test("macro filters transform expanded arguments", () => {
 				enabled: true,
 				role: "system",
 				content: [
-					"json={{json::{{lastUserMessage}}}}",
-					"xml={{xml::{{lastUserMessage}}}}",
-					"upper={{upper::{{trim::{{lastUserMessage}}}}}}",
-					"lower={{lower::{{trim::LOUD}}}}",
+					"json={{ lastUserMessage | json }}",
+					"xml={{ lastUserMessage | xml }}",
+					"upper={{ lastUserMessage | trim | upper }}",
+					"lower={{ word | lower }}",
 				].join("\n"),
 			},
 		],
@@ -463,15 +464,15 @@ test("macro filters transform expanded arguments", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
-test("registered custom macros use the public render context", () => {
+test("registered custom macros use the forge-v1 extension port", () => {
 	const unregister = registerMacro({
 		name: "testCustomMacro",
 		description: "Test-only custom macro.",
-		args: [{ name: "value", required: true }],
-		render: (context) => [
-			context.helpers.formatDate(context.runtime.now),
-			context.expandArg(0).toUpperCase(),
-			context.variables.toMacroText(context.variables.get("topic")),
+		dependencies: ["parameters.topic"],
+		render: ({ env, helpers }) => [
+			String(env.runtime.date),
+			String(env.parameters.topic).toUpperCase(),
+			helpers.escapeXml(String(env.parameters.topic)),
 		].join("|"),
 	});
 
@@ -481,12 +482,12 @@ test("registered custom macros use the public render context", () => {
 			schemaVersion: 1,
 			id: "custom-macro",
 			variables: { topic: "static topic" },
-			items: [{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{testCustomMacro::{{lastUserMessage}}}}" }],
+			items: [{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{ extensions.testCustomMacro }}" }],
 		};
 
 		const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "hello" }), "base");
 
-		assert.equal(result.systemPrompt, "2026-06-13|HELLO|static topic");
+		assert.equal(result.systemPrompt, "2026-06-13|STATIC TOPIC|static topic");
 		assert.deepEqual(result.diagnostics, []);
 	} finally {
 		unregister();
@@ -495,22 +496,19 @@ test("registered custom macros use the public render context", () => {
 	assert.ok(!getRegisteredMacros().some((macro) => macro.name === "testCustomMacro"));
 });
 
-test("conditional macros render selected branches", () => {
+test("forge-v1 if blocks render selected branches", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "conditional-macros",
 		tools: { allow: ["read"] },
-		variables: { name: "Ada", mood: "bright" },
 		items: [
 			{
 				kind: "block",
 				id: "conditions",
 				enabled: true,
 				role: "system",
-				content: [
-					"iftools={{iftools::read::tool::no-tool}}/{{iftools::bash::tool::no-tool}}",
-					"ifslot={{ifslot::chat-history::slot::no-slot}}/{{ifslot::missing::slot::no-slot}}",
-				].join("\n"),
+				content: "{% if runtime.tool.read %}tool{% else %}no-tool{% endif %}/{% if runtime.tool.bash %}tool{% else %}no-tool{% endif %}\n" +
+					"{% if runtime.slot.chat-history %}slot{% else %}no-slot{% endif %}/{% if runtime.slot.missing %}slot{% else %}no-slot{% endif %}",
 			},
 			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
 		],
@@ -519,10 +517,7 @@ test("conditional macros render selected branches", () => {
 
 	const result = compileSystemPrompt(stack, runtime({ options: { ...baseRuntime.options, selectedTools: ["read", "bash"] } }), "base");
 
-	assert.equal(result.systemPrompt, [
-		"iftools=tool/no-tool",
-		"ifslot=slot/no-slot",
-	].join("\n"));
+	assert.equal(result.systemPrompt, "tool/no-tool\nslot/no-slot");
 	assert.deepEqual(result.diagnostics, []);
 });
 
@@ -539,7 +534,7 @@ test("time macro renders from the runtime clock", () => {
 	assert.deepEqual(result.diagnostics, []);
 });
 
-test("unknown macros are kept and diagnosed", () => {
+test("undefined forge-v1 paths are strict errors", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "unknown",
@@ -548,33 +543,32 @@ test("unknown macros are kept and diagnosed", () => {
 
 	const result = compileSystemPrompt(stack, runtime(), "base");
 
-	assert.equal(result.systemPrompt, "A {{missing}}");
-	assert.equal(result.diagnostics[0]?.level, "warning");
+	assert.equal(result.systemPrompt, "base");
+	assert.equal(result.diagnostics[0]?.level, "error");
 	assert.equal(result.diagnostics[0]?.itemId, "block");
-	assert.match(result.diagnostics[0]?.message ?? "", /Unresolved macro/);
+	assert.match(result.diagnostics[0]?.message ?? "", /Undefined forge-v1 path/);
 });
 
-test("unknown macros do not expand nested arguments", () => {
+test("undefined forge-v1 output produces a render error", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "unknown-nested",
-		defaults: { unresolvedMacroPolicy: "error" },
 		items: [
 			{
 				kind: "block",
 				id: "block",
 				enabled: true,
 				role: "system",
-				content: "A {{missing::{{lastUserMessage}}}} B",
+				content: "A {{ missing }} B",
 			},
 		],
 	};
 
 	const result = compileSystemPrompt(stack, runtime(), "base");
 
-	assert.equal(result.systemPrompt, "A {{missing::{{lastUserMessage}}}} B");
+	assert.equal(result.systemPrompt, "base");
 	assert.equal(result.diagnostics[0]?.level, "error");
-	assert.equal(result.diagnostics[0]?.message, "Unresolved macro: {{missing::{{lastUserMessage}}}}");
+	assert.match(result.diagnostics[0]?.message ?? "", /Undefined forge-v1 path/);
 });
 
 test("duplicate chat-history slots warn and only expand once by default", () => {

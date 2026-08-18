@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PromptEnvironment } from "./forge-v1/types.ts";
 import { applyResourcePolicy } from "./policy.ts";
 import type {
 	PromptRuntime,
@@ -21,6 +22,7 @@ export interface PromptSlotRenderContext {
 	item: PromptStackSlotItem;
 	stack: PromptStack;
 	runtime: PromptRuntime;
+	env: PromptEnvironment;
 	diagnostics: PromptStackDiagnostic[];
 	options: Record<string, unknown>;
 	helpers: PromptRenderHelpers;
@@ -112,6 +114,7 @@ export function renderSlotText(
 	stack: PromptStack,
 	runtime: PromptRuntime,
 	diagnostics: PromptStackDiagnostic[],
+	env: PromptEnvironment,
 ): string {
 	const definition = SLOT_RENDERERS.get(item.slot);
 	if (!definition) {
@@ -120,7 +123,7 @@ export function renderSlotText(
 	}
 
 	try {
-		return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics)) ?? "";
+		return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error);
 		diagnostics.push({ level: "error", message: `Slot "${item.slot}" failed: ${detail}`, itemId: item.id });
@@ -153,11 +156,13 @@ function createSlotRenderContext(
 	stack: PromptStack,
 	runtime: PromptRuntime,
 	diagnostics: PromptStackDiagnostic[],
+	env: PromptEnvironment,
 ): PromptSlotRenderContext {
 	return {
 		item,
 		stack,
 		runtime,
+		env,
 		diagnostics,
 		options: item.options ?? {},
 		helpers: promptRenderHelpers,

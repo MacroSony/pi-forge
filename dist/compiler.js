@@ -1,5 +1,5 @@
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.js";
-import { expandMacros } from "./macro-engine.js";
+import { ForgeTemplateRenderer } from "./template-render.js";
 import { renderSlotText } from "./slot-renderers.js";
 const ZERO_USAGE = {
     input: 0,
@@ -13,11 +13,12 @@ const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
 export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
     const diagnostics = [];
     const parts = [];
+    const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
     for (const item of enabledItems(stack)) {
         if (item.role !== "system")
             continue;
         if (item.kind === "block") {
-            const text = expandMacros(item.content, stack, runtime, diagnostics, item.id).trim();
+            const text = templateRenderer.render(item.content, diagnostics, item.id).trim();
             if (text)
                 parts.push(text);
             continue;
@@ -26,7 +27,7 @@ export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
             diagnostics.push({ level: "warning", message: "chat-history slot cannot be placed in the system prompt.", itemId: item.id });
             continue;
         }
-        const rendered = renderSlotText(item, stack, runtime, diagnostics).trim();
+        const rendered = renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment()).trim();
         if (rendered)
             parts.push(rendered);
     }
@@ -54,6 +55,7 @@ export function compileMessages(stack, runtime, originalMessages) {
     let messages = [];
     let messageSources = [];
     let insertedHistory = false;
+    const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
     for (const item of enabledItems(stack)) {
         if (item.kind === "slot" && item.slot === "chat-history") {
             if (insertedHistory && !stack.context?.allowDuplicateChatHistory) {
@@ -74,8 +76,8 @@ export function compileMessages(stack, runtime, originalMessages) {
         if (!item.role || item.role === "system")
             continue;
         const content = item.kind === "block"
-            ? expandMacros(item.content, stack, runtime, diagnostics, item.id)
-            : renderSlotText(item, stack, runtime, diagnostics);
+            ? templateRenderer.render(item.content, diagnostics, item.id)
+            : renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
         if (!content.trim())
             continue;
         const message = createSyntheticMessage(item.role, content, stack, runtime);
