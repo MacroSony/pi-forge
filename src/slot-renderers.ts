@@ -7,17 +7,13 @@ import type {
 	PromptStackDiagnostic,
 	PromptStackSlotFormat,
 	PromptStackSlotItem,
-	PromptVariableValue,
 } from "./types.ts";
 import {
-	collectStaticVariables,
 	createVariableAccess,
 	promptRenderHelpers,
 	selectedToolNames,
-	selectedVariableScopes,
 	type PromptRenderHelpers,
 	type PromptVariableAccess,
-	type PromptVariableScope,
 } from "./render-helpers.ts";
 import { assertRegistryName, type PromptExtensionOptionsSchema, type PromptRegistryEntry } from "./extension-registry.ts";
 
@@ -109,17 +105,6 @@ registerSlot({ name: "cwd", description: "Current working directory.", render: (
 registerSlot({ name: "date-cwd", description: "Current date and working directory.", options: { includeTime: INCLUDE_TIME_OPTION }, render: (context) => [renderDate(context), renderCwd(context.runtime)].join("\n") });
 registerSlot({ name: "active-model", description: "Current model provider/id.", render: ({ runtime }) => renderActiveModel(runtime) });
 registerSlot({ name: "pi-docs", description: "Pi documentation guidance.", render: () => renderPiDocsGuidance() });
-registerSlot({
-	name: "variables",
-	description: "Static, session, and turn variables.",
-	options: {
-		format: FORMAT_OPTION,
-		includeStatic: { type: "boolean", default: true, description: "Include static stack variables." },
-		includeSession: { type: "boolean", default: true, description: "Include session variables." },
-		includeTurn: { type: "boolean", default: true, description: "Include turn variables." },
-	},
-	render: renderVariables,
-});
 registeringBuiltInSlots = false;
 
 export function renderSlotText(
@@ -356,59 +341,4 @@ function piDocsPaths(): { readme: string; docs: string; examples: string } {
 			examples: `${fallbackRoot}/examples`,
 		};
 	}
-}
-
-function renderVariables({ stack, runtime, options, format, variables, helpers }: PromptSlotRenderContext): string {
-	const scopes = selectedVariableScopes(options);
-	const store = runtime.variables;
-	const grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>> = {
-		static: {},
-		session: {},
-		turn: {},
-	};
-
-	if (scopes.includes("static")) grouped.static = collectStaticVariables(stack);
-	if (scopes.includes("session")) grouped.session = { ...(store?.session ?? {}) };
-	if (scopes.includes("turn")) grouped.turn = { ...(store?.turn ?? {}) };
-
-	const hasVariables = Object.values(grouped).some((values) => Object.keys(values).length > 0);
-	if (!hasVariables) return "";
-
-	if (format() === "plain") {
-		return renderPlainVariables(grouped, variables, helpers);
-	}
-
-	const parts: string[] = ["<variables>"];
-
-	for (const scope of scopes) {
-		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
-		if (entries.length === 0) continue;
-		parts.push(`  <${scope}>`);
-		for (const [name, value] of entries) {
-			parts.push(`    <var name=\"${helpers.escapeXml(name)}\">${helpers.escapeXml(variables.toPromptText(value))}</var>`);
-		}
-		parts.push(`  </${scope}>`);
-	}
-
-	parts.push("</variables>");
-	return parts.join("\n");
-}
-
-function renderPlainVariables(
-	grouped: Record<PromptVariableScope, Record<string, PromptVariableValue>>,
-	variables: PromptVariableAccess,
-	helpers: PromptRenderHelpers,
-): string {
-	const parts: string[] = ["Variables:"];
-
-	for (const scope of ["static", "session", "turn"] as const) {
-		const entries = Object.entries(grouped[scope]).sort(([a], [b]) => a.localeCompare(b));
-		if (entries.length === 0) continue;
-		parts.push(`${scope}:`);
-		for (const [name, value] of entries) {
-			parts.push(helpers.plainBullet(name, variables.toPromptText(value)));
-		}
-	}
-
-	return parts.join("\n");
 }

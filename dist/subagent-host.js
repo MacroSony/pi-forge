@@ -1,17 +1,15 @@
 import { getRegisteredMacros, } from "./macro-engine.js";
 import { getRegisteredSlots, } from "./slot-renderers.js";
-import { compileMessages, compileSystemPrompt, createPromptVariableStore } from "./compiler.js";
+import { compileMessages, compileSystemPrompt } from "./compiler.js";
 import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, negotiateSubagentTools, prepareSubagentInitialMessages, } from "./subagent/contract.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 const BUILT_IN_MACROS = new Set([
     "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
-    "setvar", "setturnvar", "setsessionvar", "getvar", "var", "getturnvar", "getsessionvar",
-    "clearvar", "clearturnvar", "clearsessionvar", "trim", "upper", "lower", "json", "xml",
-    "ifvar", "ifeq", "iftools", "ifslot",
+    "trim", "upper", "lower", "json", "xml", "iftools", "ifslot",
 ]);
 const BUILT_IN_SLOTS = new Set([
     "chat-history", "tools", "tool-guidelines", "skills", "project-context", "append-system-prompt",
-    "date", "cwd", "date-cwd", "active-model", "pi-docs", "variables",
+    "date", "cwd", "date-cwd", "active-model", "pi-docs",
 ]);
 export function currentSubagentPromptRegistrationCatalog() {
     return {
@@ -126,7 +124,6 @@ export function prepareSubagentHostPlan(input) {
         ctx: { model },
         latestUserMessage: input.request.input.text,
         now: new Date(input.runtime.preparedAt),
-        variables: createPromptVariableStore(),
     };
     let systemPrompt = input.runtime.baseSystemPrompt;
     let stackMessages = [];

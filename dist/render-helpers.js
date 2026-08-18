@@ -10,11 +10,9 @@ export const promptRenderHelpers = {
     plainContinuation,
     indentPlainBlock,
 };
-export function createVariableAccess(runtime, stack) {
+export function createVariableAccess(_runtime, stack) {
     return {
-        get: (name, scope = "any") => getRuntimeVariable(runtime, stack, name, scope),
-        set: (scope, name, value) => setRuntimeVariable(runtime, scope, name, value),
-        clear: (scope, name) => clearRuntimeVariable(runtime, scope, name),
+        get: (name) => collectStaticVariables(stack)[name],
         toMacroText: variableValueToMacroText,
         toPromptText: variableValueToPromptText,
     };
@@ -30,56 +28,8 @@ export function slotTextFormat(item, options = {}) {
         return "json";
     return "xml";
 }
-export function selectedVariableScopes(options) {
-    const scopes = [];
-    if (options.includeStatic !== false)
-        scopes.push("static");
-    if (options.includeSession !== false)
-        scopes.push("session");
-    if (options.includeTurn !== false)
-        scopes.push("turn");
-    return scopes;
-}
 export function collectStaticVariables(stack) {
     return { ...(stack.variables ?? {}) };
-}
-export function getRuntimeVariable(runtime, stack, name, scope = "any") {
-    if ((scope === "turn" || scope === "any") && runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.turn, name)) {
-        return runtime.variables.turn[name];
-    }
-    if ((scope === "session" || scope === "any") && runtime.variables && Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) {
-        return runtime.variables.session[name];
-    }
-    if (scope === "static" || scope === "any") {
-        const staticVariables = collectStaticVariables(stack);
-        if (Object.prototype.hasOwnProperty.call(staticVariables, name))
-            return staticVariables[name];
-    }
-    return undefined;
-}
-export function setRuntimeVariable(runtime, scope, name, value) {
-    if (!runtime.variables)
-        return;
-    if (scope === "session") {
-        if (runtime.variables.session[name] !== value) {
-            runtime.variables.session[name] = value;
-            runtime.variables.sessionDirty = true;
-        }
-        return;
-    }
-    runtime.variables.turn[name] = value;
-}
-export function clearRuntimeVariable(runtime, scope, name) {
-    if (!runtime.variables)
-        return;
-    if (scope === "session") {
-        if (Object.prototype.hasOwnProperty.call(runtime.variables.session, name)) {
-            delete runtime.variables.session[name];
-            runtime.variables.sessionDirty = true;
-        }
-        return;
-    }
-    delete runtime.variables.turn[name];
 }
 export function variableValueToMacroText(value) {
     if (value === undefined)

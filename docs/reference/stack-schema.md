@@ -76,7 +76,7 @@ When filtering would separate a tool call from its result, pi-forge removes dang
 
 ## Structured slots
 
-`tools`, `tool-guidelines`, `skills`, `project-context`, and `variables` support `"format": "plain"`; the default is XML-style structure. Date slots support `includeTime: true`.
+`tools`, `tool-guidelines`, `skills`, and `project-context` support `"format": "plain"`; the default is XML-style structure. Date slots support `includeTime: true`.
 
 See [macros and slots](macros-and-slots.md) for names and options.
 
@@ -103,19 +103,18 @@ Skill policy filters only pi-forge-rendered skill slots. It does not disable exp
 
 ## Variables
 
-Top-level static variables are JSON values:
+Top-level static variables are string values:
 
 ```json
 {
   "variables": {
     "char": "Konata",
-    "user": "User",
-    "style": { "tone": "concise" }
+    "user": "User"
   }
 }
 ```
 
-Turn and session values are changed through macros. See [macro reference](macros-and-slots.md).
+Static variables resolve through bare `{{name}}` templates and are available to trusted custom macros/slots. Mutable turn/session variables are removed in 0.5.0. See [macro reference](macros-and-slots.md).
 
 ## Regex transforms
 
@@ -164,4 +163,4 @@ Outgoing rules change future model input. To destructively change a completed as
 
 > `finalize` runs at `message_end`, after raw output may have streamed. It replaces the stored assistant message, so the original output is not preserved.
 
-`effect: "display"` and `"both"` validate with warnings but are ignored until true display transforms exist. Runtime diagnostics report match and changed-segment counts.
+`effect: "outgoing"` and `"finalize"` are the only valid effects; `"display"` and `"both"` are rejected during validation. Runtime diagnostics report match and changed-segment counts.

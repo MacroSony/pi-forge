@@ -4,31 +4,27 @@ import {
 	agentMessageToPreviewText,
 	compileMessages,
 	compileSystemPrompt,
-	createPromptVariableStore,
 	getLatestUserMessage,
 } from "./compiler.ts";
 import { estimatePayloadTokens } from "./payload-capture.ts";
-import type { CompileMessageSource, LoadedPromptStack, PromptStackDiagnostic, PromptVariableValue } from "./types.ts";
+import type { CompileMessageSource, LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "./web-editor/index.ts";
 
 export function renderPreview(
 	ctx: ExtensionCommandContext,
 	target: LoadedPromptStack,
-	sessionVariables: Record<string, PromptVariableValue>,
 ): string {
-	return buildPreview(ctx, target, sessionVariables, ctx.getSystemPromptOptions()).text;
+	return buildPreview(ctx, target, ctx.getSystemPromptOptions()).text;
 }
 
 export function buildPreview(
 	ctx: ExtensionContext,
 	target: LoadedPromptStack,
-	sessionVariables: Record<string, PromptVariableValue>,
 	options: BuildSystemPromptOptions,
 ): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
 	const sessionMessages = getPreviewSessionMessages(ctx);
 	const latestUserMessage = getLatestUserMessage(sessionMessages);
-	const previewVariables = createPromptVariableStore(sessionVariables);
-	const runtime = { options, ctx, latestUserMessage, now: new Date(), variables: previewVariables };
+	const runtime = { options, ctx, latestUserMessage, now: new Date() };
 	const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
 	const messages = compileMessages(target.stack, runtime, sessionMessages);
 	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];

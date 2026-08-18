@@ -1,7 +1,7 @@
-import { compileMessages, compileSystemPrompt, createPromptVariableStore, getLatestUserMessage, markSessionVariablesClean, resetTurnVariables, } from "./compiler.js";
+import { compileMessages, compileSystemPrompt, getLatestUserMessage, } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { isAgentProfileProvenance } from "./agent-profile.js";
-import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE } from "./runtime-state.js";
+import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
     let startupToolPolicyPending = false;
     pi.on("session_shutdown", async () => {
@@ -64,14 +64,11 @@ export function registerLifecycleHandlers(pi, state, deps) {
         deps.refreshSubagentToolDescriptions(ctx);
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         state.currentLatestUserMessage = event.prompt;
-        state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
-        resetTurnVariables(state.currentVariableStore);
         state.contextRewritePending = true;
         if (!state.active)
             return;
-        const result = compileSystemPrompt(state.active.stack, { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date(), variables: state.currentVariableStore }, event.systemPrompt);
+        const result = compileSystemPrompt(state.active.stack, { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() }, event.systemPrompt);
         deps.recordCompileDiagnostics(ctx, result.diagnostics);
-        persistVariablesIfDirty(pi, state, state.currentVariableStore);
         return { systemPrompt: result.systemPrompt };
     });
     pi.on("context", async (event, ctx) => {
@@ -82,12 +79,9 @@ export function registerLifecycleHandlers(pi, state, deps) {
         // prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call
         // and the model restarts its planning instead of continuing from the tool result.
         state.contextRewritePending = false;
-        if (!state.currentVariableStore)
-            state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
         const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
-        const result = compileMessages(state.active.stack, { options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date(), variables: state.currentVariableStore }, event.messages);
+        const result = compileMessages(state.active.stack, { options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() }, event.messages);
         deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
-        persistVariablesIfDirty(pi, state, state.currentVariableStore);
         return { messages: result.messages };
     });
     pi.on("message_end", async (event, ctx) => {
@@ -102,17 +96,14 @@ export function registerLifecycleHandlers(pi, state, deps) {
         return { message };
     });
     pi.on("agent_end", async () => {
-        persistVariablesIfDirty(pi, state, state.currentVariableStore);
         state.currentSystemPromptOptions = undefined;
         state.currentLatestUserMessage = undefined;
-        state.currentVariableStore = undefined;
         state.contextRewritePending = false;
     });
 }
 async function restoreBranchScopedRuntime(ctx, state, deps, options) {
-    state.sessionVariables = getRestoredVariables(ctx);
     state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
-    state.currentVariableStore = undefined;
+    state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;
     await deps.reloadStacks(ctx, restoredActiveId, options);
@@ -155,6 +146,19 @@ function isFreshStartupBranch(entries) {
     // above keep it from being mistaken for a newly created session.
     return thinkingLevelChanges === 1;
 }
+function getLegacyVariableStateDiagnostic(ctx) {
+    const entries = getCurrentBranchEntries(ctx);
+    const hasLegacyVariableState = entries.some((entry) => {
+        const candidate = entry;
+        return candidate?.type === "custom" && candidate?.customType === "pi-forge-variable-state";
+    });
+    if (!hasLegacyVariableState)
+        return [];
+    return [{
+            level: "info",
+            message: "Legacy pi-forge-variable-state entries are ignored; mutable session variables were removed in 0.5.0.",
+        }];
+}
 function getRestoredProfileProvenance(ctx) {
     const entries = getCurrentBranchEntries(ctx);
     for (let i = entries.length - 1; i >= 0; i--) {
@@ -183,46 +187,5 @@ function getRestoredActiveId(ctx) {
         }
     }
     return undefined;
-}
-function getRestoredVariables(ctx) {
-    const entries = getCurrentBranchEntries(ctx);
-    for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = entries[i];
-        if (entry.type !== "custom" || entry.customType !== VARIABLE_ENTRY_TYPE)
-            continue;
-        if (!entry.data || typeof entry.data.variables !== "object" || Array.isArray(entry.data.variables))
-            return {};
-        return normalizeVariableRecord(entry.data.variables);
-    }
-    return {};
-}
-function persistVariablesIfDirty(pi, state, store) {
-    if (!store?.sessionDirty)
-        return;
-    state.sessionVariables = { ...store.session };
-    pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: state.sessionVariables });
-    markSessionVariablesClean(store);
-}
-function normalizeVariableRecord(value) {
-    const result = {};
-    for (const [key, raw] of Object.entries(value)) {
-        if (isPromptVariableValue(raw))
-            result[key] = raw;
-    }
-    return result;
-}
-function isPromptVariableValue(value) {
-    if (value === null)
-        return true;
-    const type = typeof value;
-    if (type === "string" || type === "boolean")
-        return true;
-    if (type === "number")
-        return Number.isFinite(value);
-    if (Array.isArray(value))
-        return value.every(isPromptVariableValue);
-    if (!value || typeof value !== "object")
-        return false;
-    return Object.values(value).every(isPromptVariableValue);
 }
 //# sourceMappingURL=lifecycle.js.map

@@ -130,8 +130,6 @@ export {
 	promptRenderHelpers,
 	type PromptRenderHelpers,
 	type PromptVariableAccess,
-	type PromptVariableScope,
-	type PromptWritableVariableScope,
 } from "./render-helpers.ts";
 export * from "./subagent/contract.ts";
 export {
@@ -168,7 +166,7 @@ export default function piForge(pi: ExtensionAPI) {
 		getSelectedActiveId: stackRuntime.selectedActiveId,
 		setActive: (id) => stackRuntime.setActive(id, ctx),
 		reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
-		buildPreview: (target) => buildPreview(ctx, target, state.sessionVariables, toolPolicy.previewOptions(promptOptions, target.stack)),
+		buildPreview: (target) => buildPreview(ctx, target, toolPolicy.previewOptions(promptOptions, target.stack)),
 		getPolicyResources: () => toolPolicy.policyResources(promptOptions),
 		getProfiles: () => state.profiles,
 		getLastAppliedProfile: () => state.lastAppliedProfile,

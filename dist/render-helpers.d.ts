@@ -1,10 +1,6 @@
 import type { PromptRuntime, PromptStack, PromptStackSlotFormat, PromptStackSlotItem, PromptVariableValue } from "./types.ts";
-export type PromptVariableScope = "static" | "session" | "turn";
-export type PromptWritableVariableScope = "session" | "turn";
 export interface PromptVariableAccess {
-    get(name: string, scope?: PromptVariableScope | "any"): PromptVariableValue | undefined;
-    set(scope: PromptWritableVariableScope, name: string, value: string): void;
-    clear(scope: PromptWritableVariableScope, name: string): void;
+    get(name: string): PromptVariableValue | undefined;
     toMacroText(value: PromptVariableValue | undefined): string;
     toPromptText(value: PromptVariableValue): string;
 }
@@ -22,16 +18,12 @@ export interface PromptRenderHelpers {
     indentPlainBlock(value: string, indent: string): string;
 }
 export declare const promptRenderHelpers: PromptRenderHelpers;
-export declare function createVariableAccess(runtime: PromptRuntime, stack: PromptStack): PromptVariableAccess;
+export declare function createVariableAccess(_runtime: PromptRuntime, stack: PromptStack): PromptVariableAccess;
 export declare function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[];
 export declare function slotTextFormat(item: PromptStackSlotItem, options?: {
     allowJson?: boolean;
 }): PromptStackSlotFormat;
-export declare function selectedVariableScopes(options: Record<string, unknown>): PromptVariableScope[];
 export declare function collectStaticVariables(stack: PromptStack): Record<string, PromptVariableValue>;
-export declare function getRuntimeVariable(runtime: PromptRuntime, stack: PromptStack, name: string, scope?: PromptVariableScope | "any"): PromptVariableValue | undefined;
-export declare function setRuntimeVariable(runtime: PromptRuntime, scope: PromptWritableVariableScope, name: string, value: string): void;
-export declare function clearRuntimeVariable(runtime: PromptRuntime, scope: PromptWritableVariableScope, name: string): void;
 export declare function variableValueToMacroText(value: PromptVariableValue | undefined): string;
 export declare function variableValueToPromptText(value: PromptVariableValue): string;
 export declare function plainBullet(label: string, value: string): string;

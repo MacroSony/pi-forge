@@ -39,7 +39,7 @@ let editorIsActive = () => true;
 
 const slotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
-  "append-system-prompt", "variables", "date", "cwd", "date-cwd",
+  "append-system-prompt", "date", "cwd", "date-cwd",
   "active-model", "pi-docs"
 ];
 const roles = ["", "system", "user", "assistant", "custom"];
@@ -590,9 +590,7 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
   renderDirtyState();
   await selectStack(selectedId, { keepDirty: true });
   const displayId = data.stack?.id || stack.id;
-  const converted = data.importFormat === "sillytavern" ? " from SillyTavern" : "";
-  setStatus(actionLabel + converted + " " + displayId, "success");
-  if (data.importReport) showImportReport(data.importReport, displayId);
+  setStatus(actionLabel + " " + displayId, "success");
 }
 
 async function createNewStack() {
@@ -733,19 +731,6 @@ function defaultNewStack(id: any, name: any) {
   };
 }
 
-function showImportReport(report: any, stackId: any) {
-  showStackModal(
-    "SillyTavern import report",
-    stackId || "",
-    '<div class="modal-toolbar"><button id="copyImportReportBtn" data-icon="□" title="Copy this import report">Copy report</button><span class="modal-spacer"></span><span class="modal-meta">Report-only notes; stack changes are already saved.</span></div>' +
-    '<pre class="preview-text">' + escapeHtml(report) + '</pre>',
-  );
-  el("copyImportReportBtn").onclick = () => run(async () => {
-    await copyTextToClipboard(report);
-    setStatus("Copied import report", "success");
-  });
-}
-
 async function importStackJson() {
   el("importFileInput").value = "";
   el("importFileInput").click();
@@ -757,15 +742,6 @@ async function handleImportFile(event: any) {
   const text = await file.text();
   const imported = JSON.parse(text);
   if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Imported JSON must be an object.");
-  if (isSillyTavernImport(imported)) {
-    const characterId = promptSillyTavernCharacterId(imported);
-    if (characterId === null) return;
-    const scope = chooseCreateScope();
-    const activate = confirm("Convert and activate imported SillyTavern stack now?");
-    await createAndOpenStack(imported, activate, "Imported", { sourceName: file.name, characterId, scope });
-    return;
-  }
-
   const stack = imported;
   if (!stack.id || typeof stack.id !== "string") {
     const promptedId = prompt("Stack id", sanitizeStackId(file.name.replace(/\.json$/i, "")));
@@ -778,27 +754,6 @@ async function handleImportFile(event: any) {
   const scope = chooseCreateScope();
   const activate = confirm("Activate imported stack now?");
   await createAndOpenStack(stack, activate, "Imported", { scope });
-}
-
-function isSillyTavernImport(value: any) {
-  return value && typeof value === "object" && !Array.isArray(value) && Array.isArray(value.prompts) && !Array.isArray(value.items);
-}
-
-function promptSillyTavernCharacterId(value: any) {
-  const ids = Array.isArray(value.prompt_order)
-    ? value.prompt_order
-      .map((entry: any) => entry && entry.character_id)
-      .filter((id: any) => Number.isInteger(id))
-    : [];
-  const uniqueIds = [...new Set(ids)];
-  if (uniqueIds.length <= 1) return undefined;
-  const answer = prompt("SillyTavern character_id (" + uniqueIds.join(", ") + ")", String(uniqueIds[0]));
-  if (answer === null) return null;
-  const parsed = Number(answer.trim());
-  if (!Number.isInteger(parsed) || !uniqueIds.includes(parsed)) {
-    throw new Error("Choose one of these character_id values: " + uniqueIds.join(", "));
-  }
-  return parsed;
 }
 
 async function forkStack() {
@@ -984,10 +939,10 @@ function renderEmpty() {
   el("itemEditor").innerHTML =
     '<div class="empty">' +
     '<div class="empty-title">No prompt stacks found.</div>' +
-    '<div>Create a stack in this project, or import an existing pi-forge/SillyTavern JSON file.</div>' +
+    '<div>Create a stack in this project, or import an existing pi-forge JSON file.</div>' +
     '<div class="empty-actions">' +
     '<button id="emptyNewStackBtn" class="primary" data-icon="+" title="Create a new prompt stack">New stack</button>' +
-    '<button id="emptyImportBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>' +
+    '<button id="emptyImportBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>' +
     '</div>' +
     '</div>';
   el("tabPanel").classList.remove("open");

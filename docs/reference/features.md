@@ -1,6 +1,6 @@
 # Implemented feature inventory
 
-This file tracks the currently implemented feature surface for agent profiles, the prompt-stack runtime, template variables, web editor, SillyTavern importer, storage migration, payload inspector, and regex MVP.
+This file tracks the currently implemented feature surface for agent profiles, the prompt-stack runtime, static stack variables, web editor, storage migration, payload inspector, and regex MVP.
 
 ## Package and Runtime
 
@@ -70,7 +70,6 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
-- Branch-aware macro session variable restore when navigating the session tree.
 - Persisted `/preset use none` / `off` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
 - Raw stack fields are shape-checked before recovery normalization, including behavior-changing booleans/enums, defaults, context, variables, and item fields.
@@ -105,7 +104,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `effect: "outgoing"` is active for model-bound prompt text.
 - `effect: "finalize"` is active for completed assistant messages at `stage: "compiled"` / `targets: ["messages"]`.
 - `effect: "finalize"` is destructive: it replaces the finalized assistant message in Pi's stored transcript, so the original model output is not preserved.
-- `effect: "display"` and `"both"` validate with warnings and are ignored until true display transforms are implemented.
+- `effect: "outgoing"` and `"finalize"` are the only valid effects; `"display"` and `"both"` are rejected during validation.
 - Streaming display is not transformed; raw text may be visible until the final message replacement happens.
 - Message transforms support role filters, `maxMessages`, `maxChars`, `minDepth`, `maxDepth`, and `trimStrings`. `$0` is supported as a full-match alias for `$&` in replacements.
 - Compiled-stage transforms support `targets: ["system"]`, `["messages"]`, or both.
@@ -125,7 +124,6 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `date-cwd`
 - `active-model`
 - `pi-docs`
-- `variables`
 - `date` and `date-cwd` slots can include `Current time: HH:MM:SS` with `includeTime: true`.
 - Runtime slots are registered through the same `registerSlot` definition interface used by trusted custom slots.
 - Trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules and reusable Pi packages can register additional runtime slots through `registerSlot`, with declarative option schemas and shared render helpers.
@@ -150,25 +148,18 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Built-in macros are registered through the same `registerMacro` definition interface used by trusted custom macros.
 - Parser-backed macro expansion supports nested `{{...}}` expressions and `::` argument splitting at the current macro depth.
 - Filter macros: `{{trim::value}}`, `{{upper::value}}`, `{{lower::value}}`, `{{json::value}}`, and `{{xml::value}}`.
-- Lazy conditional macros: `{{ifvar::name::then::else}}`, `{{ifeq::name::expected::then::else}}`, `{{iftools::tool::then::else}}`, and `{{ifslot::slot::then::else}}`. Only the selected branch is expanded.
+- Lazy conditional macros: `{{iftools::tool::then::else}}` and `{{ifslot::slot::then::else}}`. Only the selected branch is expanded.
 - Trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules and reusable Pi packages can register additional macros through `registerMacro`, with argument metadata and shared runtime/variable/helper access.
 - `getRegisteredMacros()` and `getRegisteredSlots()` expose the active macro/slot definitions for implementation references and UI/resource inspection.
 - Static stack variables from `stack.variables`.
-- Turn/session/static lookup through `{{getvar::name}}`, `{{var::name}}`, and bare `{{name}}`.
-- Turn variable mutation through `{{setvar::name::value}}`, `{{setturnvar::name::value}}`, and `{{clearvar::name}}`.
-- Session variable mutation through `{{setsessionvar::name::value}}`, `{{setvar::session::name::value}}`, and `{{clearsessionvar::name}}`.
+- Static stack variables resolve through bare `{{name}}`.
 - Unknown macro diagnostics with configurable keep/warn/error policy.
-- Non-string variable values stringify as JSON during macro substitution.
 
-## Template Variables
+## Stack Variables
 
-- Static string variables from `stack.variables`.
-- JSON-compatible session variable values: string, number, boolean, null, arrays, and objects.
-- Session variable snapshots restore from the current session tree branch, so tree navigation rolls macro variables back/forward with history.
-- Valid `<variables>` rendering from the `variables` slot.
-- XML variable entries rendered as `<var name="...">...</var>`.
-- Optional `format: "plain"` variables slot rendering.
-- Scope toggles with `includeStatic`, `includeSession`, and `includeTurn`.
+- Static string variables from top-level `stack.variables`.
+- Static variables resolve through bare `{{name}}` and are available to trusted custom macros/slots through the read-only variable access helper.
+- Mutable turn/session stores, variable mutation macros, session variable entries, and the `variables` slot are removed in 0.5.0.
 
 ## Commands
 
@@ -192,28 +183,8 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset reload`
 - `/preset ui [stop|restart]`
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
-- `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]`
 - `/intercept`
 - `/payload next [save=<path>]`
-
-## SillyTavern Import
-
-- Import SillyTavern preset JSON into `.pi/forge/prompt-stacks/<id>.json`.
-- Generate import reports under `.pi/forge/import-reports/<id>.md`.
-- Select a specific `character_id` when multiple prompt orders exist.
-- Protect existing generated stack/report files from accidental overwrite, with confirmation or `--overwrite`.
-- Preview generated output without writing files via `--dry-run`.
-- Convert prompt order into prompt stack items.
-- Preserve original SillyTavern identifiers in item source metadata.
-- Convert `chatHistory` marker to a movable `chat-history` slot.
-- Skip unsupported SillyTavern marker items and report omissions.
-- Detect `{{lastUserMessage}}` and configure chat history accordingly.
-- Strip SillyTavern comments and `{{trim}}` markers.
-- Report macros that need manual migration, including normalized camelCase SillyTavern macro names.
-- Report supported SillyTavern-style variable macros such as `setvar` and `getvar` as handled by pi-forge.
-- Report SillyTavern `extensions.regex_scripts` counts, prompt/display classification, script names, and migration notes.
-- Convert safe SillyTavern `promptOnly` regex scripts into pi-forge `regex.rules` with `stage: "history"`, `effect: "outgoing"`, JavaScript replacement syntax, trim strings, depth limits, clear placement role mappings, and preserved `source.sillytavern` metadata. History-stage depth is relative to the filtered chat history, matching SillyTavern's chat-relative depth.
-- Leave SillyTavern display-only, mixed prompt/display, DOM/browser, CSS/HTML decoration, JavaScript, unsupported-placement, unsupported-flag, and invalid regex scripts as report-only migration notes.
 
 ## Debugging and Tests
 
@@ -223,8 +194,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - The web editor can arm, poll, clear, and inspect the next redacted provider payload in a full-screen collapsible JSON inspector.
 - Runtime compile diagnostics are visible through a footer status and `/preset diagnostics`.
 - `/preset ui` starts a token-protected localhost web editor for stack management.
-- Node built-in tests cover agent-profile resolution/application/provenance, compiler, loader, SillyTavern importer, and the command/event harness.
-- Tests cover variable rendering, XML escaping, macro persistence, and typed macro stringification.
+- Node built-in tests cover agent-profile resolution/application/provenance, compiler, loader, regex, and the command/event harness.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
 - Tests cover subagent host resolution, custom dependency detection, all access/required-limit/terminal-status matrices, effect-aware tool negotiation, context budgeting, protected media tasks, canonical fingerprint tamper detection, and malformed external contract values.
 - A real headless-Chrome smoke test covers editor load, dirty state, metadata editing, policy and regex editing, validation, save, disk persistence, export, import, and browser-console errors.
@@ -265,8 +235,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Save existing stack JSON and immediately reload pi-forge stack data.
 - Save rejects attempts to change an existing stack ID before writing or changing active selection.
 - Keyboard shortcuts for new stack, save, validate, preview, and closing dialogs/inspectors.
-- Import native stack JSON or SillyTavern preset JSON into `.pi/forge/prompt-stacks`; SillyTavern uploads are converted automatically.
-- Show the SillyTavern import report in the web editor after import, with copy support.
+- Import native pi-forge stack JSON into `.pi/forge/prompt-stacks`.
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
@@ -277,4 +246,4 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Profile form populates provider/model choices from the model registry and stack choices from the shared stack repository, and shows resolution diagnostics for missing models, authentication, unsupported thinking levels, invalid stacks, and unmatched tool policy.
 - A runtime/provenance card distinguishes current runtime, last-applied provenance, source-definition state, and per-field runtime drift after external model, thinking-level, or stack changes.
 - Per-profile delegation card toggles the trusted project's `subagents.profiles.<id>` opt-in with backend and timeout overrides, writing `.pi/forge/config.json` while preserving unrelated keys and removing emptied entries; the card reports the effective backend/timeout and source, warns about unregistered backends, and keeps project defaults and the unattended-invocation setting read-only.
-- Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, SillyTavern JSON import conversion, collision handling, delete, and stop behavior.
+- Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, native JSON import, collision handling, delete, and stop behavior.

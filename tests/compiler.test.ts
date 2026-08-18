@@ -4,7 +4,6 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	compileMessages,
 	compileSystemPrompt,
-	createPromptVariableStore,
 } from "../src/compiler.ts";
 import {
 	getRegisteredMacros,
@@ -26,7 +25,6 @@ function runtime(overrides: Partial<PromptRuntime> = {}): PromptRuntime {
 		},
 		latestUserMessage: "latest request",
 		now: new Date("2026-06-13T12:00:00Z"),
-		variables: createPromptVariableStore({ topic: "session topic" }),
 		...overrides,
 	};
 }
@@ -390,8 +388,7 @@ test("compiled regex preserves non-text message parts", () => {
 	assert.deepEqual(content[1], { type: "toolCall", name: "secret" });
 });
 
-test("variables resolve in turn, session, then static order", () => {
-	const store = createPromptVariableStore({ name: "session", topic: "session topic" });
+test("static stack variables resolve directly in templates", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "variables",
@@ -402,61 +399,35 @@ test("variables resolve in turn, session, then static order", () => {
 				id: "vars",
 				enabled: true,
 				role: "system",
-				content: "{{setvar::name::turn}}{{name}}/{{getsessionvar::name}}/{{char}}/{{setvar::session::mood::bright}}{{getsessionvar::mood}}",
+				content: "{{name}}/{{char}}",
 			},
 		],
 	};
 
-	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
+	const result = compileSystemPrompt(stack, runtime(), "base");
 
-	assert.equal(result.systemPrompt, "turn/session/Konata/bright");
-	assert.equal(store.session.mood, "bright");
-	assert.equal(store.sessionDirty, true);
+	assert.equal(result.systemPrompt, "static/Konata");
+	assert.deepEqual(result.diagnostics, []);
 });
 
 test("macro arguments expand nested macros", () => {
-	const store = createPromptVariableStore();
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "nested-macros",
 		items: [
 			{
 				kind: "block",
-				id: "vars",
+				id: "nested",
 				enabled: true,
 				role: "system",
-				content: "{{setvar::latest::{{lastUserMessage}}}}Latest={{getvar::latest}}",
+				content: "{{upper::{{lastUserMessage}}}}",
 			},
 		],
 	};
 
-	const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "Use read first.", variables: store }), "base");
+	const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "Use read first." }), "base");
 
-	assert.equal(result.systemPrompt, "Latest=Use read first.");
-	assert.equal(store.turn.latest, "Use read first.");
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("macro argument splitting preserves separators inside nested macro output", () => {
-	const store = createPromptVariableStore();
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "nested-separators",
-		items: [
-			{
-				kind: "block",
-				id: "vars",
-				enabled: true,
-				role: "system",
-				content: "{{setvar::joined::prefix::{{lastUserMessage}}::suffix}}{{joined}}",
-			},
-		],
-	};
-
-	const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "middle::value", variables: store }), "base");
-
-	assert.equal(result.systemPrompt, "prefix::middle::value::suffix");
-	assert.equal(store.turn.joined, "prefix::middle::value::suffix");
+	assert.equal(result.systemPrompt, "USE READ FIRST.");
 	assert.deepEqual(result.diagnostics, []);
 });
 
@@ -509,12 +480,13 @@ test("registered custom macros use the public render context", () => {
 		const stack: PromptStack = {
 			schemaVersion: 1,
 			id: "custom-macro",
+			variables: { topic: "static topic" },
 			items: [{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{testCustomMacro::{{lastUserMessage}}}}" }],
 		};
 
 		const result = compileSystemPrompt(stack, runtime({ latestUserMessage: "hello" }), "base");
 
-		assert.equal(result.systemPrompt, "2026-06-13|HELLO|session topic");
+		assert.equal(result.systemPrompt, "2026-06-13|HELLO|static topic");
 		assert.deepEqual(result.diagnostics, []);
 	} finally {
 		unregister();
@@ -536,8 +508,6 @@ test("conditional macros render selected branches", () => {
 				enabled: true,
 				role: "system",
 				content: [
-					"ifvar={{ifvar::name::present::missing}}/{{ifvar::absent::present::missing}}",
-					"ifeq={{ifeq::name::Ada::match::miss}}/{{ifeq::mood::dim::match::miss}}",
 					"iftools={{iftools::read::tool::no-tool}}/{{iftools::bash::tool::no-tool}}",
 					"ifslot={{ifslot::chat-history::slot::no-slot}}/{{ifslot::missing::slot::no-slot}}",
 				].join("\n"),
@@ -550,44 +520,9 @@ test("conditional macros render selected branches", () => {
 	const result = compileSystemPrompt(stack, runtime({ options: { ...baseRuntime.options, selectedTools: ["read", "bash"] } }), "base");
 
 	assert.equal(result.systemPrompt, [
-		"ifvar=present/missing",
-		"ifeq=match/miss",
 		"iftools=tool/no-tool",
 		"ifslot=slot/no-slot",
 	].join("\n"));
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("conditional macro branches are lazy", () => {
-	const store = createPromptVariableStore();
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "conditional-lazy",
-		variables: { name: "Ada" },
-		items: [
-			{
-				kind: "block",
-				id: "conditions",
-				enabled: true,
-				role: "system",
-				content: [
-					"{{ifvar::name::{{setvar::thenTouched::yes}}::{{setvar::elseTouched::yes}}}}true={{getvar::thenTouched}}/{{getvar::elseTouched}}",
-					"{{ifvar::missing::{{setvar::missingThen::yes}}::{{setvar::missingElse::yes}}}}false={{getvar::missingThen}}/{{getvar::missingElse}}",
-				].join("\n"),
-			},
-		],
-	};
-
-	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
-
-	assert.equal(result.systemPrompt, [
-		"true=yes/",
-		"false=/yes",
-	].join("\n"));
-	assert.equal(store.turn.thenTouched, "yes");
-	assert.equal(store.turn.elseTouched, undefined);
-	assert.equal(store.turn.missingThen, undefined);
-	assert.equal(store.turn.missingElse, "yes");
 	assert.deepEqual(result.diagnostics, []);
 });
 
@@ -620,7 +555,6 @@ test("unknown macros are kept and diagnosed", () => {
 });
 
 test("unknown macros do not expand nested arguments", () => {
-	const store = createPromptVariableStore();
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "unknown-nested",
@@ -631,17 +565,16 @@ test("unknown macros do not expand nested arguments", () => {
 				id: "block",
 				enabled: true,
 				role: "system",
-				content: "A {{missing::{{setvar::touched::yes}}}} B",
+				content: "A {{missing::{{lastUserMessage}}}} B",
 			},
 		],
 	};
 
-	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
+	const result = compileSystemPrompt(stack, runtime(), "base");
 
-	assert.equal(result.systemPrompt, "A {{missing::{{setvar::touched::yes}}}} B");
-	assert.equal(store.turn.touched, undefined);
+	assert.equal(result.systemPrompt, "A {{missing::{{lastUserMessage}}}} B");
 	assert.equal(result.diagnostics[0]?.level, "error");
-	assert.equal(result.diagnostics[0]?.message, "Unresolved macro: {{missing::{{setvar::touched::yes}}}}");
+	assert.equal(result.diagnostics[0]?.message, "Unresolved macro: {{missing::{{lastUserMessage}}}}");
 });
 
 test("duplicate chat-history slots warn and only expand once by default", () => {
@@ -789,6 +722,7 @@ test("registered custom slots use options, helpers, and variables", () => {
 		const stack: PromptStack = {
 			schemaVersion: 1,
 			id: "custom-slot",
+			variables: { topic: "static topic" },
 			items: [{
 				kind: "slot",
 				id: "custom",
@@ -803,7 +737,7 @@ test("registered custom slots use options, helpers, and variables", () => {
 
 		assert.equal(result.systemPrompt, [
 			"Registered",
-			"session topic",
+			"static topic",
 			"/work/project",
 		].join("\n"));
 		assert.deepEqual(result.diagnostics, []);
@@ -912,164 +846,6 @@ test("skill policy filters rendered skills with wildcard patterns", () => {
 	assert.match(result.systemPrompt, /- browser-search: Search browser\./);
 	assert.match(result.systemPrompt, /- browser-danger: Dangerous browser\./);
 	assert.doesNotMatch(result.systemPrompt, /Write prose/);
-});
-
-test("variables slot renders all scopes as XML", () => {
-	const store = createPromptVariableStore({ mood: "happy", progress: "step 2" });
-	store.turn = { recent: "just happened" };
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "vars-slot",
-		variables: { char: "Konata", user: "USER" },
-		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
-		],
-	};
-
-	const result = compileMessages(stack, runtime({ variables: store }), []);
-
-	assert.equal(result.messages.length, 1);
-	const text = textOf(result.messages[0]);
-	assert.match(text, /<variables>/);
-	assert.match(text, /<static>/);
-	assert.match(text, /<var name="char">Konata<\/var>/);
-	assert.match(text, /<var name="user">USER<\/var>/);
-	assert.match(text, /<session>/);
-	assert.match(text, /<var name="mood">happy<\/var>/);
-	assert.match(text, /<var name="progress">step 2<\/var>/);
-	assert.match(text, /<turn>/);
-	assert.match(text, /<var name="recent">just happened<\/var>/);
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("variables slot respects include options", () => {
-	const store = createPromptVariableStore({ mood: "happy" });
-	store.turn = { recent: "just happened" };
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "vars-options",
-		variables: { char: "Konata" },
-		items: [
-			{
-				kind: "slot",
-				id: "vars",
-				enabled: true,
-				role: "user",
-				slot: "variables",
-				options: { includeStatic: false, includeSession: true, includeTurn: false },
-			},
-		],
-	};
-
-	const result = compileMessages(stack, runtime({ variables: store }), []);
-
-	assert.equal(result.messages.length, 1);
-	const text = textOf(result.messages[0]);
-	assert.match(text, /<variables>/);
-	assert.match(text, /<session>/);
-	assert.match(text, /<var name="mood">happy<\/var>/);
-	// Static and turn should be excluded
-	assert.doesNotMatch(text, /<static>/);
-	assert.doesNotMatch(text, /<turn>/);
-	assert.doesNotMatch(text, /Konata/);
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("variables slot is empty when no variables exist", () => {
-	const store = createPromptVariableStore();
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "vars-empty",
-		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
-		],
-	};
-
-	const result = compileMessages(stack, runtime({ variables: store }), [user("original")]);
-
-	// No variables block emitted — just the original message
-	assert.equal(result.messages.length, 1);
-	assert.equal(textOf(result.messages[0]), "original");
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("variables slot escapes XML in values", () => {
-	const store = createPromptVariableStore({ code: "<script>alert('xss')</script>" });
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "vars-xml",
-		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
-		],
-	};
-
-	const result = compileMessages(stack, runtime({ variables: store }), []);
-
-	assert.equal(result.messages.length, 1);
-	const text = textOf(result.messages[0]);
-	assert.match(text, /&lt;script&gt;alert/);
-	assert.doesNotMatch(text, /<script>alert/);
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("variables slot renders compact plain format", () => {
-	const store = createPromptVariableStore({
-		"agent.note": "a<\n&",
-		"user.preference": "concise",
-	});
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "vars-plain",
-		items: [
-			{
-				kind: "slot",
-				id: "vars",
-				enabled: true,
-				role: "user",
-				slot: "variables",
-				options: {
-					format: "plain",
-				},
-			},
-		],
-	};
-
-	const result = compileMessages(stack, runtime({ variables: store }), []);
-
-	assert.equal(result.messages.length, 1);
-	assert.equal(textOf(result.messages[0]), [
-		"Variables:",
-		"session:",
-		"- agent.note: a<",
-		"  &",
-		"- user.preference: concise",
-	].join("\n"));
-	assert.deepEqual(result.diagnostics, []);
-});
-
-test("macros stringify non-string variable values", () => {
-	const store = createPromptVariableStore({
-		flags: ["brief", "technical"],
-		count: 2,
-	});
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "typed-macros",
-		items: [
-			{
-				kind: "block",
-				id: "vars",
-				enabled: true,
-				role: "system",
-				content: "flags={{flags}} count={{getsessionvar::count}}",
-			},
-		],
-	};
-
-	const result = compileSystemPrompt(stack, runtime({ variables: store }), "base");
-
-	assert.equal(result.systemPrompt, 'flags=["brief","technical"] count=2');
-	assert.deepEqual(result.diagnostics, []);
 });
 
 test("unsupported slots produce diagnostics", () => {

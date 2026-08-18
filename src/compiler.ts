@@ -9,8 +9,6 @@ import type {
 	PromptStackItem,
 	PromptStackRole,
 	PromptStackSlotItem,
-	PromptVariableValue,
-	PromptVariableStore,
 } from "./types.ts";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
 import { expandMacros } from "./macro-engine.ts";
@@ -26,19 +24,6 @@ const ZERO_USAGE = {
 };
 
 const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
-
-export function createPromptVariableStore(sessionVariables: Record<string, PromptVariableValue> = {}): PromptVariableStore {
-	return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
-}
-
-export function resetTurnVariables(store: PromptVariableStore): void {
-	store.turn = {};
-	store.sessionDirty = false;
-}
-
-export function markSessionVariablesClean(store: PromptVariableStore): void {
-	store.sessionDirty = false;
-}
 
 export function compileSystemPrompt(
 	stack: PromptStack,

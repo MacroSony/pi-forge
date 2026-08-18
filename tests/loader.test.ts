@@ -215,7 +215,7 @@ test("loadPromptStacks validates regex config", () => {
 
 	assert.match(messages, /Duplicate regex rule id: bad/);
 	assert.match(messages, /unsupported regex flag: z/);
-	assert.match(messages, /effect "display".*ignored/);
+	assert.match(messages, /effect must be "outgoing" or "finalize"/);
 	assert.equal(isUsablePromptStack(loaded), false);
 });
 

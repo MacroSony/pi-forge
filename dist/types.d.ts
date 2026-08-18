@@ -3,10 +3,10 @@ import type { BuildSystemPromptOptions, ExtensionContext } from "@earendil-works
 import type { ResourceKey, ResourceScope } from "./resource-identity.ts";
 export type PromptStackMode = "replace" | "append" | "prepend";
 export type PromptStackRole = "system" | "user" | "assistant" | "custom";
-export type PromptStackSlot = "chat-history" | "tools" | "tool-guidelines" | "skills" | "project-context" | "append-system-prompt" | "date" | "cwd" | "date-cwd" | "active-model" | "pi-docs" | "variables";
+export type PromptStackSlot = "chat-history" | "tools" | "tool-guidelines" | "skills" | "project-context" | "append-system-prompt" | "date" | "cwd" | "date-cwd" | "active-model" | "pi-docs";
 export type PromptStackSlotFormat = "xml" | "json" | "plain";
 export type PromptRegexStage = "history" | "compiled";
-export type PromptRegexEffect = "outgoing" | "display" | "both" | "finalize";
+export type PromptRegexEffect = "outgoing" | "finalize";
 export type PromptRegexTarget = "system" | "messages";
 export interface PromptRegexRule {
     id: string;
@@ -57,16 +57,6 @@ export interface PromptStackBlockItem extends PromptStackBaseItem {
     kind: "block";
     content: string;
 }
-export interface VariablesSlotOptions {
-    /** Include static stack variables. Default: true. */
-    includeStatic?: boolean;
-    /** Include session variables. Default: true. */
-    includeSession?: boolean;
-    /** Include turn variables. Default: true. */
-    includeTurn?: boolean;
-    /** Render format. Default: xml. */
-    format?: Exclude<PromptStackSlotFormat, "json">;
-}
 export interface PromptStackSlotOptions {
     /** For chat-history: include the latest user message in the expanded history. Default: true. */
     includeLastUserMessage?: boolean;
@@ -82,10 +72,6 @@ export interface PromptStackSlotOptions {
     maxMessages?: number;
     /** For chat-history: keep only the most recent messages within an approximate character budget. */
     maxChars?: number;
-    /** For variables: control which variable scopes are included. */
-    includeStatic?: boolean;
-    includeSession?: boolean;
-    includeTurn?: boolean;
     format?: PromptStackSlotFormat;
     /** For tools: only render tools that provide prompt snippets, matching Pi's default prompt builder. */
     onlyWithSnippets?: boolean;
@@ -141,17 +127,11 @@ export interface PromptStackDiagnostic {
     message: string;
     itemId?: string;
 }
-export interface PromptVariableStore {
-    turn: Record<string, PromptVariableValue>;
-    session: Record<string, PromptVariableValue>;
-    sessionDirty?: boolean;
-}
 export interface PromptRuntime {
     options: BuildSystemPromptOptions;
     ctx?: ExtensionContext;
     latestUserMessage?: string;
     now: Date;
-    variables?: PromptVariableStore;
 }
 export interface CompileSystemPromptResult {
     systemPrompt: string;

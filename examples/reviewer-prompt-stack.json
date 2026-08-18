@@ -14,7 +14,10 @@
     "allowDuplicateChatHistory": false
   },
   "tools": {
-    "deny": ["edit", "write"]
+    "deny": [
+      "edit",
+      "write"
+    ]
   },
   "variables": {
     "review_focus": "correctness, regressions, security, maintainability, and missing tests",
@@ -57,20 +60,6 @@
       "enabled": true,
       "role": "system",
       "slot": "date-cwd"
-    },
-    {
-      "kind": "slot",
-      "id": "variables",
-      "name": "Review Variables",
-      "enabled": true,
-      "role": "system",
-      "slot": "variables",
-      "options": {
-        "includeStatic": true,
-        "includeSession": true,
-        "includeTurn": false,
-        "format": "plain"
-      }
     },
     {
       "kind": "block",

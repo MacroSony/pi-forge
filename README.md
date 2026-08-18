@@ -14,9 +14,8 @@ Think of it as a character sheet and workbench for your AI agent.
 - Switch between coding, reviewing, writing, roleplay, and translation modes with one command.
 - Save and apply complete model/thinking/stack profiles.
 - Enforce per-stack tool policy and filter model-visible skills.
-- Use static, turn, and session variables with nested template macros.
+- Use immutable static stack variables with nested template macros.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
-- Import SillyTavern presets and inspect the migration report.
 - Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
 
@@ -78,7 +77,7 @@ A prompt stack is an ordered JSON document containing:
 | Item | Purpose |
 |---|---|
 | **Block** | Static `system`, `user`, `assistant`, or hidden `custom` text |
-| **Slot** | Runtime content such as tools, skills, project context, variables, date/cwd, or chat history |
+| **Slot** | Runtime content such as tools, skills, project context, date/cwd, or chat history |
 
 Stacks can `replace`, `append`, or `prepend` Pi's base system prompt. During compilation, pi-forge expands macros, inserts conversation content, enforces tool policy, filters its skill listing, and applies enabled regex rules.
 
@@ -88,7 +87,6 @@ Start with these examples:
 
 - [Default Pi mirror](examples/default-prompt-stack.json) keeps normal Pi behavior while making its sections movable.
 - [Focused reviewer](examples/reviewer-prompt-stack.json) creates a read-only review layout with an explicit latest-user target.
-- [SillyTavern DM writer](examples/sillytavern-dm-writer-prompt-stack.json) demonstrates characters, variables, history placement, and regex cleanup.
 - [Custom system-status extension](examples/custom-system-status-extension/README.md) registers a trusted macro and slot.
 
 ## Common commands
@@ -128,7 +126,6 @@ Read [foreground delegation and its safety model](docs/guides/delegation.md) bef
 - [Agent-profile concepts](docs/concepts/agent-profiles.md)
 - [Web editor](docs/guides/web-editor.md)
 - [Prompt-stack patterns and examples](docs/guides/use-cases.md)
-- [SillyTavern import](docs/guides/sillytavern-import.md)
 - [Custom macros and slots](docs/guides/custom-macros-and-slots.md)
 - [Prompt and payload debugging](docs/guides/debugging.md)
 

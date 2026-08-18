@@ -82,7 +82,7 @@ onUnmounted(() => {
 					<button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)">Preview</button>
 					<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
 					<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
-					<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON or SillyTavern preset JSON">Import JSON</button>
+					<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>
 					<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
 					<span class="action-spacer"></span>
 					<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>

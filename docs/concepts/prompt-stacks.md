@@ -33,7 +33,7 @@ A slot renders current Pi data at that position:
 }
 ```
 
-Slots cover conversation history, tools, tool guidance, skills, project context, appended system text, variables, model, date, and working directory. See [macros and slots](../reference/macros-and-slots.md).
+Slots cover conversation history, tools, tool guidance, skills, project context, appended system text, model, date, and working directory. See [macros and slots](../reference/macros-and-slots.md).
 
 ## Compilation order
 
@@ -42,7 +42,7 @@ For each new user turn, pi-forge:
 1. Orders enabled blocks and slots exactly as written.
 2. Builds `system` content and applies the stack's `replace`, `append`, or `prepend` mode.
 3. Inserts synthetic user/assistant messages around the movable `chat-history` slot.
-4. Expands built-in, variable, and trusted custom macros.
+4. Expands built-in and trusted custom macros.
 5. Applies the stack's tool policy to Pi and filters skills rendered by pi-forge.
 6. Applies outgoing history/compiled regex rules.
 7. Optionally applies destructive finalize rules when an assistant message completes.
@@ -83,13 +83,13 @@ Stacks may live in the user-global `~/.pi/forge/prompt-stacks/` or the project `
 - A stack may set `autoActivate: true`; conflicting auto-activation in one scope is invalid and fails closed.
 - `default.json` has no special filename role anymore; missing `autoActivate` yields a migration warning.
 - `/preset use none` records an explicit session opt-out.
-- Active stack and session variables follow Pi's session-tree branch.
+- Active stack selection follows Pi's session-tree branch.
 - Restored branch state takes precedence over fresh-session auto-activation.
 - Project auto-activation candidates take precedence over global ones; an invalid or ambiguous project candidate never falls back to a global stack.
 - An auto-activated agent profile takes precedence over standalone stack autoload.
 
 ## Extensions and transforms
 
-Static, turn, and session variables support nested macros and lazy conditionals. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in stack JSON. Deterministic regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
+Static stack variables support nested macros; lazy conditionals are available for tool and slot selection. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in stack JSON. Deterministic regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
 
 See [custom macros and slots](../guides/custom-macros-and-slots.md), [macro reference](../reference/macros-and-slots.md), and [regex schema](../reference/stack-schema.md#regex-transforms).

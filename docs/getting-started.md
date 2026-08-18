@@ -89,7 +89,6 @@ Add `--overwrite` only when target replacement is intended. Add `--delete-legacy
 ## Where to go next
 
 - Learn the [prompt-stack model](concepts/prompt-stacks.md).
-- Fork a [focused reviewer](../examples/reviewer-prompt-stack.json) or [DM writer](../examples/sillytavern-dm-writer-prompt-stack.json).
-- Use the [SillyTavern importer](guides/sillytavern-import.md).
+- Fork a [focused reviewer](../examples/reviewer-prompt-stack.json).
 - Learn [macros and slots](reference/macros-and-slots.md).
 - Inspect the [complete commands](reference/commands.md) and [stack schema](reference/stack-schema.md).

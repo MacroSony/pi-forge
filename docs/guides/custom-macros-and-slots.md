@@ -15,7 +15,7 @@ Modules receive the pi-forge API directly, so they do not need to import the pac
 export default function register(api) {
   api.registerMacro({
     name: "ticketId",
-    description: "Current ticket id from session variables.",
+    description: "Current ticket id from static stack variables.",
     render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
   });
 

@@ -16,7 +16,6 @@
 - 按栈严格限制工具，并过滤模型可见的 skills。
 - 使用静态、轮次和会话变量，以及支持嵌套的模板宏。
 - 对发给模型的 prompt 或最终 assistant 消息执行确定性 regex 转换。
-- 导入 SillyTavern 预设并检查迁移报告。
 - 在本地 Web 编辑器中管理 stack/profile，并检查实际 provider payload。
 - 用明确启用的 profile 运行实验性、需要审批的前台 subagent。
 
@@ -88,7 +87,6 @@ Agent profile 是项目级或用户全局预设，引用精确 provider/model、
 
 - [默认 Pi mirror](examples/default-prompt-stack.json)：保留 Pi 默认行为，同时让所有区域都可移动。
 - [专注代码审查](examples/reviewer-prompt-stack.json)：只读工具策略、背景历史和明确的最新用户目标。
-- [SillyTavern DM writer](examples/sillytavern-dm-writer-prompt-stack.json)：角色、变量、历史布局和 regex 清理。
 - [自定义 system-status extension](examples/custom-system-status-extension/README.md)：注册可信 macro 和 slot。
 
 ## 常用命令

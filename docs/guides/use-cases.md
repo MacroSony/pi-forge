@@ -9,17 +9,17 @@ Use these as starting patterns rather than rigid templates. The [default Pi mirr
 Put long-lived character rules in a system block, runtime context in appropriate slots, and the current user action in an explicit final user block:
 
 1. System character/personality block.
-2. Tools, project context, variables, and other runtime slots.
+2. Tools, project context, and other runtime slots.
 3. `chat-history` with `includeLastUserMessage: false`.
 4. Final user block containing `{{lastUserMessage}}`.
 
-This keeps the latest request clear and avoids duplication. Static `{{char}}` / `{{user}}` variables work well for character constants; turn/session macros can track temporary scene state. Durable project memory belongs in project files, not prompt variables.
+This keeps the latest request clear and avoids duplication. Static `{{char}}` / `{{user}}` variables work well for character constants. Durable project memory belongs in project files, not prompt variables.
 
 ## Focused code review
 
 Start from [the reviewer example](../../examples/reviewer-prompt-stack.json). It denies writing tools, wraps prior history as background, omits the latest user message from history, then reinserts it as the explicit review target.
 
-Use a rule such as “prioritize correctness, regressions, security, and missing tests.” Keep tools, project context, variables, and history when the reviewer must inspect the repository. Use `append` to retain Pi's normal coding prompt, or `replace` when the stack must fully control prompt and skill visibility.
+Use a rule such as “prioritize correctness, regressions, security, and missing tests.” Keep tools, project context, and history when the reviewer must inspect the repository. Use `append` to retain Pi's normal coding prompt, or `replace` when the stack must fully control prompt and skill visibility.
 
 ## Translation mode
 
@@ -48,13 +48,9 @@ Tool policy constrains model tool calls but is not an operating-system sandbox. 
 
 Keep the Pi mirror, require the tools needed for the workflow, strip prior assistant thinking from inserted history, and move project context near the current user turn. This reduces distracting prompt material without removing relevant repository instructions.
 
-## SillyTavern DM writer
-
-[The DM-writer example](../../examples/sillytavern-dm-writer-prompt-stack.json) defines a Dungeon Master through `{{char}}` / `{{user}}`, wraps prior adventure history, reinserts the current action, and uses deterministic regex cleanup for OOC notes, secret-roll markers, dice notation, and `Player:` prefixes.
-
 ## Payload lab
 
-Include `active-model`, `date-cwd`, and `variables`, then add compiled regex rules for deterministic redaction or formatting. Pair the stack with `/payload next` or the web editor's capture view to audit exactly what changed.
+Include `active-model` and `date-cwd`, then add compiled regex rules for deterministic redaction or formatting. Pair the stack with `/payload next` or the web editor's capture view to audit exactly what changed.
 
 ## Pi-docs expert
 

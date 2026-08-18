@@ -41,7 +41,7 @@ const emit = defineEmits<{
 }>();
 
 const regexStages = ["history", "compiled"] as const satisfies readonly RegexStage[];
-const regexEffects = ["outgoing", "finalize", "display", "both"] as const satisfies readonly RegexEffect[];
+const regexEffects = ["outgoing", "finalize"] as const satisfies readonly RegexEffect[];
 const regexTargets = ["system", "messages"] as const satisfies readonly RegexTarget[];
 const regexRoles = ["system", "user", "assistant", "custom"] as const;
 
@@ -279,14 +279,8 @@ function regexRuleWarning(rule: PromptRegexRule): string {
 	if (rule.effect === "finalize") {
 		return 'Warning: finalize runs after streaming and replaces the stored assistant transcript. Use stage "compiled" with target "messages".';
 	}
-	if (rule.effect === "display") {
-		return "Warning: display rules validate but are ignored at runtime until true display transforms exist.";
-	}
-	if (rule.effect === "both") {
-		return "Warning: both is ignored at runtime; create separate outgoing and finalize rules instead.";
-	}
 	if (typeof rule.replace === "string" && /\{\{\s*match\s*\}\}/i.test(rule.replace)) {
-		return "Warning: {{match}} is SillyTavern syntax. Use $& or $0 for the full match in pi-forge rules.";
+		return "Warning: {{match}} is not pi-forge replacement syntax. Use $& or $0 for the full match.";
 	}
 	return "";
 }

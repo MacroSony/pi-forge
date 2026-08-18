@@ -18,7 +18,6 @@ import {
 	writeGlobalForgeExtension,
 	writeLegacyStack,
 	writeProfile,
-	writePreset,
 	writeStack,
 } from "./helpers/index-command-harness.ts";
 
@@ -49,39 +48,6 @@ test("/preset completions preserve second-level subcommand text", async () => {
 
 	assert.ok(Array.isArray(completions));
 	assert.ok(completions.some((item: { value: string }) => item.value === "use default"));
-});
-
-test("/preset import-silly protects existing generated files unless confirmed", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	const presetPath = writePreset(cwd, "preset.json", {
-		prompts: [
-			{ identifier: "main", role: "system", content: "New content" },
-			{ identifier: "chatHistory", marker: true },
-		],
-		prompt_order: [{ character_id: 1, order: [{ identifier: "main", enabled: true }, { identifier: "chatHistory", enabled: true }] }],
-	});
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		autoActivate: true,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-	});
-	const existingStackPath = join(promptStacksDir(cwd), "preset.json");
-	writeFileSync(existingStackPath, "old stack", "utf8");
-
-	const harness = createHarness();
-	const context = createContext(cwd);
-	await startSession(harness, context.ctx);
-
-	await harness.commands.preset.handler(`import-silly ${presetPath}`, context.ctx);
-	assert.equal(readFileSync(existingStackPath, "utf8"), "old stack");
-	assert.match(context.notifications.at(-1)?.message ?? "", /cancelled/);
-
-	context.setConfirmResult(true);
-	await harness.commands.preset.handler(`import-silly ${presetPath}`, context.ctx);
-	assert.notEqual(readFileSync(existingStackPath, "utf8"), "old stack");
-	assert.ok(existsSync(join(cwd, ".pi", "forge", "import-reports", "preset.md")));
 });
 
 test("/preset use, disable, and reload persist selection and update footer", async () => {
@@ -407,7 +373,7 @@ export default function register(api: any) {
 	}
 });
 
-test("session_start restores active stack and typed variables", async () => {
+test("session_start restores active stack and static variables", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
 		schemaVersion: 1,
@@ -423,12 +389,11 @@ test("session_start restores active stack and typed variables", async () => {
 		autoActivate: false,
 		variables: { staticName: "static" },
 		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables" },
+			{ kind: "block", id: "vars", enabled: true, role: "user", content: "Static={{staticName}}" },
 			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
 		],
 	});
 	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { "user.preference": "brief", bad: Number.NaN } } },
 		{ type: "custom", customType: "pi-forge-prompt-stack-state", data: { activeStackId: "other" } },
 	];
 	const harness = createHarness();
@@ -437,9 +402,31 @@ test("session_start restores active stack and typed variables", async () => {
 
 	assert.equal(statuses["pi-forge"], "stack:other");
 	await harness.commands.preset.handler("preview", ctx);
-	assert.match(editors.at(-1)?.text ?? "", /name="user\.preference">brief/);
-	assert.doesNotMatch(editors.at(-1)?.text ?? "", /bad/);
-	assert.match(editors.at(-1)?.text ?? "", /name="staticName">static/);
+	assert.match(editors.at(-1)?.text ?? "", /Static=static/);
+});
+
+test("session_start emits one bounded diagnostic for legacy variable-state entries", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		autoActivate: true,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const entries = [
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { x: "1" } } },
+		{ type: "custom", customType: "pi-forge-variable-state", data: { variables: { y: "2" } } },
+	];
+	const harness = createHarness();
+	const context = createContext(cwd, entries);
+	await startSession(harness, context.ctx);
+
+	await harness.commands.preset.handler("diagnostics", context.ctx);
+	const text = context.editors.at(-1)?.text ?? "";
+	const matches = text.match(/Legacy pi-forge-variable-state entries are ignored/g) ?? [];
+	assert.equal(matches.length, 1);
+	assert.doesNotMatch(text, /pi-forge-variable-state.*restor/i);
 });
 
 test("/preset validate shows requested stack diagnostics", async () => {
@@ -908,53 +895,6 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(deleteResult.activeId, undefined);
 		assert.deepEqual(deleteResult.stacks.map((stack) => stack.id), ["default"]);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "forked.json")), false);
-
-		const sillyPreset = {
-			preset_name: "UI Silly Import",
-			prompts: [
-				{ identifier: "main", name: "Main", role: "system", content: "You are {{char}}." },
-				{ identifier: "chatHistory", name: "Chat History", marker: true },
-				{ identifier: "post", name: "Post", role: "user", content: "Latest: {{lastUserMessage}}" },
-			],
-			prompt_order: [
-				{ character_id: 1, order: [{ identifier: "main", enabled: true }] },
-				{
-					character_id: 2,
-					order: [
-						{ identifier: "main", enabled: true },
-						{ identifier: "chatHistory", enabled: true },
-						{ identifier: "post", enabled: true },
-					],
-				},
-			],
-		};
-		const sillyResponse = await fetch(apiUrl, {
-			method: "POST",
-			headers: { "content-type": "application/json", "x-pi-forge-token": token },
-			body: JSON.stringify({ stack: sillyPreset, sourceName: "UI Silly Import.json", characterId: 2 }),
-		});
-		assert.equal(sillyResponse.status, 200);
-		const sillyResult = await sillyResponse.json() as {
-			stack: { id: string; itemCount: number };
-			importFormat?: string;
-			importReport?: string;
-			stacks: Array<{ id: string }>;
-		};
-		assert.equal(sillyResult.stack.id, "ui-silly-import");
-		assert.equal(sillyResult.stack.itemCount, 3);
-		assert.equal(sillyResult.importFormat, "sillytavern");
-		assert.match(sillyResult.importReport ?? "", /Character ID.*2/);
-		assert.ok(sillyResult.stacks.some((stack) => stack.id === "ui-silly-import"));
-		const sillySaved = readFileSync(join(promptStacksDir(cwd), "ui-silly-import.json"), "utf8");
-		assert.match(sillySaved, /"source": "sillytavern"/);
-		assert.match(sillySaved, /"includeLastUserMessage": false/);
-
-		const sillyDeleteResponse = await fetch(new URL("/api/stacks/ui-silly-import", editorUrl), {
-			method: "DELETE",
-			headers: { "x-pi-forge-token": token },
-		});
-		assert.equal(sillyDeleteResponse.status, 200);
-		assert.equal(existsSync(join(promptStacksDir(cwd), "ui-silly-import.json")), false);
 
 		await harness.commands.preset.handler("ui stop", ctx);
 		assert.equal(statuses["pi-forge-editor"], undefined);
@@ -1737,34 +1677,6 @@ test("turn_start persists default active stack only once", async () => {
 	assert.deepEqual(harness.appended, [{ type: "pi-forge-prompt-stack-state", data: { activeStackId: "project:default" } }]);
 });
 
-test("/preset import-silly supports dry-run, overwrite flag, and untrusted write refusal", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	const presetPath = writePreset(cwd, "dry.json", {
-		prompts: [
-			{ identifier: "main", role: "system", content: "Dry content" },
-			{ identifier: "chatHistory", marker: true },
-		],
-		prompt_order: [{ character_id: 1, order: [{ identifier: "main", enabled: true }, { identifier: "chatHistory", enabled: true }] }],
-	});
-	const harness = createHarness();
-	const context = createContext(cwd);
-	await startSession(harness, context.ctx);
-
-	await harness.commands.preset.handler(`import-silly ${presetPath} --dry-run`, context.ctx);
-	assert.equal(existsSync(join(promptStacksDir(cwd), "dry.json")), false);
-	assert.match(context.editors.at(-1)?.text ?? "", /Generated stack JSON/);
-
-	mkdirSync(promptStacksDir(cwd), { recursive: true });
-	const stackPath = join(promptStacksDir(cwd), "dry.json");
-	writeFileSync(stackPath, "old", "utf8");
-	await harness.commands.preset.handler(`import-silly ${presetPath} --overwrite`, context.ctx);
-	assert.notEqual(readFileSync(stackPath, "utf8"), "old");
-
-	const untrusted = createContext(cwd, [], { trusted: false });
-	await harness.commands.preset.handler(`import-silly ${presetPath} --overwrite`, untrusted.ctx);
-	assert.match(untrusted.notifications.at(-1)?.message ?? "", /not trusted/);
-});
-
 test("/preset migrate-stacks copies legacy stacks with overwrite and delete options", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeLegacyStack(cwd, "legacy.json", {
@@ -1810,67 +1722,6 @@ test("/preset migrate-stacks copies legacy stacks with overwrite and delete opti
 	const untrusted = createContext(cwd, [], { trusted: false });
 	await harness.commands.preset.handler("migrate-stacks", untrusted.ctx);
 	assert.match(untrusted.notifications.at(-1)?.message ?? "", /not trusted/);
-});
-
-test("session_tree restores macro session variables from the current branch only", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		autoActivate: true,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables", options: { includeStatic: false, includeTurn: false } },
-			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
-		],
-	});
-	const entries = [
-		{ type: "custom", customType: "pi-forge-variable-state", id: "early-state", parentId: null, data: { variables: { progress: "early" } } },
-		{ type: "message", id: "early-message", parentId: "early-state", message: { role: "user", content: "earlier" } },
-		{ type: "custom", customType: "pi-forge-variable-state", id: "later-state", parentId: "early-message", data: { variables: { progress: "later" } } },
-		{ type: "message", id: "later-message", parentId: "later-state", message: { role: "assistant", content: [{ type: "text", text: "later" }] } },
-	];
-	const harness = createHarness();
-	const context = createContext(cwd, entries, { leafId: "later-message" });
-	await startSession(harness, context.ctx);
-
-	await harness.commands.preset.handler("preview", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">later/);
-
-	context.setLeafId("early-message");
-	await harness.events.session_tree({ type: "session_tree", oldLeafId: "later-message", newLeafId: "early-message" }, context.ctx);
-	await harness.commands.preset.handler("preview", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">early/);
-	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /name="progress">later/);
-});
-
-test("session_tree before any variable entry clears restored macro variables", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
-	writeStack(cwd, "default.json", {
-		schemaVersion: 1,
-		autoActivate: true,
-		type: "pi-forge.prompt-stack",
-		id: "default",
-		items: [
-			{ kind: "slot", id: "vars", enabled: true, role: "user", slot: "variables", options: { includeStatic: false, includeTurn: false } },
-			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
-		],
-	});
-	const entries = [
-		{ type: "message", id: "first-message", parentId: null, message: { role: "user", content: "before variables" } },
-		{ type: "custom", customType: "pi-forge-variable-state", id: "vars", parentId: "first-message", data: { variables: { progress: "later" } } },
-	];
-	const harness = createHarness();
-	const context = createContext(cwd, entries, { leafId: "vars" });
-	await startSession(harness, context.ctx);
-
-	await harness.commands.preset.handler("preview", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /name="progress">later/);
-
-	context.setLeafId("first-message");
-	await harness.events.session_tree({ type: "session_tree", oldLeafId: "vars", newLeafId: "first-message" }, context.ctx);
-	await harness.commands.preset.handler("preview", context.ctx);
-	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /name="progress">later/);
 });
 
 function escapeRegExp(value: string): string {

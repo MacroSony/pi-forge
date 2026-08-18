@@ -23,7 +23,6 @@
 | 命令 | 行为 |
 |---|---|
 | `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | 把旧 stack 复制到 `.pi/forge/prompt-stacks` |
-| `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]` | 转换 SillyTavern preset 并生成报告 |
 
 覆盖或删除之前请先使用 `--dry-run`。
 

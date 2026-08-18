@@ -1,13 +1,12 @@
-import { agentMessageToPreviewText, compileMessages, compileSystemPrompt, createPromptVariableStore, getLatestUserMessage, } from "./compiler.js";
+import { agentMessageToPreviewText, compileMessages, compileSystemPrompt, getLatestUserMessage, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
-export function renderPreview(ctx, target, sessionVariables) {
-    return buildPreview(ctx, target, sessionVariables, ctx.getSystemPromptOptions()).text;
+export function renderPreview(ctx, target) {
+    return buildPreview(ctx, target, ctx.getSystemPromptOptions()).text;
 }
-export function buildPreview(ctx, target, sessionVariables, options) {
+export function buildPreview(ctx, target, options) {
     const sessionMessages = getPreviewSessionMessages(ctx);
     const latestUserMessage = getLatestUserMessage(sessionMessages);
-    const previewVariables = createPromptVariableStore(sessionVariables);
-    const runtime = { options, ctx, latestUserMessage, now: new Date(), variables: previewVariables };
+    const runtime = { options, ctx, latestUserMessage, now: new Date() };
     const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
     const messages = compileMessages(target.stack, runtime, sessionMessages);
     const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];

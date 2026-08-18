@@ -14,9 +14,8 @@
 - [实验性前台 delegation](guides/delegation.md)：启用前请先阅读安全边界。
 - [Prompt stack 使用场景（英文）](../guides/use-cases.md)
 
-SillyTavern 导入、自定义 macros/slots 和调试的完整说明目前以英文版为准：
+自定义 macros/slots 和调试的完整说明目前以英文版为准：
 
-- [SillyTavern import](../guides/sillytavern-import.md)
 - [Custom macros and slots](../guides/custom-macros-and-slots.md)
 - [Prompt and payload debugging](../guides/debugging.md)
 

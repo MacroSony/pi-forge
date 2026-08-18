@@ -185,7 +185,7 @@ function normalizeStack(raw, filePath, diagnostics) {
     if (isPlainObject(obj.state) && Object.keys(obj.state).length > 0) {
         diagnostics.push({
             level: "info",
-            message: "state is no longer supported and was ignored; use stack.variables and template variable macros instead.",
+            message: "state is no longer supported and was ignored; use stack.variables and template interpolation instead.",
         });
     }
     return {

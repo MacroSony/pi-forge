@@ -23,8 +23,7 @@ const optionsError = ref(false);
 const options = computed<any>(() => item.options || {});
 const structuredOptionCount = computed(() => {
 	if (item.slot === "chat-history") return 7;
-	if (item.slot === "variables") return 4;
-	if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot || "")) return 1;
+		if (["tools", "tool-guidelines", "skills", "project-context"].includes(item.slot || "")) return 1;
 	if (["date", "date-cwd"].includes(item.slot || "")) return 1;
 	return 0;
 });
@@ -100,9 +99,6 @@ function optionHelp(key: string): string {
 		roles: "Optional comma-separated message roles to keep, such as user, assistant, toolResult, compactionSummary.",
 		maxMessages: "Keep only the most recent N chat-history messages after filtering.",
 		maxChars: "Keep only the most recent chat-history messages within an approximate character budget.",
-		includeStatic: "Include static stack variables in this variables slot.",
-		includeSession: "Include session variables created by template macros.",
-		includeTurn: "Include temporary turn variables created during prompt compilation.",
 		includeTime: "Render the current time in HH:MM:SS after the current date.",
 		format: "Choose XML or compact plain text rendering.",
 	};
@@ -194,28 +190,6 @@ function optionHelp(key: string): string {
 						<div class="field" :title="optionHelp('maxChars')">
 							<label>Max chars</label>
 							<input type="number" min="1" data-option="maxChars" :value="options.maxChars ?? ''" @change="setNumberOption('maxChars', ($event.target as HTMLInputElement).value)">
-						</div>
-					</template>
-
-					<template v-if="item.slot === 'variables'">
-						<label class="checkline" :title="optionHelp('includeStatic')">
-							<input type="checkbox" data-option="includeStatic" :checked="options.includeStatic !== false" @change="setOption('includeStatic', ($event.target as HTMLInputElement).checked, true)">
-							Include static variables
-						</label>
-						<label class="checkline" :title="optionHelp('includeSession')">
-							<input type="checkbox" data-option="includeSession" :checked="options.includeSession !== false" @change="setOption('includeSession', ($event.target as HTMLInputElement).checked, true)">
-							Include session variables
-						</label>
-						<label class="checkline" :title="optionHelp('includeTurn')">
-							<input type="checkbox" data-option="includeTurn" :checked="options.includeTurn !== false" @change="setOption('includeTurn', ($event.target as HTMLInputElement).checked, true)">
-							Include turn variables
-						</label>
-						<div class="field" :title="optionHelp('format')">
-							<label>Format</label>
-							<select data-option="format" :value="options.format || 'xml'" @change="setOption('format', ($event.target as HTMLSelectElement).value, 'xml')">
-								<option value="xml">xml</option>
-								<option value="plain">plain</option>
-							</select>
 						</div>
 					</template>
 

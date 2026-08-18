@@ -38,7 +38,7 @@ The stack workspace provides:
 - validation and a full compiled preview;
 - registered-tool and loaded-skill search with exact-name chips and wildcard patterns;
 - raw JSON recovery for advanced or unknown fields;
-- native pi-forge and SillyTavern JSON import;
+- native pi-forge JSON import;
 - export, fork, and deletion;
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.

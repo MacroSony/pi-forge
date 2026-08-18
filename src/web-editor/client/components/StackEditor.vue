@@ -218,7 +218,7 @@ defineExpose({
 	<div class="tab-section">
 		<div class="tab-section-title">Stack variables</div>
 		<div class="tab-section-meta">
-			Static string variables available to template macros and variables slots.
+			Static string variables available to template macros.
 		</div>
 		<div class="modal-toolbar">
 			<button id="addVariableBtn" data-icon="+" title="Add a static stack variable" type="button" @click="addVariable">

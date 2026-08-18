@@ -1,8 +1,8 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { LoadedPromptStack, PromptStackDiagnostic, PromptVariableValue } from "./types.ts";
+import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview } from "./web-editor/index.ts";
-export declare function renderPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack, sessionVariables: Record<string, PromptVariableValue>): string;
-export declare function buildPreview(ctx: ExtensionContext, target: LoadedPromptStack, sessionVariables: Record<string, PromptVariableValue>, options: BuildSystemPromptOptions): {
+export declare function renderPreview(ctx: ExtensionCommandContext, target: LoadedPromptStack): string;
+export declare function buildPreview(ctx: ExtensionContext, target: LoadedPromptStack, options: BuildSystemPromptOptions): {
     text: string;
     preview: WebEditorPreview;
     diagnostics: PromptStackDiagnostic[];

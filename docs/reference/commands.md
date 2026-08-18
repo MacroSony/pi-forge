@@ -23,9 +23,8 @@ Arguments in brackets are optional. Commands that write project files require a 
 | Command | Behavior |
 |---|---|
 | `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` | Copy legacy `.pi/prompt-stacks` files into `.pi/forge/prompt-stacks`. |
-| `/preset import-silly <path> [character_id] [--dry-run] [--overwrite]` | Convert a SillyTavern preset and write a migration report. |
 
-Use migration/import dry runs before overwriting or deleting anything. See [SillyTavern import](../guides/sillytavern-import.md).
+Use migration dry runs before overwriting or deleting anything.
 
 ## Agent profiles
 

@@ -2,15 +2,12 @@ import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionS
 import {
 	compileMessages,
 	compileSystemPrompt,
-	createPromptVariableStore,
 	getLatestUserMessage,
-	markSessionVariablesClean,
-	resetTurnVariables,
 } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { isAgentProfileProvenance } from "./agent-profile.ts";
-import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, VARIABLE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
-import type { PromptStackDiagnostic, PromptVariableStore, PromptVariableValue } from "./types.ts";
+import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
+import type { PromptStackDiagnostic } from "./types.ts";
 
 export interface LifecycleDeps {
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
@@ -96,19 +93,16 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		deps.refreshSubagentToolDescriptions(ctx);
 		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		state.currentLatestUserMessage = event.prompt;
-		state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
-		resetTurnVariables(state.currentVariableStore);
 		state.contextRewritePending = true;
 
 		if (!state.active) return;
 
 		const result = compileSystemPrompt(
 			state.active.stack,
-			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date(), variables: state.currentVariableStore },
+			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() },
 			event.systemPrompt,
 		);
 		deps.recordCompileDiagnostics(ctx, result.diagnostics);
-		persistVariablesIfDirty(pi, state, state.currentVariableStore);
 
 		return { systemPrompt: result.systemPrompt };
 	});
@@ -122,15 +116,13 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		// and the model restarts its planning instead of continuing from the tool result.
 		state.contextRewritePending = false;
 
-		if (!state.currentVariableStore) state.currentVariableStore = createPromptVariableStore(state.sessionVariables);
 		const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
 		const result = compileMessages(
 			state.active.stack,
-			{ options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date(), variables: state.currentVariableStore },
+			{ options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() },
 			event.messages,
 		);
 		deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
-		persistVariablesIfDirty(pi, state, state.currentVariableStore);
 		return { messages: result.messages };
 	});
 
@@ -144,10 +136,8 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 
 	pi.on("agent_end", async () => {
-		persistVariablesIfDirty(pi, state, state.currentVariableStore);
 		state.currentSystemPromptOptions = undefined;
 		state.currentLatestUserMessage = undefined;
-		state.currentVariableStore = undefined;
 		state.contextRewritePending = false;
 	});
 }
@@ -158,9 +148,8 @@ async function restoreBranchScopedRuntime(
 	deps: LifecycleDeps,
 	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
-	state.sessionVariables = getRestoredVariables(ctx);
 	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
-	state.currentVariableStore = undefined;
+	state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;
 	await deps.reloadStacks(ctx, restoredActiveId, options);
@@ -201,6 +190,19 @@ function isFreshStartupBranch(entries: unknown[]): boolean {
 	return thinkingLevelChanges === 1;
 }
 
+function getLegacyVariableStateDiagnostic(ctx: ExtensionContext): PromptStackDiagnostic[] {
+	const entries = getCurrentBranchEntries(ctx);
+	const hasLegacyVariableState = entries.some((entry) => {
+		const candidate = entry as { type?: unknown; customType?: unknown };
+		return candidate?.type === "custom" && candidate?.customType === "pi-forge-variable-state";
+	});
+	if (!hasLegacyVariableState) return [];
+	return [{
+		level: "info",
+		message: "Legacy pi-forge-variable-state entries are ignored; mutable session variables were removed in 0.5.0.",
+	}];
+}
+
 function getRestoredProfileProvenance(ctx: ExtensionContext) {
 	const entries = getCurrentBranchEntries(ctx);
 	for (let i = entries.length - 1; i >= 0; i--) {
@@ -231,40 +233,4 @@ function getRestoredActiveId(ctx: ExtensionContext): string | undefined {
 		}
 	}
 	return undefined;
-}
-
-function getRestoredVariables(ctx: ExtensionContext): Record<string, PromptVariableValue> {
-	const entries = getCurrentBranchEntries(ctx);
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i] as { type?: string; customType?: string; data?: { variables?: unknown } };
-		if (entry.type !== "custom" || entry.customType !== VARIABLE_ENTRY_TYPE) continue;
-		if (!entry.data || typeof entry.data.variables !== "object" || Array.isArray(entry.data.variables)) return {};
-		return normalizeVariableRecord(entry.data.variables as Record<string, unknown>);
-	}
-	return {};
-}
-
-function persistVariablesIfDirty(pi: ExtensionAPI, state: PiForgeRuntimeState, store: PromptVariableStore | undefined): void {
-	if (!store?.sessionDirty) return;
-	state.sessionVariables = { ...store.session };
-	pi.appendEntry(VARIABLE_ENTRY_TYPE, { variables: state.sessionVariables });
-	markSessionVariablesClean(store);
-}
-
-function normalizeVariableRecord(value: Record<string, unknown>): Record<string, PromptVariableValue> {
-	const result: Record<string, PromptVariableValue> = {};
-	for (const [key, raw] of Object.entries(value)) {
-		if (isPromptVariableValue(raw)) result[key] = raw;
-	}
-	return result;
-}
-
-function isPromptVariableValue(value: unknown): value is PromptVariableValue {
-	if (value === null) return true;
-	const type = typeof value;
-	if (type === "string" || type === "boolean") return true;
-	if (type === "number") return Number.isFinite(value);
-	if (Array.isArray(value)) return value.every(isPromptVariableValue);
-	if (!value || typeof value !== "object") return false;
-	return Object.values(value as Record<string, unknown>).every(isPromptVariableValue);
 }

@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, } from "../agent-profile.js";
 import { isValidSubagentTimeoutMs, MAX_SUBAGENT_TIMEOUT_MS, MIN_SUBAGENT_TIMEOUT_MS, } from "../forge-config.js";
-import { convertSillyTavernPreset } from "../sillytavern-importer.js";
 import { renderEditorHtml } from "./page.js";
 // Port 0 asks Node to bind any available localhost port.
 export const DEFAULT_WEB_EDITOR_PORT = 0;
@@ -152,12 +151,7 @@ async function handleRequest(host, token, req, res) {
                 scope: scopeResult.scope,
             }
             : {};
-        const result = await host.createStack(parsed.stack, options);
-        if (result.ok && parsed.importFormat) {
-            sendJson(res, 200, { ...result, importFormat: parsed.importFormat, importReport: parsed.importReport });
-            return;
-        }
-        sendOperation(res, result);
+        sendOperation(res, await host.createStack(parsed.stack, options));
         return;
     }
     if (req.method === "GET" && parts[1] === "stacks" && parts.length === 3) {
@@ -253,14 +247,6 @@ function readStackPayload(body) {
     const rawStack = isPlainObject(body) && "stack" in body ? body.stack : body;
     if (!isPlainObject(rawStack))
         return { ok: false, error: "Stack payload must be a JSON object." };
-    if (isSillyTavernPresetPayload(rawStack)) {
-        const sourceName = isPlainObject(body) && typeof body.sourceName === "string" ? body.sourceName : undefined;
-        const characterId = readCharacterId(body);
-        const result = convertSillyTavernPreset(rawStack, { sourceName, characterId });
-        if ("error" in result)
-            return { ok: false, error: `SillyTavern import error: ${result.error}` };
-        return { ok: true, stack: result.stack, importFormat: "sillytavern", importReport: result.report };
-    }
     if (typeof rawStack.id !== "string" || !rawStack.id.trim())
         return { ok: false, error: "Stack id must be a non-empty string." };
     if (!Array.isArray(rawStack.items))
@@ -344,9 +330,6 @@ function readProfilePayload(body) {
         },
     };
 }
-function isSillyTavernPresetPayload(value) {
-    return Array.isArray(value.prompts) && !Array.isArray(value.items);
-}
 function readSubagentPolicyPayload(body) {
     if (!isPlainObject(body))
         return { ok: false, error: "Subagent policy payload must be a JSON object." };
@@ -373,19 +356,6 @@ function readSubagentPolicyPayload(body) {
             timeoutMs: body.timeoutMs,
         },
     };
-}
-function readCharacterId(body) {
-    if (!isPlainObject(body))
-        return undefined;
-    const raw = body.characterId;
-    if (typeof raw === "number" && Number.isInteger(raw))
-        return raw;
-    if (typeof raw === "string" && raw.trim()) {
-        const parsed = Number(raw.trim());
-        if (Number.isInteger(parsed))
-            return parsed;
-    }
-    return undefined;
 }
 function sendOperation(res, result) {
     if (!result.ok) {

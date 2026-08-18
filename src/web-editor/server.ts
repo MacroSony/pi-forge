@@ -12,7 +12,6 @@ import {
 	MAX_SUBAGENT_TIMEOUT_MS,
 	MIN_SUBAGENT_TIMEOUT_MS,
 } from "../forge-config.ts";
-import { convertSillyTavernPreset } from "../sillytavern-importer.ts";
 import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
 import type {
@@ -192,12 +191,7 @@ async function handleRequest(host: WebEditorHost, token: string, req: IncomingMe
 				scope: scopeResult.scope,
 			}
 			: {};
-		const result = await host.createStack(parsed.stack, options);
-		if (result.ok && parsed.importFormat) {
-			sendJson(res, 200, { ...result, importFormat: parsed.importFormat, importReport: parsed.importReport });
-			return;
-		}
-		sendOperation(res, result);
+		sendOperation(res, await host.createStack(parsed.stack, options));
 		return;
 	}
 
@@ -305,17 +299,9 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 	return text.trim() ? JSON.parse(text) : {};
 }
 
-function readStackPayload(body: unknown): { ok: true; stack: PromptStack; importFormat?: "sillytavern"; importReport?: string } | { ok: false; error: string } {
+function readStackPayload(body: unknown): { ok: true; stack: PromptStack } | { ok: false; error: string } {
 	const rawStack = isPlainObject(body) && "stack" in body ? body.stack : body;
 	if (!isPlainObject(rawStack)) return { ok: false, error: "Stack payload must be a JSON object." };
-
-	if (isSillyTavernPresetPayload(rawStack)) {
-		const sourceName = isPlainObject(body) && typeof body.sourceName === "string" ? body.sourceName : undefined;
-		const characterId = readCharacterId(body);
-		const result = convertSillyTavernPreset(rawStack, { sourceName, characterId });
-		if ("error" in result) return { ok: false, error: `SillyTavern import error: ${result.error}` };
-		return { ok: true, stack: result.stack, importFormat: "sillytavern", importReport: result.report };
-	}
 
 	if (typeof rawStack.id !== "string" || !rawStack.id.trim()) return { ok: false, error: "Stack id must be a non-empty string." };
 	if (!Array.isArray(rawStack.items)) return { ok: false, error: "Stack items must be an array." };
@@ -393,10 +379,6 @@ function readProfilePayload(body: unknown): { ok: true; profile: AgentProfile } 
 	};
 }
 
-function isSillyTavernPresetPayload(value: Record<string, unknown>): boolean {
-	return Array.isArray(value.prompts) && !Array.isArray(value.items);
-}
-
 function readSubagentPolicyPayload(body: unknown): { ok: true; update: WebEditorSubagentPolicyUpdate } | { ok: false; error: string } {
 	if (!isPlainObject(body)) return { ok: false, error: "Subagent policy payload must be a JSON object." };
 	const unsupported = Object.keys(body).find((field) => field !== "enabled" && field !== "backend" && field !== "timeoutMs");
@@ -421,17 +403,6 @@ function readSubagentPolicyPayload(body: unknown): { ok: true; update: WebEditor
 			timeoutMs: body.timeoutMs as number | null | undefined,
 		},
 	};
-}
-
-function readCharacterId(body: unknown): number | undefined {
-	if (!isPlainObject(body)) return undefined;
-	const raw = body.characterId;
-	if (typeof raw === "number" && Number.isInteger(raw)) return raw;
-	if (typeof raw === "string" && raw.trim()) {
-		const parsed = Number(raw.trim());
-		if (Number.isInteger(parsed)) return parsed;
-	}
-	return undefined;
 }
 
 function sendOperation<T>(res: ServerResponse, result: WebEditorOperationResult<T>): void {

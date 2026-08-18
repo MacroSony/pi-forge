@@ -129,7 +129,7 @@ test("regex validation rejects invalid patterns, flags, targets, and duplicate i
 	assert.ok(diagnostics.some((diagnostic) => /target must/.test(diagnostic.message)));
 });
 
-test("regex validation warns about SillyTavern replacement tokens and validates new limit fields", () => {
+test("regex validation warns about legacy replacement tokens and validates new limit fields", () => {
 	const diagnostics = validateRegexConfig({
 		rules: [
 			{ id: "st-token", stage: "compiled", pattern: "x", replace: "{{match}} $0" },
@@ -144,29 +144,17 @@ test("regex validation warns about SillyTavern replacement tokens and validates 
 	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /maxDepth/.test(diagnostic.message)));
 });
 
-test("display regex effects validate with a warning and are ignored by outgoing runtime", () => {
-	const stack: PromptStack = {
-		schemaVersion: 1,
-		id: "display-only",
-		regex: {
-			rules: [{
-				id: "display",
-				stage: "compiled",
-				effect: "display",
-				pattern: "secret",
-				replace: "redacted",
-			}],
-		},
-		items: [],
-	};
+test("regex validation rejects display and both effects", () => {
+	const diagnostics = validateRegexConfig({
+		rules: [
+			{ id: "display", stage: "compiled", effect: "display", pattern: "secret", replace: "redacted" },
+			{ id: "both", stage: "compiled", effect: "both", pattern: "secret", replace: "redacted" },
+		],
+	});
 
-	const validation = validateRegexConfig(stack.regex);
-	const diagnostics: PromptStackDiagnostic[] = [];
-	const messages = applyRegexRulesToMessages(stack, [user("secret")], "compiled", diagnostics);
-
-	assert.ok(validation.some((diagnostic) => diagnostic.level === "warning" && /ignored/.test(diagnostic.message)));
-	assert.equal(textOf(messages[0]!), "secret");
-	assert.deepEqual(diagnostics, []);
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /effect must be/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => /effect "display"/.test(diagnostic.message) || /effect must be/.test(diagnostic.message)));
+	assert.ok(!diagnostics.some((diagnostic) => /ignored/.test(diagnostic.message)));
 });
 
 test("finalize regex rewrites finalized assistant text and preserves non-text parts", () => {
@@ -206,14 +194,13 @@ test("finalize regex rewrites finalized assistant text and preserves non-text pa
 	assert.ok(diagnostics.some((diagnostic) => /original model output is not preserved/.test(diagnostic.message)));
 });
 
-test("finalize regex ignores display and both effects", () => {
+test("finalize regex ignores non-finalize effects", () => {
 	const stack: PromptStack = {
 		schemaVersion: 1,
 		id: "ignored-effects",
 		regex: {
 			rules: [
-				{ id: "display", stage: "compiled", effect: "display", pattern: "secret", replace: "redacted" },
-				{ id: "both", stage: "compiled", effect: "both", pattern: "secret", replace: "redacted" },
+				{ id: "outgoing", stage: "compiled", effect: "outgoing", pattern: "secret", replace: "redacted" },
 			],
 		},
 		items: [],

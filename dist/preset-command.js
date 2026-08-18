@@ -1,10 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { isDisabledPromptStackId, isSafePromptStackMutationPath, promptStackPath, promptStackReadDirs } from "./loader.js";
+import { isDisabledPromptStackId, promptStackReadDirs } from "./loader.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { renderDiagnostics, renderPreview, showText } from "./preview.js";
-import { importSillyTavernPreset } from "./sillytavern-importer.js";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.js";
 import { forgeExtensionsDir, globalForgeExtensionsDir } from "./storage.js";
 export function registerPresetCommand(pi, state, deps) {
@@ -13,7 +10,7 @@ export function registerPresetCommand(pi, state, deps) {
         getArgumentCompletions: (prefix) => {
             const parts = prefix.trimStart().split(/\s+/);
             if (parts.length <= 1 && !prefix.endsWith(" ")) {
-                const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "import-silly", "migrate-stacks", "ui"];
+                const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "migrate-stacks", "ui"];
                 return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
             }
             const first = parts[0];
@@ -83,7 +80,7 @@ async function handlePresetCommand(state, deps, args, ctx) {
                 ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
                 return;
             }
-            await showText(ctx, `pi-forge preview: ${target.stack.id}`, renderPreview(ctx, target, state.sessionVariables));
+            await showText(ctx, `pi-forge preview: ${target.stack.id}`, renderPreview(ctx, target));
             return;
         }
         case "validate": {
@@ -121,77 +118,10 @@ async function handlePresetCommand(state, deps, args, ctx) {
             await showText(ctx, "pi-forge prompt-stack migration", renderMigrationReport(report));
             return;
         }
-        case "import-silly":
-            await handleImportSilly(state, deps, rest, ctx);
-            return;
         default:
             ctx.ui.notify(`Unknown /preset subcommand: ${command}`, "warning");
             return;
     }
-}
-async function handleImportSilly(state, deps, rest, ctx) {
-    if (!ctx.isProjectTrusted()) {
-        ctx.ui.notify("pi-forge: project is not trusted; refusing to write imported prompt stacks.", "warning");
-        return;
-    }
-    const sourcePath = rest[0];
-    if (!sourcePath) {
-        ctx.ui.notify("Usage: /preset import-silly <path> [character_id] [--dry-run] [--overwrite]", "warning");
-        return;
-    }
-    const charIdToken = rest[1]?.startsWith("--") ? undefined : rest[1];
-    const flags = new Set(rest.slice(charIdToken ? 2 : 1));
-    const dryRun = flags.has("--dry-run");
-    let overwrite = flags.has("--overwrite");
-    const resolvedPath = sourcePath.startsWith("/") ? sourcePath : join(ctx.cwd, sourcePath);
-    if (!existsSync(resolvedPath)) {
-        ctx.ui.notify(`File not found: ${resolvedPath}`, "error");
-        return;
-    }
-    const charId = charIdToken ? Number(charIdToken) : undefined;
-    if (charIdToken && (Number.isNaN(charId) || !Number.isFinite(charId))) {
-        ctx.ui.notify(`Invalid character_id: ${charIdToken}`, "error");
-        return;
-    }
-    const result = importSillyTavernPreset(resolvedPath, charId);
-    if ("error" in result) {
-        ctx.ui.notify(`pi-forge import error: ${result.error}`, "error");
-        return;
-    }
-    const existingStack = state.stacks.find((candidate) => candidate.scope === "project" && candidate.stack.id === result.stack.id);
-    const stackPath = existingStack?.filePath ?? promptStackPath(ctx.cwd, result.stack.id);
-    if (!isSafePromptStackMutationPath(ctx.cwd, stackPath)) {
-        ctx.ui.notify("pi-forge: refusing to import outside project prompt-stack storage or through a symbolic link.", "error");
-        return;
-    }
-    const stacksDir = dirname(stackPath);
-    const reportDir = join(ctx.cwd, ".pi", "forge", "import-reports");
-    const reportPath = join(reportDir, `${result.stack.id}.md`);
-    if (dryRun) {
-        await showText(ctx, `pi-forge import dry run: ${result.stack.id}`, `Would write stack to: ${stackPath}\nWould write report to: ${reportPath}\n\n## Generated stack JSON\n\n\`\`\`json\n${JSON.stringify(result.stack, null, 2)}\n\`\`\`\n\n${result.report}`);
-        return;
-    }
-    const existingPaths = [stackPath, reportPath].filter((path) => existsSync(path));
-    if (existingPaths.length > 0 && !overwrite) {
-        if (!ctx.hasUI) {
-            ctx.ui.notify(`pi-forge: import would overwrite existing file(s): ${existingPaths.join(", ")}. Re-run with --overwrite.`, "error");
-            return;
-        }
-        overwrite = await ctx.ui.confirm("Overwrite pi-forge import output?", `These file(s) already exist:\n${existingPaths.join("\n")}\n\nOverwrite them?`);
-        if (!overwrite) {
-            ctx.ui.notify("pi-forge: import cancelled; existing files were left unchanged.", "info");
-            return;
-        }
-    }
-    if (!existsSync(stacksDir))
-        mkdirSync(stacksDir, { recursive: true });
-    writeFileSync(stackPath, JSON.stringify(result.stack, null, 2), "utf8");
-    if (!existsSync(reportDir))
-        mkdirSync(reportDir, { recursive: true });
-    writeFileSync(reportPath, result.report, "utf8");
-    await deps.reloadStacks(ctx, deps.selectedActiveId());
-    ctx.ui.notify(`pi-forge: imported ${result.stack.id} (${result.stack.items.length} items)`, "info");
-    await showText(ctx, `pi-forge import report: ${result.stack.id}`, `Stack written to: ${stackPath}\nReport written to: ${reportPath}\n\n${result.report}`);
 }
 function renderStackList(state, ctx) {
     const lines = [

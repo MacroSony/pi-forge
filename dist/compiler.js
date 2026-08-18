@@ -10,16 +10,6 @@ const ZERO_USAGE = {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
-export function createPromptVariableStore(sessionVariables = {}) {
-    return { turn: {}, session: { ...sessionVariables }, sessionDirty: false };
-}
-export function resetTurnVariables(store) {
-    store.turn = {};
-    store.sessionDirty = false;
-}
-export function markSessionVariablesClean(store) {
-    store.sessionDirty = false;
-}
 export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
     const diagnostics = [];
     const parts = [];

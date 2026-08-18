@@ -1,5 +1,4 @@
 node_modules/
 .pi/
-MySillyTavernPreset.json
 *.tsbuildinfo
 .DS_Store

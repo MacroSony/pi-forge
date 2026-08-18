@@ -10,7 +10,7 @@ import type {
 
 const ALLOWED_REGEX_FLAGS = new Set(["g", "i", "m", "s", "u"]);
 const VALID_STAGES = new Set(["history", "compiled"]);
-const VALID_EFFECTS = new Set(["outgoing", "display", "both", "finalize"]);
+const VALID_EFFECTS = new Set(["outgoing", "finalize"]);
 const VALID_TARGETS = new Set(["system", "messages"]);
 
 interface CompiledRegexRule {
@@ -149,11 +149,7 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 	const effect = typeof rawRule.effect === "string" ? rawRule.effect : undefined;
 	if (rawRule.effect !== undefined) {
 		if (!VALID_EFFECTS.has(rawRule.effect as string)) {
-			diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect must be "outgoing", "display", "both", or "finalize".` });
-		} else if (rawRule.effect === "display") {
-			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "display" is not a runtime effect in pi-forge yet and will be ignored. Use "finalize" only when destructive transcript cleanup is intended.` });
-		} else if (rawRule.effect === "both") {
-			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "both" is not implemented and will be ignored; use separate outgoing and finalize rules.` });
+			diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect must be "outgoing" or "finalize".` });
 		} else if (rawRule.effect === "finalize") {
 			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" rewrites finalized assistant messages and replaces the original model output in the stored transcript.` });
 		}
@@ -180,7 +176,7 @@ function validateRule(rawRule: unknown, index: number, seenIds: Set<string>, dia
 		diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} replace must be a string when provided.` });
 	} else if (typeof rawRule.replace === "string") {
 		if (/\{\{\s*match\s*\}\}/i.test(rawRule.replace)) {
-			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} replacement contains SillyTavern {{match}}; use JavaScript $& or re-import the SillyTavern preset to convert it.` });
+			diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} replacement contains {{match}}; use JavaScript $& or $0 for the full match.` });
 		}
 	}
 	if (rawRule.trimStrings !== undefined && !isStringArray(rawRule.trimStrings)) {
@@ -343,9 +339,9 @@ function transformString(text: string, rule: CompiledRegexRule): StringTransform
 
 /**
  * Normalizes a JavaScript replacement string so that `$0` (not followed by another
- * digit) behaves as the full match, matching the custom trimStrings expander and
- * SillyTavern conventions. `$$0` stays a literal `$0`. This keeps `$0` consistent
- * across the native and trimStrings replacement paths.
+ * digit) behaves as the full match, matching the custom trimStrings expander.
+ * `$$0` stays a literal `$0`. This keeps `$0` consistent across the native and
+ * trimStrings replacement paths.
  */
 function convertDollarZeroToFullMatch(replace: string): string {
 	let result = "";

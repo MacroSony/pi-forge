@@ -29,7 +29,7 @@
 - 拖拽排序、启用/禁用、校验和完整编译预览；
 - 工具/skill 搜索、精确名称 chips 和通配符策略；
 - variables、context 和 regex 规则；
-- 原生 pi-forge 与 SillyTavern JSON 导入；
+- 原生 pi-forge JSON 导入；
 - 导出、fork、删除和 payload 捕获。
 
 已有 ID 在编辑时不可修改；需要新 ID 时使用 **Fork**，避免破坏 profile 引用和当前选择。工具栏的 scope 下拉（默认 `project`）决定新建、导入和 fork 的写入位置：选择 `global` 写入用户全局 `~/.pi/forge/prompt-stacks`，选择 `project` 写入项目 `.pi/forge/prompt-stacks`。列表会为全局 stack 显示 `global` badge；保存和删除通过 `global:<id>` 路由精确作用于全局文件。保存、导入、fork 和删除后会重新加载当前 Pi session。
