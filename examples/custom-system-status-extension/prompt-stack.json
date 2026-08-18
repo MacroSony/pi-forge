@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "type": "pi-forge.prompt-stack",
   "id": "custom-system-status",
   "name": "Custom System Status",
@@ -12,7 +12,7 @@
       "name": "CPU Load Macro",
       "enabled": true,
       "role": "system",
-      "content": "Current rough CPU load: {{cpuLoad}}"
+      "content": "Current rough CPU load: {{ extensions.cpuLoad }}"
     },
     {
       "kind": "slot",
@@ -35,5 +35,6 @@
       "enabled": true,
       "slot": "chat-history"
     }
-  ]
+  ],
+  "parameters": {}
 }

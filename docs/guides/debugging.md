@@ -30,7 +30,7 @@ Saved payloads can contain prompt and conversation content. Keep them out of ver
 
 ## Common checks
 
-- Unexpected duplicate task: set the `chat-history` slot's `includeLastUserMessage` to `false` when a later block uses `{{lastUserMessage}}`.
+- Unexpected duplicate task: set the `chat-history` slot's `includeLastUserMessage` to `false` when a later block uses `{{ runtime.lastUserMessage }}`.
 - Missing tool: inspect stack `allow`/`deny` policy and `/preset status`; the tool-call guard enforces the selected stack even if another extension modifies active tools.
 - Skill still visible: use `replace` mode when Pi's base prompt must not include its own skill listing.
 - Missing custom slot: trust the project, check `.pi/forge/extensions`, reload, and inspect diagnostics.

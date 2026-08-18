@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "type": "pi-forge.prompt-stack",
   "id": "default",
   "name": "Default Pi Prompt Mirror",
@@ -14,10 +14,14 @@
     "allowDuplicateChatHistory": false
   },
   "tools": {
-    "allow": ["*"]
+    "allow": [
+      "*"
+    ]
   },
   "skills": {
-    "allow": ["*"]
+    "allow": [
+      "*"
+    ]
   },
   "items": [
     {
@@ -116,5 +120,6 @@
       "enabled": true,
       "slot": "chat-history"
     }
-  ]
+  ],
+  "parameters": {}
 }

@@ -4,7 +4,7 @@ This example shows how trusted pi-forge extension modules can register a custom 
 
 It registers:
 
-- `{{cpuLoad}}` macro: one-line CPU load summary.
+- `{{ extensions.cpuLoad }}` macro: one-line CPU load summary.
 - `machine-status` slot: CPU load, OS load average, memory, and uptime snapshot.
 
 The renderers are synchronous, so this example uses Node's OS load average and memory APIs. It is a rough machine-load signal, not an async sampled CPU-utilization profiler.
@@ -53,12 +53,12 @@ Each module exports a default function or named `register` function:
 
 ```ts
 export default function register(api) {
-  api.registerMacro({ name: "cpuLoad", render: () => "..." });
+  api.registerMacro({ name: "cpuLoad", dependencies: [], render: ({ env, helpers }) => "..." });
   api.registerSlot({ name: "machine-status", render: () => "..." });
 }
 ```
 
-pi-forge passes the registration API into the function, tracks unregister callbacks, and unregisters previous definitions before reloading the folder. If the extension is not loaded, the stack can still be read, but `machine-status` will validate as an unsupported slot and `{{cpuLoad}}` will remain an unresolved macro.
+pi-forge passes the registration API into the function, tracks unregister callbacks, and unregisters previous definitions before reloading the folder. If the extension is not loaded, the stack can still be read, but `machine-status` will validate as an unsupported slot and `{{ extensions.cpuLoad }}` will remain an unresolved extension path.
 
 Only use this folder for trusted code. These modules execute with normal local code permissions after the project is trusted.
 

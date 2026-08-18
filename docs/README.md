@@ -14,6 +14,7 @@ Use this page as the documentation map. Each subject has one authoritative home;
 
 - [Web editor](guides/web-editor.md)
 - [Prompt-stack patterns and examples](guides/use-cases.md)
+- [Migrating to 0.5](guides/migrating-to-0.5.md)
 - [Foreground delegation](guides/delegation.md) — experimental; read the security boundary before enabling it.
 - [Custom macros and slots](guides/custom-macros-and-slots.md)
 - [Prompt and payload debugging](guides/debugging.md)

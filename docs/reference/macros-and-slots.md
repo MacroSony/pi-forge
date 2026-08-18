@@ -1,37 +1,57 @@
-# Macros and runtime slots
+# Forge-v1 templates and runtime slots
 
 [Documentation](../README.md)
 
-## Value macros
+Prompt text is compiled with the `forge-v1` engine: one closed grammar with no
+includes, loops, function calls, or arbitrary expressions. Preview, runtime,
+and subagent preparation use the same engine entry.
 
-| Macro | Value |
+## Template interpolation
+
+| Syntax | Value |
 |---|---|
-| `{{lastUserMessage}}` | Latest user message |
-| `{{date}}` | Current date as `YYYY-MM-DD` |
-| `{{time}}` | Current time as `HH:MM:SS` |
-| `{{cwd}}` | Current working directory |
-| `{{tools}}` | Comma-separated selected tool names |
-| `{{selectedTools}}` | Alias of `{{tools}}` |
-| `{{activeModel}}` | Current `provider/model` |
-| `{{name}}` | Static stack variable lookup from `stack.variables` |
+| `{{ runtime.cwd }}` | Current working directory |
+| `{{ runtime.date }}` | Current date as `YYYY-MM-DD` |
+| `{{ runtime.time }}` | Current time as `HH:MM:SS` |
+| `{{ runtime.lastUserMessage }}` | Latest user message |
+| `{{ runtime.selectedToolsText }}` | Comma-separated effective tool names |
+| `{{ runtime.activeModel }}` | Current `provider/model` |
+| `{{ parameters.<name> }}` | Static stack parameter |
+| `{{ extensions.<name> }}` | Registered custom macro value |
 
-## Filters and conditionals
+Legacy v1 stacks keep a compatibility fallback: bare `{{name}}` resolves to a
+static parameter, `{{lastUserMessage}}`/`{{date}}`/`{{time}}`/`{{cwd}}` resolve
+to the matching `runtime.*` value, and registered custom macros resolve by
+name. New v2 stacks use the explicit `parameters.*` / `runtime.*` paths.
 
-Nested macros are supported. `::` separators are parsed only at the current macro depth.
+## Filters
 
-| Macro | Result |
+Nested pipelines are supported; filters are pure and versioned.
+
+| Filter | Result |
 |---|---|
-| `{{trim::value}}` | Trim surrounding whitespace |
-| `{{upper::value}}` | Uppercase value |
-| `{{lower::value}}` | Lowercase value |
-| `{{json::value}}` | JSON string literal |
-| `{{xml::value}}` | XML-escaped value |
-| `{{iftools::tool::then::else}}` | Select by effective tool name |
-| `{{ifslot::slot::then::else}}` | Select by enabled slot name |
+| `{{ value \| trim }}` | Trim surrounding whitespace |
+| `{{ value \| upper }}` | Uppercase |
+| `{{ value \| lower }}` | Lowercase |
+| `{{ value \| json }}` | JSON string literal |
+| `{{ value \| xml }}` | XML-escaped |
 
-The final `else` is optional. Branches are lazy: skipped branches are not expanded.
+## Conditionals
 
-Unknown macro behavior is controlled by stack `defaults.unknownMacro`: keep, warn, or error according to schema validation.
+```text
+{% if runtime.tool.read %}read is available{% else %}read is unavailable{% endif %}
+{% if parameters.mode == "image-reader" %}image reader{% endif %}
+{% if runtime.tool.bash != null %}bash visible{% endif %}
+```
+
+- `{% if path %}` selects the branch when the path exists and is truthy.
+- `==` / `!=` compare against a quoted string.
+- An undefined output path is a strict compile error (no raw fallback).
+- `runtime.tool.<name>` and `runtime.slot.<name>` booleans power tool/slot
+  conditionals without function calls.
+
+When a block fails to parse, analyze, or render, pi-forge emits an error
+diagnostic and omits that block rather than re-injecting raw template text.
 
 ## Built-in slots
 
@@ -49,12 +69,28 @@ Unknown macro behavior is controlled by stack `defaults.unknownMacro`: keep, war
 | `active-model` | Selected provider/model |
 | `pi-docs` | Pi documentation guidance |
 
-Structured slots (`tools`, `tool-guidelines`, `skills`, `project-context`) default to XML-style wrappers and support `"format": "plain"`.
-
-Notable Pi-mirror options include `tools.onlyWithSnippets`, `tool-guidelines.heading`, `tool-guidelines.includePiDefaultGuidelines`, `tool-guidelines.piStyle`, and `skills.requireReadTool`. `date` and `date-cwd` support `includeTime: true`.
-
-The complete `chat-history` option set is documented in [stack schema](stack-schema.md#chat-history-options).
+Structured slots (`tools`, `tool-guidelines`, `skills`, `project-context`)
+default to XML-style wrappers and support `"format": "plain"`.
 
 ## Trusted custom definitions
 
-Trusted global/project modules and reusable Pi packages can register additional macro and slot names. The runtime exposes the active definitions through `getRegisteredMacros()` and `getRegisteredSlots()`. See [custom macros and slots](../guides/custom-macros-and-slots.md).
+Trusted global/project modules register macros (addressed as
+`{{ extensions.<name> }}`) and slots through the pure extension port:
+
+```ts
+api.registerMacro({
+  name: "ticketId",
+  description: "Current ticket id.",
+  dependencies: ["parameters.ticket.id"],
+  render: ({ env, helpers }) => String(env.parameters["ticket.id"]),
+});
+
+api.registerSlot({
+  name: "ticket-context",
+  description: "Render ticket context.",
+  options: { heading: { type: "string", default: "Ticket context" } },
+  render: ({ item, options, env, helpers }) => "...",
+});
+```
+
+See [custom macros and slots](../guides/custom-macros-and-slots.md).

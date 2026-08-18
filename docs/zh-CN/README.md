@@ -11,6 +11,7 @@
 ## 指南
 
 - [Web 编辑器](guides/web-editor.md)
+- [迁移到 0.5](../guides/migrating-to-0.5.md)
 - [实验性前台 delegation](guides/delegation.md)：启用前请先阅读安全边界。
 - [Prompt stack 使用场景（英文）](../guides/use-cases.md)
 

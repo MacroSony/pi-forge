@@ -6,7 +6,7 @@ Use [the default Pi mirror](../../examples/default-prompt-stack.json) as the com
 
 ## Top-level shape
 
-A stack has a unique `id`, schema/type identity, optional display metadata and auto-activation, a system `mode`, ordered `items`, and optional defaults, variables, context, resource policy, regex, and source metadata.
+A stack has a unique `id`, schema/type identity, optional display metadata and auto-activation, a system `mode`, ordered `items`, and optional defaults, parameters (schema v2) or legacy variables, context, resource policy, regex, and source metadata.
 
 Unknown/advanced metadata is preserved by raw editing, but behavior-changing fields are shape-checked and invalid values are not silently normalized into active behavior.
 
@@ -21,7 +21,7 @@ Block:
   "name": "Readable label",
   "enabled": true,
   "role": "system",
-  "content": "Your text here. Use {{macros}} for dynamic content."
+  "content": "Your text here. Use {{ parameters.role }} / {{ runtime.lastUserMessage }} for dynamic content."
 }
 ```
 
@@ -65,7 +65,7 @@ Item IDs must be unique. Unsupported slots and missing required custom registrat
 }
 ```
 
-- Set `includeLastUserMessage: false` when a later block reinserts `{{lastUserMessage}}`.
+- Set `includeLastUserMessage: false` when a later block reinserts `{{ runtime.lastUserMessage }}`.
 - `stripAssistantThinking` removes prior thinking blocks but preserves visible assistant text, tool calls, and results. It does not change the live loop or stored transcript.
 - `includeSummaries: false` excludes branch/compaction summaries.
 - `roles` keeps only selected roles.
@@ -101,20 +101,26 @@ Tool policy changes Pi's active tool list, is reasserted before input/turns, and
 
 Skill policy filters only pi-forge-rendered skill slots. It does not disable explicit invocation and is not a capability boundary. `append`/`prepend` may retain Pi's unfiltered base skill text, so validation warns.
 
-## Variables
+## Parameters and schema v2
 
-Top-level static variables are string values:
+Schema v2 stacks store immutable static values in `parameters` (JSON-compatible):
 
 ```json
 {
-  "variables": {
+  "schemaVersion": 2,
+  "parameters": {
     "char": "Konata",
-    "user": "User"
+    "user": "User",
+    "style": { "tone": "concise" }
   }
 }
 ```
 
-Static variables resolve through bare `{{name}}` templates and are available to trusted custom macros/slots. Mutable turn/session variables are removed in 0.5.0. See [macro reference](macros-and-slots.md).
+Parameters resolve through `{{ parameters.<name> }}` templates and are available
+to trusted custom macros/slots. Unversioned and v1 stacks continue to read the
+legacy `variables` field (string values) and support bare `{{name}}` fallback.
+A stack must not mix `parameters` and `variables` across schema versions. See
+[macro reference](macros-and-slots.md).
 
 ## Regex transforms
 

@@ -137,28 +137,28 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tool policy is enforced with `pi.setActiveTools()` and restored when prompt stacks are disabled or switched to an unrestricted stack.
 - Tool policy preserves later extension tool additions in the restorable baseline while keeping them filtered from an active restrictive stack.
 - A `tool_call` guard blocks tools outside the active stack policy even if another extension later changes Pi's active tool list.
-- Rendered `tools` slots, tool macros such as `{{tools}}`, and `tool-guidelines` respect stack tool policy.
+- Rendered `tools` slots, template paths such as `{{ runtime.selectedToolsText }}`, and `tool-guidelines` respect stack tool policy.
 - Rendered `skills` slots respect stack skill policy and continue to hide skills marked `disableModelInvocation`.
 - Skill policy controls model-visible skill listings rendered by pi-forge; it does not disable explicit skill invocation and is not a security boundary.
 - Validation warns when skill policy is used with `append` or `prepend` mode because Pi's base prompt may already include unfiltered skills.
 
-## Macros
+## Macros (forge-v1)
 
-- Built-in macros: `{{cwd}}`, `{{date}}`, `{{time}}`, `{{lastUserMessage}}`, `{{selectedTools}}`, `{{tools}}`, `{{activeModel}}`.
-- Built-in macros are registered through the same `registerMacro` definition interface used by trusted custom macros.
-- Parser-backed macro expansion supports nested `{{...}}` expressions and `::` argument splitting at the current macro depth.
-- Filter macros: `{{trim::value}}`, `{{upper::value}}`, `{{lower::value}}`, `{{json::value}}`, and `{{xml::value}}`.
-- Lazy conditional macros: `{{iftools::tool::then::else}}` and `{{ifslot::slot::then::else}}`. Only the selected branch is expanded.
-- Trusted `~/.pi/forge/extensions` / `.pi/forge/extensions` modules and reusable Pi packages can register additional macros through `registerMacro`, with argument metadata and shared runtime/variable/helper access.
-- `getRegisteredMacros()` and `getRegisteredSlots()` expose the active macro/slot definitions for implementation references and UI/resource inspection.
-- Static stack variables from `stack.variables`.
-- Static stack variables resolve through bare `{{name}}`.
-- Unknown macro diagnostics with configurable keep/warn/error policy.
+- Prompt text is compiled with the closed `forge-v1` template engine (parse → analyze → render).
+- Runtime facts resolve through `{{ runtime.* }}` (cwd, date, time, lastUserMessage, selectedToolsText, activeModel, tool/slot booleans).
+- Static values resolve through `{{ parameters.* }}`; schema v2 stores them in `parameters` while v1 stacks read legacy `variables`.
+- Custom macros resolve through `{{ extensions.<name> }}` and are registered via the pure `registerMacro` extension port with declared dependencies and bounded output.
+- Filters: `trim`, `upper`, `lower`, `json`, `xml`, composed with `|` pipelines.
+- Conditionals: `{% if path %}...{% else %}...{% endif %}` with `==` / `!=` string comparisons over template paths.
+- Undefined paths, unknown filters, parse errors, cycles, and output-limit breaches are compile errors; a failing block is omitted rather than re-injected.
+- Legacy v1 stacks keep a bare-name compatibility fallback (`{{name}}`, `{{lastUserMessage}}`, `{{date}}`, ...) that maps to the corresponding parameter/runtime path.
+- `getRegisteredMacros()` and `getRegisteredSlots()` expose active definitions for inspection.
 
-## Stack Variables
+## Parameters
 
-- Static string variables from top-level `stack.variables`.
-- Static variables resolve through bare `{{name}}` and are available to trusted custom macros/slots through the read-only variable access helper.
+- Schema v2 stacks store immutable JSON-compatible values in top-level `parameters`.
+- Schema v1 / unversioned stacks read the legacy string-only `variables` field and support bare `{{name}}` fallback.
+- Parameters resolve through `{{ parameters.<name> }}` and are available to trusted custom macros/slots through the frozen environment.
 - Mutable turn/session stores, variable mutation macros, session variable entries, and the `variables` slot are removed in 0.5.0.
 
 ## Commands

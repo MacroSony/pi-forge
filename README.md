@@ -14,7 +14,7 @@ Think of it as a character sheet and workbench for your AI agent.
 - Switch between coding, reviewing, writing, roleplay, and translation modes with one command.
 - Save and apply complete model/thinking/stack profiles.
 - Enforce per-stack tool policy and filter model-visible skills.
-- Use immutable static stack variables with nested template macros.
+- Use immutable stack `parameters` with the deterministic forge-v1 template engine.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
 - Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
@@ -79,7 +79,7 @@ A prompt stack is an ordered JSON document containing:
 | **Block** | Static `system`, `user`, `assistant`, or hidden `custom` text |
 | **Slot** | Runtime content such as tools, skills, project context, date/cwd, or chat history |
 
-Stacks can `replace`, `append`, or `prepend` Pi's base system prompt. During compilation, pi-forge expands macros, inserts conversation content, enforces tool policy, filters its skill listing, and applies enabled regex rules.
+Stacks can `replace`, `append`, or `prepend` Pi's base system prompt. During compilation, pi-forge compiles forge-v1 templates over `runtime.*` / `parameters.*` / `extensions.*`, inserts conversation content, enforces tool policy, filters its skill listing, and applies enabled regex rules.
 
 Agent profiles are project-local references to an exact provider/model, thinking level, and prompt stack. They intentionally do not duplicate tool or skill policy—the referenced stack remains the source of truth.
 
@@ -122,6 +122,7 @@ Read [foreground delegation and its safety model](docs/guides/delegation.md) bef
 ### Learn
 
 - [Getting started](docs/getting-started.md)
+- [Migrating to 0.5](docs/guides/migrating-to-0.5.md)
 - [Prompt-stack concepts](docs/concepts/prompt-stacks.md)
 - [Agent-profile concepts](docs/concepts/agent-profiles.md)
 - [Web editor](docs/guides/web-editor.md)

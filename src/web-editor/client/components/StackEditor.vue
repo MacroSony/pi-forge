@@ -39,7 +39,10 @@ function reset(): void {
 }
 
 function readVariableRows(): VariableRow[] {
-	return Object.entries(props.stack.variables || {})
+	const values = props.stack.schemaVersion === 2
+		? props.stack.parameters || {}
+		: props.stack.variables || {};
+	return Object.entries(values)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([name, value]) => ({
 			key: nextVariableKey++,
@@ -99,8 +102,13 @@ function syncVariables(): void {
 		seen.add(name);
 		variables[name] = row.value;
 	}
-	if (Object.keys(variables).length > 0) props.stack.variables = variables;
-	else delete props.stack.variables;
+	if (props.stack.schemaVersion === 2) {
+		if (Object.keys(variables).length > 0) props.stack.parameters = variables;
+		else delete props.stack.parameters;
+	} else {
+		if (Object.keys(variables).length > 0) props.stack.variables = variables;
+		else delete props.stack.variables;
+	}
 	stackError.value = duplicate ? "Duplicate stack variable names." : "";
 	emit("change", stackError.value);
 }
@@ -216,16 +224,16 @@ defineExpose({
 	</div>
 
 	<div class="tab-section">
-		<div class="tab-section-title">Stack variables</div>
+		<div class="tab-section-title">Stack parameters</div>
 		<div class="tab-section-meta">
-			Static string variables available to template macros.
+			Immutable static values; schema v2 uses <code>parameters</code>, v1 uses <code>variables</code>.
 		</div>
 		<div class="modal-toolbar">
 			<button id="addVariableBtn" data-icon="+" title="Add a static stack variable" type="button" @click="addVariable">
 				Add variable
 			</button>
 			<span class="modal-spacer"></span>
-			<span class="modal-meta">Saved in stack.variables.</span>
+			<span class="modal-meta">Saved in stack.parameters (v2) / stack.variables (v1).</span>
 		</div>
 		<div id="variablesRows" class="data-table">
 			<div class="data-row header variable-row">

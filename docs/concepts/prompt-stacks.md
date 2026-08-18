@@ -42,7 +42,7 @@ For each new user turn, pi-forge:
 1. Orders enabled blocks and slots exactly as written.
 2. Builds `system` content and applies the stack's `replace`, `append`, or `prepend` mode.
 3. Inserts synthetic user/assistant messages around the movable `chat-history` slot.
-4. Expands built-in and trusted custom macros.
+4. Compiles forge-v1 templates over `runtime.*`, `parameters.*`, and `extensions.*`.
 5. Applies the stack's tool policy to Pi and filters skills rendered by pi-forge.
 6. Applies outgoing history/compiled regex rules.
 7. Optionally applies destructive finalize rules when an assistant message completes.
@@ -64,7 +64,7 @@ Use `replace` when the model-visible skill list must be controlled. With `append
 1. Long-lived system rules.
 2. Runtime tools and project context.
 3. Chat history with `includeLastUserMessage: false`.
-4. A final user block containing `{{lastUserMessage}}`.
+4. A final user block containing `{{ runtime.lastUserMessage }}`.
 
 This preserves prior context while presenting the current request once, in an explicit final position. History can also filter summaries and roles, drop previous tool traffic, strip assistant thinking, and limit recent messages or characters. pi-forge repairs dangling tool-call/result pairs after filtering.
 
@@ -90,6 +90,6 @@ Stacks may live in the user-global `~/.pi/forge/prompt-stacks/` or the project `
 
 ## Extensions and transforms
 
-Static stack variables support nested macros; lazy conditionals are available for tool and slot selection. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in stack JSON. Deterministic regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
+Immutable `parameters` support forge-v1 interpolation and pure filters; tool/slot conditionals use `runtime.tool.*` / `runtime.slot.*` booleans. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in stack JSON. Deterministic regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
 
 See [custom macros and slots](../guides/custom-macros-and-slots.md), [macro reference](../reference/macros-and-slots.md), and [regex schema](../reference/stack-schema.md#regex-transforms).

@@ -5,7 +5,8 @@ interface ForgeRegistrationApi {
 		name: string;
 		source?: string;
 		description?: string;
-		render: () => string;
+		dependencies?: string[];
+		render: (ctx: { env: Record<string, unknown>; helpers: unknown }) => string;
 	}): () => void;
 	registerSlot(definition: {
 		name: string;

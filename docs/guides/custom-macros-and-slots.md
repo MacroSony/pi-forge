@@ -15,8 +15,9 @@ Modules receive the pi-forge API directly, so they do not need to import the pac
 export default function register(api) {
   api.registerMacro({
     name: "ticketId",
-    description: "Current ticket id from static stack variables.",
-    render: (ctx) => ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
+    description: "Current ticket id from static parameters.",
+    dependencies: ["parameters.ticket.id"],
+    render: ({ env, helpers }) => String(env.parameters["ticket.id"]),
   });
 
   api.registerSlot({
@@ -25,10 +26,10 @@ export default function register(api) {
     options: {
       heading: { type: "string", default: "Ticket context" },
     },
-    render: (ctx) => [
-      String(ctx.options.heading ?? "Ticket context") + ":",
-      "- Ticket: " + ctx.variables.toMacroText(ctx.variables.get("ticket.id")),
-      "- Project: " + ctx.helpers.normalizePath(ctx.runtime.options.cwd),
+    render: ({ item, options, env, helpers }) => [
+      String(options.heading ?? "Ticket context") + ":",
+      "- Ticket: " + String(env.parameters["ticket.id"]),
+      "- Project: " + helpers.normalizePath(String(env.runtime.cwd)),
     ].join("\n"),
   });
 }
@@ -57,7 +58,7 @@ Use the slot declaratively:
 - Missing custom slots are validation warnings until their module is loaded.
 - Registration ownership is disposed when the runtime shuts down.
 
-The API provides `cwd`, `forgeDir`, `extensionPath`, helpers, registration functions, and `getRegisteredMacros()` / `getRegisteredSlots()`. Global `forgeDir` is `~/.pi/forge`; project `forgeDir` is `<project>/.pi/forge`.
+The API provides `forgeDir`, `extensionPath`, helpers, registration functions, and `getRegisteredMacros()` / `getRegisteredSlots()`. Custom macro renderers receive a frozen `{ env, helpers }` and dependencies from the declaration. Global `forgeDir` is `~/.pi/forge`; project `forgeDir` is `<project>/.pi/forge`.
 
 Reusable Pi packages may import `registerMacro` and `registerSlot` from `@zihanw/pi-forge`. The directory loaders are intended for small trusted customizations without package boilerplate.
 

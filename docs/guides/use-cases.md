@@ -11,9 +11,9 @@ Put long-lived character rules in a system block, runtime context in appropriate
 1. System character/personality block.
 2. Tools, project context, and other runtime slots.
 3. `chat-history` with `includeLastUserMessage: false`.
-4. Final user block containing `{{lastUserMessage}}`.
+4. Final user block containing `{{ runtime.lastUserMessage }}`.
 
-This keeps the latest request clear and avoids duplication. Static `{{char}}` / `{{user}}` variables work well for character constants. Durable project memory belongs in project files, not prompt variables.
+This keeps the latest request clear and avoids duplication. Static `{{ parameters.char }}` / `{{ parameters.user }}` values work well for character constants. Durable project memory belongs in project files, not parameters.
 
 ## Focused code review
 
@@ -23,7 +23,7 @@ Use a rule such as “prioritize correctness, regressions, security, and missing
 
 ## Translation mode
 
-Create a small stack with a system block for target language, register/tone, and terminology rules. Retain history and a final `{{lastUserMessage}}`. Separate literal translation, localization review, and bilingual editing into different stacks when their rules conflict.
+Create a small stack with a system block for target language, register/tone, and terminology rules. Retain history and a final `{{ runtime.lastUserMessage }}`. Separate literal translation, localization review, and bilingual editing into different stacks when their rules conflict.
 
 ## Multi-mode switching
 
@@ -58,4 +58,4 @@ Allow read/search tools, include the `pi-docs` and project-context slots, and ke
 
 ## Trusted runtime status
 
-The [custom system-status example](../../examples/custom-system-status-extension/README.md) registers `{{cpuLoad}}` and a `machine-status` slot from trusted project code. Use this pattern for deterministic host data that cannot be represented as static stack JSON.
+The [custom system-status example](../../examples/custom-system-status-extension/README.md) registers `{{ extensions.cpuLoad }}` and a `machine-status` slot from trusted project code. Use this pattern for deterministic host data that cannot be represented as static stack JSON.
