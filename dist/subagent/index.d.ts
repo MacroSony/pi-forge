@@ -10,5 +10,7 @@
  * the Forge host contracts: profiles, compilation, approval, and reporting.
  */
 export * from "./contract.ts";
+export { FORGE_HOST_CHANNEL, FORGE_HOST_PORT_NAMESPACE, FORGE_HOST_PORT_OPERATIONS, FORGE_HOST_PORT_VERSION, ForgeHost, ForgeHostClient, ForgeHostPortError, } from "./host-port.ts";
+export type { ForgeHostConnection, ForgeHostClientOptions, ForgeHostOptions, ForgeHostPortOperation, ForgeHostPortResult, ForgeHostTransport, } from "./host-port.ts";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, type SubagentHostResolution, type SubagentPromptRegistration, type SubagentPromptRegistrationCatalog, } from "../subagent-host.ts";
 //# sourceMappingURL=index.d.ts.map

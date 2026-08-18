@@ -134,8 +134,9 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 
 ### Lane 2b: ForgeWorkspace and host port v1
 
-- Introduce `ForgeWorkspace` as the minimal snapshot owner over the Lane 2a repositories.
-- Publish `@zihanw/pi-forge/subagent` host port v1 with mandatory lifecycle rules and the three minimal operations.
+- Introduce `ForgeWorkspace` as the minimal snapshot owner over the Lane 2a repositories: one immutable scoped stack/profile snapshot plus active selection/provenance, owning host registration/generation/disposal.
+- Publish `@zihanw/pi-forge/subagent` host port v1 over the Pi event bus with mandatory lifecycle rules and the three minimal operations (discovery, profile listing/snapshot, and prompt preparation). The port is transport-neutral (`ForgeHostTransport`), uses plain validated data messages, and never crosses live contexts or internal registries.
+- Mandatory lifecycle semantics: clients subscribe before announcing/discovering and use bounded timeouts; duplicate live hosts fail with an explicit `host.duplicate` error; stale generations are ignored; disposal sends `unavailable` and invalidates connections; all transient and persistent listeners are cleaned up.
 - Cover timeout, duplicate-host failure, generation, disposal, and listener cleanup in tests.
 
 ### Lane 3: subagent extraction

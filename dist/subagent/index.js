@@ -10,5 +10,6 @@
  * the Forge host contracts: profiles, compilation, approval, and reporting.
  */
 export * from "./contract.js";
+export { FORGE_HOST_CHANNEL, FORGE_HOST_PORT_NAMESPACE, FORGE_HOST_PORT_OPERATIONS, FORGE_HOST_PORT_VERSION, ForgeHost, ForgeHostClient, ForgeHostPortError, } from "./host-port.js";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "../subagent-host.js";
 //# sourceMappingURL=index.js.map
