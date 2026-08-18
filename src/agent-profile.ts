@@ -7,76 +7,45 @@ import { formatResourceKey, isResourceScope, isValidResourceId, parseResourceSel
 import { agentProfilesDir, globalAgentProfilesDir } from "./storage.ts";
 import type { LoadedPromptStack } from "./types.ts";
 
-export const AGENT_PROFILE_TYPE = "pi-forge.agent-profile" as const;
+import {
+	AGENT_PROFILE_TYPE,
+	AGENT_PROFILE_THINKING_LEVELS,
+	createAgentProfileFault,
+	parseAgentProfile,
+	validateAgentProfile,
+	validateAgentProfilePromptStackScope,
+	type AgentProfile,
+	type AgentProfileDiagnostic,
+	type AgentProfileDiagnosticLevel,
+	type AgentProfileModelReference,
+	type LoadedAgentProfile,
+} from "./codecs/agent-profile.ts";
 
-export const AGENT_PROFILE_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ThinkingLevel[];
+export { AGENT_PROFILE_TYPE, AGENT_PROFILE_THINKING_LEVELS, validateAgentProfile, validateAgentProfilePromptStackScope } from "./codecs/agent-profile.ts";
+export type { AgentProfile, AgentProfileDiagnostic, AgentProfileDiagnosticLevel, AgentProfileModelReference, LoadedAgentProfile } from "./codecs/agent-profile.ts";
 
 const VALID_THINKING_LEVELS = new Set<ThinkingLevel>(AGENT_PROFILE_THINKING_LEVELS);
-const PROFILE_FIELDS = new Set(["schemaVersion", "type", "id", "name", "description", "model", "thinkingLevel", "promptStack", "autoActivate"]);
-const MODEL_FIELDS = new Set(["provider", "id"]);
 
-export interface AgentProfileModelReference {
-	provider: string;
-	id: string;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-export interface AgentProfile {
-	schemaVersion: 1;
-	type: typeof AGENT_PROFILE_TYPE;
-	id: string;
-	name?: string;
-	description?: string;
-	autoActivate?: boolean;
-	model: AgentProfileModelReference;
-	thinkingLevel: ThinkingLevel;
-	promptStack: string | null;
+function nonEmptyString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-export type AgentProfileDiagnosticLevel = "error" | "warning" | "info";
-
-export interface AgentProfileDiagnostic {
-	level: AgentProfileDiagnosticLevel;
-	message: string;
-	field?: string;
-}
-
-export interface LoadedAgentProfile {
-	profile: AgentProfile;
-	filePath: string;
-	scope: "global" | "project";
-	key: { scope: "global" | "project"; id: string };
-	diagnostics: AgentProfileDiagnostic[];
-}
-
-export interface AgentProfileResolutionResources {
-	models: readonly Model<any>[];
-	availableModels?: readonly Model<any>[];
-	promptStacks: readonly LoadedPromptStack[];
-	toolNames?: readonly string[];
-}
-
-export interface ResolvedAgentProfile {
-	loaded: LoadedAgentProfile;
-	model?: Model<any>;
-	promptStack?: LoadedPromptStack;
-	effectiveThinkingLevel: ThinkingLevel;
-	diagnostics: AgentProfileDiagnostic[];
-}
-
-export interface AgentProfileRuntimeSnapshot {
-	model: AgentProfileModelReference;
-	thinkingLevel: ThinkingLevel;
-	promptStack: string | null;
-}
-
-export interface AgentProfileProvenance {
-	profileId: string;
-	/** Scope of the applied profile. Absent on legacy records, which are project-scoped. */
-	scope?: ResourceScope;
-	sourcePath: string;
-	sourceFingerprint: string;
-	appliedAt: string;
-	snapshot: AgentProfileRuntimeSnapshot;
+export function loadAgentProfileFile(filePath: string, scope: "global" | "project" = "project"): LoadedAgentProfile {
+	let source: string;
+	try {
+		source = readFileSync(filePath, "utf8");
+	} catch (error) {
+		return createAgentProfileFault(
+			filePath,
+			scope,
+			`Failed to read agent profile: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	return parseAgentProfile(source, filePath, scope);
 }
 
 export { agentProfilePath, agentProfilesDir } from "./storage.ts";
@@ -92,11 +61,6 @@ export function loadAgentProfiles(cwd: string): LoadedAgentProfile[] {
 	return profiles;
 }
 
-/**
- * Load both global and project profiles. Global definitions are user-owned
- * and always load; project definitions load from the trusted project dirs.
- * The caller decides whether project trust applies before calling.
- */
 export function loadAgentProfilesScoped(cwd: string, globalDir: string = globalAgentProfilesDir()): LoadedAgentProfile[] {
 	const profiles = [
 		...loadAgentProfilesFromDir(globalDir, "global"),
@@ -107,25 +71,11 @@ export function loadAgentProfilesScoped(cwd: string, globalDir: string = globalA
 	return profiles;
 }
 
-/** Load only the user-owned global profiles, used by untrusted projects. */
 export function loadGlobalAgentProfiles(globalDir: string = globalAgentProfilesDir()): LoadedAgentProfile[] {
 	const profiles = loadAgentProfilesFromDir(globalDir, "global");
 	annotateDuplicateProfileIds(profiles);
 	annotateAutoActivateConflicts(profiles);
 	return profiles;
-}
-
-function loadAgentProfilesFromDir(dir: string, scope: "global" | "project"): LoadedAgentProfile[] {
-	if (!existsSync(dir)) return [];
-
-	let entries: string[];
-	try {
-		entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
-	} catch {
-		return [];
-	}
-
-	return entries.map((name) => loadAgentProfileFile(join(dir, name), scope));
 }
 
 export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined {
@@ -145,79 +95,6 @@ export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentPro
 
 export function hasAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): boolean {
 	return profiles.some((loaded) => loaded.profile.autoActivate === true);
-}
-
-export function loadAgentProfileFile(filePath: string, scope: "global" | "project" = "project"): LoadedAgentProfile {
-	const diagnostics: AgentProfileDiagnostic[] = [];
-	let raw: unknown;
-
-	try {
-		raw = JSON.parse(readFileSync(filePath, "utf8"));
-	} catch (error) {
-		return {
-			filePath,
-			scope,
-			key: { scope, id: basename(filePath, ".json") },
-			profile: fallbackProfile(filePath),
-			diagnostics: [{
-				level: "error",
-				message: `Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`,
-			}],
-		};
-	}
-
-	const profile = normalizeAgentProfile(raw, filePath, diagnostics);
-	diagnostics.push(...validateAgentProfile(profile));
-	return { filePath, scope, key: { scope, id: profile.id }, profile, diagnostics };
-}
-
-export function validateAgentProfile(profile: AgentProfile): AgentProfileDiagnostic[] {
-	const diagnostics: AgentProfileDiagnostic[] = [];
-
-	if (profile.schemaVersion !== 1) diagnostics.push({ level: "error", field: "schemaVersion", message: "schemaVersion must be 1." });
-	if (profile.type !== AGENT_PROFILE_TYPE) diagnostics.push({ level: "error", field: "type", message: `type must be "${AGENT_PROFILE_TYPE}".` });
-	if (!isValidAgentProfileId(profile.id)) {
-		diagnostics.push({
-			level: "error",
-			field: "id",
-			message: "Profile id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.",
-		});
-	}
-	if (!profile.model.provider.trim()) diagnostics.push({ level: "error", field: "model.provider", message: "model.provider must not be empty." });
-	if (!profile.model.id.trim()) diagnostics.push({ level: "error", field: "model.id", message: "model.id must not be empty." });
-	if (!VALID_THINKING_LEVELS.has(profile.thinkingLevel)) {
-		diagnostics.push({ level: "error", field: "thinkingLevel", message: `Unsupported thinkingLevel: ${String(profile.thinkingLevel)}` });
-	}
-	if (profile.promptStack !== null && !profile.promptStack.trim()) {
-		diagnostics.push({ level: "error", field: "promptStack", message: "promptStack must be a non-empty stack id or null." });
-	}
-
-	return diagnostics;
-}
-
-/**
- * Validate the profile's stored `promptStack` selector against the profile's
- * own scope. Bare references stay scope-relative; only global profiles are
- * prohibited from referencing project stacks explicitly. Used by write paths
- * so edited JSON cannot persist a scope-unsafe dependency.
- */
-export function validateAgentProfilePromptStackScope(
-	profile: AgentProfile,
-	scope: ResourceScope,
-): AgentProfileDiagnostic[] {
-	if (profile.promptStack === null) return [];
-	const parsed = parseResourceSelector(profile.promptStack);
-	if (!parsed.ok) {
-		return [{ level: "error", field: "promptStack", message: parsed.error }];
-	}
-	if (scope === "global" && parsed.selector.scope === "project") {
-		return [{
-			level: "error",
-			field: "promptStack",
-			message: `Global profile ${profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
-		}];
-	}
-	return [];
 }
 
 export function resolveAgentProfile(
@@ -322,11 +199,19 @@ export function isAgentProfileProvenance(value: unknown): value is AgentProfileP
 		&& (value.snapshot.promptStack === null || !!nonEmptyString(value.snapshot.promptStack));
 }
 
-/**
- * Resolve a profile's stored `promptStack` reference relative to the profile's
- * own scope. Bare IDs resolve to the profile scope; explicit qualification
- * overrides that scope. A global profile can never reference a project stack.
- */
+function loadAgentProfilesFromDir(dir: string, scope: "global" | "project"): LoadedAgentProfile[] {
+	if (!existsSync(dir)) return [];
+
+	let entries: string[];
+	try {
+		entries = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+	} catch {
+		return [];
+	}
+
+	return entries.map((name) => loadAgentProfileFile(join(dir, name), scope));
+}
+
 function resolveProfilePromptStack(
 	loaded: LoadedAgentProfile,
 	promptStacks: readonly LoadedPromptStack[],
@@ -420,99 +305,33 @@ function annotateAutoActivateConflicts(profiles: LoadedAgentProfile[]): void {
 	}
 }
 
-function normalizeAgentProfile(raw: unknown, filePath: string, diagnostics: AgentProfileDiagnostic[]): AgentProfile {
-	if (!isPlainObject(raw)) {
-		diagnostics.push({ level: "error", message: "Agent profile root must be a JSON object." });
-		return fallbackProfile(filePath);
-	}
-
-	for (const field of Object.keys(raw)) {
-		if (!PROFILE_FIELDS.has(field)) diagnostics.push({ level: "error", field, message: `Unsupported profile field: ${field}` });
-	}
-
-	if (raw.schemaVersion !== 1) diagnostics.push({ level: "error", field: "schemaVersion", message: "schemaVersion must be 1." });
-	if (raw.type !== AGENT_PROFILE_TYPE) diagnostics.push({ level: "error", field: "type", message: `type must be "${AGENT_PROFILE_TYPE}".` });
-
-	const id = nonEmptyString(raw.id);
-	if (!id) diagnostics.push({ level: "error", field: "id", message: "Profile id must be a non-empty string." });
-
-	const model = normalizeModelReference(raw.model, diagnostics);
-	const thinkingLevel = normalizeThinkingLevel(raw.thinkingLevel, diagnostics);
-	const promptStack = normalizePromptStackReference(raw, diagnostics);
-
-	if (raw.name !== undefined && typeof raw.name !== "string") diagnostics.push({ level: "error", field: "name", message: "name must be a string when provided." });
-	if (raw.description !== undefined && typeof raw.description !== "string") {
-		diagnostics.push({ level: "error", field: "description", message: "description must be a string when provided." });
-	}
-	if (raw.autoActivate !== undefined && typeof raw.autoActivate !== "boolean") {
-		diagnostics.push({ level: "error", field: "autoActivate", message: "autoActivate must be a boolean when provided." });
-	}
-
-	return {
-		schemaVersion: 1,
-		type: AGENT_PROFILE_TYPE,
-		id: id ?? basename(filePath, ".json"),
-		name: typeof raw.name === "string" ? raw.name : undefined,
-		description: typeof raw.description === "string" ? raw.description : undefined,
-		autoActivate: typeof raw.autoActivate === "boolean" ? raw.autoActivate : undefined,
-		model,
-		thinkingLevel,
-		promptStack,
-	};
+export interface AgentProfileResolutionResources {
+	models: readonly Model<any>[];
+	availableModels?: readonly Model<any>[];
+	promptStacks: readonly LoadedPromptStack[];
+	toolNames?: readonly string[];
 }
 
-function normalizeModelReference(raw: unknown, diagnostics: AgentProfileDiagnostic[]): AgentProfileModelReference {
-	if (!isPlainObject(raw)) {
-		diagnostics.push({ level: "error", field: "model", message: "model must be an object containing provider and id." });
-		return { provider: "", id: "" };
-	}
-
-	for (const field of Object.keys(raw)) {
-		if (!MODEL_FIELDS.has(field)) diagnostics.push({ level: "error", field: `model.${field}`, message: `Unsupported model field: ${field}` });
-	}
-
-	const provider = nonEmptyString(raw.provider);
-	const id = nonEmptyString(raw.id);
-	return { provider: provider ?? "", id: id ?? "" };
+export interface ResolvedAgentProfile {
+	loaded: LoadedAgentProfile;
+	model?: Model<any>;
+	promptStack?: LoadedPromptStack;
+	effectiveThinkingLevel: ThinkingLevel;
+	diagnostics: AgentProfileDiagnostic[];
 }
 
-function normalizeThinkingLevel(raw: unknown, diagnostics: AgentProfileDiagnostic[]): ThinkingLevel {
-	if (typeof raw === "string" && VALID_THINKING_LEVELS.has(raw as ThinkingLevel)) return raw as ThinkingLevel;
-	diagnostics.push({
-		level: "error",
-		field: "thinkingLevel",
-		message: `thinkingLevel must be one of: ${AGENT_PROFILE_THINKING_LEVELS.join(", ")}.`,
-	});
-	return "off";
+export interface AgentProfileRuntimeSnapshot {
+	model: AgentProfileModelReference;
+	thinkingLevel: ThinkingLevel;
+	promptStack: string | null;
 }
 
-function normalizePromptStackReference(raw: Record<string, unknown>, diagnostics: AgentProfileDiagnostic[]): string | null {
-	if (!Object.prototype.hasOwnProperty.call(raw, "promptStack")) {
-		diagnostics.push({ level: "error", field: "promptStack", message: "promptStack is required and must be a stack id or null." });
-		return null;
-	}
-	if (raw.promptStack === null) return null;
-	const id = nonEmptyString(raw.promptStack);
-	if (id) return id;
-	diagnostics.push({ level: "error", field: "promptStack", message: "promptStack must be a non-empty stack id or null." });
-	return null;
-}
-
-function fallbackProfile(filePath: string): AgentProfile {
-	return {
-		schemaVersion: 1,
-		type: AGENT_PROFILE_TYPE,
-		id: basename(filePath, ".json"),
-		model: { provider: "", id: "" },
-		thinkingLevel: "off",
-		promptStack: null,
-	};
-}
-
-function nonEmptyString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
+export interface AgentProfileProvenance {
+	profileId: string;
+	/** Scope of the applied profile. Absent on legacy records, which are project-scoped. */
+	scope?: ResourceScope;
+	sourcePath: string;
+	sourceFingerprint: string;
+	appliedAt: string;
+	snapshot: AgentProfileRuntimeSnapshot;
 }

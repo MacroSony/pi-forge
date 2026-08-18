@@ -1,6 +1,7 @@
-import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
+import type { LoadedPromptStack } from "./types.ts";
 export { globalPromptStacksDir, isInsideGlobalPromptStackStorage, isInsidePromptStackStorage, isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, legacyPromptStacksDir, promptStackPath, promptStackReadDirs, promptStacksDir, } from "./storage.ts";
 export { isValidResourceId as isValidPromptStackId } from "./resource-identity.ts";
+export { validatePromptStack } from "./codecs/prompt-stack.ts";
 export declare function loadPromptStacks(cwd: string): LoadedPromptStack[];
 /**
  * Load both global and project prompt stacks. Global definitions are
@@ -20,5 +21,4 @@ export declare function chooseDefaultStack(stacks: LoadedPromptStack[], preferre
 export declare function chooseAutoActivateStack(stacks: LoadedPromptStack[]): LoadedPromptStack | undefined;
 export declare function isUsablePromptStack(loaded: LoadedPromptStack): boolean;
 export declare function isDisabledPromptStackId(id: string | undefined): boolean;
-export declare function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[];
 //# sourceMappingURL=loader.d.ts.map

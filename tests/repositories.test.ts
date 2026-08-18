@@ -16,6 +16,8 @@ import {
 	agentProfileTargetPath,
 	writeAgentProfileFile,
 } from "../src/repositories/agent-profile.ts";
+import { parsePromptStack } from "../src/codecs/prompt-stack.ts";
+import { parseAgentProfile } from "../src/codecs/agent-profile.ts";
 import { GLOBAL_FORGE_DIR_ENV } from "../src/storage.ts";
 import { migrateLegacyPromptStacks } from "../src/stack-migration.ts";
 import { stackMutationStatus } from "../src/web-host.ts";
@@ -220,6 +222,25 @@ test("legacy stack migration copies normal files and refuses symlinked paths", (
 		assert.ok(report.files.some((file) => file.name === "ok.json" && file.action === "copy"));
 		assert.equal(existsSync(join(cwd, ".pi", "forge", "prompt-stacks", "ok.json")), true);
 		assert.equal(existsSync(join(cwd, ".pi", "forge", "prompt-stacks", "evil.json")), false);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("repository writes stay byte-stable through the codec parser", () => {
+	const cwd = tempCwd();
+	try {
+		const stackTarget = promptStackTargetPath(cwd, "project", "alpha");
+		writePromptStackFile(cwd, "project", stackTarget, stack("alpha"), { overwrite: false });
+		const parsed = parsePromptStack(readFileSync(stackTarget, "utf8"), stackTarget, "project");
+		assert.equal(parsed.stack.id, "alpha");
+		assert.equal(serializePromptStack(parsed.stack), serializePromptStack(stack("alpha")));
+
+		const profileTarget = agentProfileTargetPath(cwd, "project", "worker");
+		writeAgentProfileFile(cwd, "project", profileTarget, profile("worker"), { overwrite: false });
+		const parsedProfile = parseAgentProfile(readFileSync(profileTarget, "utf8"), profileTarget, "project");
+		assert.equal(parsedProfile.profile.id, "worker");
+		assert.equal(serializeAgentProfile(parsedProfile.profile), serializeAgentProfile(profile("worker")));
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}
