@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { legacyPromptStacksDir, promptStacksDir } from "./storage.js";
+import { isSafePromptStackMutationPath, legacyPromptStacksDir, promptStacksDir } from "./storage.js";
 export function migrateLegacyPromptStacks(cwd, options = {}) {
     const sourceDir = legacyPromptStacksDir(cwd);
     const targetDir = promptStacksDir(cwd);
@@ -52,6 +52,26 @@ export function migrateLegacyPromptStacks(cwd, options = {}) {
             continue;
         }
         const action = targetExists ? "overwrite" : "copy";
+        const safePaths = (() => {
+            try {
+                return isSafePromptStackMutationPath(cwd, sourcePath) && isSafePromptStackMutationPath(cwd, targetPath);
+            }
+            catch {
+                return false;
+            }
+        })();
+        if (!safePaths) {
+            report.files.push({
+                name,
+                sourcePath,
+                targetPath,
+                action: "error",
+                reason: "Migration path is outside prompt-stack storage or traverses a symbolic link.",
+                deleteLegacy: report.deleteLegacy,
+            });
+            report.errors++;
+            continue;
+        }
         try {
             if (!report.dryRun) {
                 mkdirSync(dirname(targetPath), { recursive: true });

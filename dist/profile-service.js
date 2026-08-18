@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync } from "node:fs";
 import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, hasAgentProfileErrors, isResolvedAgentProfileUsable, loadAgentProfileFile, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
 import { PROFILE_ENTRY_TYPE } from "./runtime-state.js";
-import { globalAgentProfilePath, isSafeAgentProfileMutationPath, isSafeGlobalAgentProfileMutationPath } from "./storage.js";
+import { writeAgentProfileFile, deleteAgentProfileFile, } from "./repositories/agent-profile.js";
+import { globalAgentProfilePath } from "./storage.js";
 import { formatResourceKey } from "./resource-identity.js";
 export function captureAgentProfile(id, targetScope, runtime, existing) {
     if (!runtime.model) {
@@ -60,38 +60,20 @@ export function writeAgentProfile(cwd, profile, options = {}) {
     if (hasAgentProfileErrors(diagnostics))
         return { ok: false, reason: "validation", diagnostics };
     const filePath = options.filePath ?? (scope === "project" ? agentProfilePath(cwd, profile.id) : globalAgentProfilePath(profile.id));
-    const safe = scope === "project"
-        ? isSafeAgentProfileMutationPath(cwd, filePath)
-        : isSafeGlobalAgentProfileMutationPath(filePath);
-    if (!safe) {
-        return {
-            ok: false,
-            reason: "invalid-path",
-            diagnostics,
-            error: `Profile path is outside ${scope} agent-profile storage or traverses a symbolic link: ${filePath}`,
-        };
-    }
-    if (existsSync(filePath) && !options.overwrite)
-        return { ok: false, reason: "exists", diagnostics };
-    try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, JSON.stringify(profile, null, 2) + "\n", { encoding: "utf8", flag: options.overwrite ? "w" : "wx" });
-        return { ok: true, profile, filePath };
-    }
-    catch (error) {
-        const code = error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
-        if (code === "EEXIST")
+    const write = writeAgentProfileFile(cwd, scope, filePath, profile, { overwrite: options.overwrite ?? false });
+    if (!write.ok) {
+        if (write.reason === "exists")
             return { ok: false, reason: "exists", diagnostics };
-        return { ok: false, reason: "io", diagnostics, error: error instanceof Error ? error.message : String(error) };
+        if (write.reason === "invalid-path") {
+            return { ok: false, reason: "invalid-path", diagnostics, error: write.error };
+        }
+        return { ok: false, reason: "io", diagnostics, error: write.error };
     }
+    return { ok: true, profile, filePath };
 }
 export function deleteAgentProfile(cwd, loaded) {
     const filePath = loaded.filePath;
-    const safe = loaded.scope === "project"
-        ? isSafeAgentProfileMutationPath(cwd, filePath)
-        : isSafeGlobalAgentProfileMutationPath(filePath);
-    if (!safe)
-        return { ok: false, reason: "invalid-path", filePath };
+    const scope = loaded.scope === "global" ? "global" : "project";
     if (!existsSync(filePath))
         return { ok: false, reason: "missing", filePath };
     const current = loadAgentProfileFile(filePath);
@@ -99,13 +81,15 @@ export function deleteAgentProfile(cwd, loaded) {
         || agentProfileFingerprint(current.profile) !== agentProfileFingerprint(loaded.profile)) {
         return { ok: false, reason: "changed", filePath };
     }
-    try {
-        unlinkSync(filePath);
-        return { ok: true, filePath };
+    const deleted = deleteAgentProfileFile(cwd, scope, filePath);
+    if (!deleted.ok) {
+        if (deleted.reason === "invalid-path")
+            return { ok: false, reason: "invalid-path", filePath };
+        if (deleted.reason === "missing")
+            return { ok: false, reason: "missing", filePath };
+        return { ok: false, reason: "io", filePath, error: deleted.error };
     }
-    catch (error) {
-        return { ok: false, reason: "io", filePath, error: error instanceof Error ? error.message : String(error) };
-    }
+    return { ok: true, filePath };
 }
 export async function applyResolvedAgentProfile(pi, state, deps, resolved, ctx) {
     if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {

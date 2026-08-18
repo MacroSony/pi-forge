@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
 import { DEFAULT_SUBAGENT_BACKEND_ID, loadForgeSubagentSettings, resolveSubagentProfilePolicy, updateForgeSubagentProfileConfig, } from "./forge-config.js";
-import { isSafeGlobalPromptStackMutationPath, isSafePromptStackMutationPath, isValidPromptStackId, promptStackPath, validatePromptStack, } from "./loader.js";
-import { globalAgentProfilePath, globalPromptStacksDir } from "./storage.js";
+import { isValidPromptStackId, validatePromptStack, } from "./loader.js";
+import { deletePromptStackFile, promptStackTargetPath, writePromptStackFile, } from "./repositories/prompt-stack.js";
+import { globalAgentProfilePath } from "./storage.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
@@ -433,13 +434,12 @@ async function saveStackFile(ctx, runtime, id, stack) {
     if (stack.id !== target.stack.id) {
         return { ok: false, status: 400, error: "Stack id is immutable during save; fork the stack to create a new id." };
     }
-    const safe = target.scope === "project"
-        ? isSafePromptStackMutationPath(ctx.cwd, target.filePath)
-        : isSafeGlobalPromptStackMutationPath(target.filePath);
-    if (!safe) {
-        return { ok: false, status: 403, error: "Refusing to save outside prompt-stack storage or through a symbolic link." };
+    const write = writePromptStackFile(ctx.cwd, target.scope, target.filePath, stack, { overwrite: true });
+    if (!write.ok) {
+        // With overwrite: true the repository can fail on containment (403) or I/O (500).
+        const status = stackMutationStatus(write.reason);
+        return { ok: false, status, error: write.error };
     }
-    writeFileSync(target.filePath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
     const preferredId = runtime.getActive() === target ? formatResourceKey(target.key) : runtime.getSelectedActiveId();
     await runtime.reloadStacks(preferredId);
     const saved = runtime.getStacks().find((candidate) => candidate.scope === target.scope && candidate.stack.id === target.stack.id)
@@ -462,22 +462,14 @@ async function createStackFile(ctx, runtime, stack, options) {
     }
     const targetPath = existingById && options.overwrite
         ? existingById.filePath
-        : scope === "global"
-            ? join(globalPromptStacksDir(), `${stack.id}.json`)
-            : promptStackPath(ctx.cwd, stack.id);
-    const safe = scope === "project"
-        ? isSafePromptStackMutationPath(ctx.cwd, targetPath)
-        : isSafeGlobalPromptStackMutationPath(targetPath);
-    if (!safe) {
-        return { ok: false, status: 403, error: `Refusing to create outside ${scope} prompt-stack storage or through a symbolic link.` };
-    }
-    if (!existingById && existsSync(targetPath) && !options.overwrite) {
-        return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
+        : promptStackTargetPath(ctx.cwd, scope, stack.id);
+    const write = writePromptStackFile(ctx.cwd, scope, targetPath, stack, { overwrite: options.overwrite ?? false });
+    if (!write.ok) {
+        const status = stackMutationStatus(write.reason);
+        return { ok: false, status, error: write.error };
     }
     const previousSelection = runtime.getSelectedActiveId();
     const createdSelector = formatResourceKey({ scope, id: stack.id });
-    mkdirSync(dirname(targetPath), { recursive: true });
-    writeFileSync(targetPath, `${JSON.stringify(stack, null, 2)}\n`, "utf8");
     await runtime.reloadStacks(options.activate ? createdSelector : (previousSelection ?? "none"));
     if (options.activate)
         runtime.setActive(createdSelector);
@@ -493,14 +485,12 @@ async function deleteStackFile(ctx, runtime, id) {
     const target = resolveStack(runtime, id);
     if (!target)
         return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
-    const safe = target.scope === "project"
-        ? isSafePromptStackMutationPath(ctx.cwd, target.filePath)
-        : isSafeGlobalPromptStackMutationPath(target.filePath);
-    if (!safe) {
-        return { ok: false, status: 403, error: "Refusing to delete outside prompt-stack storage or through a symbolic link." };
+    const deleted = deletePromptStackFile(ctx.cwd, target.scope, target.filePath);
+    if (!deleted.ok) {
+        const status = stackMutationStatus(deleted.reason);
+        return { ok: false, status, error: deleted.error };
     }
     const wasActive = runtime.getActive() === target;
-    unlinkSync(target.filePath);
     if (wasActive) {
         runtime.setActive("none");
         await runtime.reloadStacks("none");
@@ -509,6 +499,19 @@ async function deleteStackFile(ctx, runtime, id) {
         await runtime.reloadStacks(runtime.getSelectedActiveId());
     }
     return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
+}
+/** HTTP status mapping for repository write/delete failures surfaced to the web editor. */
+export function stackMutationStatus(reason) {
+    switch (reason) {
+        case "invalid-path":
+            return 403;
+        case "exists":
+            return 409;
+        case "missing":
+            return 404;
+        default:
+            return 500;
+    }
 }
 function validateWebStackId(id) {
     if (!id.trim())

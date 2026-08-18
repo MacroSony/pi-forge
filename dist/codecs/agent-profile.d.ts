@@ -1,0 +1,8 @@
+import type { AgentProfile } from "../agent-profile.ts";
+/**
+ * Single canonical serializer for agent profiles. Every writer (profile
+ * service, commands, repositories) must go through this function so serialized
+ * output stays identical across all write paths.
+ */
+export declare function serializeAgentProfile(profile: AgentProfile): string;
+//# sourceMappingURL=agent-profile.d.ts.map

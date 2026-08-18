@@ -127,7 +127,7 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 
 ### Lane 2a: minimal repositories and codecs
 
-- Extract stack/profile codecs as the single parse/normalize/validate/serialize source.
+- Extract stack/profile codecs as the single parse/normalize/validate/serialize source (serializers live in `src/codecs/`; stack parse/normalize/validate remain centralized in the loader's stack codec path).
 - Extract scoped repositories as the only domain resource read/write/delete path, including scope and containment validation.
 - Remove direct domain-resource writes from web host, commands, and profile service.
 - Do not add expected-fingerprint conflicts or guaranteed atomic replacement yet; characterize current replacement behavior with tests.

@@ -37,4 +37,7 @@ export declare function loadWebEditorSettings(ctx: ExtensionContext): {
     configPath: string;
     warnings: string[];
 };
+export type StackMutationFailureReason = "invalid-path" | "exists" | "missing" | "io";
+/** HTTP status mapping for repository write/delete failures surfaced to the web editor. */
+export declare function stackMutationStatus(reason: StackMutationFailureReason): number;
 //# sourceMappingURL=web-host.d.ts.map
