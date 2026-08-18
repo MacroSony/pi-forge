@@ -704,10 +704,10 @@ test("registered custom slots use options, helpers, and variables", () => {
 		options: {
 			heading: { type: "string", default: "Custom" },
 		},
-		render: (context) => [
-			String(context.options.heading ?? "Custom"),
-			context.helpers.escapeXml(context.variables.toMacroText(context.variables.get("topic"))),
-			context.helpers.normalizePath(context.runtime.options.cwd),
+		render: ({ options, env, helpers }) => [
+			String(options.heading ?? "Custom"),
+			helpers.escapeXml(String(env.parameters.topic)),
+			helpers.normalizePath(String(env.runtime.cwd)),
 		].join("\n"),
 	});
 

@@ -1,4 +1,5 @@
-import { compileMessages, compileSystemPrompt, getLatestUserMessage, } from "./compiler.js";
+import { compileMessages, getLatestUserMessage, } from "./compiler.js";
+import { PromptCompilationContext } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { isAgentProfileProvenance } from "./agent-profile.js";
 import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "./runtime-state.js";
@@ -67,7 +68,9 @@ export function registerLifecycleHandlers(pi, state, deps) {
         state.contextRewritePending = true;
         if (!state.active)
             return;
-        const result = compileSystemPrompt(state.active.stack, { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() }, event.systemPrompt);
+        const compilationRuntime = { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() };
+        state.currentCompilationContext = new PromptCompilationContext(state.active.stack, compilationRuntime);
+        const result = state.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
         deps.recordCompileDiagnostics(ctx, result.diagnostics);
         return { systemPrompt: result.systemPrompt };
     });
@@ -80,7 +83,10 @@ export function registerLifecycleHandlers(pi, state, deps) {
         // and the model restarts its planning instead of continuing from the tool result.
         state.contextRewritePending = false;
         const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
-        const result = compileMessages(state.active.stack, { options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() }, event.messages);
+        state.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
+        const result = state.currentCompilationContext
+            ? state.currentCompilationContext.compileMessages(event.messages)
+            : compileMessages(state.active.stack, { options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() }, event.messages);
         deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
         return { messages: result.messages };
     });
@@ -98,11 +104,13 @@ export function registerLifecycleHandlers(pi, state, deps) {
     pi.on("agent_end", async () => {
         state.currentSystemPromptOptions = undefined;
         state.currentLatestUserMessage = undefined;
+        state.currentCompilationContext = undefined;
         state.contextRewritePending = false;
     });
 }
 async function restoreBranchScopedRuntime(ctx, state, deps, options) {
     state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
+    state.currentCompilationContext = undefined;
     state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
     const restoredActiveId = getRestoredActiveId(ctx);
     state.lastPersistedActiveId = restoredActiveId;

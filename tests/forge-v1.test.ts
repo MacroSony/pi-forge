@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileSystemPrompt, compileMessages } from "../src/compiler.ts";
-import { forgeV1, FORGE_V1_MAX_TEMPLATE_OUTPUT, registerMacro } from "../src/index.ts";
+import { forgeV1, FORGE_V1_MAX_TEMPLATE_OUTPUT, registerMacro, registerSlot } from "../src/index.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { PromptEnvironment } from "../src/forge-v1/index.ts";
 import type { PromptRuntime, PromptStack } from "../src/types.ts";
@@ -267,4 +267,151 @@ test("forge-v1 equality predicates error on undefined paths", () => {
 	const result = forgeV1.render(parsed.ast, env());
 	assert.equal(result.ok, false);
 	if (!result.ok) assert.equal(result.error.kind, "undefined");
+});
+
+test("forge-v1 supports nested if blocks", () => {
+	const parsed = forgeV1.parse('{% if runtime.tool.read %}{% if parameters.x == "y" %}A{% else %}B{% endif %}{% else %}C{% endif %}');
+	assert.equal(parsed.ok, true);
+	if (!parsed.ok) return;
+	const result = forgeV1.render(parsed.ast, env({ parameters: { x: "y" } }));
+	assert.deepEqual(result, { ok: true, text: "A" });
+});
+
+test("forge-v1 parses empty-string comparisons", () => {
+	const parsed = forgeV1.parse('{% if parameters.x == "" %}empty{% else %}not{% endif %}');
+	assert.equal(parsed.ok, true);
+	if (!parsed.ok) return;
+	const result = forgeV1.render(parsed.ast, env({ parameters: { x: "" } }));
+	assert.deepEqual(result, { ok: true, text: "empty" });
+});
+
+test("forge-v1 extension values resolve lazily per active branch", () => {
+	const unregister = registerMacro({
+		name: "fixtureLazyFail",
+		render: () => {
+			throw new Error("should not run");
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "lazy",
+			items: [{
+				kind: "block",
+				id: "b",
+				role: "system",
+				content: "{% if runtime.tool.read %}ok{% else %}{{ extensions.fixtureLazyFail }}{% endif %}",
+			}],
+		};
+		const result = compileSystemPrompt(stack, runtime(), "base");
+		assert.equal(result.systemPrompt, "ok");
+		assert.deepEqual(result.diagnostics, []);
+	} finally {
+		unregister();
+	}
+});
+
+test("custom slots receive resolved extension dependencies", () => {
+	const unregMacro = registerMacro({
+		name: "fixtureSlotDep",
+		render: () => "dep-value",
+	});
+	const unregSlot = registerSlot({
+		name: "fixture-slot-with-dep",
+		dependencies: ["extensions.fixtureSlotDep"],
+		render: ({ env }) => `slot:${String(env.extensions.fixtureSlotDep)}`,
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "slot-dep",
+			items: [{ kind: "slot", id: "s", role: "system", slot: "fixture-slot-with-dep" }],
+		};
+		const result = compileSystemPrompt(stack, runtime(), "base");
+		assert.equal(result.systemPrompt, "slot:dep-value");
+		assert.deepEqual(result.diagnostics, []);
+	} finally {
+		unregMacro();
+		unregSlot();
+	}
+});
+
+test("custom slot output is subject to the extension output limit", () => {
+	const unregSlot = registerSlot({
+		name: "fixture-slot-large",
+		render: () => "x".repeat(FORGE_V1_MAX_TEMPLATE_OUTPUT),
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "slot-limit",
+			items: [{ kind: "slot", id: "s", role: "system", slot: "fixture-slot-large" }],
+		};
+		const result = compileSystemPrompt(stack, runtime(), "base");
+		assert.equal(result.systemPrompt, "base");
+		assert.ok(result.diagnostics.some((d) => d.level === "error" && /exceeds/.test(d.message)));
+	} finally {
+		unregSlot();
+	}
+});
+
+test("slot dependency failures fail closed without crashing", () => {
+	const unregMacro = registerMacro({
+		name: "fixtureSlotBoom",
+		render: () => {
+			throw new Error("slot-dep-boom");
+		},
+	});
+	const unregSlot = registerSlot({
+		name: "fixture-slot-boom-dep",
+		dependencies: ["extensions.fixtureSlotBoom"],
+		render: ({ env }) => `slot:${String(env.extensions.fixtureSlotBoom)}`,
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "slot-boom",
+			items: [{ kind: "slot", id: "s", role: "system", slot: "fixture-slot-boom-dep" }],
+		};
+		const result = compileSystemPrompt(stack, runtime(), "base");
+		assert.equal(result.systemPrompt, "base");
+		assert.ok(result.diagnostics.some((d) => d.level === "error" && /slot-dep-boom/.test(d.message)));
+	} finally {
+		unregMacro();
+		unregSlot();
+	}
+});
+
+test("PromptCompilationContext updates lastUserMessage for message blocks", async () => {
+	const { PromptCompilationContext } = await import("../src/compiler.ts");
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "ctx",
+		items: [{ kind: "block", id: "b", role: "user", content: "Latest={{ runtime.lastUserMessage }}" }],
+	};
+	const ctx = new PromptCompilationContext(stack, { ...runtime(), latestUserMessage: "prompt-value" });
+	ctx.setLatestUserMessage("message-value");
+	const compiled = ctx.compileMessages([{ role: "user" as const, content: "original", timestamp: 1 } as AgentMessage]);
+	const content = (compiled.messages[0] as { content?: unknown }).content;
+	const text = typeof content === "string" ? content : Array.isArray(content)
+		? content.map((part: { type?: string; text?: string }) => part.type === "text" ? part.text ?? "" : "").join("")
+		: "";
+	assert.equal(text, "Latest=message-value");
+});
+
+test("prompt analysis excludes disabled items", async () => {
+	const { analyzePromptStack } = await import("../src/prompt-analysis.ts");
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "disabled",
+		items: [
+			{ kind: "block", id: "enabled", content: "{{ extensions.known }}" },
+			{ kind: "block", id: "disabled", enabled: false, content: "{{ extensions.unknown }}" },
+		],
+	};
+	const analysis = analyzePromptStack(stack, {
+		macros: [{ name: "known", dependencies: [] }],
+		slots: [],
+	});
+	assert.deepEqual([...analysis.transitiveExtensions], ["known"]);
 });

@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FORGE_V1_MAX_EXTENSION_OUTPUT } from "./forge-v1/index.js";
 import { applyResourcePolicy } from "./policy.js";
 import { createVariableAccess, promptRenderHelpers, selectedToolNames, } from "./render-helpers.js";
 import { assertRegistryName } from "./extension-registry.js";
@@ -68,7 +69,12 @@ export function renderSlotText(item, stack, runtime, diagnostics, env) {
         return "";
     }
     try {
-        return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
+        const rendered = definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
+        if (rendered.length > FORGE_V1_MAX_EXTENSION_OUTPUT) {
+            diagnostics.push({ level: "error", message: `Slot "${item.slot}" exceeds ${FORGE_V1_MAX_EXTENSION_OUTPUT} characters.`, itemId: item.id });
+            return "";
+        }
+        return rendered;
     }
     catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -94,6 +100,9 @@ export function registerSlot(definition) {
 }
 export function getRegisteredSlots() {
     return [...SLOT_RENDERERS.values()];
+}
+export function getRegisteredSlot(name) {
+    return SLOT_RENDERERS.get(name);
 }
 function createSlotRenderContext(item, stack, runtime, diagnostics, env) {
     return {

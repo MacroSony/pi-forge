@@ -4,6 +4,7 @@ import {
 	compileSystemPrompt,
 	getLatestUserMessage,
 } from "./compiler.ts";
+import { PromptCompilationContext } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { isAgentProfileProvenance } from "./agent-profile.ts";
 import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
@@ -97,11 +98,9 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 		if (!state.active) return;
 
-		const result = compileSystemPrompt(
-			state.active.stack,
-			{ options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() },
-			event.systemPrompt,
-		);
+		const compilationRuntime = { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() };
+		state.currentCompilationContext = new PromptCompilationContext(state.active.stack, compilationRuntime);
+		const result = state.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
 		deps.recordCompileDiagnostics(ctx, result.diagnostics);
 
 		return { systemPrompt: result.systemPrompt };
@@ -117,11 +116,14 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		state.contextRewritePending = false;
 
 		const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
-		const result = compileMessages(
-			state.active.stack,
-			{ options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() },
-			event.messages,
-		);
+		state.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
+		const result = state.currentCompilationContext
+			? state.currentCompilationContext.compileMessages(event.messages)
+			: compileMessages(
+				state.active.stack,
+				{ options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() },
+				event.messages,
+			);
 		deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
 		return { messages: result.messages };
 	});
@@ -138,6 +140,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	pi.on("agent_end", async () => {
 		state.currentSystemPromptOptions = undefined;
 		state.currentLatestUserMessage = undefined;
+		state.currentCompilationContext = undefined;
 		state.contextRewritePending = false;
 	});
 }
@@ -149,6 +152,7 @@ async function restoreBranchScopedRuntime(
 	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
 	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
+	state.currentCompilationContext = undefined;
 	state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
 	const restoredActiveId = getRestoredActiveId(ctx);
 	state.lastPersistedActiveId = restoredActiveId;

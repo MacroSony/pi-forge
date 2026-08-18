@@ -12,7 +12,7 @@ import type {
 } from "./types.ts";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
 import { ForgeTemplateRenderer } from "./template-render.ts";
-import { renderSlotText } from "./slot-renderers.ts";
+import { getRegisteredSlot, renderSlotText } from "./slot-renderers.ts";
 
 const ZERO_USAGE = {
 	input: 0,
@@ -25,14 +25,40 @@ const ZERO_USAGE = {
 
 const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
 
-export function compileSystemPrompt(
+export class PromptCompilationContext {
+	private readonly stack: PromptStack;
+	private readonly runtime: PromptRuntime;
+	private readonly templateRenderer: ForgeTemplateRenderer;
+
+	constructor(stack: PromptStack, runtime: PromptRuntime) {
+		this.stack = stack;
+		this.runtime = runtime;
+		this.templateRenderer = new ForgeTemplateRenderer(stack, runtime);
+	}
+
+	compileSystemPrompt(baseSystemPrompt: string): CompileSystemPromptResult {
+		return compileSystemPromptWithRenderer(this.stack, this.runtime, baseSystemPrompt, this.templateRenderer);
+	}
+
+	compileMessages(originalMessages: AgentMessage[]): CompileMessagesResult {
+		return compileMessagesWithRenderer(this.stack, this.runtime, originalMessages, this.templateRenderer);
+	}
+
+	setLatestUserMessage(message: string): void {
+		this.runtime.latestUserMessage = message;
+		this.templateRenderer.setLatestUserMessage(message);
+	}
+}
+
+
+function compileSystemPromptWithRenderer(
 	stack: PromptStack,
 	runtime: PromptRuntime,
 	baseSystemPrompt: string,
+	templateRenderer: ForgeTemplateRenderer,
 ): CompileSystemPromptResult {
 	const diagnostics: PromptStackDiagnostic[] = [];
 	const parts: string[] = [];
-	const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
 
 	for (const item of enabledItems(stack)) {
 		if (item.role !== "system") continue;
@@ -48,7 +74,7 @@ export function compileSystemPrompt(
 			continue;
 		}
 
-		const rendered = renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment()).trim();
+		const rendered = renderSlotWithDependencies(item, stack, runtime, diagnostics, templateRenderer).trim();
 		if (rendered) parts.push(rendered);
 	}
 
@@ -57,7 +83,13 @@ export function compileSystemPrompt(
 
 	let systemPrompt: string;
 	if (!compiled) {
-		diagnostics.push({ level: "warning", message: "Compiled system prompt is empty; preserving base system prompt." });
+		const hasCompileErrors = diagnostics.some((diagnostic) => diagnostic.level === "error");
+		diagnostics.push({
+			level: "warning",
+			message: hasCompileErrors
+				? "Compiled system prompt failed; preserving base system prompt."
+				: "Compiled system prompt is empty; preserving base system prompt.",
+		});
 		systemPrompt = baseSystemPrompt;
 	} else if (mode === "append") {
 		systemPrompt = compiled ? `${baseSystemPrompt}\n\n${compiled}` : baseSystemPrompt;
@@ -71,16 +103,24 @@ export function compileSystemPrompt(
 	return { systemPrompt, diagnostics };
 }
 
-export function compileMessages(
+export function compileSystemPrompt(
+	stack: PromptStack,
+	runtime: PromptRuntime,
+	baseSystemPrompt: string,
+): CompileSystemPromptResult {
+	return compileSystemPromptWithRenderer(stack, runtime, baseSystemPrompt, new ForgeTemplateRenderer(stack, runtime));
+}
+
+function compileMessagesWithRenderer(
 	stack: PromptStack,
 	runtime: PromptRuntime,
 	originalMessages: AgentMessage[],
+	templateRenderer: ForgeTemplateRenderer,
 ): CompileMessagesResult {
 	const diagnostics: PromptStackDiagnostic[] = [];
 	let messages: AgentMessage[] = [];
 	let messageSources: CompileMessageSource[] = [];
 	let insertedHistory = false;
-	const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
 
 	for (const item of enabledItems(stack)) {
 		if (item.kind === "slot" && item.slot === "chat-history") {
@@ -104,7 +144,7 @@ export function compileMessages(
 
 		const content = item.kind === "block"
 			? templateRenderer.render(item.content, diagnostics, item.id)
-			: renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
+			: renderSlotWithDependencies(item, stack, runtime, diagnostics, templateRenderer);
 
 		if (!content.trim()) continue;
 		const message = createSyntheticMessage(item.role, content, stack, runtime);
@@ -119,6 +159,33 @@ export function compileMessages(
 
 	messages = applyRegexRulesToMessages(stack, messages, "compiled", diagnostics);
 	return { messages, messageSources, diagnostics };
+}
+
+
+function renderSlotWithDependencies(
+	item: PromptStackSlotItem,
+	stack: PromptStack,
+	runtime: PromptRuntime,
+	diagnostics: PromptStackDiagnostic[],
+	templateRenderer: ForgeTemplateRenderer,
+): string {
+	const slotDefinition = getRegisteredSlot(item.slot);
+	if (slotDefinition?.dependencies?.length) {
+		const before = diagnostics.length;
+		const slotEnv = templateRenderer.environmentForDependencies(slotDefinition.dependencies, diagnostics, item.id);
+		const newErrors = diagnostics.slice(before).some((diagnostic) => diagnostic.level === "error");
+		if (newErrors) return "";
+		return renderSlotText(item, stack, runtime, diagnostics, slotEnv);
+	}
+	return renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
+}
+
+export function compileMessages(
+	stack: PromptStack,
+	runtime: PromptRuntime,
+	originalMessages: AgentMessage[],
+): CompileMessagesResult {
+	return compileMessagesWithRenderer(stack, runtime, originalMessages, new ForgeTemplateRenderer(stack, runtime));
 }
 
 export function getLatestUserMessage(messages: AgentMessage[]): string | undefined {

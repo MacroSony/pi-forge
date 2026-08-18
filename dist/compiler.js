@@ -1,6 +1,6 @@
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.js";
 import { ForgeTemplateRenderer } from "./template-render.js";
-import { renderSlotText } from "./slot-renderers.js";
+import { getRegisteredSlot, renderSlotText } from "./slot-renderers.js";
 const ZERO_USAGE = {
     input: 0,
     output: 0,
@@ -10,10 +10,29 @@ const ZERO_USAGE = {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 const SUMMARY_ROLES = new Set(["branchSummary", "compactionSummary"]);
-export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
+export class PromptCompilationContext {
+    stack;
+    runtime;
+    templateRenderer;
+    constructor(stack, runtime) {
+        this.stack = stack;
+        this.runtime = runtime;
+        this.templateRenderer = new ForgeTemplateRenderer(stack, runtime);
+    }
+    compileSystemPrompt(baseSystemPrompt) {
+        return compileSystemPromptWithRenderer(this.stack, this.runtime, baseSystemPrompt, this.templateRenderer);
+    }
+    compileMessages(originalMessages) {
+        return compileMessagesWithRenderer(this.stack, this.runtime, originalMessages, this.templateRenderer);
+    }
+    setLatestUserMessage(message) {
+        this.runtime.latestUserMessage = message;
+        this.templateRenderer.setLatestUserMessage(message);
+    }
+}
+function compileSystemPromptWithRenderer(stack, runtime, baseSystemPrompt, templateRenderer) {
     const diagnostics = [];
     const parts = [];
-    const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
     for (const item of enabledItems(stack)) {
         if (item.role !== "system")
             continue;
@@ -27,7 +46,7 @@ export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
             diagnostics.push({ level: "warning", message: "chat-history slot cannot be placed in the system prompt.", itemId: item.id });
             continue;
         }
-        const rendered = renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment()).trim();
+        const rendered = renderSlotWithDependencies(item, stack, runtime, diagnostics, templateRenderer).trim();
         if (rendered)
             parts.push(rendered);
     }
@@ -35,7 +54,13 @@ export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
     const mode = stack.mode ?? "replace";
     let systemPrompt;
     if (!compiled) {
-        diagnostics.push({ level: "warning", message: "Compiled system prompt is empty; preserving base system prompt." });
+        const hasCompileErrors = diagnostics.some((diagnostic) => diagnostic.level === "error");
+        diagnostics.push({
+            level: "warning",
+            message: hasCompileErrors
+                ? "Compiled system prompt failed; preserving base system prompt."
+                : "Compiled system prompt is empty; preserving base system prompt.",
+        });
         systemPrompt = baseSystemPrompt;
     }
     else if (mode === "append") {
@@ -50,12 +75,14 @@ export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
     systemPrompt = applyRegexRulesToString(stack, systemPrompt, "compiled", "system", diagnostics);
     return { systemPrompt, diagnostics };
 }
-export function compileMessages(stack, runtime, originalMessages) {
+export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
+    return compileSystemPromptWithRenderer(stack, runtime, baseSystemPrompt, new ForgeTemplateRenderer(stack, runtime));
+}
+function compileMessagesWithRenderer(stack, runtime, originalMessages, templateRenderer) {
     const diagnostics = [];
     let messages = [];
     let messageSources = [];
     let insertedHistory = false;
-    const templateRenderer = new ForgeTemplateRenderer(stack, runtime);
     for (const item of enabledItems(stack)) {
         if (item.kind === "slot" && item.slot === "chat-history") {
             if (insertedHistory && !stack.context?.allowDuplicateChatHistory) {
@@ -77,7 +104,7 @@ export function compileMessages(stack, runtime, originalMessages) {
             continue;
         const content = item.kind === "block"
             ? templateRenderer.render(item.content, diagnostics, item.id)
-            : renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
+            : renderSlotWithDependencies(item, stack, runtime, diagnostics, templateRenderer);
         if (!content.trim())
             continue;
         const message = createSyntheticMessage(item.role, content, stack, runtime);
@@ -90,6 +117,21 @@ export function compileMessages(stack, runtime, originalMessages) {
     }
     messages = applyRegexRulesToMessages(stack, messages, "compiled", diagnostics);
     return { messages, messageSources, diagnostics };
+}
+function renderSlotWithDependencies(item, stack, runtime, diagnostics, templateRenderer) {
+    const slotDefinition = getRegisteredSlot(item.slot);
+    if (slotDefinition?.dependencies?.length) {
+        const before = diagnostics.length;
+        const slotEnv = templateRenderer.environmentForDependencies(slotDefinition.dependencies, diagnostics, item.id);
+        const newErrors = diagnostics.slice(before).some((diagnostic) => diagnostic.level === "error");
+        if (newErrors)
+            return "";
+        return renderSlotText(item, stack, runtime, diagnostics, slotEnv);
+    }
+    return renderSlotText(item, stack, runtime, diagnostics, templateRenderer.environment());
+}
+export function compileMessages(stack, runtime, originalMessages) {
+    return compileMessagesWithRenderer(stack, runtime, originalMessages, new ForgeTemplateRenderer(stack, runtime));
 }
 export function getLatestUserMessage(messages) {
     for (let i = messages.length - 1; i >= 0; i--) {

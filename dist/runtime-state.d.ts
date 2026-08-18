@@ -1,6 +1,7 @@
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import type { AgentProfileProvenance, LoadedAgentProfile } from "./agent-profile.ts";
 import type { WebEditorPayloadCapture } from "./web-editor/index.ts";
+import type { PromptCompilationContext } from "./compiler.ts";
 import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
 export declare const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 export declare const PROFILE_ENTRY_TYPE = "pi-forge-agent-profile-state";
@@ -12,6 +13,7 @@ export interface PiForgeRuntimeState {
     lastAppliedProfile?: AgentProfileProvenance;
     currentSystemPromptOptions?: BuildSystemPromptOptions;
     currentLatestUserMessage?: string;
+    currentCompilationContext?: PromptCompilationContext;
     contextRewritePending: boolean;
     lastPersistedActiveId?: string;
     latestCompileDiagnostics: PromptStackDiagnostic[];

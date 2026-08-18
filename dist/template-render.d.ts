@@ -3,13 +3,15 @@ import type { PromptRuntime, PromptStack, PromptStackDiagnostic } from "./types.
 export declare class ForgeTemplateRenderer {
     private readonly base;
     private readonly extensions;
+    private readonly workingExtensions;
+    private readonly resolving;
     private readonly stack;
     constructor(stack: PromptStack, runtime: PromptRuntime);
     render(text: string, diagnostics: PromptStackDiagnostic[], itemId?: string): string;
     environment(): PromptEnvironment;
-    private resolveExtensions;
-    private expandExtensionNames;
-    private resolveExtensionValue;
+    environmentForDependencies(dependencies: readonly string[], diagnostics: PromptStackDiagnostic[], itemId?: string): PromptEnvironment;
+    setLatestUserMessage(message: string): void;
+    private resolveExtensionForRender;
 }
 export declare function buildPromptEnvironment(stack: PromptStack, runtime: PromptRuntime): PromptEnvironment;
 export declare function freezeEnvironment(environment: PromptEnvironment): PromptEnvironment;

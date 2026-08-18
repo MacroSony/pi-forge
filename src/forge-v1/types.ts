@@ -103,7 +103,7 @@ export interface ForgeV1TemplateEngine {
 	readonly version: 1;
 	parse(source: string): TemplateParseResult;
 	analyze(ast: readonly TemplateNode[]): TemplateAnalyzeResult;
-	render(ast: readonly TemplateNode[], environment: PromptEnvironment, options?: { templateLimit?: number }): TemplateRenderResult;
+	render(ast: readonly TemplateNode[], environment: PromptEnvironment, options?: { templateLimit?: number; resolveExtension?: (name: string) => PromptEnvironmentValue | undefined }): TemplateRenderResult;
 }
 
 export const FORGE_V1_FILTERS = ["trim", "upper", "lower", "json", "xml"] as const;

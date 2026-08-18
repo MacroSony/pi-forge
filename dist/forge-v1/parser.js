@@ -53,9 +53,6 @@ class Parser {
                 return { nodes, stop: kind };
             }
             if (raw.startsWith("if ")) {
-                if (stop.size > 0) {
-                    throw parseError("Nested conditional closes prematurely", next.index, end + 2);
-                }
                 const predicate = this.parsePredicate(raw.slice(3).trim(), next.index, end + 2);
                 const thenResult = this.parseUntil(new Set(["else", "endif"]));
                 let elseBody = null;
@@ -163,7 +160,7 @@ function matchComparison(raw, op) {
     if (!right)
         return undefined;
     const expected = parseQuotedString(right);
-    if (!expected)
+    if (expected === undefined)
         return undefined;
     return { path: left, expected };
 }

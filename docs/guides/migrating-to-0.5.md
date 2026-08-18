@@ -3,7 +3,8 @@
 [Documentation](../README.md)
 
 0.5.0 is a breaking cleanup release. This page is the migration note for the
-changes landed so far (Lane 1a + Lane 1b).
+changes landed so far (Lane 1a-1c plus the compiler/extension conformance
+pass in Lane 1d).
 
 ## What was removed
 
@@ -56,7 +57,8 @@ node scripts/migrate-stack-v2.mjs .pi/forge/prompt-stacks/default.json --write
 
 It renames `variables` to `parameters`, maps runtime/parameter paths, and
 converts simple filter pipelines. Non-mechanical constructs are reported and
-the file is only written when they are absent.
+the file is only written when they are absent. A schema v2 file that still
+contains a legacy `variables` field is left untouched and only warned about.
 
 ## Preview and finalize
 

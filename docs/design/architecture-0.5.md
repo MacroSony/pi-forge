@@ -113,6 +113,18 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 - Migrate examples and update English and Chinese user-facing compiler/schema/extension docs.
 - Update changelog and migration notes for the Lane 1 breaks.
 
+### Lane 1d: compiler/extension conformance
+
+- Make custom slot extensions symmetric with macros: pure `{ item, options, env, helpers }` render context, declared `dependencies`, and the same 16,384-character output limit.
+- Resolve declared extension dependencies when populating `env.extensions` for slot rendering.
+- Introduce a reusable prompt dependency analysis plan (direct dependencies, transitive extension closure, slot dependencies, diagnostics) shared by runtime compilation, preview, and subagent preparation.
+- Create one compilation context per provider-preparation cycle with a single runtime/timestamp snapshot, frozen base environment, and request-local extension cache shared between system and message compilation.
+- Keep dependency analysis eager, but resolve extension values lazily during rendering so unreachable branches do not execute extensions.
+- Support nested `{% if %}` blocks with a recursion-depth guard.
+- Fix parser conformance issues such as empty-string comparisons and strict undefined handling.
+- Clarify or document `maxChars` best-effort semantics and separate empty-system-prompt fallback from compile failure.
+- Add focused conformance tests for all of the above.
+
 ### Lane 2a: minimal repositories and codecs
 
 - Extract stack/profile codecs as the single parse/normalize/validate/serialize source.

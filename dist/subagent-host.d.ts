@@ -5,6 +5,7 @@ import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 export interface SubagentPromptRegistration {
     name: string;
     source?: string;
+    dependencies?: string[];
 }
 export interface SubagentPromptRegistrationCatalog {
     macros: SubagentPromptRegistration[];

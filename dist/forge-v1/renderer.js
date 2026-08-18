@@ -12,7 +12,7 @@ const LEGACY_RUNTIME = new Map([
 export function render(nodes, environment, options = {}) {
     const limit = options.templateLimit ?? FORGE_V1_MAX_TEMPLATE_OUTPUT;
     try {
-        const text = renderNodeList(nodes, environment, limit, 0);
+        const text = renderNodeList(nodes, environment, limit, 0, options.resolveExtension);
         return { ok: true, text };
     }
     catch (error) {
@@ -21,7 +21,7 @@ export function render(nodes, environment, options = {}) {
         throw error;
     }
 }
-function renderNodeList(nodes, environment, limit, depth) {
+function renderNodeList(nodes, environment, limit, depth, resolveExtension) {
     if (depth > 64) {
         throw { kind: "recursion", message: "forge-v1 template nesting exceeds 64 levels." };
     }
@@ -31,7 +31,7 @@ function renderNodeList(nodes, environment, limit, depth) {
             result += node.text;
         }
         else if (node.kind === "output") {
-            const raw = evaluatePath(node.path, environment, node.span);
+            const raw = evaluatePath(node.path, environment, node.span, false, resolveExtension);
             let value = raw;
             for (const filter of node.filters) {
                 value = applyFilter(filter, value, node.span);
@@ -39,9 +39,9 @@ function renderNodeList(nodes, environment, limit, depth) {
             result += valueToString(value);
         }
         else if (node.kind === "if") {
-            const branch = evaluatePredicate(node.predicate, environment) ? node.thenBody : node.elseBody;
+            const branch = evaluatePredicate(node.predicate, environment, resolveExtension) ? node.thenBody : node.elseBody;
             if (branch)
-                result += renderNodeList(branch, environment, limit, depth + 1);
+                result += renderNodeList(branch, environment, limit, depth + 1, resolveExtension);
         }
         if (result.length > limit) {
             throw {
@@ -52,10 +52,23 @@ function renderNodeList(nodes, environment, limit, depth) {
     }
     return result;
 }
-function evaluatePath(path, environment, span, allowUndefined = false) {
+function evaluatePath(path, environment, span, allowUndefined = false, resolveExtension) {
     if (path.length === 0)
         return undefined;
     const first = path[0];
+    if (first === "extensions" && path.length === 2) {
+        const name = path[1];
+        if (Object.prototype.hasOwnProperty.call(environment.extensions, name))
+            return environment.extensions[name];
+        if (resolveExtension) {
+            const resolved = resolveExtension(name);
+            if (resolved !== undefined)
+                return resolved;
+        }
+        if (allowUndefined)
+            return undefined;
+        throw undefinedError(path, span);
+    }
     let cursor;
     if (ROOTS.has(first)) {
         if (first === "runtime")
@@ -81,10 +94,15 @@ function evaluatePath(path, environment, span, allowUndefined = false) {
         }
         const legacyRoot = LEGACY_RUNTIME.get(first);
         if (legacyRoot) {
-            return evaluatePath(legacyRoot, environment, span, allowUndefined);
+            return evaluatePath(legacyRoot, environment, span, allowUndefined, resolveExtension);
         }
         if (Object.prototype.hasOwnProperty.call(environment.extensions, first)) {
             return environment.extensions[first];
+        }
+        if (resolveExtension) {
+            const resolved = resolveExtension(first);
+            if (resolved !== undefined)
+                return resolved;
         }
     }
     if (allowUndefined)
@@ -98,12 +116,12 @@ function undefinedError(path, span) {
         span,
     };
 }
-function evaluatePredicate(predicate, environment) {
+function evaluatePredicate(predicate, environment, resolveExtension) {
     if (predicate.kind === "truthy") {
-        const value = evaluatePath(predicate.path, environment, predicate.span, true);
+        const value = evaluatePath(predicate.path, environment, predicate.span, true, resolveExtension);
         return isTruthy(value);
     }
-    const value = evaluatePath(predicate.path, environment, predicate.span, false);
+    const value = evaluatePath(predicate.path, environment, predicate.span, false, resolveExtension);
     const actual = valueToString(value);
     if (predicate.kind === "eq")
         return actual === predicate.expected;

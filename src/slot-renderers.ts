@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PromptEnvironment } from "./forge-v1/types.ts";
+import { FORGE_V1_MAX_EXTENSION_OUTPUT } from "./forge-v1/index.ts";
 import { applyResourcePolicy } from "./policy.ts";
 import type {
 	PromptRuntime,
@@ -20,19 +21,30 @@ import { assertRegistryName, type PromptExtensionOptionsSchema, type PromptRegis
 
 export interface PromptSlotRenderContext {
 	item: PromptStackSlotItem;
+	options: Record<string, unknown>;
+	env: PromptEnvironment;
+	helpers: PromptRenderHelpers;
+}
+
+/** Internal context used by built-in slots; not part of the public extension contract. */
+export interface BuiltInSlotRenderContext extends PromptSlotRenderContext {
 	stack: PromptStack;
 	runtime: PromptRuntime;
-	env: PromptEnvironment;
 	diagnostics: PromptStackDiagnostic[];
-	options: Record<string, unknown>;
-	helpers: PromptRenderHelpers;
 	variables: PromptVariableAccess;
 	format: (options?: { allowJson?: boolean }) => PromptStackSlotFormat;
+}
+
+/** Internal registration shape accepted for built-in slots. */
+export interface BuiltInSlotDefinition extends Omit<PromptSlotDefinition, "render"> {
+	render: (context: BuiltInSlotRenderContext) => string;
 }
 
 export type PromptSlotRenderer = (context: PromptSlotRenderContext) => string | undefined;
 
 export interface PromptSlotDefinition extends PromptRegistryEntry {
+	/** Environment paths this renderer reads (e.g. "parameters.x", "extensions.y"). */
+	dependencies?: string[];
 	options?: PromptExtensionOptionsSchema;
 	render: PromptSlotRenderer;
 }
@@ -101,11 +113,11 @@ registerSlot({
 	render: renderSkills,
 });
 registerSlot({ name: "project-context", description: "Project context files.", options: { format: FORMAT_OPTION }, render: renderProjectContext });
-registerSlot({ name: "append-system-prompt", description: "User appended system prompt text.", render: ({ runtime }) => runtime.options.appendSystemPrompt ?? "" });
+registerSlot({ name: "append-system-prompt", description: "User appended system prompt text.", render: ({ runtime }: BuiltInSlotRenderContext) => runtime.options.appendSystemPrompt ?? "" });
 registerSlot({ name: "date", description: "Current date.", options: { includeTime: INCLUDE_TIME_OPTION }, render: renderDate });
-registerSlot({ name: "cwd", description: "Current working directory.", render: ({ runtime }) => renderCwd(runtime) });
-registerSlot({ name: "date-cwd", description: "Current date and working directory.", options: { includeTime: INCLUDE_TIME_OPTION }, render: (context) => [renderDate(context), renderCwd(context.runtime)].join("\n") });
-registerSlot({ name: "active-model", description: "Current model provider/id.", render: ({ runtime }) => renderActiveModel(runtime) });
+registerSlot({ name: "cwd", description: "Current working directory.", render: ({ runtime }: BuiltInSlotRenderContext) => renderCwd(runtime) });
+registerSlot({ name: "date-cwd", description: "Current date and working directory.", options: { includeTime: INCLUDE_TIME_OPTION }, render: (context: BuiltInSlotRenderContext) => [renderDate(context), renderCwd(context.runtime)].join("\n") });
+registerSlot({ name: "active-model", description: "Current model provider/id.", render: ({ runtime }: BuiltInSlotRenderContext) => renderActiveModel(runtime) });
 registerSlot({ name: "pi-docs", description: "Pi documentation guidance.", render: () => renderPiDocsGuidance() });
 registeringBuiltInSlots = false;
 
@@ -123,7 +135,12 @@ export function renderSlotText(
 	}
 
 	try {
-		return definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
+		const rendered = definition.render(createSlotRenderContext(item, stack, runtime, diagnostics, env)) ?? "";
+		if (rendered.length > FORGE_V1_MAX_EXTENSION_OUTPUT) {
+			diagnostics.push({ level: "error", message: `Slot "${item.slot}" exceeds ${FORGE_V1_MAX_EXTENSION_OUTPUT} characters.`, itemId: item.id });
+			return "";
+		}
+		return rendered;
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error);
 		diagnostics.push({ level: "error", message: `Slot "${item.slot}" failed: ${detail}`, itemId: item.id });
@@ -131,13 +148,15 @@ export function renderSlotText(
 	}
 }
 
-export function registerSlot(definition: PromptSlotDefinition): () => void {
+export function registerSlot(definition: BuiltInSlotDefinition): () => void;
+export function registerSlot(definition: PromptSlotDefinition): () => void;
+export function registerSlot(definition: PromptSlotDefinition | BuiltInSlotDefinition): () => void {
 	assertRegistryName("Slot", definition.name);
 	if (SLOT_RENDERERS.has(definition.name)) {
 		if (registeringBuiltInSlots) return () => {};
 		throw new Error(`Slot is already registered: ${definition.name}`);
 	}
-	SLOT_RENDERERS.set(definition.name, definition);
+	SLOT_RENDERERS.set(definition.name, definition as PromptSlotDefinition);
 	SUPPORTED_SLOTS.add(definition.name);
 	return () => {
 		if (SLOT_RENDERERS.get(definition.name) === definition) {
@@ -151,13 +170,17 @@ export function getRegisteredSlots(): readonly PromptSlotDefinition[] {
 	return [...SLOT_RENDERERS.values()];
 }
 
+export function getRegisteredSlot(name: string): PromptSlotDefinition | undefined {
+	return SLOT_RENDERERS.get(name);
+}
+
 function createSlotRenderContext(
 	item: PromptStackSlotItem,
 	stack: PromptStack,
 	runtime: PromptRuntime,
 	diagnostics: PromptStackDiagnostic[],
 	env: PromptEnvironment,
-): PromptSlotRenderContext {
+): BuiltInSlotRenderContext {
 	return {
 		item,
 		stack,
@@ -171,7 +194,7 @@ function createSlotRenderContext(
 	};
 }
 
-function renderTools({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
+function renderTools({ item, stack, runtime, format, helpers }: BuiltInSlotRenderContext): string {
 	const snippets = runtime.options.toolSnippets ?? {};
 	const tools = item.options?.onlyWithSnippets === true
 		? selectedToolNames(stack, runtime).filter((name) => !!snippets[name])
@@ -204,7 +227,7 @@ function renderTools({ item, stack, runtime, format, helpers }: PromptSlotRender
 	return lines.join("\n");
 }
 
-function renderToolGuidelines({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
+function renderToolGuidelines({ item, stack, runtime, format, helpers }: BuiltInSlotRenderContext): string {
 	const tools = selectedToolNames(stack, runtime);
 	const guidelines: string[] = [];
 	const seen = new Set<string>();
@@ -236,7 +259,7 @@ function renderToolGuidelines({ item, stack, runtime, format, helpers }: PromptS
 	return ["<tool_guidelines>", ...guidelines.map((line) => `- ${line}`), "</tool_guidelines>"].join("\n");
 }
 
-function renderSkills({ item, stack, runtime, format, helpers }: PromptSlotRenderContext): string {
+function renderSkills({ item, stack, runtime, format, helpers }: BuiltInSlotRenderContext): string {
 	if (item.options?.requireReadTool === true && !selectedToolNames(stack, runtime).includes("read")) return "";
 	const skills = (runtime.options.skills ?? [])
 		.filter((skill) => !skill.disableModelInvocation)
@@ -272,7 +295,7 @@ function renderSkills({ item, stack, runtime, format, helpers }: PromptSlotRende
 	return lines.join("\n");
 }
 
-function renderProjectContext({ item, runtime, format, helpers }: PromptSlotRenderContext): string {
+function renderProjectContext({ item, runtime, format, helpers }: BuiltInSlotRenderContext): string {
 	const contextFiles = runtime.options.contextFiles ?? [];
 	if (contextFiles.length === 0) return "";
 
@@ -295,7 +318,7 @@ function renderProjectContext({ item, runtime, format, helpers }: PromptSlotRend
 	return lines.join("\n");
 }
 
-function renderDate({ item, runtime, helpers }: PromptSlotRenderContext): string {
+function renderDate({ item, runtime, helpers }: BuiltInSlotRenderContext): string {
 	const lines = [`Current date: ${helpers.formatDate(runtime.now)}`];
 	if (item.options?.includeTime === true) {
 		lines.push(`Current time: ${helpers.formatTime(runtime.now)}`);

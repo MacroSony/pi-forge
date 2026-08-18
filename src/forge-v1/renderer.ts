@@ -21,14 +21,19 @@ const LEGACY_RUNTIME = new Map<string, readonly string[]>([
 	["activeModel", ["runtime", "activeModel"]],
 ]);
 
+export interface TemplateRenderOptions {
+	templateLimit?: number;
+	resolveExtension?: (name: string) => PromptEnvironmentValue | undefined;
+}
+
 export function render(
 	nodes: readonly TemplateNode[],
 	environment: PromptEnvironment,
-	options: { templateLimit?: number } = {},
+	options: TemplateRenderOptions = {},
 ): TemplateRenderResult {
 	const limit = options.templateLimit ?? FORGE_V1_MAX_TEMPLATE_OUTPUT;
 	try {
-		const text = renderNodeList(nodes, environment, limit, 0);
+		const text = renderNodeList(nodes, environment, limit, 0, options.resolveExtension);
 		return { ok: true, text };
 	} catch (error) {
 		if (isForgeError(error)) return { ok: false, error };
@@ -41,6 +46,7 @@ function renderNodeList(
 	environment: PromptEnvironment,
 	limit: number,
 	depth: number,
+	resolveExtension?: (name: string) => PromptEnvironmentValue | undefined,
 ): string {
 	if (depth > 64) {
 		throw { kind: "recursion", message: "forge-v1 template nesting exceeds 64 levels." } as ForgeV1Error;
@@ -50,15 +56,15 @@ function renderNodeList(
 		if (node.kind === "text") {
 			result += node.text;
 		} else if (node.kind === "output") {
-			const raw = evaluatePath(node.path, environment, node.span) as PromptEnvironmentValue;
+			const raw = evaluatePath(node.path, environment, node.span, false, resolveExtension) as PromptEnvironmentValue;
 			let value: PromptEnvironmentValue = raw;
 			for (const filter of node.filters) {
 				value = applyFilter(filter, value, node.span);
 			}
 			result += valueToString(value);
 		} else if (node.kind === "if") {
-			const branch = evaluatePredicate(node.predicate, environment) ? node.thenBody : node.elseBody;
-			if (branch) result += renderNodeList(branch, environment, limit, depth + 1);
+			const branch = evaluatePredicate(node.predicate, environment, resolveExtension) ? node.thenBody : node.elseBody;
+			if (branch) result += renderNodeList(branch, environment, limit, depth + 1, resolveExtension);
 		}
 		if (result.length > limit) {
 			throw {
@@ -75,9 +81,21 @@ function evaluatePath(
 	environment: PromptEnvironment,
 	span: TemplateSourceSpan | undefined,
 	allowUndefined = false,
+	resolveExtension?: (name: string) => PromptEnvironmentValue | undefined,
 ): PromptEnvironmentValue | undefined {
 	if (path.length === 0) return undefined;
 	const first = path[0]!;
+
+	if (first === "extensions" && path.length === 2) {
+		const name = path[1]!;
+		if (Object.prototype.hasOwnProperty.call(environment.extensions, name)) return environment.extensions[name];
+		if (resolveExtension) {
+			const resolved = resolveExtension(name);
+			if (resolved !== undefined) return resolved;
+		}
+		if (allowUndefined) return undefined;
+		throw undefinedError(path, span);
+	}
 
 	let cursor: unknown;
 	if (ROOTS.has(first)) {
@@ -101,10 +119,14 @@ function evaluatePath(
 		}
 		const legacyRoot = LEGACY_RUNTIME.get(first);
 		if (legacyRoot) {
-			return evaluatePath(legacyRoot, environment, span, allowUndefined);
+			return evaluatePath(legacyRoot, environment, span, allowUndefined, resolveExtension);
 		}
 		if (Object.prototype.hasOwnProperty.call(environment.extensions, first)) {
 			return environment.extensions[first];
+		}
+		if (resolveExtension) {
+			const resolved = resolveExtension(first);
+			if (resolved !== undefined) return resolved;
 		}
 	}
 	if (allowUndefined) return undefined;
@@ -119,12 +141,16 @@ function undefinedError(path: readonly string[], span: TemplateSourceSpan | unde
 	};
 }
 
-function evaluatePredicate(predicate: TemplatePredicate, environment: PromptEnvironment): boolean {
+function evaluatePredicate(
+	predicate: TemplatePredicate,
+	environment: PromptEnvironment,
+	resolveExtension?: (name: string) => PromptEnvironmentValue | undefined,
+): boolean {
 	if (predicate.kind === "truthy") {
-		const value = evaluatePath(predicate.path, environment, predicate.span, true);
+		const value = evaluatePath(predicate.path, environment, predicate.span, true, resolveExtension);
 		return isTruthy(value);
 	}
-	const value = evaluatePath(predicate.path, environment, predicate.span, false);
+	const value = evaluatePath(predicate.path, environment, predicate.span, false, resolveExtension);
 	const actual = valueToString(value);
 	if (predicate.kind === "eq") return actual === predicate.expected;
 	return actual !== predicate.expected;

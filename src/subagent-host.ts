@@ -25,11 +25,13 @@ import {
 } from "./subagent/contract.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { forgeV1 } from "./forge-v1/index.ts";
+import { analyzePromptStack } from "./prompt-analysis.ts";
 import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
 
 export interface SubagentPromptRegistration {
 	name: string;
 	source?: string;
+	dependencies?: string[];
 }
 
 export interface SubagentPromptRegistrationCatalog {
@@ -208,32 +210,24 @@ export function collectSubagentPromptDependencies(
 		...Object.keys(stack.variables ?? {}),
 	]);
 
+	const analysis = analyzePromptStack(stack, registrations);
+	for (const error of analysis.diagnostics) {
+		diagnostics.push({
+			level: "error",
+			code: "prompt-stack.template-analyze",
+			path: "promptStack",
+			message: error.message,
+		});
+	}
+
 	for (const item of stack.items) {
 		if (item.kind === "slot") {
 			if (BUILT_IN_SLOTS.has(item.slot)) continue;
 			addDependency("slot", item.slot, slotCatalog, dependencies, missing, diagnostics, `promptStack.items.${item.id}`);
-			continue;
 		}
-		const parsed = forgeV1.parse(item.content);
-		if (!parsed.ok) {
-			diagnostics.push({
-				level: "error",
-				code: "prompt-stack.template-parse",
-				path: `promptStack.items.${item.id}`,
-				message: parsed.error.message,
-			});
-			continue;
-		}
-		const analyzed = forgeV1.analyze(parsed.ast);
-		for (const error of analyzed.errors) {
-			diagnostics.push({
-				level: "error",
-				code: "prompt-stack.template-analyze",
-				path: `promptStack.items.${item.id}`,
-				message: error.message,
-			});
-		}
-		for (const dependency of analyzed.dependencies) {
+	}
+	for (const block of analysis.blocks) {
+		for (const dependency of block.dependencies) {
 			let name: string | undefined;
 			if (dependency.kind === "extensions") name = dependency.path?.[1];
 			if (dependency.kind === "legacy") {
@@ -242,8 +236,12 @@ export function collectSubagentPromptDependencies(
 				name = candidate;
 			}
 			if (!name) continue;
-			addDependency("macro", name, macroCatalog, dependencies, missing, diagnostics, `promptStack.items.${item.id}`);
+			addDependency("macro", name, macroCatalog, dependencies, missing, diagnostics, `promptStack.items.${block.itemId}`);
 		}
+	}
+	for (const name of analysis.transitiveExtensions) {
+		if (!name || macroCatalog.has(name)) continue;
+		addDependency("macro", name, macroCatalog, dependencies, missing, diagnostics, "promptStack");
 	}
 
 	return {
@@ -301,7 +299,7 @@ export function isProtectedAgentTaskPreserved(messages: readonly AgentMessage[],
 }
 
 function registrationEntry(definition: PromptMacroDefinition | PromptSlotDefinition): SubagentPromptRegistration {
-	return { name: definition.name, source: definition.source };
+	return { name: definition.name, source: definition.source, dependencies: definition.dependencies };
 }
 
 function addDependency(

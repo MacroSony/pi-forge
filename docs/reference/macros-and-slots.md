@@ -45,8 +45,10 @@ Nested pipelines are supported; filters are pure and versioned.
 ```
 
 - `{% if path %}` selects the branch when the path exists and is truthy.
-- `==` / `!=` compare against a quoted string.
-- An undefined output path is a strict compile error (no raw fallback).
+- `==` / `!=` compare against a quoted string, including empty strings.
+- Nested `{% if %}` blocks are supported.
+- An undefined output path is a strict compile error (no raw fallback); the
+  legacy `defaults.unresolvedMacroPolicy` is ignored.
 - `runtime.tool.<name>` and `runtime.slot.<name>` booleans power tool/slot
   conditionals without function calls.
 
@@ -88,9 +90,14 @@ api.registerMacro({
 api.registerSlot({
   name: "ticket-context",
   description: "Render ticket context.",
+  dependencies: ["parameters.ticket.id"],
   options: { heading: { type: "string", default: "Ticket context" } },
   render: ({ item, options, env, helpers }) => "...",
 });
 ```
+
+Custom slots receive the same pure `{ item, options, env, helpers }` context and
+declared-dependency resolution as macros, and their output is held to the same
+16,384-character extension limit.
 
 See [custom macros and slots](../guides/custom-macros-and-slots.md).

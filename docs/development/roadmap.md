@@ -16,6 +16,7 @@ Implementation order:
 1a. Removals only: remove SillyTavern, mutable variable state/macros/slot, variable session entries, and regex `display`/`both`.
 1b. Compiler, schema v2, and extension contract: implement `forge-v1`, frozen `PromptEnvironment`, immutable `parameters`, and the redesigned trusted extension port; retain `finalize` under lifecycle-adapter ownership.
 1c. Migration and documentation: v1-to-v2 utility, example migration, and English/Chinese breaking notes.
+1d. Compiler/extension conformance: pure slot contract symmetry, slot dependency resolution, shared dependency analysis/compilation context, lazy extension evaluation, nested conditionals, parser fixes, and focused conformance tests.
 2a. Minimal repositories and codecs: make repositories/codecs the only stack/profile read/write path; defer fingerprint and atomic writes.
 2b. ForgeWorkspace and host port v1: minimal snapshot owner plus `/subagent` discovery, profile listing/snapshot, and prepare with mandatory lifecycle semantics.
 3. Subagent extraction: move subagent code into `pi-forge-subagents`; remove the main-package hard dependency and delegation UI; optional package owns dedicated `subagents.json` files.

@@ -6,7 +6,7 @@ The active plan defines the executable forward-looking work. Archived documents 
 
 ## Active 0.5.0 plan
 
-- [Lean 0.5.0 architecture plan](architecture-0.5.md) — executable breaking-cleanup scope, accepted decisions, four implementation lanes, and release gates.
+- [Lean 0.5.0 architecture plan](architecture-0.5.md) — executable breaking-cleanup scope, accepted decisions, implementation lanes, and release gates.
 - [Architecture and development rules](../development/architecture-rules.md) — dependency direction and ownership rules for the full target.
 - [Architecture decision template](decision-template.md) — structure for future boundary/product decisions.
 

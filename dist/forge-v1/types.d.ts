@@ -78,6 +78,7 @@ export interface ForgeV1TemplateEngine {
     analyze(ast: readonly TemplateNode[]): TemplateAnalyzeResult;
     render(ast: readonly TemplateNode[], environment: PromptEnvironment, options?: {
         templateLimit?: number;
+        resolveExtension?: (name: string) => PromptEnvironmentValue | undefined;
     }): TemplateRenderResult;
 }
 export declare const FORGE_V1_FILTERS: readonly ["trim", "upper", "lower", "json", "xml"];

@@ -26,6 +26,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - Prompt-stack schema v2 introduces immutable `parameters`; unversioned/v1 stacks continue to read through the legacy `variables` field.
 - `finalize` regex remains lifecycle-owned and is excluded from preview, which now reports an informational diagnostic.
 - Legacy 0.4 nested macro syntax (for example `{{upper::x}}`, `{{json::...}}`, `{{iftools::...}}`) is no longer executed by the compiler and must migrate to forge-v1 syntax.
+- Compiler/extension conformance (Lane 1d): custom slots share the pure `{ item, options, env, helpers }` contract with declared `dependencies` and the 16,384-character output limit; `env.extensions` is resolved for slots; a shared dependency analysis and one compilation context keep preview/runtime/subagent consistent; extension values resolve lazily per active branch; nested `{% if %}` and empty-string comparisons are supported.
 
 ## [0.4.1] - 2026-08-17
 
