@@ -2,9 +2,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
-	compileMessages,
-	compileSystemPrompt,
 	getLatestUserMessage,
+	PromptCompilationContext,
 } from "./compiler.ts";
 import { estimatePayloadTokens } from "./payload-capture.ts";
 import type { CompileMessageSource, LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
@@ -25,8 +24,9 @@ export function buildPreview(
 	const sessionMessages = getPreviewSessionMessages(ctx);
 	const latestUserMessage = getLatestUserMessage(sessionMessages);
 	const runtime = { options, ctx, latestUserMessage, now: new Date() };
-	const system = compileSystemPrompt(target.stack, runtime, ctx.getSystemPrompt());
-	const messages = compileMessages(target.stack, runtime, sessionMessages);
+	const compilation = new PromptCompilationContext(target.stack, runtime);
+	const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
+	const messages = compilation.compileMessages(sessionMessages);
 	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
 	for (const rule of target.stack.regex?.rules ?? []) {
 		if (rule.effect === "finalize" && rule.enabled !== false) {

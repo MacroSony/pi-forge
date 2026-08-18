@@ -40,8 +40,10 @@ import {
 import {
 	collectMacroCommandNames,
 	collectSubagentPromptDependencies,
+	prepareSubagentHostPlan,
 	resolveSubagentHostProfile,
 } from "../src/subagent-host.ts";
+import { registerMacro } from "../src/index.ts";
 import type { LoadedPromptStack, PromptStack } from "../src/types.ts";
 
 const DIGEST = subagentFingerprint("fixture");
@@ -543,5 +545,43 @@ test("public validators diagnose malformed unknown values without throwing", () 
 	for (const validate of malformedValues) {
 		assert.doesNotThrow(validate);
 		assert.equal(hasSubagentErrors(validate() as ReturnType<typeof validateAgentRequest>), true);
+	}
+});
+
+test("subagent host plan shares one compilation context (extension evaluated once)", () => {
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixtureSubOnce",
+		render: () => {
+			calls += 1;
+			return "UV";
+		},
+	});
+	try {
+		const stack: LoadedPromptStack = {
+			...promptStack({
+				items: [
+					{ kind: "block", id: "sys", role: "system", content: "sys={{ extensions.fixtureSubOnce }}" },
+					{ kind: "block", id: "msg", role: "user", content: "msg={{ extensions.fixtureSubOnce }}" },
+					{ kind: "slot", id: "history", slot: "chat-history" },
+				],
+			}),
+		};
+		const resolved = resolveSubagentHostProfile(loadedProfile(), {
+			promptStacks: [stack],
+			registrations: { macros: [{ name: "fixtureSubOnce" }], slots: [] },
+		});
+		assert.ok(resolved.snapshot, "snapshot should be present");
+		const output = prepareSubagentHostPlan({
+			request: request(),
+			snapshot: resolved.snapshot!,
+			preflight: preflight(),
+			runtime: preparationRuntime(),
+		});
+		assert.equal(calls, 1);
+		assert.ok(output.systemPrompt.includes("sys=UV"));
+		assert.ok(JSON.stringify(output.messages).includes("msg=UV"));
+	} finally {
+		unregister();
 	}
 });

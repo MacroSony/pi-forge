@@ -101,7 +101,15 @@ export class ForgeTemplateRenderer {
 	}
 
 	setLatestUserMessage(message: string): void {
+		if (this.base.runtime.lastUserMessage === message) return;
 		this.base.runtime.lastUserMessage = message;
+		// The extension cache is keyed by name and serves values resolved against a
+		// frozen environment snapshot. latestUserMessage is the one captured field
+		// that can legitimately change between the system and message phases of a
+		// single compilation, so invalidate the cache so macros that read it observe
+		// the current value instead of the pre-phase snapshot.
+		this.extensions.clear();
+		for (const key of Object.keys(this.workingExtensions)) delete this.workingExtensions[key];
 	}
 
 	private resolveExtensionForRender(

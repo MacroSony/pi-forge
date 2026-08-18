@@ -415,3 +415,200 @@ test("prompt analysis excludes disabled items", async () => {
 	});
 	assert.deepEqual([...analysis.transitiveExtensions], ["known"]);
 });
+
+test("PromptCompilationContext evaluates an extension once across system and messages", async () => {
+	const { PromptCompilationContext } = await import("../src/compiler.ts");
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixtureCompileOnce",
+		render: () => {
+			calls += 1;
+			return "SV";
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "ctx-once",
+			items: [
+				{ kind: "block", id: "sys", role: "system", content: "{{ extensions.fixtureCompileOnce }}" },
+				{ kind: "block", id: "msg", role: "user", content: "{{ extensions.fixtureCompileOnce }}" },
+				{ kind: "slot", id: "history", slot: "chat-history" },
+			],
+		};
+		const ctx = new PromptCompilationContext(stack, runtime());
+		const system = ctx.compileSystemPrompt("base");
+		const messages = ctx.compileMessages([{ role: "user", content: "orig", timestamp: 1 }]);
+		assert.equal(calls, 1);
+		assert.equal(system.systemPrompt, "SV");
+		const texts = messages.messages.map((message) => {
+			const content = (message as { content?: unknown }).content;
+			return typeof content === "string" ? content : Array.isArray(content)
+				? content.map((part: { type?: string; text?: string }) => part.type === "text" ? part.text ?? "" : "").join("")
+				: "";
+		});
+		assert.ok(texts.some((text) => text === "SV"));
+	} finally {
+		unregister();
+	}
+});
+
+test("preview shares one compilation context (extension evaluated once)", async () => {
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixturePreviewOnce",
+		render: () => {
+			calls += 1;
+			return "PV";
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "preview-once",
+			items: [
+				{ kind: "block", id: "sys", role: "system", content: "sys={{ extensions.fixturePreviewOnce }}" },
+				{ kind: "block", id: "msg", role: "user", content: "msg={{ extensions.fixturePreviewOnce }}" },
+				{ kind: "slot", id: "history", slot: "chat-history" },
+			],
+		};
+		const { buildPreview } = await import("../src/preview.ts");
+		const options = runtime().options;
+		const previewCtx = {
+			sessionManager: { getLeafId: () => null },
+			getSystemPrompt: () => "base",
+			getSystemPromptOptions: () => options,
+		} as unknown as Parameters<typeof buildPreview>[0];
+		const result = buildPreview(
+			previewCtx,
+			{ stack, filePath: "f", scope: "project", key: { scope: "project", id: "preview-once" }, diagnostics: [] },
+			options,
+		);
+		assert.equal(calls, 1);
+		assert.ok(result.preview.system.content.includes("sys=PV"));
+		assert.ok(result.text.includes("msg=PV"));
+	} finally {
+		unregister();
+	}
+});
+
+test("identical frozen input produces identical output across compilation entry points", async () => {
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixtureFrozen",
+		render: () => {
+			calls += 1;
+			return "FZ";
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "frozen",
+			items: [
+				{ kind: "block", id: "sys", role: "system", content: "d={{ date }} s={{ extensions.fixtureFrozen }}" },
+				{ kind: "block", id: "msg", role: "user", content: "m={{ extensions.fixtureFrozen }}" },
+				{ kind: "slot", id: "history", slot: "chat-history" },
+			],
+		};
+		const frozen = { ...runtime(), now: new Date("2026-07-14T00:00:00.000Z"), latestUserMessage: "hi" };
+		const textParts = (message: AgentMessage): string => {
+			const content = (message as { content?: unknown }).content;
+			return typeof content === "string" ? content : Array.isArray(content)
+				? content.map((part: { type?: string; text?: string }) => part.type === "text" ? part.text ?? "" : "").join("")
+				: "";
+		};
+
+		const { PromptCompilationContext } = await import("../src/compiler.ts");
+		const ctx = new PromptCompilationContext(stack, frozen);
+		const contextSystem = ctx.compileSystemPrompt("base");
+		const contextMessages = ctx.compileMessages([]);
+
+		const { compileSystemPrompt, compileMessages } = await import("../src/compiler.ts");
+		const topSystem = compileSystemPrompt(stack, frozen, "base");
+		const topMessages = compileMessages(stack, frozen, []);
+
+		assert.equal(contextSystem.systemPrompt, topSystem.systemPrompt);
+		assert.deepEqual(contextMessages.messages.map(textParts), topMessages.messages.map(textParts));
+		assert.equal(calls, 3); // context reuses one renderer (1); top-level wrappers each build one (2)
+		assert.ok(contextSystem.systemPrompt.includes("s=FZ"));
+	} finally {
+		unregister();
+	}
+});
+
+test("setLatestUserMessage invalidates the extension cache for env-dependent macros", async () => {
+	const { PromptCompilationContext } = await import("../src/compiler.ts");
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixtureEnvReader",
+		render: ({ env }) => {
+			calls += 1;
+			return `u=${String(env.runtime.lastUserMessage)}`;
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "env-order",
+			items: [
+				{ kind: "block", id: "sys", role: "system", content: "s={{ extensions.fixtureEnvReader }}" },
+				{ kind: "block", id: "msg", role: "user", content: "m={{ extensions.fixtureEnvReader }}" },
+				{ kind: "slot", id: "history", slot: "chat-history" },
+			],
+		};
+		const ctx = new PromptCompilationContext(stack, { ...runtime(), latestUserMessage: "old" });
+		const system = ctx.compileSystemPrompt("base");
+		ctx.setLatestUserMessage("new");
+		const messages = ctx.compileMessages([{ role: "user", content: "orig", timestamp: 1 }]);
+		assert.equal(calls, 2);
+		assert.equal(system.systemPrompt, "s=u=old");
+		const texts = messages.messages.map((message) => {
+			const content = (message as { content?: unknown }).content;
+			return typeof content === "string" ? content : Array.isArray(content)
+				? content.map((part: { type?: string; text?: string }) => part.type === "text" ? part.text ?? "" : "").join("")
+				: "";
+		});
+		assert.ok(texts.some((text) => text === "m=u=new"));
+	} finally {
+		unregister();
+	}
+});
+
+test("setLatestUserMessage with an unchanged value does not invalidate the extension cache", async () => {
+	const { PromptCompilationContext } = await import("../src/compiler.ts");
+	let calls = 0;
+	const unregister = registerMacro({
+		name: "fixtureSameValue",
+		render: () => {
+			calls += 1;
+			return "SAME";
+		},
+	});
+	try {
+		const stack: PromptStack = {
+			schemaVersion: 1,
+			id: "env-same",
+			items: [
+				{ kind: "block", id: "sys", role: "system", content: "{{ extensions.fixtureSameValue }}" },
+				{ kind: "block", id: "msg", role: "user", content: "{{ extensions.fixtureSameValue }}" },
+				{ kind: "slot", id: "history", slot: "chat-history" },
+			],
+		};
+		const ctx = new PromptCompilationContext(stack, { ...runtime(), latestUserMessage: "unchanged" });
+		const system = ctx.compileSystemPrompt("base");
+		ctx.setLatestUserMessage("unchanged");
+		const messages = ctx.compileMessages([{ role: "user", content: "orig", timestamp: 1 }]);
+		assert.equal(calls, 1);
+		assert.equal(system.systemPrompt, "SAME");
+		const texts = messages.messages.map((message) => {
+			const content = (message as { content?: unknown }).content;
+			return typeof content === "string" ? content : Array.isArray(content)
+				? content.map((part: { type?: string; text?: string }) => part.type === "text" ? part.text ?? "" : "").join("")
+				: "";
+		});
+		assert.ok(texts.some((text) => text === "SAME"));
+	} finally {
+		unregister();
+	}
+});

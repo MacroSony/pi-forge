@@ -9,7 +9,7 @@ import {
 	type PromptSlotDefinition,
 } from "./slot-renderers.ts";
 import type { LoadedAgentProfile } from "./agent-profile.ts";
-import { compileMessages, compileSystemPrompt } from "./compiler.ts";
+import { compileMessages, PromptCompilationContext } from "./compiler.ts";
 import {
 	subagentPromptStackFingerprint,
 	subagentSourceProfileFingerprint,
@@ -175,10 +175,11 @@ export function prepareSubagentHostPlan(input: SubagentPreparationInput): Subage
 	let stackMessages: SubagentPreparedMessage[] = [];
 	const diagnostics: SubagentDiagnostic[] = [];
 	if (input.snapshot.promptStack) {
-		const system = compileSystemPrompt(input.snapshot.promptStack, runtime, input.runtime.baseSystemPrompt);
+		const compilation = new PromptCompilationContext(input.snapshot.promptStack, runtime);
+		const system = compilation.compileSystemPrompt(input.runtime.baseSystemPrompt);
 		systemPrompt = system.systemPrompt;
 		diagnostics.push(...system.diagnostics.map((item) => promptDiagnostic("system", item)));
-		const messages = compileMessages(input.snapshot.promptStack, runtime, []);
+		const messages = compilation.compileMessages([]);
 		stackMessages = messages.messages.map(preparedPromptStackMessage);
 		diagnostics.push(...messages.diagnostics.map((item) => promptDiagnostic("messages", item)));
 	}
