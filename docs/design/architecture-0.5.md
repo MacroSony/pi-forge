@@ -136,8 +136,10 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 
 - Introduce `ForgeWorkspace` as the minimal snapshot owner over the Lane 2a repositories: one immutable scoped stack/profile snapshot plus active selection/provenance, owning host registration/generation/disposal.
 - Publish `@zihanw/pi-forge/subagent` host port v1 over the Pi event bus with mandatory lifecycle rules and the three minimal operations (discovery, profile listing/snapshot, and prompt preparation). The port is transport-neutral (`ForgeHostTransport`), uses plain validated data messages, and never crosses live contexts or internal registries.
-- Mandatory lifecycle semantics: clients subscribe before announcing/discovering and use bounded timeouts; duplicate live hosts fail with an explicit `host.duplicate` error; stale generations are ignored; disposal sends `unavailable` and invalidates connections; all transient and persistent listeners are cleaned up.
-- Cover timeout, duplicate-host failure, generation, disposal, and listener cleanup in tests.
+- Mandatory lifecycle semantics: clients subscribe before announcing/discovering and use bounded timeouts; duplicate live hosts fail with an explicit `host.duplicate` error; disposal sends `unavailable` and invalidates connections; all transient and persistent listeners are cleaned up. `request`/`reply` wire messages carry `hostId` + `generation`, so stale-generation and wrong-host requests are rejected server-side and mismatched replies are ignored client-side.
+- Host-owned preparation: the client sends only a profile selector, task, access/limits, and backend facts (model/thinking/tool catalog); the workspace resolves the profile + stack from its snapshot and compiles the prompt itself, returning an immutable preparation artifact (system prompt, messages, effective tools, diagnostics, and profile snapshot). Each operation has a recursive, JSON-compatible validator at the wire boundary.
+- `ForgeWorkspace` snapshots are genuinely immutable (deep-frozen clones), and the host port is wired into the real extension lifecycle (`pi.events` transport; reload on session start/tree/compact; dispose on session shutdown).
+- Cover timeout, duplicate-host failure, generation/stale-request rejection, disposal, listener cleanup, operation validators, immutability, and a real-factory integration discovery->list->prepare->dispose flow in tests.
 
 ### Lane 3: subagent extraction
 

@@ -18,6 +18,8 @@ export interface LifecycleDeps {
     activeId(): string | undefined;
     persistActiveSelection(): void;
     recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
+    reloadForgeWorkspace(ctx: ExtensionContext): void;
+    disposeForgeWorkspace(): void;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void;
 //# sourceMappingURL=lifecycle.d.ts.map

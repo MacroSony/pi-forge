@@ -13,6 +13,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         deps.restoreActiveToolPolicy();
         deps.disposePromptStackRuntime();
         await deps.disposeSubagentRuntime();
+        deps.disposeForgeWorkspace();
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;
@@ -26,6 +27,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
             startupToolPolicyPending = false;
             throw error;
         }
+        deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
         deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after session " + event.reason);
@@ -39,12 +41,14 @@ export function registerLifecycleHandlers(pi, state, deps) {
     });
     pi.on("session_tree", async (_event, ctx) => {
         await restoreBranchScopedRuntime(ctx, state, deps);
+        deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
         deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after tree navigation");
     });
     pi.on("session_compact", async (_event, ctx) => {
         await restoreBranchScopedRuntime(ctx, state, deps);
+        deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
         deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after compaction");

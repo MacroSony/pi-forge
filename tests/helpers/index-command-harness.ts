@@ -106,6 +106,23 @@ export function createHarness(options: {
 	resolveThinkingLevel?: (model: any, requested: any) => any;
 } = {}) {
 	const events: Record<string, Function> = {};
+	const eventBus = {
+		handlers: new Map<string, Set<(data: unknown) => void>>(),
+		emit(channel: string, data: unknown) {
+			for (const handler of [...(this.handlers.get(channel) ?? [])]) handler(data);
+		},
+		on(channel: string, handler: (data: unknown) => void) {
+			const set = this.handlers.get(channel) ?? new Set<(data: unknown) => void>();
+			set.add(handler);
+			this.handlers.set(channel, set);
+			let removed = false;
+			return () => {
+				if (removed) return;
+				removed = true;
+				set.delete(handler);
+			};
+		},
+	};
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	const tools: Record<string, any> = {};
 	const appended: { type: string; data: unknown }[] = [];
@@ -126,6 +143,7 @@ export function createHarness(options: {
 	};
 
 	const pi = {
+		events: eventBus,
 		on(name: string, handler: Function) {
 			events[name] = handler;
 		},
@@ -170,6 +188,7 @@ export function createHarness(options: {
 	piForge(pi as any);
 	return {
 		events,
+		eventsBus: eventBus,
 		commands,
 		tools,
 		appended,

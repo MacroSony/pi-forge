@@ -24,6 +24,8 @@ export interface LifecycleDeps {
 	activeId(): string | undefined;
 	persistActiveSelection(): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
+	reloadForgeWorkspace(ctx: ExtensionContext): void;
+	disposeForgeWorkspace(): void;
 }
 
 export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
@@ -37,6 +39,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		deps.restoreActiveToolPolicy();
 		deps.disposePromptStackRuntime();
 		await deps.disposeSubagentRuntime();
+		deps.disposeForgeWorkspace();
 	});
 
 	pi.on("session_start", async (event, ctx) => {
@@ -49,6 +52,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 			startupToolPolicyPending = false;
 			throw error;
 		}
+		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
 		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
@@ -63,6 +67,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("session_tree", async (_event, ctx) => {
 		await restoreBranchScopedRuntime(ctx, state, deps);
+		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
 		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after tree navigation");
@@ -70,6 +75,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("session_compact", async (_event, ctx) => {
 		await restoreBranchScopedRuntime(ctx, state, deps);
+		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
 		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after compaction");

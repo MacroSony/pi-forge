@@ -73,8 +73,8 @@ test("ForgeWorkspace reloads a snapshot and hosts profile listing over the bus",
 		const connection = client.connect(await client.discover());
 		const listed = await client.request(connection, "listProfiles", {});
 		assert.equal(listed.ok, true);
-		const profiles = (listed.data as { profiles: Array<{ id: string; usable: boolean }> }).profiles;
-		assert.deepEqual(profiles.map((p) => p.id), ["worker"]);
+		const profiles = (listed.data as { profiles: Array<{ profileId: string; usable: boolean }> }).profiles;
+		assert.deepEqual(profiles.map((p) => p.profileId), ["worker"]);
 		assert.equal(profiles[0]!.usable, true);
 
 		client.disconnect();
@@ -100,7 +100,7 @@ test("ForgeWorkspace prepare returns a typed failure for malformed payloads", as
 		const connection = client.connect(await client.discover());
 		const prepared = await client.request(connection, "prepare", { request: {} });
 		assert.equal(prepared.ok, false);
-		assert.match(prepared.error, /Malformed prepare payload/);
+		assert.match(prepared.error, /prepare request/);
 		client.disconnect();
 		workspace.dispose();
 	} finally {
@@ -153,13 +153,14 @@ test("ForgeWorkspace prepare rejects nested-malformed payloads", async () => {
 		const client = new ForgeHostClient(bus, { defaultTimeoutMs: 200 });
 		const connection = client.connect(await client.discover());
 		const prepared = await client.request(connection, "prepare", {
-			request: { input: {} },
-			snapshot: { promptStack: null },
-			preflight: { toolCatalog: [] },
-			runtime: { options: {}, model: {} },
+			profile: "worker",
+			task: { text: "x" },
+			access: { level: "none", workspaces: [], network: "deny" },
+			limits: {},
+			backend: { model: { provider: "test", id: "m" }, thinkingLevel: "high", toolCatalog: [] },
 		});
 		assert.equal(prepared.ok, false);
-		assert.match(prepared.error, /Malformed prepare payload/);
+		assert.match(prepared.error, /prepare request/);
 		client.disconnect();
 		workspace.dispose();
 	} finally {
@@ -187,37 +188,15 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 		assert.ok(resolved.snapshot, "expected a resolvable snapshot for prepare");
 
 		const payload = {
-			request: {
-				schemaVersion: 1,
-				requestId: "r1",
-				profileId: "project:worker",
-				input: { text: "Do the task." },
-				access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
-				limits: {},
-				resultProjection: { maxChars: 4000 },
-				parent: { depth: 0, maxDepth: 2 },
-				remoteEgressConsent: false,
-			},
-			snapshot: resolved.snapshot,
-			preflight: {
-				status: "accepted",
-				preflightId: "p1",
-				backend: { id: "fake", version: "1.0.0", capabilities: {} },
-				model: { provider: "test", id: "m" },
-				thinkingLevel: "high",
-				toolCatalog: [],
-				access: { level: "none", mounts: [], network: "deny", process: false, executionBoundary: "isolated" },
-				limits: {},
-				diagnostics: [],
-			},
-			runtime: {
-				baseSystemPrompt: "base",
-				options: { selectedTools: [], toolSnippets: {}, promptGuidelines: [], cwd: ".", contextFiles: [], skills: [] },
-				model: { provider: "test", id: "m" },
-				preparedAt: "2026-07-14T00:00:00.000Z",
-				fidelity: "backend-assisted",
-				promptRuntimeFingerprint: "sha256:v1:fixture",
-			},
+			profile: "project:worker",
+			task: { text: "Do the task." },
+			access: { level: "none", workspaces: [], network: "deny", executionBoundary: "isolated" },
+			limits: {},
+			backend: { model: { provider: "test", id: "m" }, thinkingLevel: "high", toolCatalog: [] },
+			resultProjection: { maxChars: 4000 },
+			parent: { depth: 0, maxDepth: 2 },
+			remoteEgressConsent: false,
+			baseSystemPrompt: "base",
 		};
 
 		const bus = new MemoryTransport();
@@ -225,10 +204,12 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 		const client = new ForgeHostClient(bus, { defaultTimeoutMs: 300 });
 		const connection = client.connect(await client.discover());
 		const prepared = await client.request(connection, "prepare", payload);
-		assert.equal(prepared.ok, true);
-		const data = prepared.data as { systemPrompt: string; messages: unknown[] };
-		assert.ok(typeof data.systemPrompt === "string");
+		assert.equal(prepared.ok, true, (prepared as { error?: string }).error ?? "prepare ok");
+		const data = prepared.data as { profileId: string; systemPrompt: string; messages: unknown[]; profileSnapshot: unknown };
+		assert.equal(data.profileId, "project:worker");
+		assert.equal(data.systemPrompt, "base");
 		assert.ok(Array.isArray(data.messages));
+		assert.ok(!!data.profileSnapshot);
 		client.disconnect();
 		workspace.dispose();
 	} finally {
@@ -242,3 +223,24 @@ test("ForgeWorkspace prepares a real prompt over the bus", async () => {
 function newWorkspace(): { startHostPort(bus: { on(channel: string, handler: (data: unknown) => void): () => void; emit(channel: string, data: unknown): void }): void; dispose(): void; snapshot(): { stacks: unknown[]; profiles: unknown[] } } {
 	return undefined as never;
 }
+
+test("ForgeWorkspace snapshot is genuinely immutable", () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = join(cwd, ".pi", "forge", "global-root");
+	mkdirSync(join(cwd, ".pi", "forge", "global-root"), { recursive: true });
+	try {
+		const workspace = new ForgeWorkspace();
+		workspace.reload(cwd);
+		const snapshot = workspace.snapshot();
+		assert.equal(Object.isFrozen(snapshot.stacks), true);
+		assert.equal(Object.isFrozen(snapshot.stacks[0]!.stack.items), true);
+		assert.throws(() => {
+			(snapshot.stacks[0]!.stack as { items: unknown[] }).items.push({ id: "mutated", content: "" });
+		}, TypeError);
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

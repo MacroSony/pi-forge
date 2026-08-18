@@ -15,9 +15,10 @@ export interface ForgeWorkspaceStateSources {
 }
 /**
  * Minimal snapshot owner over the Lane 2a repositories/codecs. Owns one
- * immutable resource snapshot (scoped stack/profile catalogs plus active
- * selection/provenance references) and the host-port registration for that
- * snapshot. Reloads replace the whole snapshot; dispose tears down the host.
+ * genuinely immutable resource snapshot (scoped stack/profile catalogs plus
+ * active selection/provenance references) and the host-port registration for
+ * that snapshot. Reloads replace the whole snapshot; dispose tears down the
+ * host.
  */
 export declare class ForgeWorkspace {
     private readonly sources;
@@ -29,9 +30,12 @@ export declare class ForgeWorkspace {
     snapshot(): ForgeWorkspaceSnapshot;
     /** Register the host port for the current snapshot. Returns the live host. */
     startHostPort(transport: ForgeHostTransport): ForgeHost;
-    /** Invoke the three-minimal-operation surface against the current snapshot. */
+    /** Invoke the minimal-operation surface against the current snapshot. */
     operate(operation: string, payload: unknown): ForgeHostPortResult;
+    private listProfiles;
     private prepare;
+    /** Host owns profile/stack resolution and prompt compilation. */
+    private preparePlan;
     dispose(): void;
 }
 //# sourceMappingURL=workspace.d.ts.map

@@ -13,6 +13,7 @@ import { formatResourceKey, parseResourceSelector } from "./resource-identity.js
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.js";
+import { ForgeWorkspace } from "./workspace.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
 import { createRuntimeState } from "./runtime-state.js";
@@ -40,6 +41,11 @@ export default function piForge(pi) {
         updateStatus: stackRuntime.updateStatus,
     });
     const subagentRuntime = createForgeSubagentRuntime(state);
+    const forgeWorkspace = new ForgeWorkspace({
+        activeStackId: () => stackRuntime.activeId() ?? null,
+        lastAppliedProfile: () => state.lastAppliedProfile,
+    });
+    forgeWorkspace.startHostPort(pi.events);
     const webEditorRuntime = createWebEditorRuntime((ctx, promptOptions) => ({
         getStacks: () => state.stacks,
         getActive: () => state.active,
@@ -116,6 +122,8 @@ export default function piForge(pi) {
         activeId: stackRuntime.activeId,
         persistActiveSelection: stackRuntime.persistActiveSelection,
         recordCompileDiagnostics: stackRuntime.recordCompileDiagnostics,
+        reloadForgeWorkspace: (ctx) => forgeWorkspace.reload(ctx.cwd),
+        disposeForgeWorkspace: () => forgeWorkspace.dispose(),
     });
     registerPayloadRequestHandler(pi, state, () => state.active);
     registerPayloadCommands(pi, state);

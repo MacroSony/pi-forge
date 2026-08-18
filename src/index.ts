@@ -14,6 +14,7 @@ import { formatResourceKey, parseResourceSelector, type ResourceKey } from "./re
 import { createProfileRuntime, type ProfileRuntime } from "./runtime/profile-runtime.ts";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.ts";
 import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.ts";
+import { ForgeWorkspace } from "./workspace.ts";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.ts";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createRuntimeState } from "./runtime-state.ts";
@@ -181,6 +182,11 @@ export default function piForge(pi: ExtensionAPI) {
 		updateStatus: stackRuntime.updateStatus,
 	});
 	const subagentRuntime = createForgeSubagentRuntime(state);
+	const forgeWorkspace = new ForgeWorkspace({
+		activeStackId: () => stackRuntime.activeId() ?? null,
+		lastAppliedProfile: () => state.lastAppliedProfile,
+	});
+	forgeWorkspace.startHostPort(pi.events);
 	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
 		getStacks: () => state.stacks,
 		getActive: () => state.active,
@@ -274,6 +280,8 @@ export default function piForge(pi: ExtensionAPI) {
 		activeId: stackRuntime.activeId,
 		persistActiveSelection: stackRuntime.persistActiveSelection,
 		recordCompileDiagnostics: stackRuntime.recordCompileDiagnostics,
+		reloadForgeWorkspace: (ctx) => forgeWorkspace.reload(ctx.cwd),
+		disposeForgeWorkspace: () => forgeWorkspace.dispose(),
 	});
 	registerPayloadRequestHandler(pi, state, () => state.active);
 	registerPayloadCommands(pi, state);

@@ -6,6 +6,7 @@ import {
 	ForgeHostPortError,
 	FORGE_HOST_CHANNEL,
 	FORGE_HOST_PORT_OPERATIONS,
+	validatePrepareRequest,
 	type ForgeHostTransport,
 } from "../src/subagent/host-port.ts";
 
@@ -270,4 +271,58 @@ test("host port v1: a throwing unavailable handler does not abort host teardown"
 	assert.equal(host.generation, generationAfterStart + 1);
 	assert.equal(bus.listeners(FORGE_HOST_CHANNEL.request), 0, "host request listener must be removed even when a client handler throws");
 	client.disconnect();
+});
+
+test("host port v1: stale-generation and wrong-host requests never reach the handler", async () => {
+	const bus = new MemoryTransport();
+	let executed = 0;
+	const host = new ForgeHost(bus, {
+		hostId: "gated-host",
+		handle: (operation, payload) => {
+			executed += 1;
+			return { ok: true, data: { seen: operation, payload } };
+		},
+	});
+	host.start(); // generation 1
+	host.stop();  // generation becomes 2
+	host.start(); // live generation 2
+
+	bus.emit(FORGE_HOST_CHANNEL.request, { type: "request", requestId: "stale", hostId: "gated-host", generation: 1, operation: "listProfiles", payload: {} });
+	bus.emit(FORGE_HOST_CHANNEL.request, { type: "request", requestId: "wrong", hostId: "other-host", generation: 2, operation: "listProfiles", payload: {} });
+	await wait(10);
+	assert.equal(executed, 0, "stale-generation and wrong-host requests must not execute");
+
+	const client = new ForgeHostClient(bus, { defaultTimeoutMs: 100, discoverSettleMs: 2 });
+	const connection = client.connect(await client.discover());
+	const stale = await client.request(connection, "listProfiles", {}, 100);
+	assert.equal(stale.ok, true); // current-generation request works
+	client.disconnect();
+	host.stop();
+});
+
+test("host port validators reject the old internal-shaped prepare payload and non-JSON values", () => {
+	const oldShape = {
+		request: { input: { text: "x" } },
+		snapshot: { promptStack: {} },
+		preflight: { toolCatalog: [] },
+		runtime: { options: {}, model: {}, preparedAt: "2026" },
+	};
+	const rejected = validatePrepareRequest(oldShape);
+	assert.equal(rejected.ok, false);
+	assert.match(rejected.error, /prepare request/);
+
+	const nonJson = {
+		profile: "worker",
+		task: { text: "x" },
+		access: { level: "none", workspaces: [], network: "deny" },
+		limits: {},
+		backend: { model: { provider: "t", id: "m" }, thinkingLevel: "high", toolCatalog: [] },
+		resultProjection: { maxChars: 4000 },
+		parent: { depth: 0, maxDepth: 2 },
+		remoteEgressConsent: true,
+		callback: () => undefined,
+	};
+	const rejectedNonJson = validatePrepareRequest(nonJson);
+	assert.equal(rejectedNonJson.ok, false);
+	assert.match(rejectedNonJson.error, /not JSON-compatible/);
 });

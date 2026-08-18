@@ -3,9 +3,14 @@
  *
  * This is the in-process RPC contract used by the optional subagent package to
  * discover the active main pi-forge host and invoke its three minimal
- * operations (discovery, profile listing/snapshot, and prompt preparation).
- * Messages are plain validated data only — no functions, live contexts, or
- * internal registries cross the bus. The port itself is not a trust boundary.
+ * operations (discovery, profile listing, and prompt preparation). Messages
+ * are plain, recursively validated, JSON-compatible data only — no functions,
+ * live contexts, or internal registries cross the bus. The port itself is not
+ * a trust boundary.
+ *
+ * Ownership: the main pi-forge host owns profiles, stacks, and prompt
+ * compilation. The optional package sends resource selectors + task + backend
+ * facts and receives immutable preparation artifacts back.
  */
 export declare const FORGE_HOST_PORT_VERSION = 1;
 export declare const FORGE_HOST_PORT_NAMESPACE = "@zihanw/pi-forge/host/v1";
@@ -39,11 +44,15 @@ export type ForgeHostWireMessage = {
 } | {
     type: "request";
     requestId: string;
+    hostId: string;
+    generation: number;
     operation: string;
     payload: unknown;
 } | {
     type: "reply";
     requestId: string;
+    hostId: string;
+    generation: number;
     ok: boolean;
     data?: unknown;
     error?: string;
@@ -64,7 +73,7 @@ export interface ForgeHostOptions {
     capabilities?: readonly string[];
     minVersion?: number;
     maxVersion?: number;
-    /** Operation handlers; must never throw across the bus. */
+    /** Operation handler; must never throw across the bus. */
     handle(operation: string, payload: unknown): ForgeHostPortResult;
 }
 export interface ForgeHostConnection {
@@ -73,11 +82,96 @@ export interface ForgeHostConnection {
     capabilities: readonly string[];
     generation: number;
 }
+export interface ForgeProfileSummary {
+    profileId: string;
+    scope: "project" | "global";
+    name?: string;
+    description?: string;
+    autoActivate?: boolean;
+    model: {
+        provider: string;
+        id: string;
+    };
+    thinkingLevel: string;
+    promptStack: string | null;
+    usable: boolean;
+    diagnostics: Array<{
+        level: string;
+        message: string;
+        field?: string;
+    }>;
+}
+export interface ForgeListProfilesResponse {
+    profiles: ForgeProfileSummary[];
+}
+export interface ForgeAccessRequest {
+    level: string;
+    workspaces: string[];
+    network: string;
+    executionBoundary?: string;
+    process?: boolean;
+}
+export interface ForgeBackendTool {
+    id: string;
+    name?: string;
+    effects?: string[];
+}
+export interface ForgeBackendFacts {
+    model: {
+        provider: string;
+        id: string;
+    };
+    thinkingLevel: string;
+    toolCatalog: ForgeBackendTool[];
+}
+export interface ForgePrepareRequest {
+    profile: string;
+    task: {
+        text: string;
+    };
+    access: ForgeAccessRequest;
+    limits: Record<string, unknown>;
+    backend: ForgeBackendFacts;
+    resultProjection: {
+        maxChars: number;
+    };
+    parent: {
+        depth: number;
+        maxDepth: number;
+    };
+    remoteEgressConsent: boolean;
+    baseSystemPrompt?: string;
+}
+export interface ForgePrepareResponse {
+    profileId: string;
+    model: {
+        provider: string;
+        id: string;
+    };
+    thinkingLevel: string;
+    systemPrompt: string;
+    messages: unknown[];
+    effectiveToolIds: string[];
+    effectiveToolNames: string[];
+    diagnostics: unknown[];
+    profileSnapshot: unknown;
+    preparedAt: string;
+}
 export declare class ForgeHostPortError extends Error {
     readonly code: "timeout" | "duplicate" | "unavailable" | "protocol" | "invalid";
     constructor(code: ForgeHostPortError["code"], message: string);
 }
-/** Host side: registers discover/request listeners and owns generation + disposal. */
+type ValidationResult = {
+    ok: true;
+    data: unknown;
+} | {
+    ok: false;
+    error: string;
+};
+export declare function validateListProfilesRequest(value: unknown): ValidationResult;
+export declare function validateListProfilesResponse(value: unknown): ValidationResult;
+export declare function validatePrepareRequest(value: unknown): ValidationResult;
+export declare function validatePrepareResponse(value: unknown): ValidationResult;
 export declare class ForgeHost {
     private readonly transport;
     private readonly options;
@@ -100,7 +194,6 @@ export interface ForgeHostClientOptions {
     /** How long after the first compatible host reply to keep collecting others before deciding. */
     discoverSettleMs?: number;
 }
-/** Client side: bounded-discovery, correlation-based requests, and listener cleanup. */
 export declare class ForgeHostClient {
     private readonly transport;
     readonly clientId: string;
@@ -110,19 +203,14 @@ export declare class ForgeHostClient {
     private unavailableHandlers;
     private activeConnection?;
     constructor(transport: ForgeHostTransport, options?: ForgeHostClientOptions);
-    /** Subscribe to host-disposal events until disconnect(). */
     onUnavailable(handler: () => void): () => void;
     private teardownPersistentListener;
     private onUnavailableMessage;
-    /** Discover a single compatible host; duplicate hosts or timeout fail explicitly. */
     discover(timeoutMs?: number): Promise<ForgeHostConnection>;
-    /** Attach to a discovered host; subscriptions for disposal are held until disconnect(). */
     connect(connection: ForgeHostConnection): ForgeHostConnection;
-    /** Invoke a documented operation with correlation and a bounded timeout. */
     request(connection: ForgeHostConnection, operation: string, payload: unknown, timeoutMs?: number): Promise<ForgeHostPortResult>;
-    /** Disconnect: drop all subscriptions and forget the active connection. */
     disconnect(): void;
-    /** Number of persistent bus subscriptions owned by this client (for cleanup tests). */
     get subscriptionCount(): number;
 }
+export {};
 //# sourceMappingURL=host-port.d.ts.map

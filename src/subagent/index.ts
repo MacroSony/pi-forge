@@ -18,14 +18,24 @@ export {
 	ForgeHost,
 	ForgeHostClient,
 	ForgeHostPortError,
+	validateListProfilesRequest,
+	validateListProfilesResponse,
+	validatePrepareRequest,
+	validatePrepareResponse,
 } from "./host-port.ts";
 export type {
+	ForgeAccessRequest,
+	ForgeBackendFacts,
+	ForgeBackendTool,
 	ForgeHostConnection,
 	ForgeHostClientOptions,
 	ForgeHostOptions,
 	ForgeHostPortOperation,
 	ForgeHostPortResult,
 	ForgeHostTransport,
+	ForgePrepareRequest,
+	ForgePrepareResponse,
+	ForgeProfileSummary,
 } from "./host-port.ts";
 export {
 	appendProtectedAgentTask,

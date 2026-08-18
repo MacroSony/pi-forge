@@ -4,9 +4,14 @@ import { randomUUID } from "node:crypto";
  *
  * This is the in-process RPC contract used by the optional subagent package to
  * discover the active main pi-forge host and invoke its three minimal
- * operations (discovery, profile listing/snapshot, and prompt preparation).
- * Messages are plain validated data only — no functions, live contexts, or
- * internal registries cross the bus. The port itself is not a trust boundary.
+ * operations (discovery, profile listing, and prompt preparation). Messages
+ * are plain, recursively validated, JSON-compatible data only — no functions,
+ * live contexts, or internal registries cross the bus. The port itself is not
+ * a trust boundary.
+ *
+ * Ownership: the main pi-forge host owns profiles, stacks, and prompt
+ * compilation. The optional package sends resource selectors + task + backend
+ * facts and receives immutable preparation artifacts back.
  */
 export const FORGE_HOST_PORT_VERSION = 1;
 export const FORGE_HOST_PORT_NAMESPACE = "@zihanw/pi-forge/host/v1";
@@ -18,7 +23,9 @@ export const FORGE_HOST_CHANNEL = {
     reply: `${FORGE_HOST_PORT_NAMESPACE}/reply`,
     unavailable: `${FORGE_HOST_PORT_NAMESPACE}/unavailable`,
 };
-const DEFAULT_CLIENT_TIMEOUT_MS = 2_000;
+// ---------------------------------------------------------------------------
+// Errors and validation.
+// ---------------------------------------------------------------------------
 export class ForgeHostPortError extends Error {
     code;
     constructor(code, message) {
@@ -26,65 +33,140 @@ export class ForgeHostPortError extends Error {
         this.code = code;
     }
 }
-function normalizeHostResult(result) {
-    if (isRecord(result) && result.ok === true) {
-        return { ok: true, data: result.data };
+export function validateListProfilesRequest(value) {
+    if (value === undefined || (value !== null && typeof value === "object" && !Array.isArray(value))) {
+        return { ok: true, data: {} };
     }
-    if (isRecord(result) && result.ok === false) {
-        return { ok: false, error: typeof result.error === "string" && result.error ? result.error : "Forge host operation failed." };
+    return { ok: false, error: "listProfiles request must be an empty object." };
+}
+export function validateListProfilesResponse(value) {
+    if (!isRecord(value) || !Array.isArray(value.profiles)) {
+        return { ok: false, error: "listProfiles response must contain a profiles array." };
     }
-    return { ok: false, error: "Forge host returned a malformed operation result." };
+    for (const profile of value.profiles) {
+        if (!isRecord(profile) || typeof profile.profileId !== "string" || !isRecord(profile.model)
+            || typeof profile.model.provider !== "string" || typeof profile.model.id !== "string"
+            || typeof profile.thinkingLevel !== "string" || typeof profile.usable !== "boolean") {
+            return { ok: false, error: "listProfiles response contains a malformed profile summary." };
+        }
+    }
+    if (!isJsonCompatible(value))
+        return { ok: false, error: "listProfiles response is not JSON-compatible." };
+    return { ok: true, data: value };
+}
+export function validatePrepareRequest(value) {
+    if (!isRecord(value))
+        return { ok: false, error: "prepare request must be an object." };
+    if (typeof value.profile !== "string" || !value.profile.trim()) {
+        return { ok: false, error: "prepare request requires a non-empty profile selector." };
+    }
+    if (!isRecord(value.task) || typeof value.task.text !== "string") {
+        return { ok: false, error: "prepare request requires task.text." };
+    }
+    if (!isRecord(value.access) || typeof value.access.level !== "string" || !Array.isArray(value.access.workspaces)
+        || typeof value.access.network !== "string") {
+        return { ok: false, error: "prepare request requires access with level, workspaces, and network." };
+    }
+    if (!isRecord(value.limits))
+        return { ok: false, error: "prepare request requires limits to be an object." };
+    if (!isRecord(value.resultProjection) || typeof value.resultProjection.maxChars !== "number") {
+        return { ok: false, error: "prepare request requires resultProjection.maxChars." };
+    }
+    if (!isRecord(value.parent) || typeof value.parent.depth !== "number" || typeof value.parent.maxDepth !== "number") {
+        return { ok: false, error: "prepare request requires parent.depth and parent.maxDepth." };
+    }
+    if (typeof value.remoteEgressConsent !== "boolean") {
+        return { ok: false, error: "prepare request requires remoteEgressConsent to be a boolean." };
+    }
+    if (!isRecord(value.backend) || !isRecord(value.backend.model)
+        || typeof value.backend.model.provider !== "string" || typeof value.backend.model.id !== "string"
+        || typeof value.backend.thinkingLevel !== "string" || !Array.isArray(value.backend.toolCatalog)) {
+        return { ok: false, error: "prepare request requires backend.model, backend.thinkingLevel, and backend.toolCatalog." };
+    }
+    for (const tool of value.backend.toolCatalog) {
+        if (!isRecord(tool) || typeof tool.id !== "string") {
+            return { ok: false, error: "prepare request backend.toolCatalog contains a malformed tool." };
+        }
+    }
+    if (!isJsonCompatible(value))
+        return { ok: false, error: "prepare request is not JSON-compatible." };
+    return { ok: true, data: value };
+}
+export function validatePrepareResponse(value) {
+    if (!isRecord(value))
+        return { ok: false, error: "prepare response must be an object." };
+    if (typeof value.profileId !== "string" || typeof value.systemPrompt !== "string"
+        || !isRecord(value.model) || typeof value.model.provider !== "string" || typeof value.model.id !== "string"
+        || typeof value.thinkingLevel !== "string" || typeof value.preparedAt !== "string"
+        || !Array.isArray(value.messages) || !Array.isArray(value.effectiveToolIds)
+        || !Array.isArray(value.effectiveToolNames) || !Array.isArray(value.diagnostics)
+        || !isRecord(value.profileSnapshot)) {
+        return { ok: false, error: "prepare response is missing required fields." };
+    }
+    if (!isJsonCompatible(value))
+        return { ok: false, error: "prepare response is not JSON-compatible." };
+    return { ok: true, data: value };
 }
 function isRecord(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);
 }
-function versionCompatible(hostMin, hostMax, wantMin, wantMax) {
-    return hostMax >= wantMin && wantMax >= hostMin;
+/** Reject functions, symbols, bigint, undefined, non-finite numbers, and cycles. */
+function isJsonCompatible(value, seen = new Set()) {
+    if (value === null)
+        return true;
+    if (typeof value === "string" || typeof value === "boolean")
+        return true;
+    if (typeof value === "number")
+        return Number.isFinite(value);
+    if (typeof value !== "object")
+        return false; // function, symbol, bigint, undefined
+    if (seen.has(value))
+        return false;
+    seen.add(value);
+    if (Array.isArray(value))
+        return value.every((item) => isJsonCompatible(item, seen));
+    return Object.values(value).every((item) => isJsonCompatible(item, seen));
 }
+// ---------------------------------------------------------------------------
+// Wire parsing.
+// ---------------------------------------------------------------------------
 function parseDiscover(data) {
     if (!isRecord(data) || data.type !== "discover")
         return undefined;
     const { protocolVersion, minVersion, maxVersion, clientId } = data;
-    if (typeof protocolVersion !== "number"
-        || typeof minVersion !== "number"
-        || typeof maxVersion !== "number"
-        || typeof clientId !== "string") {
+    if (typeof protocolVersion !== "number" || typeof minVersion !== "number" || typeof maxVersion !== "number" || typeof clientId !== "string")
         return undefined;
-    }
     return { type: "discover", protocolVersion, minVersion, maxVersion, clientId };
-}
-function parseRequest(data) {
-    if (!isRecord(data) || data.type !== "request")
-        return undefined;
-    const { requestId, operation, payload } = data;
-    if (typeof requestId !== "string" || typeof operation !== "string")
-        return undefined;
-    return { type: "request", requestId, operation, payload };
 }
 function parseAvailable(data) {
     if (!isRecord(data) || data.type !== "available")
         return undefined;
     const { hostId, protocolVersion, minVersion, maxVersion, capabilities, generation } = data;
-    if (typeof hostId !== "string"
-        || typeof protocolVersion !== "number"
-        || typeof minVersion !== "number"
-        || typeof maxVersion !== "number"
-        || !Array.isArray(capabilities)
-        || capabilities.some((cap) => typeof cap !== "string")
-        || typeof generation !== "number") {
+    if (typeof hostId !== "string" || typeof protocolVersion !== "number" || typeof minVersion !== "number"
+        || typeof maxVersion !== "number" || !Array.isArray(capabilities) || capabilities.some((cap) => typeof cap !== "string") || typeof generation !== "number") {
         return undefined;
     }
     return { type: "available", hostId, protocolVersion, minVersion, maxVersion, capabilities, generation };
 }
+function parseRequest(data) {
+    if (!isRecord(data) || data.type !== "request")
+        return undefined;
+    const { requestId, hostId, generation, operation, payload } = data;
+    if (typeof requestId !== "string" || typeof hostId !== "string" || typeof generation !== "number" || typeof operation !== "string")
+        return undefined;
+    return { type: "request", requestId, hostId, generation, operation, payload };
+}
 function parseReply(data) {
     if (!isRecord(data) || data.type !== "reply")
         return undefined;
-    const { requestId, ok } = data;
-    if (typeof requestId !== "string" || typeof ok !== "boolean")
+    const { requestId, hostId, generation, ok } = data;
+    if (typeof requestId !== "string" || typeof hostId !== "string" || typeof generation !== "number" || typeof ok !== "boolean")
         return undefined;
     return {
         type: "reply",
         requestId,
+        hostId,
+        generation,
         ok,
         data: ok ? data.data : undefined,
         error: ok ? undefined : typeof data.error === "string" ? data.error : undefined,
@@ -98,7 +180,21 @@ function parseUnavailable(data) {
         return undefined;
     return { type: "unavailable", hostId, generation };
 }
-/** Host side: registers discover/request listeners and owns generation + disposal. */
+function versionCompatible(hostMin, hostMax, wantMin, wantMax) {
+    return hostMax >= wantMin && wantMax >= hostMin;
+}
+function normalizeHostResult(result) {
+    if (isRecord(result) && result.ok === true)
+        return { ok: true, data: result.data };
+    if (isRecord(result) && result.ok === false) {
+        return { ok: false, error: typeof result.error === "string" && result.error ? result.error : "Forge host operation failed." };
+    }
+    return { ok: false, error: "Forge host returned a malformed operation result." };
+}
+const DEFAULT_CLIENT_TIMEOUT_MS = 2_000;
+// ---------------------------------------------------------------------------
+// Host side.
+// ---------------------------------------------------------------------------
 export class ForgeHost {
     transport;
     options;
@@ -134,15 +230,12 @@ export class ForgeHost {
         this.started = true;
         this.unsubscribers.push(this.transport.on(FORGE_HOST_CHANNEL.discover, (data) => this.onDiscover(data)));
         this.unsubscribers.push(this.transport.on(FORGE_HOST_CHANNEL.request, (data) => this.onRequest(data)));
-        // Announce so already-subscribed clients learn about this host.
         this.transport.emit(FORGE_HOST_CHANNEL.available, this.availableMessage());
     }
     stop() {
         if (!this.started)
             return;
         this.started = false;
-        // Unsubscribe first so a client handler that throws cannot abort teardown
-        // or leave discover/request listeners registered.
         for (const unsubscribe of this.unsubscribers.splice(0))
             unsubscribe();
         this.transport.emit(FORGE_HOST_CHANNEL.unavailable, {
@@ -169,6 +262,10 @@ export class ForgeHost {
         const message = parseRequest(data);
         if (!message)
             return;
+        // Requests are bound to this host identity and generation; a stale or
+        // foreign-generation request must never reach the handler.
+        if (message.hostId !== this.hostId || message.generation !== this.generationId)
+            return;
         let result;
         try {
             result = typeof this.options.handle === "function"
@@ -176,19 +273,17 @@ export class ForgeHost {
                 : { ok: false, error: "Forge host has no operation handler." };
         }
         catch (error) {
-            result = {
-                ok: false,
-                error: `Forge host operation threw: ${error instanceof Error ? error.message : String(error)}`,
-            };
+            result = { ok: false, error: `Forge host operation threw: ${error instanceof Error ? error.message : String(error)}` };
         }
         this.transport.emit(FORGE_HOST_CHANNEL.reply, {
             ...normalizeHostResult(result),
-            requestId: message.requestId,
             type: "reply",
+            requestId: message.requestId,
+            hostId: this.hostId,
+            generation: this.generationId,
         });
     }
 }
-/** Client side: bounded-discovery, correlation-based requests, and listener cleanup. */
 export class ForgeHostClient {
     transport;
     clientId;
@@ -203,7 +298,6 @@ export class ForgeHostClient {
         this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_CLIENT_TIMEOUT_MS;
         this.discoverSettleMs = options.discoverSettleMs ?? 25;
     }
-    /** Subscribe to host-disposal events until disconnect(). */
     onUnavailable(handler) {
         if (this.connectionUnsubscribe === undefined) {
             this.connectionUnsubscribe = this.transport.on(FORGE_HOST_CHANNEL.unavailable, (data) => this.onUnavailableMessage(data));
@@ -217,8 +311,6 @@ export class ForgeHostClient {
             const index = this.unavailableHandlers.indexOf(handler);
             if (index !== -1)
                 this.unavailableHandlers.splice(index, 1);
-            // Keep the persistent listener while connected so later requests still
-            // observe disposal; only release it when nothing is waiting on it.
             if (this.unavailableHandlers.length === 0 && this.activeConnection === undefined) {
                 this.teardownPersistentListener();
             }
@@ -246,7 +338,6 @@ export class ForgeHostClient {
             }
         }
     }
-    /** Discover a single compatible host; duplicate hosts or timeout fail explicitly. */
     async discover(timeoutMs) {
         const expectedTimeout = timeoutMs ?? this.defaultTimeoutMs;
         return new Promise((resolve, reject) => {
@@ -272,9 +363,8 @@ export class ForgeHostClient {
                 const message = parseAvailable(data);
                 if (!message || message.protocolVersion !== FORGE_HOST_PORT_VERSION)
                     return;
-                if (!versionCompatible(FORGE_HOST_PORT_VERSION, FORGE_HOST_PORT_VERSION, message.minVersion, message.maxVersion)) {
+                if (!versionCompatible(FORGE_HOST_PORT_VERSION, FORGE_HOST_PORT_VERSION, message.minVersion, message.maxVersion))
                     return;
-                }
                 const existing = hosts.get(message.hostId);
                 if (!existing || existing.generation !== message.generation) {
                     hosts.set(message.hostId, {
@@ -288,8 +378,6 @@ export class ForgeHostClient {
                     settle(new ForgeHostPortError("duplicate", "Multiple compatible Forge hosts are live."));
                     return;
                 }
-                // Keep collecting for a short window so a second live host cannot be
-                // silently skipped by load order; seeing one host resolves here.
                 if (settleTimer === undefined) {
                     settleTimer = setTimeout(() => settle(undefined, hosts.values().next().value), this.discoverSettleMs);
                 }
@@ -316,7 +404,6 @@ export class ForgeHostClient {
             });
         });
     }
-    /** Attach to a discovered host; subscriptions for disposal are held until disconnect(). */
     connect(connection) {
         if (this.activeConnection && this.activeConnection.hostId !== connection.hostId) {
             throw new ForgeHostPortError("duplicate", "This client is already connected to another Forge host.");
@@ -327,7 +414,6 @@ export class ForgeHostClient {
         }
         return connection;
     }
-    /** Invoke a documented operation with correlation and a bounded timeout. */
     async request(connection, operation, payload, timeoutMs) {
         if (this.activeConnection !== connection) {
             return { ok: false, error: `Forge host ${connection.hostId} is not the client's active connection.` };
@@ -340,8 +426,12 @@ export class ForgeHostClient {
         return new Promise((resolve) => {
             const unsubscribeReply = this.transport.on(FORGE_HOST_CHANNEL.reply, (data) => {
                 const message = parseReply(data);
-                if (!message || message.requestId !== requestId)
+                if (!message
+                    || message.requestId !== requestId
+                    || message.hostId !== connection.hostId
+                    || message.generation !== connection.generation) {
                     return;
+                }
                 cleanup();
                 if (message.ok)
                     resolve({ ok: true, data: message.data });
@@ -366,16 +456,21 @@ export class ForgeHostClient {
                 cleanup();
                 resolve({ ok: false, error: `Forge host operation ${operation} timed out.` });
             }, expectedTimeout);
-            this.transport.emit(FORGE_HOST_CHANNEL.request, { type: "request", requestId, operation, payload });
+            this.transport.emit(FORGE_HOST_CHANNEL.request, {
+                type: "request",
+                requestId,
+                hostId: connection.hostId,
+                generation: connection.generation,
+                operation,
+                payload,
+            });
         });
     }
-    /** Disconnect: drop all subscriptions and forget the active connection. */
     disconnect() {
         this.activeConnection = undefined;
         this.teardownPersistentListener();
         this.unavailableHandlers = [];
     }
-    /** Number of persistent bus subscriptions owned by this client (for cleanup tests). */
     get subscriptionCount() {
         return this.connectionUnsubscribe === undefined ? 0 : 1;
     }
