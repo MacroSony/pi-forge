@@ -20,7 +20,8 @@ Implementation order:
 2a. Minimal repositories and codecs: make repositories/codecs the only stack/profile read/write path; defer fingerprint and atomic writes.
 2b. ForgeWorkspace and host port v1: minimal snapshot owner plus `/subagent` discovery, profile listing/snapshot, and prepare with mandatory lifecycle semantics.
 3. Subagent extraction: move subagent code into `pi-forge-subagents`; remove the main-package hard dependency and delegation UI; optional package owns dedicated `subagents.json` files.
-4. Public surface and release: root default, root named extension API, and `/subagent` only; migration notes, packed-install verification, 0.5.0 release.
+3.5. Host-neutrality hardening: host-neutral prompt compiler, `ForgeWorkspace` as the single resource-state owner, optional-package docs/config alignment, and portable packed smoke.
+4. Public surface and release: (4a) Forge-native host contract — main drops the runtime dependency and the synthetic preparation model, and the 0.4 execution contract moves to the optional package; (4b) public-surface cut — root default, root named extension API, and `/subagent` only, `src/*` aliases removed, package checks flipped to the allowlist; (4c) optional-package packed smoke over a loopback transport; (4d) migration notes and English/Chinese docs; (4e) packed-install verification and the 0.5.0 release.
 
 Only one lane is active at a time. Sandbox, staged writes, new prompt features, richer imports, and the remaining full-plan architecture work remain deferred until after this sequence.
 

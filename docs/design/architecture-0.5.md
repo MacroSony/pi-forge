@@ -27,7 +27,7 @@ It is not a platformization release.
 3. **`forge-v1` replaces the macro implementation.** One parsed grammar with interpolation, a finite filter set, and `if`/`else` over documented environment predicates. No includes, loops, function calls, general expressions, or ambient access.
 4. **The trusted extension port is retained and redesigned in this release.** `registerMacro` and `registerSlot` survive with a pure contract. The contract is specified in [Extension port contract](#extension-port-contract-050).
 5. **Regex `display` and `both` are removed.** Valid effects become `outgoing` and `finalize`. `finalize` behavior is retained with explicit ownership in [Finalize regex ownership](#finalize-regex-ownership-050).
-6. **Subagents move to an optional `pi-forge-subagents` package.** The main package removes the hard dependency on `@zihanw/pi-subagent-runtime`. The main package keeps `@zihanw/pi-forge/subagent` as a versioned host port with data-only event-bus messages.
+6. **Subagents move to an optional `pi-forge-subagents` package.** The main package removes the hard dependency on `@zihanw/pi-subagent-runtime`. The main package keeps `@zihanw/pi-forge/subagent` as a versioned host port with data-only event-bus messages. The `/subagent` entry owns a minimal Forge DTO host contract — wire messages, recursive validators, transport, and client/host lifecycle — plus a Forge-owned canonical fingerprint helper that stays byte-compatible with the runtime's `sha256:v1` canonical JSON. The 0.4 execution contract (the Forge host product types layered over the runtime's portable contract: request, preflight, plan, response, context, tool negotiation, and their validators) moves to the optional package with names unchanged; the optional package imports the runtime's portable leaves directly.
 7. **The 0.5.0 host port has a minimal operation catalogue and mandatory lifecycle rules.** Operations are discovery, profile listing/snapshot, and prompt preparation. Correlation IDs, payload validation, timeouts, host generation, duplicate-host failure, disposal/`unavailable`, and listener cleanup are part of host port v1, not deferred.
 8. **`ForgeWorkspace` is the minimal resource-state owner, and all stack/profile persistence goes through minimal repositories and codecs in 0.5.0.** Repositories own scoped discovery and mutation; codecs own parse/normalize/validate/serialize. Expected-fingerprint writes and guaranteed atomic replacement are 0.5.x work.
 9. **Configuration ownership uses dedicated optional-package files.** Main package owns `webEditor.*` in `.pi/forge/config.json` and its global equivalent. The optional package owns `.pi/forge/subagents.json` and `~/.pi/forge/subagents.json`. Main pi-forge does not read, write, validate, or clean subagent configuration. Legacy `config.json.subagents` is read-only fallback material for the optional package, with warnings and no automatic migration.
@@ -149,13 +149,39 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 - Main package installs and passes verification without the subagent runtime.
 - Optional package passes packed-install smoke tests.
 
+### Lane 3.5: host-neutrality hardening
+
+Emergent lane recorded after the fact; executed in three stages.
+
+- Stage 1: make the prompt compiler host-neutral.
+- Stage 2: make `ForgeWorkspace` the single resource-state owner.
+- Stage 3: align subagent docs/config with the optional package and make the packed smoke portable. The optional package gains profile discovery, the `/forge-agent` command, legacy config fallback, and tool-description summary refresh.
+
 ### Lane 4: public surface and release
 
-- Enforce the three intentional public surfaces and remove all other root exports and `src/*` aliases; update package checks and public-API tests together.
-- Update English and Chinese user-facing docs for breaking changes.
-- Write changelog and one-page migration notes.
-- Run main-only and main-plus-optional packed-install verification (`check:packed` smoke). The main package keeps `@zihanw/pi-subagent-runtime` as the `/subagent` contract library (canonical fingerprints and portable validation types); execution and subagent configuration live in the optional `pi-forge-subagents` package, which depends only on the published host-port surface.
-- Tag and publish 0.5.0.
+Lane 4a: Forge-native host contract (both packages).
+
+- The main package drops the `@zihanw/pi-subagent-runtime` dependency entirely. (An earlier draft of this lane kept the runtime as the `/subagent` contract library; that contradicted decision 6 and the release gates and is removed.) `/subagent` owns the minimal Forge DTO host contract described in decision 6.
+- Workspace prompt preparation becomes Forge-native: resolve profile and stack from the snapshot, compile through the shared compilation context, filter the client tool catalog through stack policy, and return the `prepare` DTO directly. The synthetic AgentRequest/preflight/prompt-runtime construction is removed.
+- The 0.4 execution contract modules move to the optional package per decision 6; contract tests move with the code.
+
+Lane 4b: main-package public-surface cut.
+
+- Root exports reduce to the default factory plus `registerMacro`/`registerSlot` and their contract types; `/subagent` exports the host contract only; `src/*` aliases are removed.
+- `check-package` flips from requiring legacy aliases to forbidding them and enforcing the three-entry allowlist; public-API tests assert exact export name sets; packed-install smoke assertions follow the trimmed surface.
+
+Lane 4c: optional-package packed smoke.
+
+- The optional package gains its own `check:packed`: pack both packages, install into a temporary consumer, load the extension, and run discover → listProfiles → prepare → dispose over a loopback `ForgeHostTransport` against a fixture workspace.
+
+Lane 4d: documentation and changelog.
+
+- Update English and Chinese user-facing docs for breaking changes: rewrite the public-API policy for the three surfaces, replace the subagent adapter contract reference with the host-port contract, complete the 0.5 migration guide (Lanes 2–4) in English and Chinese, and fix stale README references.
+- Write changelog entries for Lanes 3.5 and 4 and one-page migration notes.
+
+Lane 4e: release.
+
+- Run main-only and main-plus-optional packed-install verification (`check:packed` smoke), version both packages 0.5.0, publish main then optional, smoke the published artifacts, and tag.
 
 ## Release gates
 
