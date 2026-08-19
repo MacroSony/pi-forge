@@ -41,13 +41,15 @@
 
 ## 实验性 delegation
 
+以下命令由可选包 `@zihanw/pi-forge-subagents` 提供。
+
 | 命令 | 行为 |
 |---|---|
 | `/forge-agent backends` | 列出 backend、capabilities 和默认值 |
 | `/forge-agent plan <profile> [--backend <id>] <task>` | 准备、显示并丢弃计划，不联系 provider |
 | `/forge-agent run <profile> [--backend <id>] <task>` | 审批并执行前台只读任务 |
 
-只接受匹配 scope 明确授权的 profile：项目 config 授权 `project:<id>`，全局 config 授权 `global:<id>`。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
+只接受匹配 scope 明确授权的 profile：项目 `subagents.json` 授权 `project:<id>`，全局 `subagents.json` 授权 `global:<id>`；也可使用 `.pi/forge/config.json.subagents` 作为只读兼容来源。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
 
 ## Payload
 

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const optionalRoot = "/home/bruhw/programming/pi-forge-subagents";
+const optionalRoot = process.env.PI_FORGE_SUBAGENTS_ROOT ?? resolve(rootDir, "../pi-forge-subagents");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function run(command, args, opts = {}) {

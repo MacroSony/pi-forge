@@ -109,9 +109,9 @@ Agent profile 是项目级或用户全局预设，引用精确 provider/model、
 
 ## 实验性前台 delegation
 
-pi-forge 可以把明确授权的 profile 作为干净、前台运行的 Pi 子进程。模型通过 `forge_subagent_profiles` 发现可用 profile，再用 `forge_subagent` 调用；用户可以使用 `/forge-agent plan` 和 `/forge-agent run`。
+可选包 `@zihanw/pi-forge-subagents` 在 pi-forge 的 `/subagent` host port 之上提供前台 delegation。模型通过 `forge_subagent_profiles` 发现可用 profile，再用 `forge_subagent` 调用；用户可以使用 `/forge-agent plan` 和 `/forge-agent run`。
 
-此功能仍是**实验性功能**，profile 默认不能委派。请在可信项目的 `.pi/forge/config.json`（授权 `project:<id>`）或用户全局 `~/.pi/forge/config.json`（授权 `global:<id>`）中逐个启用，也可以使用 Web 编辑器 delegation 卡片。除非项目明确授权无人值守的模型调用，否则执行前会显示与不可变计划绑定的审批界面。
+此功能仍是**实验性功能**，profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json`（或可选包只读兼容的 `.pi/forge/config.json.subagents`）中逐个启用。除非项目明确授权无人值守的模型调用，否则执行前会显示与不可变计划绑定的审批界面。
 
 > **安全边界：** 当前 backend 是 shared-user 进程，不是操作系统沙箱。“只读”只描述模型可见工具策略。Child 仍有启动用户的 OS 读取权限；可读内容可能发送给所选 provider，并保留在 Pi session 数据中。Timeout 和取消仅为 best effort，`/tree` 不能撤销 provider 请求、计费或外部影响。
 

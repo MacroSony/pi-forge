@@ -109,9 +109,9 @@ See the [complete command reference](docs/reference/commands.md).
 
 ## Experimental foreground delegation
 
-pi-forge can run an explicitly enabled profile as a clean, foreground Pi subprocess. The model can discover eligible profiles with `forge_subagent_profiles` and invoke one with `forge_subagent`; humans use `/forge-agent plan` and `/forge-agent run`.
+The optional `@zihanw/pi-forge-subagents` package provides foreground delegation on top of pi-forge's `/subagent` host port. The model can discover eligible profiles with `forge_subagent_profiles` and invoke one with `forge_subagent`; humans use `/forge-agent plan` and `/forge-agent run`.
 
-This feature is **experimental** and profiles are not delegatable by default. Enable each profile in the trusted project's `.pi/forge/config.json` or its web-editor delegation card. Interactive execution presents an immutable plan for approval unless the project explicitly authorizes unattended model invocation.
+This feature is **experimental** and profiles are not delegatable by default. Enable each profile in the trusted project's `.pi/forge/subagents.json` (or the optional package's read-only legacy fallback in `.pi/forge/config.json.subagents`). Interactive execution presents an immutable plan for approval unless the project explicitly authorizes unattended model invocation.
 
 > **Security boundary:** The current backends are shared-user processes, not operating-system sandboxes. “Read-only” describes the model-visible tool policy. The child retains the invoking user's OS read permissions, and readable content may be sent to the selected provider and retained in Pi's session data. Timeout and cancellation are best effort, and `/tree` cannot undo provider requests, billing, or external effects.
 

@@ -4,33 +4,31 @@
 
 > **Experimental:** This API and its backends may change independently of stable prompt-stack and profile behavior.
 
-pi-forge can execute an explicitly authorized agent profile as a separate, clean, one-shot Pi process. It runs in the foreground and returns a bounded report to the parent conversation.
+The optional `@zihanw/pi-forge-subagents` package executes an explicitly authorized agent profile as a separate, clean, one-shot Pi process. It runs in the foreground and returns a bounded report to the parent conversation.
 
 ## Enable a profile
 
-Profiles are not delegatable by default. Enable each eligible ID in the trusted project's `.pi/forge/config.json`, or use the profile's delegation card in `/preset ui`:
+Profiles are not delegatable by default. Enable each eligible ID in the trusted project's `.pi/forge/subagents.json`:
 
 ```json
 {
-  "subagents": {
-    "backend": "pi-subprocess-readonly",
-    "timeoutMs": 60000,
-    "profiles": {
-      "reviewer": {
-        "enabled": true,
-        "timeoutMs": 300000
-      },
-      "rpc-reviewer": {
-        "enabled": true,
-        "backend": "pi-rpc-readonly",
-        "timeoutMs": 180000
-      }
+  "backend": "pi-subprocess-readonly",
+  "timeoutMs": 60000,
+  "profiles": {
+    "reviewer": {
+      "enabled": true,
+      "timeoutMs": 300000
+    },
+    "rpc-reviewer": {
+      "enabled": true,
+      "backend": "pi-rpc-readonly",
+      "timeoutMs": 180000
     }
   }
 }
 ```
 
-Enablement follows the profile's scope. A global `~/.pi/forge/config.json` may define general `backend` and `timeoutMs` defaults and may authorize `global:<id>` profiles through its own `profiles` map. The trusted project's `.pi/forge/config.json` authorizes `project:<id>` profiles. Same-ID global and project profiles never inherit enablement, backend, or timeout policy from one another. Disabled or unlisted profiles are hidden from discovery and rejected even if guessed.
+Legacy `.pi/forge/config.json.subagents` is accepted as read-only fallback with a warning. Enablement follows the profile's scope. A global `~/.pi/forge/subagents.json` may define general `backend` and `timeoutMs` defaults and may authorize `global:<id>` profiles through its own `profiles` map. The trusted project's `subagents.json` authorizes `project:<id>` profiles. Same-ID global and project profiles never inherit enablement, backend, or timeout policy from one another. Disabled or unlisted profiles are hidden from discovery and rejected even if guessed.
 
 ## Discover, plan, and run
 
@@ -49,7 +47,7 @@ Profile selectors accept the same grammar everywhere: `reviewer` (project first)
 
 The parent model uses `forge_subagent_profiles` to discover enabled profiles and `forge_subagent` to invoke one. A restrictive parent stack must allow both tool names. Discovery is local/no-egress and reports metadata, resolution readiness, effective backend/timeout, approval mode, and whether parent tool policy permits invocation.
 
-Projects with only a few frequently used profiles can set `subagents.summaryInToolDescription: true` (global or trusted-project config). The `forge_subagent` tool description then carries a compact summary of enabled profiles—id, model, thinking level, stack, backend, and timeout—so the parent model does not need a discovery call to pick a profile. Ready profiles appear first; unavailable enabled profiles remain visible with their first resolution error so the model knows not to invoke them. The summary rides in every request, is capped at 8 profiles and 1,000 characters, and refreshes with profiles, stacks, and configuration; `forge_subagent_profiles` remains the authoritative full-detail surface.
+Projects with only a few frequently used profiles can set `summaryInToolDescription: true` (global or trusted-project `subagents.json`). The `forge_subagent` tool description then carries a compact summary of enabled profiles—id, model, thinking level, stack, backend, and timeout—so the parent model does not need a discovery call to pick a profile. Ready profiles appear first; unavailable enabled profiles remain visible with their first resolution error so the model knows not to invoke them. The summary rides in every request, is capped at 8 profiles and 1,000 characters, and refreshes with profiles, stacks, and configuration; `forge_subagent_profiles` remains the authoritative full-detail surface.
 
 ## Parallel invocation
 
@@ -74,13 +72,11 @@ To authorize the parent model without per-run approval:
 
 ```json
 {
-  "subagents": {
-    "allowAgentInvocationWithoutApproval": true
-  }
+  "allowAgentInvocationWithoutApproval": true
 }
 ```
 
-This affects only `forge_subagent`; `/forge-agent run` remains interactive. It is ignored in untrusted projects and malformed values fail closed. Treat this project config as an authorization file: do not enable or commit it unless every parent agent allowed to call `forge_subagent` may send the compiled prompt and readable file contents to the selected provider without asking again.
+This affects only `forge_subagent`; `/forge-agent run` remains interactive. It is ignored in untrusted projects and malformed values fail closed. Treat this project `subagents.json` as an authorization file: do not enable or commit it unless every parent agent allowed to call `forge_subagent` may send the compiled prompt and readable file contents to the selected provider without asking again.
 
 ## Child context and output
 

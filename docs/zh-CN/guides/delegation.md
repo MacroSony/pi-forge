@@ -4,28 +4,26 @@
 
 > **实验性：** 此 API 和 backend 可能独立于稳定的 prompt stack/profile 功能发生变化。
 
-pi-forge 可以把明确授权的 agent profile 作为独立、干净、一次性的 Pi 进程执行。它在前台运行，并向父对话返回有界报告。
+可选包 `@zihanw/pi-forge-subagents` 可以把明确授权的 agent profile 作为独立、干净、一次性的 Pi 进程执行。它在前台运行，并向父对话返回有界报告。
 
 ## 启用 profile
 
-Profile 默认不能委派。请在可信项目的 `.pi/forge/config.json` 中逐个启用项目 profile，在用户全局 `~/.pi/forge/config.json` 中逐个启用全局 profile；也可以使用 `/preset ui` 的 delegation 卡片：
+Profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json` 中逐个启用项目 profile，在用户全局 `~/.pi/forge/subagents.json` 中逐个启用全局 profile；`.pi/forge/config.json.subagents` 仅作为只读兼容来源：
 
 ```json
 {
-  "subagents": {
-    "backend": "pi-subprocess-readonly",
-    "timeoutMs": 60000,
-    "profiles": {
-      "reviewer": {
-        "enabled": true,
-        "timeoutMs": 300000
-      }
+  "backend": "pi-subprocess-readonly",
+  "timeoutMs": 60000,
+  "profiles": {
+    "reviewer": {
+      "enabled": true,
+      "timeoutMs": 300000
     }
   }
 }
 ```
 
-授权跟随 profile scope：项目 config 的 `subagents.profiles.<id>` 只授权 `project:<id>`，全局 config 的 `subagents.profiles.<id>` 只授权 `global:<id>`。同 ID 的全局和项目 profile 不会互相继承 enable/backend/timeout。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
+授权跟随 profile scope：项目 `subagents.json` 的 `profiles.<id>` 只授权 `project:<id>`，全局 `subagents.json` 的 `profiles.<id>` 只授权 `global:<id>`。同 ID 的全局和项目 profile 不会互相继承 enable/backend/timeout。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
 
 ## Plan 与运行
 
@@ -55,7 +53,7 @@ Profile 默认不能委派。请在可信项目的 `.pi/forge/config.json` 中�
 }
 ```
 
-它只影响 `forge_subagent`；`/forge-agent run` 仍需要交互审批。格式错误或不可信项目会 fail closed。请把此 config 当作授权文件：除非所有可调用父 agent 都可以无需再次询问就把编译 prompt 和可读文件发给 provider，否则不要启用或提交此设置。
+它只影响 `forge_subagent`；`/forge-agent run` 仍需要交互审批。格式错误或不可信项目会 fail closed。请把此 `subagents.json` 当作授权文件：除非所有可调用父 agent 都可以无需再次询问就把编译 prompt 和可读文件发给 provider，否则不要启用或提交此设置。
 
 ## Child 边界
 

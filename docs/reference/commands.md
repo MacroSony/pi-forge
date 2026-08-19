@@ -41,13 +41,15 @@ Use migration dry runs before overwriting or deleting anything.
 
 ## Experimental foreground delegation
 
+The commands below are provided by the optional `@zihanw/pi-forge-subagents` package.
+
 | Command | Behavior |
 |---|---|
 | `/forge-agent backends` | List registered experimental backends, capabilities, and effective defaults. |
 | `/forge-agent plan <profile> [--backend <id>] <task>` | Prepare, validate, display, and discard an exact plan without provider transport. |
 | `/forge-agent run <profile> [--backend <id>] <task>` | Review and approve an exact foreground read-only run. |
 
-Only project-authorized delegation profiles are accepted. The model-callable equivalents are `forge_subagent_profiles` (local discovery) and `forge_subagent` (execution). See the [delegation safety guide](../guides/delegation.md).
+Only project-authorized delegation profiles are accepted. The model-callable equivalents are `forge_subagent_profiles` (local discovery) and `forge_subagent` (execution). Delegation configuration lives in `.pi/forge/subagents.json` (or the optional package's read-only legacy fallback in `.pi/forge/config.json.subagents`). See the [delegation safety guide](../guides/delegation.md).
 
 ## Payload inspection
 
