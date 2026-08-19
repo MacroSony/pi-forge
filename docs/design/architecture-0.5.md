@@ -154,7 +154,7 @@ Archive the full proposal, make this lean plan active, and simplify repository g
 - Enforce the three intentional public surfaces and remove all other root exports and `src/*` aliases; update package checks and public-API tests together.
 - Update English and Chinese user-facing docs for breaking changes.
 - Write changelog and one-page migration notes.
-- Run main-only and main-plus-optional packed-install verification.
+- Run main-only and main-plus-optional packed-install verification (`check:packed` smoke). The main package keeps `@zihanw/pi-subagent-runtime` as the `/subagent` contract library (canonical fingerprints and portable validation types); execution and subagent configuration live in the optional `pi-forge-subagents` package, which depends only on the published host-port surface.
 - Tag and publish 0.5.0.
 
 ## Release gates
