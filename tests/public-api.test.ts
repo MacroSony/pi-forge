@@ -56,3 +56,13 @@ test("the packaged /subagent entry matches the source surface", async () => {
 	assert.equal(typeof packaged.ForgeHostClient, "function");
 	assert.equal(typeof packaged.ForgeHost, "function");
 });
+
+test("the package root exports exactly the extension factory and extension API", async () => {
+	const expected = ["default", "registerMacro", "registerSlot"].sort();
+	assert.deepEqual(Object.keys(rootSurface).sort(), expected);
+	const packaged = await import("@zihanw/pi-forge");
+	assert.deepEqual(Object.keys(packaged).sort(), expected);
+	assert.equal(typeof packaged.default, "function");
+	assert.equal(typeof packaged.registerMacro, "function");
+	assert.equal(typeof packaged.registerSlot, "function");
+});

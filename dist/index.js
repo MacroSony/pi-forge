@@ -12,15 +12,14 @@ import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
 import { createCompileCycleState } from "./compile-cycle.js";
 import { createPayloadState } from "./payload-state.js";
-export { formatResourceKey, formatResourceSelector, isResourceScope, isValidResourceId, parseResourceSelector, resourceKey, RESOURCE_ID_PATTERN, } from "./resource-identity.js";
-export { computeEffectiveView, createResourceCatalog, resolveEffectiveResource, resolveExactResource, resolveResourceSelector, } from "./catalog.js";
-export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
-export { FORGE_V1_FILTERS, FORGE_V1_MAX_EXTENSION_OUTPUT, FORGE_V1_MAX_TEMPLATE_OUTPUT, forgeV1, } from "./forge-v1/index.js";
-export { getRegisteredSlots, registerSlot, } from "./slot-renderers.js";
-export { chooseAutoActivateStack, chooseDefaultStack, isDisabledPromptStackId, isUsablePromptStack, isValidPromptStackId, loadPromptStacks, loadPromptStacksScoped, validatePromptStack, } from "./loader.js";
-export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, loadAgentProfilesScoped, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, validateAgentProfilePromptStackScope, isAgentProfileProvenance, } from "./agent-profile.js";
-export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, deleteAgentProfile, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
-export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
+/**
+ * Intentional public surface (0.5.0): the default Pi extension factory plus
+ * the trusted-extension API (`registerMacro`/`registerSlot` and their contract
+ * types). Everything else is internal; the only other entry point is
+ * `@zihanw/pi-forge/subagent`, the versioned host port.
+ */
+export { registerMacro, } from "./macro-engine.js";
+export { registerSlot, } from "./slot-renderers.js";
 export default function piForge(pi) {
     const workspace = new ForgeWorkspace();
     const compileCycle = createCompileCycleState();

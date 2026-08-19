@@ -18,7 +18,7 @@ import {
 	prepareForgeDelegation,
 	resolveSubagentHostProfile,
 } from "../src/subagent-host.ts";
-import { registerMacro } from "../src/index.ts";
+import { registerMacro } from "../src/macro-engine.ts";
 import type { LoadedPromptStack, PromptStack } from "../src/types.ts";
 
 function profile(promptStack: string | null = "worker"): AgentProfile {

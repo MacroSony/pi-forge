@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileSystemPrompt, compileMessages } from "../src/compiler.ts";
-import { forgeV1, FORGE_V1_MAX_TEMPLATE_OUTPUT, registerMacro, registerSlot } from "../src/index.ts";
+import { forgeV1, FORGE_V1_MAX_TEMPLATE_OUTPUT } from "../src/forge-v1/index.ts";
+import { registerMacro } from "../src/macro-engine.ts";
+import { registerSlot } from "../src/slot-renderers.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { PromptEnvironment } from "../src/forge-v1/index.ts";
 import type { PromptRuntime, PromptStack } from "../src/types.ts";

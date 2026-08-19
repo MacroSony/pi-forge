@@ -56,15 +56,42 @@ for (const path of paths) {
 	if (path === "src" || path.startsWith("src/")) failures.push(`authored source leaked into npm tarball: ${path}`);
 }
 
-for (const key of ["./src/*.ts", "./src/*.js", "./src/*"]) {
-	const entry = packageJson.exports?.[key];
-	if (!entry || Object.values(entry).some((target) => typeof target !== "string" || !target.startsWith("./dist/"))) {
-		failures.push(`legacy compatibility export must resolve only to dist: ${key}`);
+// 0.5.0 public surface: exactly the package root and the /subagent host port.
+const allowedExportKeys = [".", "./subagent"];
+const exportKeys = Object.keys(packageJson.exports ?? {});
+for (const key of exportKeys) {
+	if (!allowedExportKeys.includes(key)) {
+		failures.push(`non-allowlisted package export: ${key} (allowed: ${allowedExportKeys.join(", ")})`);
 	}
 }
-
-if (packageJson.exports?.["./src/web-editor/client/*"] !== null) {
-	failures.push("browser-only authored client modules must be explicitly blocked from compatibility imports");
+for (const key of allowedExportKeys) {
+	const entry = packageJson.exports?.[key];
+	if (!entry) {
+		failures.push(`missing intentional package export: ${key}`);
+		continue;
+	}
+	// Every allowlisted entry must resolve to files that actually ship, and
+	// carry exactly the intentional conditions with types first.
+	const conditions = Object.keys(entry);
+	if (conditions.join(",") !== "types,import,default") {
+		failures.push(`export ${key} must carry exactly the conditions types,import,default (in order): got ${conditions.join(",")}`);
+	}
+	for (const condition of conditions) {
+		if (!["types", "import", "default"].includes(condition)) {
+			failures.push(`unexpected export condition on ${key}: ${condition}`);
+		}
+		const target = entry[condition];
+		if (typeof target !== "string" || !target.startsWith("./dist/")) {
+			failures.push(`export ${key} (${condition}) must target ./dist/: ${String(target)}`);
+		} else if (!paths.has(target.slice(2))) {
+			failures.push(`export ${key} (${condition}) target is not in the tarball: ${target}`);
+		}
+	}
+}
+for (const key of ["./src/*.ts", "./src/*.js", "./src/*", "./src/web-editor/client/*", "./examples/*"]) {
+	if (key in (packageJson.exports ?? {})) {
+		failures.push(`legacy compatibility export must not exist: ${key}`);
+	}
 }
 
 for (const path of paths) {

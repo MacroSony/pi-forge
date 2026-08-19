@@ -7,10 +7,12 @@ import {
 } from "../src/compiler.ts";
 import {
 	getRegisteredMacros,
-	getRegisteredSlots,
 	registerMacro,
+} from "../src/macro-engine.ts";
+import {
+	getRegisteredSlots,
 	registerSlot,
-} from "../src/index.ts";
+} from "../src/slot-renderers.ts";
 import type { PromptRuntime, PromptStack } from "../src/types.ts";
 
 function runtime(overrides: Partial<PromptRuntime> = {}): PromptRuntime {

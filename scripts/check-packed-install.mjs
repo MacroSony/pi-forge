@@ -37,6 +37,33 @@ function smokeScript(imports) {
 	return lines.join("\n");
 }
 
+// The packed tarball ships .d.ts files whose relative specifiers keep the
+// authored .ts extensions (TypeScript resolves them to sibling .d.ts files).
+// Prove the shipped type surface resolves the way consumers use it by
+// typechecking a consumer module under nodenext with the repo's own tsc.
+function typeSmoke(dir, entryImports) {
+	const lines = [
+		"import piForge, { registerMacro, registerSlot, type PromptMacroDefinition, type PromptEnvironment, type ForgeExtensionApi } from '@zihanw/pi-forge';",
+		"import { ForgeHostClient, ForgeHost, FORGE_HOST_PORT_VERSION, type ForgePrepareRequest, type ForgeHostTransport, subagentFingerprint } from '@zihanw/pi-forge/subagent';",
+		...entryImports,
+		"const version: 1 = FORGE_HOST_PORT_VERSION;",
+		"void [piForge, registerMacro, registerSlot, ForgeHostClient, ForgeHost, version, subagentFingerprint];",
+		"export type { PromptMacroDefinition, PromptEnvironment, ForgeExtensionApi, ForgePrepareRequest, ForgeHostTransport };",
+	];
+	writeFileSync(join(dir, "smoke.ts"), lines.join("\n"));
+	writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({
+		compilerOptions: {
+			strict: true,
+			noEmit: true,
+			module: "nodenext",
+			moduleResolution: "nodenext",
+			skipLibCheck: true,
+		},
+		include: ["smoke.ts"],
+	}));
+	run(process.execPath, [join(rootDir, "node_modules", "typescript", "bin", "tsc"), "-p", "tsconfig.json"], { cwd: dir });
+}
+
 const tmp = mkdtempSync(join(tmpdir(), "pi-forge-packed-"));
 try {
 	// 1) main-only packed install
@@ -49,11 +76,11 @@ try {
 			"@earendil-works/pi-ai@0.83.0",
 			"@earendil-works/pi-agent-core@0.83.0",
 			"@earendil-works/pi-tui@0.83.0",
-			"@earendil-works/pi-ai@0.83.0",
 			"typebox@1.3.7",
 			"--no-audit", "--no-fund", "--ignore-scripts"], { cwd: mainOnly });
 		writeFileSync(join(mainOnly, "smoke.mjs"), smokeScript([`const { ForgeHostPortOperation } = await import('@zihanw/pi-forge/subagent');`]));
 		run(process.execPath, ["smoke.mjs"], { cwd: mainOnly });
+		typeSmoke(mainOnly, []);
 	} finally {
 		rmSync(mainOnly, { recursive: true, force: true });
 	}
@@ -88,6 +115,11 @@ try {
 				`if (typeof optional.createForgeSubagentRuntime !== 'function') throw new Error('createForgeSubagentRuntime is not exported');`,
 			]));
 			run(process.execPath, ["smoke.mjs"], { cwd: both });
+			typeSmoke(both, [
+				"import forgeSubagents, { ForgeHostSession, createForgeSubagentRuntime, type ForgeSubagentRuntime } from '@zihanw/pi-forge-subagents';",
+				"void [forgeSubagents, ForgeHostSession, createForgeSubagentRuntime];",
+				"export type { ForgeSubagentRuntime };",
+			]);
 		} finally {
 			rmSync(both, { recursive: true, force: true });
 		}

@@ -14,141 +14,42 @@ import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createCompileCycleState } from "./compile-cycle.ts";
 import { createPayloadState } from "./payload-state.ts";
 
+/**
+ * Intentional public surface (0.5.0): the default Pi extension factory plus
+ * the trusted-extension API (`registerMacro`/`registerSlot` and their contract
+ * types). Everything else is internal; the only other entry point is
+ * `@zihanw/pi-forge/subagent`, the versioned host port.
+ */
 export {
-	formatResourceKey,
-	formatResourceSelector,
-	isResourceScope,
-	isValidResourceId,
-	parseResourceSelector,
-	resourceKey,
-	RESOURCE_ID_PATTERN,
-	type ResourceKey,
-	type ResourceScope,
-	type ResourceSelector,
-	type ResourceSelectorParseResult,
-} from "./resource-identity.ts";
-export {
-	computeEffectiveView,
-	createResourceCatalog,
-	resolveEffectiveResource,
-	resolveExactResource,
-	resolveResourceSelector,
-	type ResourceCatalog,
-	type ScopedResource,
-} from "./catalog.ts";
-export {
-	getRegisteredMacros,
 	registerMacro,
 	type PromptMacroDefinition,
 	type PromptMacroRenderContext,
 	type PromptMacroRenderer,
 } from "./macro-engine.ts";
 export {
-	FORGE_V1_FILTERS,
-	FORGE_V1_MAX_EXTENSION_OUTPUT,
-	FORGE_V1_MAX_TEMPLATE_OUTPUT,
-	forgeV1,
-} from "./forge-v1/index.ts";
-export type {
-	ForgeV1Error,
-	ForgeV1ErrorKind,
-	ForgeV1TemplateEngine,
-	PromptEnvironment,
-	PromptEnvironmentValue,
-	TemplateDependency,
-	TemplateDependencyKind,
-	TemplateNode,
-	TemplateOutputNode,
-	TemplateParseResult,
-	TemplatePredicate,
-	TemplateRenderResult,
-	TemplateSourceSpan,
-	TemplateTextNode,
-} from "./forge-v1/index.ts";
-export {
-	getRegisteredSlots,
 	registerSlot,
 	type PromptSlotDefinition,
 	type PromptSlotRenderContext,
 	type PromptSlotRenderer,
 } from "./slot-renderers.ts";
-export {
-	type PromptExtensionArgumentDefinition,
-	type PromptExtensionOptionDefinition,
-	type PromptExtensionOptionsSchema,
-	type PromptExtensionOptionType,
-	type PromptRegistryEntry,
+export type {
+	PromptExtensionArgumentDefinition,
+	PromptExtensionOptionDefinition,
+	PromptExtensionOptionsSchema,
+	PromptExtensionOptionType,
+	PromptRegistryEntry,
 } from "./extension-registry.ts";
-export {
-	type ForgeExtensionApi,
-	type ForgeExtensionRegister,
-} from "./forge-extensions.ts";
-export {
-	chooseAutoActivateStack,
-	chooseDefaultStack,
-	isDisabledPromptStackId,
-	isUsablePromptStack,
-	isValidPromptStackId,
-	loadPromptStacks,
-	loadPromptStacksScoped,
-	validatePromptStack,
-} from "./loader.ts";
-export {
-	AGENT_PROFILE_THINKING_LEVELS,
-	AGENT_PROFILE_TYPE,
-	agentProfileFingerprint,
-	agentProfilePath,
-	agentProfilesDir,
-	chooseAutoActivateAgentProfile,
-	hasAutoActivateAgentProfile,
-	hasAgentProfileErrors,
-	isResolvedAgentProfileUsable,
-	isUsableAgentProfile,
-	isValidAgentProfileId,
-	loadAgentProfileFile,
-	loadAgentProfiles,
-	loadAgentProfilesScoped,
-	renderAgentProfileDiagnostics,
-	resolveAgentProfile,
-	validateAgentProfile,
-	validateAgentProfilePromptStackScope,
-	type AgentProfile,
-	type AgentProfileDiagnostic,
-	type AgentProfileDiagnosticLevel,
-	type AgentProfileModelReference,
-	type AgentProfileResolutionResources,
-	type AgentProfileProvenance,
-	type AgentProfileRuntimeSnapshot,
-	type LoadedAgentProfile,
-	type ResolvedAgentProfile,
-	isAgentProfileProvenance,
-} from "./agent-profile.ts";
-export {
-	applyResolvedAgentProfile,
-	captureAgentProfile,
-	createAgentProfilePreview,
-	deleteAgentProfile,
-	forgetAgentProfileProvenance,
-	getAgentProfileRuntimeStatus,
-	writeAgentProfile,
-	type AgentProfileApplicationDeps,
-	type AgentProfileApplicationResult,
-	type AgentProfileApplicationState,
-	type AgentProfileCaptureInput,
-	type AgentProfileCaptureResult,
-	type AgentProfileCurrentRuntime,
-	type AgentProfileDeleteResult,
-	type AgentProfileDriftField,
-	type AgentProfilePreview,
-	type AgentProfileRuntimeStatus,
-	type AgentProfileWriteResult,
-} from "./profile-service.ts";
-export {
-	createVariableAccess,
-	promptRenderHelpers,
-	type PromptRenderHelpers,
-	type PromptVariableAccess,
+export type {
+	PromptEnvironment,
+	PromptEnvironmentValue,
+} from "./forge-v1/index.ts";
+export type {
+	PromptRenderHelpers,
 } from "./render-helpers.ts";
+export type {
+	ForgeExtensionApi,
+	ForgeExtensionRegister,
+} from "./forge-extensions.ts";
 
 export default function piForge(pi: ExtensionAPI) {
 	const workspace = new ForgeWorkspace();

@@ -18,6 +18,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - SillyTavern importer, `/preset import-silly`, its reports, guide, example, and tests are removed. 0.4 is the last supported conversion path.
 - Mutable turn/session variable stores, `pi-forge-variable-state` session entries, set/get/clear variable macros, and the `variables` slot are removed. Static reusable values now live on stack `parameters` in schema v2 or legacy `variables` in v1.
 - Regex `display` and `both` effects are removed and rejected as validation errors; only `outgoing` and `finalize` remain.
+- **Breaking (Lane 4b): legacy package surfaces.** All `@zihanw/pi-forge/src/*` compatibility aliases and the `./examples/*` subpath export are removed. The package root now exports exactly the default Pi extension factory plus `registerMacro`/`registerSlot` and their contract types (`PromptEnvironment`, `PromptRenderHelpers`, macro/slot definition and renderer types, option-schema types, and the trusted project extension API types). `@zihanw/pi-forge/subagent` is the only other entry point. `check-package` enforces the allowlist and forbids legacy aliases.
 
 ### Changed
 
