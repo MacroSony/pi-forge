@@ -4,15 +4,9 @@ import { buildPreview } from "./preview.js";
 import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
 import { applyResolvedAgentProfile } from "./profile-service.js";
-import { registerForgeSubagentProfilesTool } from "./subagent-profile-tool.js";
-import { registerForgeSubagentCommand } from "./subagent-command.js";
-import { registerForgeSubagentTool, renderEmbeddedSubagentSummary } from "./subagent-tool.js";
-import { loadForgeSubagentSettings } from "./forge-config.js";
-import { resolveResourceSelector } from "./catalog.js";
-import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
+import { formatResourceKey } from "./resource-identity.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
-import { createForgeSubagentRuntime } from "./runtime/subagent-runtime.js";
 import { ForgeWorkspace } from "./workspace.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
@@ -40,7 +34,6 @@ export default function piForge(pi) {
         setActive: stackRuntime.setActive,
         updateStatus: stackRuntime.updateStatus,
     });
-    const subagentRuntime = createForgeSubagentRuntime(state);
     const forgeWorkspace = new ForgeWorkspace({
         activeStackId: () => stackRuntime.activeId() ?? null,
         lastAppliedProfile: () => state.lastAppliedProfile,
@@ -63,18 +56,9 @@ export default function piForge(pi) {
             effectiveTools: pi.getActiveTools(),
         }),
         getSubagentBackends: () => {
-            // Backend construction can require live Pi runtime resources; listing
-            // options for the editor must not break profile browsing when they
-            // are unavailable (the same failure would surface again at prepare).
-            try {
-                return subagentRuntime.descriptors(ctx).map((descriptor) => ({
-                    id: descriptor.id,
-                    version: descriptor.version,
-                }));
-            }
-            catch {
-                return subagentRuntime.backendIds().map((id) => ({ id, version: "unavailable" }));
-            }
+            // Delegation moved to the optional pi-forge-subagents package in 0.5;
+            // the main host no longer lists subagent execution backends.
+            return [];
         },
         resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
         previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
@@ -91,29 +75,11 @@ export default function piForge(pi) {
             return { ok: true, ...webPayloadSnapshot(state) };
         },
     }));
-    // The forge_subagent description can embed a compact summary of enabled
-    // profiles when subagents.summaryInToolDescription is enabled.
-    // Registration returns a refresh function the lifecycle wiring calls with
-    // a context whenever profiles, stacks, or configuration may have changed;
-    // the tool re-registers only when the rendered summary actually changed.
-    const profileSelectors = () => state.profiles.map((profile) => formatResourceKey(profile.key));
-    const resolveProfileKey = (selector) => {
-        const parsed = parseResourceSelector(selector);
-        if (!parsed.ok)
-            return undefined;
-        const loaded = resolveResourceSelector(state.profiles, parsed.selector);
-        return loaded?.key;
-    };
-    const refreshSubagentToolDescriptions = registerForgeSubagentTool(pi, subagentRuntime, profileSelectors, resolveProfileKey, {
-        summarize: (ctx) => renderEmbeddedSubagentSummary(loadForgeSubagentSettings(ctx), state.profiles, (loaded) => profileRuntime.resolveProfile(loaded, ctx)),
-    });
     registerLifecycleHandlers(pi, state, {
         reloadStacks: stackRuntime.reloadStacks,
         disposePromptStackRuntime: stackRuntime.dispose,
-        disposeSubagentRuntime: subagentRuntime.dispose,
         activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
         refreshWebEditorHost: webEditorRuntime.refreshHost,
-        refreshSubagentToolDescriptions,
         notifyActivePreset: stackRuntime.notifyActivePreset,
         syncActiveToolPolicy: toolPolicy.sync,
         restoreActiveToolPolicy: toolPolicy.restore,
@@ -142,7 +108,5 @@ export default function piForge(pi) {
         setActive: stackRuntime.setActive,
         previewToolNames: toolPolicy.previewToolNames,
     });
-    registerForgeSubagentCommand(pi, subagentRuntime, profileSelectors, resolveProfileKey);
-    registerForgeSubagentProfilesTool(pi, () => state.profiles, profileRuntime.resolveProfile);
 }
 //# sourceMappingURL=index.js.map

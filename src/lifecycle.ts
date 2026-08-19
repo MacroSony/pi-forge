@@ -13,10 +13,8 @@ import type { PromptStackDiagnostic } from "./types.ts";
 export interface LifecycleDeps {
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
 	disposePromptStackRuntime(): PromptStackDiagnostic[];
-	disposeSubagentRuntime(): Promise<void>;
 	activateFreshSessionDefaults(ctx: ExtensionContext): Promise<void>;
 	refreshWebEditorHost(ctx: ExtensionContext, promptOptions?: BuildSystemPromptOptions): void;
-	refreshSubagentToolDescriptions(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
 	restoreActiveToolPolicy(): void;
@@ -41,7 +39,6 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		// live host that keeps advertising the stale snapshot.
 		deps.disposeForgeWorkspace();
 		deps.disposePromptStackRuntime();
-		await deps.disposeSubagentRuntime();
 	});
 
 	pi.on("session_start", async (event, ctx) => {
@@ -56,12 +53,10 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		}
 		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
-		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after session " + event.reason);
 	});
 
 	pi.on("resources_discover", async (_event, ctx) => {
-		deps.refreshSubagentToolDescriptions(ctx);
 		if (!startupToolPolicyPending) return;
 		startupToolPolicyPending = false;
 		deps.syncActiveToolPolicy(ctx);
@@ -71,7 +66,6 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
-		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after tree navigation");
 	});
 
@@ -79,7 +73,6 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		await restoreBranchScopedRuntime(ctx, state, deps);
 		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
-		deps.refreshSubagentToolDescriptions(ctx);
 		deps.notifyActivePreset(ctx, "after compaction");
 	});
 
@@ -99,7 +92,6 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		state.currentSystemPromptOptions = event.systemPromptOptions;
-		deps.refreshSubagentToolDescriptions(ctx);
 		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		state.currentLatestUserMessage = event.prompt;
 		state.contextRewritePending = true;

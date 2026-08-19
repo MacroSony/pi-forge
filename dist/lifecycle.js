@@ -15,7 +15,6 @@ export function registerLifecycleHandlers(pi, state, deps) {
         // live host that keeps advertising the stale snapshot.
         deps.disposeForgeWorkspace();
         deps.disposePromptStackRuntime();
-        await deps.disposeSubagentRuntime();
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;
@@ -31,11 +30,9 @@ export function registerLifecycleHandlers(pi, state, deps) {
         }
         deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
-        deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after session " + event.reason);
     });
     pi.on("resources_discover", async (_event, ctx) => {
-        deps.refreshSubagentToolDescriptions(ctx);
         if (!startupToolPolicyPending)
             return;
         startupToolPolicyPending = false;
@@ -45,14 +42,12 @@ export function registerLifecycleHandlers(pi, state, deps) {
         await restoreBranchScopedRuntime(ctx, state, deps);
         deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
-        deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after tree navigation");
     });
     pi.on("session_compact", async (_event, ctx) => {
         await restoreBranchScopedRuntime(ctx, state, deps);
         deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
-        deps.refreshSubagentToolDescriptions(ctx);
         deps.notifyActivePreset(ctx, "after compaction");
     });
     pi.on("turn_start", async () => {
@@ -68,7 +63,6 @@ export function registerLifecycleHandlers(pi, state, deps) {
     });
     pi.on("before_agent_start", async (event, ctx) => {
         state.currentSystemPromptOptions = event.systemPromptOptions;
-        deps.refreshSubagentToolDescriptions(ctx);
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         state.currentLatestUserMessage = event.prompt;
         state.contextRewritePending = true;

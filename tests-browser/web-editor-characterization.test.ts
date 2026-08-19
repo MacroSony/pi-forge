@@ -569,81 +569,6 @@ test("web editor reports profile runtime drift after external changes", { timeou
 	});
 });
 
-test("web editor configures per-profile subagent delegation", { timeout: 20_000 }, async (t) => {
-	const currentModel = browserModel("test", "current");
-	const targetModel = browserModel("test", "target");
-	await withBrowserEditor(t, (cwd) => {
-		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
-		writeProfile(cwd, "reviewer.json", {
-			schemaVersion: 1,
-			type: "pi-forge.agent-profile",
-			id: "reviewer",
-			model: { provider: "test", id: "target" },
-			thinkingLevel: "high",
-			promptStack: "default",
-		});
-		writeProfile(cwd, "observer.json", {
-			schemaVersion: 1,
-			type: "pi-forge.agent-profile",
-			id: "observer",
-			model: { provider: "test", id: "current" },
-			thinkingLevel: "low",
-			promptStack: "default",
-		});
-	}, async ({ cwd, editorUrl, page }) => {
-		const configPath = join(cwd, ".pi", "forge", "config.json");
-		const readConfig = () => JSON.parse(readFileSync(configPath, "utf8")) as Record<string, any>;
-		const reviewerRow = page.locator('[data-profile-row][data-profile-id="reviewer"]');
-
-		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
-		await page.locator("#profilesSurfaceBtn").click();
-		await reviewerRow.click();
-		await page.locator("[data-delegation-status]").filter({ hasText: "Disabled" }).waitFor();
-		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 0);
-		assert.equal(await page.locator("#delegationSaveBtn").isDisabled(), true);
-
-		await page.locator("#delegationEnabled").check();
-		await page.locator("#delegationBackend").selectOption("pi-rpc-readonly");
-		await page.locator("#delegationTimeout").fill("500");
-		await page.locator("[data-delegation-error]").filter({ hasText: /integer from 1000/ }).waitFor();
-		assert.equal(await page.locator("#delegationSaveBtn").isDisabled(), true);
-		await page.locator("#delegationTimeout").fill("120000");
-		assert.equal(await page.locator("#delegationSaveBtn").isEnabled(), true);
-		page.once("dialog", async (dialog) => {
-			assert.equal(dialog.message(), "Discard unsaved delegation changes?");
-			await dialog.dismiss();
-		});
-		await page.locator('[data-profile-row][data-profile-id="observer"]').click();
-		assert.equal(await reviewerRow.getAttribute("class"), "profile-row selected");
-		assert.equal(await page.locator("#delegationEnabled").isChecked(), true);
-		assert.equal(await page.locator("#delegationTimeout").inputValue(), "120000");
-
-		await page.locator("#delegationSaveBtn").click();
-		await page.locator("#profilesStatus").filter({ hasText: "Delegation enabled for reviewer" }).waitFor();
-		await page.locator("[data-delegation-status]").filter({ hasText: /enabled · backend pi-rpc-readonly/ }).waitFor();
-		assert.match(await page.locator("[data-delegation-status]").textContent() ?? "", /timeout 120000 ms/);
-		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 1);
-		assert.deepEqual(readConfig().subagents.profiles.reviewer, {
-			enabled: true,
-			backend: "pi-rpc-readonly",
-			timeoutMs: 120_000,
-		});
-
-		await page.locator("#delegationEnabled").uncheck();
-		await page.locator("#delegationBackend").selectOption("");
-		await page.locator("#delegationTimeout").fill("");
-		await page.locator("#delegationSaveBtn").click();
-		await page.locator("#profilesStatus").filter({ hasText: "Delegation settings saved for reviewer" }).waitFor();
-		await page.locator("[data-delegation-status]").filter({ hasText: "Disabled" }).waitFor();
-		assert.equal(await reviewerRow.locator(".badge", { hasText: "subagent" }).count(), 0);
-		assert.equal(readConfig().subagents, undefined);
-	}, {
-		currentModel,
-		models: [currentModel, targetModel],
-		availableModels: [currentModel, targetModel],
-	});
-});
-
 test("web editor constrains both surfaces to the viewport with internal scrolling", { timeout: 20_000 }, async (t) => {
 	const currentModel = browserModel("test", "current");
 	const targetModel = browserModel("test", "target");
@@ -692,14 +617,6 @@ test("web editor constrains both surfaces to the viewport with internal scrollin
 		assert.ok(
 			profilesLayout.mainScroll > profilesLayout.mainClient,
 			"profile main should offer internal scrolling for overflowing content",
-		);
-
-		await page.locator(".delegation-card").scrollIntoViewIfNeeded();
-		const saveBox = await page.locator("#delegationSaveBtn").boundingBox();
-		assert.ok(saveBox, "delegation save button has no layout box");
-		assert.ok(
-			saveBox!.y + saveBox!.height <= profilesLayout.viewport,
-			"delegation save button must be reachable inside the viewport",
 		);
 	}, {
 		currentModel,
