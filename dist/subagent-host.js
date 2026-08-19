@@ -1,10 +1,17 @@
 import { getRegisteredMacros, } from "./macro-engine.js";
 import { getRegisteredSlots, } from "./slot-renderers.js";
-import { compileMessages, PromptCompilationContext } from "./compiler.js";
-import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, negotiateSubagentTools, prepareSubagentInitialMessages, } from "./subagent/contract.js";
+import { PromptCompilationContext } from "./compiler.js";
+import { applyResourcePolicy, resourcePatternMatches } from "./policy.js";
+import { subagentPromptStackFingerprint, subagentSourceProfileFingerprint, } from "./subagent/fingerprints.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
-import { forgeV1 } from "./forge-v1/index.js";
 import { analyzePromptStack } from "./prompt-analysis.js";
+/**
+ * Host-owned immutable profile snapshot artifact returned by `resolveProfile`
+ * and embedded in `prepare` responses. The optional package validates and
+ * binds it into execution plans; the wire schema version is shared with the
+ * execution contract by design.
+ */
+export const FORGE_PROFILE_SNAPSHOT_VERSION = 1;
 const BUILT_IN_SLOTS = new Set([
     "chat-history", "tools", "tool-guidelines", "skills", "project-context", "append-system-prompt",
     "date", "cwd", "date-cwd", "active-model", "pi-docs",
@@ -87,7 +94,7 @@ export function resolveSubagentHostProfile(loaded, resources) {
     };
     if (!diagnostics.some((diagnostic) => diagnostic.level === "error")) {
         resolution.snapshot = {
-            schemaVersion: 1,
+            schemaVersion: FORGE_PROFILE_SNAPSHOT_VERSION,
             profileId: formatResourceKey(loaded.key),
             profile: structuredClone(loaded.profile),
             promptStackId,
@@ -99,49 +106,101 @@ export function resolveSubagentHostProfile(loaded, resources) {
     }
     return resolution;
 }
-export function prepareSubagentHostPlan(input) {
-    const toolNegotiation = negotiateSubagentTools(input.preflight.toolCatalog, input.snapshot.promptStack?.tools, input.request.access);
-    const options = {
-        ...structuredClone(input.runtime.options),
-        selectedTools: [...toolNegotiation.effectiveToolNames],
-        toolSnippets: Object.fromEntries(Object.entries(input.runtime.options.toolSnippets)
-            .filter(([name]) => toolNegotiation.effectiveToolNames.includes(name))),
-        promptGuidelines: toolNegotiation.effectiveToolNames.length > 0
-            ? [...input.runtime.options.promptGuidelines]
-            : [],
-        skills: structuredClone(input.runtime.options.skills),
-        contextFiles: [...input.runtime.options.contextFiles],
-    };
+/**
+ * Forge-native host-owned preparation: negotiate the client tool catalog
+ * against stack policy and access facts, compile the resolved stack through
+ * one compilation context, and append the protected delegated task. No
+ * execution/runtime material (AgentRequest, preflight, limits, or plan
+ * fingerprints) is involved; the optional package owns those.
+ */
+export function prepareForgeDelegation(input) {
+    const negotiation = negotiateForgeDelegationTools(input.backend.toolCatalog, input.snapshot.promptStack?.tools, input.access);
+    const preparedAt = new Date().toISOString();
     const runtime = {
-        options,
+        options: {
+            cwd: input.cwd,
+            selectedTools: negotiation.effectiveToolNames,
+            toolSnippets: {},
+            promptGuidelines: [],
+            contextFiles: [],
+            skills: [],
+        },
         model: {
-            provider: input.runtime.model.provider,
-            id: input.runtime.model.id,
+            provider: input.backend.model.provider,
+            id: input.backend.model.id,
             api: "unknown",
         },
-        latestUserMessage: input.request.input.text,
-        now: new Date(input.runtime.preparedAt),
+        latestUserMessage: input.task.text,
+        now: new Date(preparedAt),
     };
-    let systemPrompt = input.runtime.baseSystemPrompt;
+    const diagnostics = [...negotiation.diagnostics];
+    let systemPrompt = "";
     let stackMessages = [];
-    const diagnostics = [];
-    if (input.snapshot.promptStack) {
-        const compilation = new PromptCompilationContext(input.snapshot.promptStack, runtime);
-        const system = compilation.compileSystemPrompt(input.runtime.baseSystemPrompt);
+    const stack = input.snapshot.promptStack;
+    if (stack) {
+        const compilation = new PromptCompilationContext(stack, runtime);
+        const system = compilation.compileSystemPrompt("");
         systemPrompt = system.systemPrompt;
         diagnostics.push(...system.diagnostics.map((item) => promptDiagnostic("system", item)));
         const messages = compilation.compileMessages([]);
         stackMessages = messages.messages.map(preparedPromptStackMessage);
         diagnostics.push(...messages.diagnostics.map((item) => promptDiagnostic("messages", item)));
     }
-    const initial = prepareSubagentInitialMessages(input.request, stackMessages);
     return {
         systemPrompt,
-        messages: initial.messages,
-        contextBudget: initial.contextBudget,
-        toolNegotiation,
-        diagnostics: [...diagnostics, ...initial.diagnostics],
+        messages: appendProtectedDelegationTask(stackMessages, input.task),
+        effectiveToolIds: negotiation.effectiveToolIds,
+        effectiveToolNames: negotiation.effectiveToolNames,
+        diagnostics,
+        preparedAt,
     };
+}
+/**
+ * Intersect the client-supplied tool catalog with stack tool policy and the
+ * prompt-compilation access facts. Semantics mirror the execution contract's
+ * tool negotiation in the optional package, which recomputes them as the
+ * plan-creation integrity check.
+ */
+export function negotiateForgeDelegationTools(catalog, policy, access) {
+    const diagnostics = [];
+    const tools = catalog.map((tool) => ({
+        id: tool.id,
+        name: tool.name ?? tool.id,
+        effects: [...(tool.effects ?? [])],
+    }));
+    const names = tools.map((tool) => tool.name);
+    const stackSelectedToolNames = applyResourcePolicy(names, policy);
+    const selected = new Set(stackSelectedToolNames);
+    const effective = tools.filter((tool) => selected.has(tool.name) && toolAllowedByAccess(tool, access));
+    const unmatchedAllowPatterns = policy && "allow" in policy
+        ? (policy.allow ?? []).filter((pattern) => pattern !== "*" && !names.some((name) => resourcePatternMatches(name, pattern)))
+        : [];
+    for (const pattern of unmatchedAllowPatterns) {
+        diagnostics.push({ level: "warning", code: "tools.unmatched-allow", path: "tools.allow", message: `Tool allow pattern matches no backend tools: ${pattern}` });
+    }
+    for (const tool of tools) {
+        if (selected.has(tool.name) && !effective.includes(tool)) {
+            diagnostics.push({ level: "info", code: "tools.access-filtered", path: `tools.${tool.name}`, message: `Tool ${tool.name} was removed by request access policy.` });
+        }
+    }
+    return {
+        effectiveToolIds: effective.map((tool) => tool.id),
+        effectiveToolNames: effective.map((tool) => tool.name),
+        diagnostics,
+    };
+}
+function toolAllowedByAccess(tool, access) {
+    for (const effect of tool.effects) {
+        if (effect === "network" && access.network !== "allow")
+            return false;
+        if (effect === "process" && access.allowProcess !== true)
+            return false;
+        if (effect === "filesystem-read" && access.level === "none")
+            return false;
+        if (effect === "filesystem-write" && access.level !== "workspace-write")
+            return false;
+    }
+    return true;
 }
 export function collectSubagentPromptDependencies(stack, registrations = currentSubagentPromptRegistrationCatalog()) {
     const diagnostics = [];
@@ -199,45 +258,16 @@ export function collectSubagentPromptDependencies(stack, registrations = current
 const LEGACY_BUILTIN_RUNTIME = new Set([
     "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
 ]);
-export function collectMacroCommandNames(text) {
-    const parsed = forgeV1.parse(text);
-    if (!parsed.ok)
-        return [];
-    const analyzed = forgeV1.analyze(parsed.ast);
-    const names = new Set();
-    for (const dependency of analyzed.dependencies) {
-        if (dependency.kind === "extensions")
-            names.add(dependency.path?.[1] ?? "");
-        if (dependency.kind === "legacy") {
-            const candidate = dependency.path?.[0];
-            if (candidate && !LEGACY_BUILTIN_RUNTIME.has(candidate))
-                names.add(candidate);
-        }
-    }
-    return [...names].sort();
-}
-export function appendProtectedAgentTask(compiledMessages, protectedTask) {
-    if (protectedTask.role !== "user")
-        throw new Error("Protected delegated task must be a user message.");
-    return [...structuredClone(compiledMessages), structuredClone(protectedTask)];
-}
-export function compileProtectedAgentTaskMessages(stack, runtime, originalMessages) {
-    const taskIndex = findLastUserMessageIndex(originalMessages);
-    if (taskIndex === -1)
-        throw new Error("Delegated context contains no final user task.");
-    const protectedTask = structuredClone(originalMessages[taskIndex]);
-    const history = originalMessages.filter((_message, index) => index !== taskIndex);
-    const compiled = compileMessages(stack.stack, runtime, history);
-    return { messages: appendProtectedAgentTask(compiled.messages, protectedTask), diagnostics: compiled.diagnostics };
-}
-export function isProtectedAgentTaskPreserved(messages, task) {
-    if (!messages.length || task.role !== "user")
-        return false;
-    const finalMessage = messages.at(-1);
-    if (finalMessage?.role !== "user")
-        return false;
-    return normalizeUserContent(finalMessage.content)
-        === normalizeUserContent(task.content);
+function appendProtectedDelegationTask(messages, task) {
+    return [
+        ...structuredClone(messages),
+        {
+            role: "user",
+            content: [{ type: "text", text: task.text }],
+            protectedTask: true,
+            source: "delegated-task",
+        },
+    ];
 }
 function registrationEntry(definition) {
     return { name: definition.name, source: definition.source, dependencies: definition.dependencies };
@@ -254,17 +284,6 @@ function addDependency(kind, name, catalog, dependencies, missing, diagnostics, 
     dependencies.set(key, { kind, name, identity, source: registration.source });
     if (!registration.source)
         diagnostics.push({ level: "warning", code: "profile.dependency-anonymous", path, message: `Custom ${kind} ${name} has no stable source identity.` });
-}
-function findLastUserMessageIndex(messages) {
-    for (let index = messages.length - 1; index >= 0; index--) {
-        if (messages[index]?.role === "user")
-            return index;
-    }
-    return -1;
-}
-function normalizeUserContent(content) {
-    const normalized = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [content];
-    return JSON.stringify(normalized);
 }
 function preparedPromptStackMessage(message) {
     if (message.role !== "user" && message.role !== "assistant" && message.role !== "custom") {

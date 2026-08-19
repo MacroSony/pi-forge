@@ -149,20 +149,6 @@ export {
 	type PromptRenderHelpers,
 	type PromptVariableAccess,
 } from "./render-helpers.ts";
-export * from "./subagent/contract.ts";
-export {
-	appendProtectedAgentTask,
-	collectMacroCommandNames,
-	collectSubagentPromptDependencies,
-	compileProtectedAgentTaskMessages,
-	currentSubagentPromptRegistrationCatalog,
-	isProtectedAgentTaskPreserved,
-	prepareSubagentHostPlan,
-	resolveSubagentHostProfile,
-	type SubagentHostResolution,
-	type SubagentPromptRegistration,
-	type SubagentPromptRegistrationCatalog,
-} from "./subagent-host.ts";
 
 export default function piForge(pi: ExtensionAPI) {
 	const workspace = new ForgeWorkspace();

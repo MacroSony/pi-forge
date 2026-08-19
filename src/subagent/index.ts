@@ -1,15 +1,13 @@
 /**
- * Experimental runner-neutral subagent adapter surface.
+ * Versioned `/subagent` host port: the minimal Forge DTO host contract.
  *
- * The package root continues to re-export these names for 0.4 compatibility.
- * New adapter integrations should import from `@zihanw/pi-forge/subagent` so
- * they do not depend on the Pi extension composition entry point.
- *
- * Execution ownership (backend registry, sealing, lifecycle, process
- * backends) now lives in `@zihanw/pi-subagent-runtime`; this surface keeps
- * the Forge host contracts: profiles, compilation, approval, and reporting.
+ * Wire messages, recursive validators, transport, and client/host lifecycle,
+ * plus the Forge-owned canonical fingerprint helpers used for host-issued
+ * profile snapshots. The main package carries no dependency on
+ * `@zihanw/pi-subagent-runtime`; the execution contract (request, preflight,
+ * plan, response, context, tool negotiation) lives in the optional
+ * `@zihanw/pi-forge-subagents` package, which consumes this port.
  */
-export * from "./contract.ts";
 export {
 	FORGE_HOST_CHANNEL,
 	FORGE_HOST_PORT_NAMESPACE,
@@ -42,15 +40,10 @@ export type {
 	ForgeResolveProfileResponse,
 } from "./host-port.ts";
 export {
-	appendProtectedAgentTask,
-	collectMacroCommandNames,
-	collectSubagentPromptDependencies,
-	compileProtectedAgentTaskMessages,
-	currentSubagentPromptRegistrationCatalog,
-	isProtectedAgentTaskPreserved,
-	prepareSubagentHostPlan,
-	resolveSubagentHostProfile,
-	type SubagentHostResolution,
-	type SubagentPromptRegistration,
-	type SubagentPromptRegistrationCatalog,
-} from "../subagent-host.ts";
+	SUBAGENT_FINGERPRINT_PREFIX,
+	canonicalSubagentJson,
+	subagentFingerprint,
+	subagentPromptStackFingerprint,
+	subagentSourceProfileFingerprint,
+	type SubagentFingerprint,
+} from "./fingerprints.ts";

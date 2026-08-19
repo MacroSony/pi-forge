@@ -2,60 +2,57 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import * as rootSurface from "../src/index.ts";
-import * as modularContract from "../src/subagent/contract.ts";
 import * as subagentSurface from "../src/subagent/index.ts";
 
-const contractRuntimeExports = [
-	"SUBAGENT_CONTRACT_VERSION",
+/**
+ * Public-surface tests for the `/subagent` host contract. Lane 4b adds the
+ * complete root allowlist; this file pins the host-port entry after the 0.4
+ * execution contract moved to the optional package (Lane 4a).
+ */
+
+const hostContractRuntimeExports = [
+	"FORGE_HOST_CHANNEL",
+	"FORGE_HOST_PORT_NAMESPACE",
+	"FORGE_HOST_PORT_OPERATIONS",
+	"FORGE_HOST_PORT_VERSION",
+	"ForgeHost",
+	"ForgeHostClient",
+	"ForgeHostPortError",
 	"SUBAGENT_FINGERPRINT_PREFIX",
-	"appendProtectedSubagentTask",
-	"budgetSubagentContext",
 	"canonicalSubagentJson",
-	"createAgentExecutionPlan",
-	"createProtectedSubagentTask",
-	"hasSubagentErrors",
-	"isProtectedSubagentTaskPreserved",
-	"negotiateSubagentTools",
-	"prepareSubagentInitialMessages",
-	"renderSubagentSelectedContext",
 	"subagentFingerprint",
-	"subagentPromptRuntimeFingerprint",
 	"subagentPromptStackFingerprint",
 	"subagentSourceProfileFingerprint",
-	"validateAgentExecutionPlan",
-	"validateAgentProfileSnapshot",
-	"validateAgentRequest",
-	"validateAgentResponse",
-	"validateBackendPreflight",
-	"validatePreflightAgainstRequest",
-	"validatePreparationRuntime",
-	"validateSubagentArtifactReference",
-	"validateSubagentTraceReference",
+	"validateListProfilesRequest",
+	"validateListProfilesResponse",
+	"validatePrepareRequest",
+	"validatePrepareResponse",
+	"validateResolveProfileRequest",
+	"validateResolveProfileResponse",
 ].sort();
 
-test("the modular subagent contract surface is complete and root-compatible", () => {
-	assert.deepEqual(Object.keys(modularContract).sort(), contractRuntimeExports);
+test("the /subagent entry point exports exactly the host contract", () => {
+	assert.deepEqual(Object.keys(subagentSurface).sort(), hostContractRuntimeExports);
+});
+
+test("the package root no longer re-exports subagent host or contract names", () => {
 	const root = rootSurface as Record<string, unknown>;
-	const modular = modularContract as Record<string, unknown>;
-	for (const name of contractRuntimeExports) {
-		assert.equal(root[name], modular[name], name);
+	for (const name of [
+		...hostContractRuntimeExports,
+		"createAgentExecutionPlan",
+		"validateAgentRequest",
+		"validateAgentResponse",
+		"resolveSubagentHostProfile",
+		"prepareSubagentHostPlan",
+		"negotiateSubagentTools",
+	]) {
+		assert.equal(root[name], undefined, name);
 	}
 });
 
-test("the dedicated subagent entry point preserves the package-root adapter surface", async () => {
-	// Execution ownership (backend registry, process backends) moved to
-	// @zihanw/pi-subagent-runtime; the Forge surface keeps host contracts.
-	for (const name of [
-		"validateAgentRequest",
-		"resolveSubagentHostProfile",
-		"createAgentExecutionPlan",
-		"validateAgentResponse",
-	] as const) {
-		assert.equal(typeof subagentSurface[name], "function", name);
-		assert.equal(rootSurface[name], subagentSurface[name], name);
-	}
-
+test("the packaged /subagent entry matches the source surface", async () => {
 	const packaged = await import("@zihanw/pi-forge/subagent");
-	assert.equal(typeof packaged.validateAgentRequest, "function");
-	assert.equal(typeof packaged.resolveSubagentHostProfile, "function");
+	assert.deepEqual(Object.keys(packaged).sort(), hostContractRuntimeExports);
+	assert.equal(typeof packaged.ForgeHostClient, "function");
+	assert.equal(typeof packaged.ForgeHost, "function");
 });

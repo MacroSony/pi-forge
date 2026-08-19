@@ -21,8 +21,6 @@ export { chooseAutoActivateStack, chooseDefaultStack, isDisabledPromptStackId, i
 export { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, agentProfilesDir, chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, hasAgentProfileErrors, isResolvedAgentProfileUsable, isUsableAgentProfile, isValidAgentProfileId, loadAgentProfileFile, loadAgentProfiles, loadAgentProfilesScoped, renderAgentProfileDiagnostics, resolveAgentProfile, validateAgentProfile, validateAgentProfilePromptStackScope, isAgentProfileProvenance, } from "./agent-profile.js";
 export { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, deleteAgentProfile, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js";
-export * from "./subagent/contract.js";
-export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "./subagent-host.js";
 export default function piForge(pi) {
     const workspace = new ForgeWorkspace();
     const compileCycle = createCompileCycleState();

@@ -21,21 +21,10 @@ import {
 } from "./subagent/host-port.ts";
 import {
 	currentSubagentPromptRegistrationCatalog,
-	prepareSubagentHostPlan,
+	prepareForgeDelegation,
 	resolveSubagentHostProfile,
+	type ForgeProfileSnapshot,
 } from "./subagent-host.ts";
-import {
-	SUBAGENT_CONTRACT_VERSION,
-} from "./subagent/types.ts";
-import type {
-	AgentProfileSnapshot,
-	AgentRequest,
-	BackendPreflightAccepted,
-	SubagentAccessRequest,
-	SubagentBackendTool,
-	SubagentLimitRequest,
-	SubagentPreparationInput,
-} from "./subagent/types.ts";
 
 export interface ForgeWorkspaceSnapshot {
 	cwd: string;
@@ -254,8 +243,8 @@ export class ForgeWorkspace {
 		}
 	}
 
-	/** Host-owned profile resolution returns the immutable AgentProfileSnapshot artifact. */
-	private resolveProfilePlan(profile: string): AgentProfileSnapshot {
+	/** Host-owned profile resolution returns the immutable profile snapshot artifact. */
+	private resolveProfilePlan(profile: string): ForgeProfileSnapshot {
 		const snapshot = this.snapshot();
 		const parsed = parseResourceSelector(profile);
 		if (!parsed.ok) throw new Error(`Invalid profile selector ${profile}: ${parsed.error}`);
@@ -300,104 +289,25 @@ export class ForgeWorkspace {
 		});
 		if (!resolved.snapshot) throw new Error(`Profile ${request.profile} could not be resolved for preparation.`);
 
-		const requestId = randomUUID();
-		// The host only needs the access facts for tool negotiation; the full
-		// runtime access/limit/execution request belongs to the backend and is
-		// reconstructed there, not sent across this port.
-		const agentRequest: AgentRequest = {
-			schemaVersion: SUBAGENT_CONTRACT_VERSION,
-			requestId,
-			profileId: request.profile,
-			input: request.task,
-			access: {
-				level: request.access.level,
-				network: request.access.network,
-				allowProcess: request.access.allowProcess,
-				executionBoundary: "shared-user",
-				workspaces: [],
-			} as unknown as SubagentAccessRequest,
-			limits: {} as unknown as SubagentLimitRequest,
-			resultProjection: { maxChars: 0 },
-			parent: { depth: 0, maxDepth: 0 },
-			remoteEgressConsent: false,
-		};
-
-		const preflight: BackendPreflightAccepted = {
-			status: "accepted",
-			preflightId: `forge-host-${requestId}`,
-			backend: {
-				id: "forge-host",
-				version: "v1",
-				capabilities: {
-					access: {
-						readOnlyMountIsolation: false,
-						readWriteMountIsolation: false,
-						symlinkSafeContainment: false,
-						processIsolation: false,
-						agentNetworkIsolation: false,
-					},
-					executionBoundaries: ["isolated"],
-					limits: {
-						timeoutMs: ["host-abort"],
-						maxTurns: ["host-abort"],
-						tokenBudget: ["host-abort"],
-						maxOutputBytes: ["host-abort"],
-					},
-					cancellation: true,
-					mediaMimeTypes: [],
-					traceInspection: false,
-					artifactRetention: false,
-					remoteTransport: false,
-					promptRuntimeFidelity: "backend-assisted",
-				},
-			},
-			model: { ...request.backend.model },
-			thinkingLevel: request.backend.thinkingLevel as BackendPreflightAccepted["thinkingLevel"],
-			toolCatalog: request.backend.toolCatalog.map((tool) => ({
-				...tool,
-				name: tool.name ?? tool.id,
-				effects: tool.effects ?? [],
-			})) as unknown as SubagentBackendTool[],
-			access: {
-				level: request.access.level,
-				mounts: [],
-				network: request.access.network,
-				process: false,
-				executionBoundary: "shared-user",
-			} as unknown as BackendPreflightAccepted["access"],
-			limits: {} as unknown as BackendPreflightAccepted["limits"],
-			diagnostics: [],
-		};
-
-		const runtime: SubagentPreparationInput["runtime"] = {
-			baseSystemPrompt: "",
-			options: {
-				selectedTools: [],
-				toolSnippets: {},
-				promptGuidelines: [],
-				cwd: snapshot.cwd,
-				contextFiles: [],
-				skills: [],
-			},
-			model: { ...request.backend.model },
-			preparedAt: new Date().toISOString(),
-			fidelity: "backend-assisted",
-			promptRuntimeFingerprint: "sha256:v1:forge-host",
-		};
-
-		const output = prepareSubagentHostPlan({ request: agentRequest, snapshot: resolved.snapshot, preflight, runtime });
+		const prepared = prepareForgeDelegation({
+			snapshot: resolved.snapshot,
+			task: request.task,
+			access: request.access,
+			backend: request.backend,
+			cwd: snapshot.cwd,
+		});
 
 		return {
 			profileId: request.profile,
 			model: { ...request.backend.model },
 			thinkingLevel: request.backend.thinkingLevel,
-			systemPrompt: output.systemPrompt,
-			messages: output.messages,
-			effectiveToolIds: output.toolNegotiation.effectiveToolIds,
-			effectiveToolNames: output.toolNegotiation.effectiveToolNames,
-			diagnostics: output.diagnostics,
+			systemPrompt: prepared.systemPrompt,
+			messages: prepared.messages,
+			effectiveToolIds: prepared.effectiveToolIds,
+			effectiveToolNames: prepared.effectiveToolNames,
+			diagnostics: prepared.diagnostics,
 			profileSnapshot: resolved.snapshot,
-			preparedAt: new Date().toISOString(),
+			preparedAt: prepared.preparedAt,
 		};
 	}
 

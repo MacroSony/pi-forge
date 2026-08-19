@@ -75,9 +75,6 @@
       "optional": true
     }
   },
-  "dependencies": {
-    "@zihanw/pi-subagent-runtime": "0.1.0-beta.2"
-  },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "0.83.0",
     "@earendil-works/pi-ai": "0.83.0",

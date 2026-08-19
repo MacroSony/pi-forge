@@ -56,7 +56,7 @@ export declare class ForgeWorkspace {
     operate(operation: string, payload: unknown): ForgeHostPortResult;
     private listProfiles;
     private resolveProfile;
-    /** Host-owned profile resolution returns the immutable AgentProfileSnapshot artifact. */
+    /** Host-owned profile resolution returns the immutable profile snapshot artifact. */
     private resolveProfilePlan;
     private prepare;
     /** Host owns profile/stack resolution and prompt compilation. */
