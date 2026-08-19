@@ -243,7 +243,7 @@ function renderCwd(runtime) {
     return `Current working directory: ${promptRenderHelpers.normalizePath(runtime.options.cwd)}`;
 }
 function renderActiveModel(runtime) {
-    const model = runtime.ctx?.model;
+    const model = runtime.model;
     return model ? `Current model: ${model.provider}/${model.id}` : "Current model: (none)";
 }
 function renderPiDocsGuidance() {

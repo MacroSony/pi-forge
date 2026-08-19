@@ -18,7 +18,7 @@ export function createVariableAccess(_runtime, stack) {
     };
 }
 export function selectedToolNames(stack, runtime) {
-    return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
+    return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
 export function slotTextFormat(item, options = {}) {
     const format = item.options?.format;

@@ -1,12 +1,13 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
 	getLatestUserMessage,
 	PromptCompilationContext,
 } from "./compiler.ts";
 import { estimatePayloadTokens } from "./payload-capture.ts";
-import type { CompileMessageSource, LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
+import { promptRuntimeFromCompileOptions } from "./prompt-runtime.ts";
+import type { CompileMessageSource, LoadedPromptStack, PromptCompileOptions, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "./web-editor/index.ts";
 
 export function renderPreview(
@@ -19,11 +20,15 @@ export function renderPreview(
 export function buildPreview(
 	ctx: ExtensionContext,
 	target: LoadedPromptStack,
-	options: BuildSystemPromptOptions,
+	options: PromptCompileOptions,
 ): { text: string; preview: WebEditorPreview; diagnostics: PromptStackDiagnostic[] } {
 	const sessionMessages = getPreviewSessionMessages(ctx);
 	const latestUserMessage = getLatestUserMessage(sessionMessages);
-	const runtime = { options, ctx, latestUserMessage, now: new Date() };
+	const runtime = promptRuntimeFromCompileOptions(
+		options,
+		ctx.model ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api } : undefined,
+		latestUserMessage,
+	);
 	const compilation = new PromptCompilationContext(target.stack, runtime);
 	const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
 	const messages = compilation.compileMessages(sessionMessages);

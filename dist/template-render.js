@@ -1,9 +1,6 @@
 import { forgeV1, FORGE_V1_MAX_EXTENSION_OUTPUT } from "./forge-v1/index.js";
 import { createMacroRenderContext, getRegisteredMacro } from "./macro-engine.js";
 import { selectedToolNames } from "./render-helpers.js";
-const LEGACY_RUNTIME_FIELDS = new Set([
-    "cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
-]);
 export class ForgeTemplateRenderer {
     base;
     extensions = new Map();
@@ -175,7 +172,7 @@ export function buildPromptEnvironment(stack, runtime) {
         for (const [key, value] of Object.entries(stack.variables ?? {}))
             params[key] = value;
     }
-    const model = runtime.ctx?.model;
+    const model = runtime.model;
     const env = {
         runtime: {
             cwd: runtime.options.cwd,

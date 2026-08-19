@@ -1,6 +1,7 @@
 import { compileMessages, getLatestUserMessage, } from "./compiler.js";
 import { PromptCompilationContext } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
+import { promptRuntimeFromPi } from "./prompt-runtime.js";
 import { isAgentProfileProvenance } from "./agent-profile.js";
 import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "./runtime-state.js";
 export function registerLifecycleHandlers(pi, state, deps) {
@@ -68,7 +69,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         state.contextRewritePending = true;
         if (!state.active)
             return;
-        const compilationRuntime = { options: event.systemPromptOptions, ctx, latestUserMessage: event.prompt, now: new Date() };
+        const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
         state.currentCompilationContext = new PromptCompilationContext(state.active.stack, compilationRuntime);
         const result = state.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
         deps.recordCompileDiagnostics(ctx, result.diagnostics);
@@ -86,7 +87,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         state.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
         const result = state.currentCompilationContext
             ? state.currentCompilationContext.compileMessages(event.messages)
-            : compileMessages(state.active.stack, { options: state.currentSystemPromptOptions, ctx, latestUserMessage, now: new Date() }, event.messages);
+            : compileMessages(state.active.stack, promptRuntimeFromPi(state.currentSystemPromptOptions, ctx, latestUserMessage), event.messages);
         deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
         return { messages: result.messages };
     });

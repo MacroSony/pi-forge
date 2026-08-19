@@ -112,14 +112,13 @@ export function prepareSubagentHostPlan(input) {
         skills: structuredClone(input.runtime.options.skills),
         contextFiles: [...input.runtime.options.contextFiles],
     };
-    const model = {
-        provider: input.runtime.model.provider,
-        id: input.runtime.model.id,
-        api: "unknown",
-    };
     const runtime = {
         options,
-        ctx: { model },
+        model: {
+            provider: input.runtime.model.provider,
+            id: input.runtime.model.id,
+            api: "unknown",
+        },
         latestUserMessage: input.request.input.text,
         now: new Date(input.runtime.preparedAt),
     };

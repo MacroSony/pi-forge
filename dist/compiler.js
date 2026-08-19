@@ -480,7 +480,7 @@ function createSyntheticMessage(role, content, stack, runtime) {
         };
     }
     if (role === "assistant") {
-        const model = runtime.ctx?.model;
+        const model = runtime.model;
         return {
             role: "assistant",
             content: [{ type: "text", text: content }],

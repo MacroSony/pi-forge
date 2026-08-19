@@ -1,5 +1,4 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { BuildSystemPromptOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ResourceKey, ResourceScope } from "./resource-identity.ts";
 export type PromptStackMode = "replace" | "append" | "prepend";
 export type PromptStackRole = "system" | "user" | "assistant" | "custom";
@@ -128,12 +127,45 @@ export interface PromptStackDiagnostic {
     message: string;
     itemId?: string;
 }
-export interface PromptRuntime {
-    options: BuildSystemPromptOptions;
-    ctx?: ExtensionContext;
+/**
+ * Host-neutral prompt compilation input.
+ *
+ * This deliberately avoids Pi runtime types such as `ExtensionContext` and
+ * `BuildSystemPromptOptions`. Pi/preview/subagent adapters convert their
+ * runtime facts into this small snapshot before entering the compiler.
+ */
+export interface PromptCompileOptions {
+    cwd: string;
+    selectedTools?: readonly string[];
+    toolSnippets?: Readonly<Record<string, string>>;
+    promptGuidelines?: readonly string[];
+    appendSystemPrompt?: string;
+    contextFiles?: readonly {
+        path: string;
+        content: string;
+    }[];
+    skills?: readonly {
+        name: string;
+        description: string;
+        filePath: string;
+        baseDir?: string;
+        sourceInfo?: unknown;
+        disableModelInvocation: boolean;
+    }[];
+}
+export interface PromptRuntimeSnapshot {
+    options: PromptCompileOptions;
+    /** Host-neutral model identity; used for `activeModel` and synthetic assistant messages. */
+    model?: {
+        provider: string;
+        id: string;
+        api?: string;
+    };
     latestUserMessage?: string;
     now: Date;
 }
+/** @deprecated Use {@link PromptRuntimeSnapshot} for new code. */
+export type PromptRuntime = PromptRuntimeSnapshot;
 export interface CompileSystemPromptResult {
     systemPrompt: string;
     diagnostics: PromptStackDiagnostic[];

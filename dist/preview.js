@@ -1,12 +1,13 @@
 import { agentMessageToPreviewText, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
+import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
 export function renderPreview(ctx, target) {
     return buildPreview(ctx, target, ctx.getSystemPromptOptions()).text;
 }
 export function buildPreview(ctx, target, options) {
     const sessionMessages = getPreviewSessionMessages(ctx);
     const latestUserMessage = getLatestUserMessage(sessionMessages);
-    const runtime = { options, ctx, latestUserMessage, now: new Date() };
+    const runtime = promptRuntimeFromCompileOptions(options, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api } : undefined, latestUserMessage);
     const compilation = new PromptCompilationContext(target.stack, runtime);
     const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
     const messages = compilation.compileMessages(sessionMessages);

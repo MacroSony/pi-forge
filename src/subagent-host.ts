@@ -1,5 +1,4 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { BuildSystemPromptOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	getRegisteredMacros,
 	type PromptMacroDefinition,
@@ -26,7 +25,7 @@ import {
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { forgeV1 } from "./forge-v1/index.ts";
 import { analyzePromptStack } from "./prompt-analysis.ts";
-import type { LoadedPromptStack, PromptRuntime, PromptStack } from "./types.ts";
+import type { LoadedPromptStack, PromptCompileOptions, PromptRuntime, PromptStack } from "./types.ts";
 
 export interface SubagentPromptRegistration {
 	name: string;
@@ -149,7 +148,7 @@ export function resolveSubagentHostProfile(
 
 export function prepareSubagentHostPlan(input: SubagentPreparationInput): SubagentPreparationOutput {
 	const toolNegotiation = negotiateSubagentTools(input.preflight.toolCatalog, input.snapshot.promptStack?.tools, input.request.access);
-	const options: BuildSystemPromptOptions = {
+	const options: PromptCompileOptions = {
 		...structuredClone(input.runtime.options),
 		selectedTools: [...toolNegotiation.effectiveToolNames],
 		toolSnippets: Object.fromEntries(Object.entries(input.runtime.options.toolSnippets)
@@ -157,17 +156,16 @@ export function prepareSubagentHostPlan(input: SubagentPreparationInput): Subage
 		promptGuidelines: toolNegotiation.effectiveToolNames.length > 0
 			? [...input.runtime.options.promptGuidelines]
 			: [],
-		skills: structuredClone(input.runtime.options.skills) as BuildSystemPromptOptions["skills"],
+		skills: structuredClone(input.runtime.options.skills),
 		contextFiles: [...input.runtime.options.contextFiles],
-	};
-	const model = {
-		provider: input.runtime.model.provider,
-		id: input.runtime.model.id,
-		api: "unknown",
 	};
 	const runtime: PromptRuntime = {
 		options,
-		ctx: { model } as unknown as ExtensionContext,
+		model: {
+			provider: input.runtime.model.provider,
+			id: input.runtime.model.id,
+			api: "unknown",
+		},
 		latestUserMessage: input.request.input.text,
 		now: new Date(input.runtime.preparedAt),
 	};

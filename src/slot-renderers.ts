@@ -331,7 +331,7 @@ function renderCwd(runtime: PromptRuntime): string {
 }
 
 function renderActiveModel(runtime: PromptRuntime): string {
-	const model = runtime.ctx?.model;
+	const model = runtime.model;
 	return model ? `Current model: ${model.provider}/${model.id}` : "Current model: (none)";
 }
 

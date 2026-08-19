@@ -13,10 +13,6 @@ import type {
 	PromptStackDiagnostic,
 } from "./types.ts";
 
-const LEGACY_RUNTIME_FIELDS = new Set([
-	"cwd", "date", "time", "lastUserMessage", "selectedTools", "tools", "activeModel",
-]);
-
 export class ForgeTemplateRenderer {
 	private readonly base: PromptEnvironment;
 	private readonly extensions = new Map<string, string>();
@@ -198,7 +194,7 @@ export function buildPromptEnvironment(stack: PromptStack, runtime: PromptRuntim
 		for (const [key, value] of Object.entries(stack.variables ?? {})) params[key] = value;
 	}
 
-	const model = runtime.ctx?.model;
+	const model = runtime.model;
 	const env: PromptEnvironment = {
 		runtime: {
 			cwd: runtime.options.cwd,

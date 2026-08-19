@@ -46,7 +46,7 @@ export function createVariableAccess(_runtime: PromptRuntime, stack: PromptStack
 }
 
 export function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
-	return applyResourcePolicy(runtime.options.selectedTools ?? [], stack.tools);
+	return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
 
 export function slotTextFormat(item: PromptStackSlotItem, options: { allowJson?: boolean } = {}): PromptStackSlotFormat {
