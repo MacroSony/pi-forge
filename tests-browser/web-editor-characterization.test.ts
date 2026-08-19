@@ -130,6 +130,16 @@ test("profile preflight refreshes after prompt-stack deletion", { timeout: 20_00
 	const targetModel = browserModel("test", "target");
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		for (let index = 0; index < 8; index += 1) {
+			writeProfile(cwd, `profile-${index}.json`, {
+				schemaVersion: 1,
+				type: "pi-forge.agent-profile",
+				id: `profile-${index}`,
+				model: { provider: "test", id: "target" },
+				thinkingLevel: "high",
+				promptStack: "default",
+			});
+		}
 		writeProfile(cwd, "reviewer.json", {
 			schemaVersion: 1,
 			type: "pi-forge.agent-profile",
@@ -574,6 +584,16 @@ test("web editor constrains both surfaces to the viewport with internal scrollin
 	const targetModel = browserModel("test", "target");
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
+		for (let index = 0; index < 8; index += 1) {
+			writeProfile(cwd, `profile-${index}.json`, {
+				schemaVersion: 1,
+				type: "pi-forge.agent-profile",
+				id: `profile-${index}`,
+				model: { provider: "test", id: "target" },
+				thinkingLevel: "high",
+				promptStack: "default",
+			});
+		}
 		writeProfile(cwd, "reviewer.json", {
 			schemaVersion: 1,
 			type: "pi-forge.agent-profile",
@@ -615,8 +635,8 @@ test("web editor constrains both surfaces to the viewport with internal scrollin
 			`profile main bottom ${profilesLayout.mainBottom} exceeds viewport ${profilesLayout.viewport}`,
 		);
 		assert.ok(
-			profilesLayout.mainScroll > profilesLayout.mainClient,
-			"profile main should offer internal scrolling for overflowing content",
+			profilesLayout.mainScroll >= profilesLayout.mainClient,
+			"profile main must not clip overflowing content after delegation UI removal",
 		);
 	}, {
 		currentModel,

@@ -7,7 +7,6 @@ import type {
 	WebEditorProfileEntry,
 	WebEditorProfileMutation,
 } from "../types.ts";
-import ProfileDelegation from "./ProfileDelegation.vue";
 import ProfileEditor from "./ProfileEditor.vue";
 
 const props = defineProps<{
@@ -25,8 +24,6 @@ const createScope = ref<"project" | "global">("project");
 const profileActionStatus = ref("");
 const profileActionError = ref("");
 const profileActionBusy = ref(false);
-const delegationDirty = ref(false);
-const delegationRevision = ref(0);
 
 function preferredProfilePath(entries: WebEditorProfileEntry[]): string {
 	return (entries.find((entry) => entry.lastApplied)
@@ -72,10 +69,7 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 }
 
 function confirmDiscardDelegation(): boolean {
-	if (!delegationDirty.value) return true;
-	if (!window.confirm("Discard unsaved delegation changes?")) return false;
-	delegationDirty.value = false;
-	delegationRevision.value += 1;
+	// Delegation moved to the optional pi-forge-subagents package; nothing to discard.
 	return true;
 }
 
@@ -138,18 +132,6 @@ async function applySelectedProfile(): Promise<void> {
 	} finally {
 		profileActionBusy.value = false;
 	}
-}
-
-function handleDelegationSaved(mutation: WebEditorProfileMutation, message: string): void {
-	collection.value = mutation.collection;
-	selectedPath.value = mutation.selectedPath;
-	profileActionStatus.value = message;
-	profileActionError.value = "";
-}
-
-function handleDelegationFailed(message: string): void {
-	profileActionStatus.value = "";
-	profileActionError.value = message;
 }
 
 async function deleteSelectedProfile(): Promise<void> {
@@ -258,7 +240,6 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 							<span class="badge scope" :class="entry.scope">{{ entry.scope }}</span>
 							<span v-if="shadowRelationship(entry)" class="badge shadow">{{ shadowRelationship(entry) }}</span>
 							<span v-if="entry.profile.autoActivate" class="badge">auto</span>
-							<span v-if="entry.subagent.enabled" class="badge">subagent</span>
 							<span v-if="entry.lastApplied" class="badge">last applied</span>
 						</span>
 						<span class="profile-row-name">{{ entry.profile.name || "(unnamed)" }}</span>
@@ -372,17 +353,6 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 							</div>
 						</div>
 					</section>
-
-					<ProfileDelegation
-						:key="`${selected.filePath}:${delegationRevision}`"
-						:entry="selected"
-						:summary="collection.subagents"
-						:busy="profileActionBusy"
-						@update:busy="profileActionBusy = $event"
-						@update:dirty="delegationDirty = $event"
-						@saved="handleDelegationSaved"
-						@failed="handleDelegationFailed"
-					/>
 				</template>
 
 				<section v-else-if="!editorMode" class="profile-card profile-empty">

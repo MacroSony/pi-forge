@@ -13,13 +13,6 @@ import {
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
 import {
-	DEFAULT_SUBAGENT_BACKEND_ID,
-	loadForgeSubagentSettings,
-	resolveSubagentProfilePolicy,
-	updateForgeSubagentProfileConfig,
-	type ForgeSubagentProfileSettings,
-} from "./forge-config.ts";
-import {
 	isValidPromptStackId,
 	validatePromptStack,
 } from "./loader.ts";
@@ -51,9 +44,6 @@ import type {
 	WebEditorProfileMutation,
 	WebEditorProfileValidation,
 	WebEditorStackSummary,
-	WebEditorSubagentBackendOption,
-	WebEditorSubagentPolicyUpdate,
-	WebEditorSubagentProfilePolicy,
 } from "./web-editor/index.ts";
 
 export interface WebHostRuntime {
@@ -72,7 +62,6 @@ export interface WebHostRuntime {
 	getProfiles(): LoadedAgentProfile[];
 	getLastAppliedProfile(): AgentProfileProvenance | undefined;
 	getCurrentProfileRuntime(): AgentProfileCurrentRuntime;
-	getSubagentBackends(): WebEditorSubagentBackendOption[];
 	resolveProfile(target: LoadedAgentProfile): ResolvedAgentProfile;
 	previewToolNames(stack: PromptStack | undefined): string[];
 	reloadProfiles(): void | Promise<void>;
@@ -97,7 +86,6 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		saveProfile: (selector, profile) => saveProfileFile(ctx, runtime, selector, profile),
 		applyProfile: (selector) => applyProfileRuntime(ctx, runtime, selector),
 		deleteProfile: (selector) => deleteProfileFile(ctx, runtime, selector),
-		updateSubagentPolicy: (selector, update) => updateSubagentPolicy(ctx, runtime, selector, update),
 		listResources: () => runtime.getPolicyResources(),
 		getStack: (selector) => {
 			const loaded = resolveStack(runtime, selector);
@@ -145,9 +133,6 @@ function profileCollection(ctx: ExtensionContext, runtime: WebHostRuntime): WebE
 	const current = runtime.getCurrentProfileRuntime();
 	const lastApplied = runtime.getLastAppliedProfile();
 	const availableModels = new Set(ctx.modelRegistry.getAvailable().map((model) => modelKey(model.provider, model.id)));
-	const subagentSettings = loadForgeSubagentSettings(ctx);
-	const subagentBackends = runtime.getSubagentBackends();
-	const registeredBackends = new Set(subagentBackends.map((backend) => backend.id));
 	return {
 		trusted: ctx.isProjectTrusted(),
 		profileDirectory: agentProfilesDir(ctx.cwd),
@@ -166,7 +151,6 @@ function profileCollection(ctx: ExtensionContext, runtime: WebHostRuntime): WebE
 				errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
 				warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
 				lastApplied: lastApplied?.sourcePath === loaded.filePath,
-				subagent: subagentPolicySummary(subagentSettings, loaded, registeredBackends),
 			};
 		}),
 		status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
@@ -182,46 +166,6 @@ function profileCollection(ctx: ExtensionContext, runtime: WebHostRuntime): WebE
 			selector: formatResourceKey(loaded.key),
 			scope: loaded.scope,
 		})),
-		subagents: {
-			defaultBackend: subagentSettings.backend ?? DEFAULT_SUBAGENT_BACKEND_ID,
-			defaultBackendSource: subagentSettings.backendSource ?? "built-in",
-			timeoutMs: subagentSettings.timeoutMs,
-			timeoutSource: subagentSettings.timeoutSource,
-			allowAgentInvocationWithoutApproval: subagentSettings.allowAgentInvocationWithoutApproval,
-			backends: subagentBackends,
-			warnings: [...subagentSettings.warnings],
-		},
-	};
-}
-
-function subagentPolicySummary(
-	settings: ReturnType<typeof loadForgeSubagentSettings>,
-	loaded: LoadedAgentProfile,
-	registeredBackends: ReadonlySet<string>,
-): WebEditorSubagentProfilePolicy {
-	const selector = formatResourceKey(loaded.key);
-	const policy = resolveSubagentProfilePolicy(settings, selector);
-	const configured = settings.profiles[selector];
-	return {
-		enabled: policy.enabled,
-		enabledSource: policy.enabledSource,
-		backend: policy.backend.id,
-		backendSource: policy.backend.source,
-		backendRegistered: registeredBackends.has(policy.backend.id),
-		timeoutMs: policy.timeout.milliseconds,
-		timeoutSource: policy.timeout.source,
-		configured: configuredSubagentProfile(configured),
-	};
-}
-
-function configuredSubagentProfile(
-	configured: ForgeSubagentProfileSettings | undefined,
-): WebEditorSubagentProfilePolicy["configured"] {
-	if (!configured) return {};
-	return {
-		enabled: configured.enabled,
-		backend: configured.backend,
-		timeoutMs: configured.timeoutMs,
 	};
 }
 
@@ -342,30 +286,6 @@ async function saveProfileFile(
 	};
 }
 
-async function updateSubagentPolicy(
-	ctx: ExtensionContext,
-	runtime: WebHostRuntime,
-	id: string,
-	update: WebEditorSubagentPolicyUpdate,
-): Promise<WebEditorOperationResult<WebEditorProfileMutation>> {
-	if (!ctx.isProjectTrusted()) {
-		return { ok: false, status: 403, error: "Project is not trusted; refusing to change subagent delegation." };
-	}
-	const matches = resolveProfilesForMutation(runtime, id);
-	if (matches.length === 0) return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
-	if (matches.length > 1) {
-		return { ok: false, status: 409, error: `Cannot configure subagent delegation for ${id} while duplicate profile ids exist.` };
-	}
-
-	const result = updateForgeSubagentProfileConfig(ctx.cwd, matches[0]!.profile.id, update, { scope: matches[0]!.scope });
-	if (!result.ok) return { ok: false, status: 400, error: result.error };
-	return {
-		ok: true,
-		collection: profileCollection(ctx, runtime),
-		selectedPath: matches[0]!.filePath,
-	};
-}
-
 function autoActivateConflictError(
 	profiles: readonly LoadedAgentProfile[],
 	profile: AgentProfile,
@@ -430,7 +350,6 @@ async function deleteProfileFile(
 		return { ok: false, status: 409, error: `Cannot delete agent profile ${id} while duplicate profile ids exist.` };
 	}
 
-	const subagentSettings = loadForgeSubagentSettings(ctx);
 	const result = deleteAgentProfile(ctx.cwd, matches[0]!);
 	if (!result.ok) {
 		if (result.reason === "invalid-path") return { ok: false, status: 403, error: "Refusing to delete outside agent-profile storage." };
@@ -439,21 +358,6 @@ async function deleteProfileFile(
 			return { ok: false, status: 409, error: `Agent profile ${id} changed on disk; refresh before deleting it.` };
 		}
 		return { ok: false, status: 500, error: result.error ?? `Failed to delete agent profile ${id}.` };
-	}
-	if (Object.hasOwn(subagentSettings.profiles, formatResourceKey(matches[0]!.key))) {
-		const cleared = updateForgeSubagentProfileConfig(ctx.cwd, matches[0]!.profile.id, {
-			enabled: false,
-			backend: null,
-			timeoutMs: null,
-		}, { scope: matches[0]!.scope });
-		if (!cleared.ok) {
-			await runtime.reloadProfiles();
-			return {
-				ok: false,
-				status: 500,
-				error: `Deleted agent profile ${id}, but failed to remove its delegation settings: ${cleared.error}`,
-			};
-		}
 	}
 	await runtime.reloadProfiles();
 	const collection = profileCollection(ctx, runtime);

@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
-import { DEFAULT_SUBAGENT_BACKEND_ID, loadForgeSubagentSettings, resolveSubagentProfilePolicy, updateForgeSubagentProfileConfig, } from "./forge-config.js";
 import { isValidPromptStackId, validatePromptStack, } from "./loader.js";
 import { deletePromptStackFile, promptStackTargetPath, writePromptStackFile, } from "./repositories/prompt-stack.js";
 import { globalAgentProfilePath } from "./storage.js";
@@ -22,7 +21,6 @@ export function createWebEditorHost(ctx, runtime) {
         saveProfile: (selector, profile) => saveProfileFile(ctx, runtime, selector, profile),
         applyProfile: (selector) => applyProfileRuntime(ctx, runtime, selector),
         deleteProfile: (selector) => deleteProfileFile(ctx, runtime, selector),
-        updateSubagentPolicy: (selector, update) => updateSubagentPolicy(ctx, runtime, selector, update),
         listResources: () => runtime.getPolicyResources(),
         getStack: (selector) => {
             const loaded = resolveStack(runtime, selector);
@@ -71,9 +69,6 @@ function profileCollection(ctx, runtime) {
     const current = runtime.getCurrentProfileRuntime();
     const lastApplied = runtime.getLastAppliedProfile();
     const availableModels = new Set(ctx.modelRegistry.getAvailable().map((model) => modelKey(model.provider, model.id)));
-    const subagentSettings = loadForgeSubagentSettings(ctx);
-    const subagentBackends = runtime.getSubagentBackends();
-    const registeredBackends = new Set(subagentBackends.map((backend) => backend.id));
     return {
         trusted: ctx.isProjectTrusted(),
         profileDirectory: agentProfilesDir(ctx.cwd),
@@ -92,7 +87,6 @@ function profileCollection(ctx, runtime) {
                 errors: preview.diagnostics.filter((diagnostic) => diagnostic.level === "error").length,
                 warnings: preview.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
                 lastApplied: lastApplied?.sourcePath === loaded.filePath,
-                subagent: subagentPolicySummary(subagentSettings, loaded, registeredBackends),
             };
         }),
         status: getAgentProfileRuntimeStatus(profiles, lastApplied, current),
@@ -108,39 +102,6 @@ function profileCollection(ctx, runtime) {
             selector: formatResourceKey(loaded.key),
             scope: loaded.scope,
         })),
-        subagents: {
-            defaultBackend: subagentSettings.backend ?? DEFAULT_SUBAGENT_BACKEND_ID,
-            defaultBackendSource: subagentSettings.backendSource ?? "built-in",
-            timeoutMs: subagentSettings.timeoutMs,
-            timeoutSource: subagentSettings.timeoutSource,
-            allowAgentInvocationWithoutApproval: subagentSettings.allowAgentInvocationWithoutApproval,
-            backends: subagentBackends,
-            warnings: [...subagentSettings.warnings],
-        },
-    };
-}
-function subagentPolicySummary(settings, loaded, registeredBackends) {
-    const selector = formatResourceKey(loaded.key);
-    const policy = resolveSubagentProfilePolicy(settings, selector);
-    const configured = settings.profiles[selector];
-    return {
-        enabled: policy.enabled,
-        enabledSource: policy.enabledSource,
-        backend: policy.backend.id,
-        backendSource: policy.backend.source,
-        backendRegistered: registeredBackends.has(policy.backend.id),
-        timeoutMs: policy.timeout.milliseconds,
-        timeoutSource: policy.timeout.source,
-        configured: configuredSubagentProfile(configured),
-    };
-}
-function configuredSubagentProfile(configured) {
-    if (!configured)
-        return {};
-    return {
-        enabled: configured.enabled,
-        backend: configured.backend,
-        timeoutMs: configured.timeoutMs,
     };
 }
 function profileValidation(ctx, runtime, profile, existingId, validationScope) {
@@ -242,25 +203,6 @@ async function saveProfileFile(ctx, runtime, id, profile) {
         selectedPath: result.filePath,
     };
 }
-async function updateSubagentPolicy(ctx, runtime, id, update) {
-    if (!ctx.isProjectTrusted()) {
-        return { ok: false, status: 403, error: "Project is not trusted; refusing to change subagent delegation." };
-    }
-    const matches = resolveProfilesForMutation(runtime, id);
-    if (matches.length === 0)
-        return { ok: false, status: 404, error: `Unknown agent profile: ${id}` };
-    if (matches.length > 1) {
-        return { ok: false, status: 409, error: `Cannot configure subagent delegation for ${id} while duplicate profile ids exist.` };
-    }
-    const result = updateForgeSubagentProfileConfig(ctx.cwd, matches[0].profile.id, update, { scope: matches[0].scope });
-    if (!result.ok)
-        return { ok: false, status: 400, error: result.error };
-    return {
-        ok: true,
-        collection: profileCollection(ctx, runtime),
-        selectedPath: matches[0].filePath,
-    };
-}
 function autoActivateConflictError(profiles, profile, scope, excludeId) {
     if (profile.autoActivate !== true)
         return undefined;
@@ -309,7 +251,6 @@ async function deleteProfileFile(ctx, runtime, id) {
     if (matches.length > 1) {
         return { ok: false, status: 409, error: `Cannot delete agent profile ${id} while duplicate profile ids exist.` };
     }
-    const subagentSettings = loadForgeSubagentSettings(ctx);
     const result = deleteAgentProfile(ctx.cwd, matches[0]);
     if (!result.ok) {
         if (result.reason === "invalid-path")
@@ -320,21 +261,6 @@ async function deleteProfileFile(ctx, runtime, id) {
             return { ok: false, status: 409, error: `Agent profile ${id} changed on disk; refresh before deleting it.` };
         }
         return { ok: false, status: 500, error: result.error ?? `Failed to delete agent profile ${id}.` };
-    }
-    if (Object.hasOwn(subagentSettings.profiles, formatResourceKey(matches[0].key))) {
-        const cleared = updateForgeSubagentProfileConfig(ctx.cwd, matches[0].profile.id, {
-            enabled: false,
-            backend: null,
-            timeoutMs: null,
-        }, { scope: matches[0].scope });
-        if (!cleared.ok) {
-            await runtime.reloadProfiles();
-            return {
-                ok: false,
-                status: 500,
-                error: `Deleted agent profile ${id}, but failed to remove its delegation settings: ${cleared.error}`,
-            };
-        }
     }
     await runtime.reloadProfiles();
     const collection = profileCollection(ctx, runtime);

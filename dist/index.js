@@ -55,11 +55,6 @@ export default function piForge(pi) {
             promptStack: state.active ? formatResourceKey(state.active.key) : null,
             effectiveTools: pi.getActiveTools(),
         }),
-        getSubagentBackends: () => {
-            // Delegation moved to the optional pi-forge-subagents package in 0.5;
-            // the main host no longer lists subagent execution backends.
-            return [];
-        },
         resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
         previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
         reloadProfiles: () => profileRuntime.reloadProfiles(ctx),
