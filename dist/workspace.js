@@ -4,7 +4,7 @@ import { hasAgentProfileErrors } from "./agent-profile.js";
 import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.js";
 import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.js";
 import { parseResourceSelector } from "./resource-identity.js";
-import { validateListProfilesRequest, validatePrepareRequest, validatePrepareResponse, ForgeHost, } from "./subagent/host-port.js";
+import { validateListProfilesRequest, validatePrepareRequest, validatePrepareResponse, validateResolveProfileRequest, validateResolveProfileResponse, ForgeHost, } from "./subagent/host-port.js";
 import { currentSubagentPromptRegistrationCatalog, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "./subagent-host.js";
 import { SUBAGENT_CONTRACT_VERSION, } from "./subagent/types.js";
 /**
@@ -57,7 +57,7 @@ export class ForgeWorkspace {
         if (this.host?.isLive)
             return this.host;
         const host = new ForgeHost(transport, {
-            capabilities: ["listProfiles", "prepare"],
+            capabilities: ["listProfiles", "resolveProfile", "prepare"],
             handle: (operation, payload) => this.operate(operation, payload),
         });
         this.host = host;
@@ -68,6 +68,8 @@ export class ForgeWorkspace {
     operate(operation, payload) {
         if (operation === "listProfiles")
             return this.listProfiles(payload);
+        if (operation === "resolveProfile")
+            return this.resolveProfile(payload);
         if (operation === "prepare")
             return this.prepare(payload);
         return { ok: false, error: `Unknown Forge host operation: ${operation}` };
@@ -94,6 +96,42 @@ export class ForgeWorkspace {
                 })),
             },
         };
+    }
+    resolveProfile(payload) {
+        const validated = validateResolveProfileRequest(payload);
+        if (!validated.ok)
+            return { ok: false, error: validated.error };
+        const request = validated.data;
+        try {
+            const snapshot = this.resolveProfilePlan(request.profile);
+            const response = { snapshot };
+            const responseValidated = validateResolveProfileResponse(stripUndefined(response));
+            if (!responseValidated.ok)
+                return { ok: false, error: responseValidated.error };
+            return { ok: true, data: stripUndefined(response) };
+        }
+        catch (error) {
+            return { ok: false, error: `resolveProfile failed: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    /** Host-owned profile resolution returns the immutable AgentProfileSnapshot artifact. */
+    resolveProfilePlan(profile) {
+        const snapshot = this.snapshot();
+        const parsed = parseResourceSelector(profile);
+        if (!parsed.ok)
+            throw new Error(`Invalid profile selector ${profile}: ${parsed.error}`);
+        const loaded = createResourceCatalog([...snapshot.profiles]).resolveSelector(parsed.selector);
+        if (!loaded)
+            throw new Error(`Unknown profile: ${profile}`);
+        if (hasAgentProfileErrors(loaded.diagnostics))
+            throw new Error(`Profile ${profile} failed loading validation.`);
+        const resolved = resolveSubagentHostProfile(loaded, {
+            promptStacks: snapshot.stacks,
+            registrations: currentSubagentPromptRegistrationCatalog(),
+        });
+        if (!resolved.snapshot)
+            throw new Error(`Profile ${profile} could not be resolved.`);
+        return resolved.snapshot;
     }
     prepare(payload) {
         const validated = validatePrepareRequest(payload);

@@ -11,6 +11,7 @@ import {
 	ForgeHostPortError,
 	validateListProfilesResponse,
 	validatePrepareResponse,
+	validateResolveProfileResponse,
 } from "../src/subagent/index.ts";
 import {
 	createContext,
@@ -64,6 +65,12 @@ test("external consumer discovers the wired runtime host, lists profiles, prepar
 		assert.equal(listedValidated.ok, true);
 		const profiles = (listed.data as { profiles: Array<{ profileId: string }> }).profiles;
 		assert.deepEqual(profiles.map((profile) => profile.profileId), ["worker"]);
+
+		const resolved = await client.request(connection, "resolveProfile", { profile: "project:worker" });
+		assert.equal(resolved.ok, true, (resolved as { error?: string }).error ?? "resolve expected ok");
+		const resolveValidated = validateResolveProfileResponse(resolved.data);
+		assert.equal(resolveValidated.ok, true);
+		assert.equal((resolved.data as { snapshot: { profileId: string } }).snapshot.profileId, "project:worker");
 
 		const prepared = await client.request(connection, "prepare", {
 			profile: "project:worker",

@@ -277,3 +277,29 @@ test("ForgeWorkspace untrusted reload reads global resources only", () => {
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("ForgeWorkspace resolves an immutable profile snapshot over the bus", async () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	process.env[GLOBAL_FORGE_DIR_ENV] = join(cwd, ".pi", "forge", "global-root");
+	mkdirSync(join(cwd, ".pi", "forge", "global-root"), { recursive: true });
+	try {
+		const workspace = new ForgeWorkspace();
+		workspace.reload(cwd);
+		const bus = new MemoryTransport();
+		workspace.startHostPort(bus);
+		const client = new ForgeHostClient(bus, { defaultTimeoutMs: 200 });
+		const connection = client.connect(await client.discover());
+		const resolved = await client.request(connection, "resolveProfile", { profile: "project:worker" });
+		assert.equal(resolved.ok, true, (resolved as { error?: string }).error ?? "resolve expected ok");
+		const snapshot = (resolved.data as { snapshot: { profileId: string; promptStack: unknown } }).snapshot;
+		assert.equal(snapshot.profileId, "project:worker");
+		assert.ok(snapshot.promptStack);
+		client.disconnect();
+		workspace.dispose();
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

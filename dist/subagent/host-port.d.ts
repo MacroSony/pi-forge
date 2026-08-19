@@ -14,7 +14,7 @@
  */
 export declare const FORGE_HOST_PORT_VERSION = 1;
 export declare const FORGE_HOST_PORT_NAMESPACE = "@zihanw/pi-forge/host/v1";
-export declare const FORGE_HOST_PORT_OPERATIONS: readonly ["listProfiles", "prepare"];
+export declare const FORGE_HOST_PORT_OPERATIONS: readonly ["listProfiles", "resolveProfile", "prepare"];
 export type ForgeHostPortOperation = (typeof FORGE_HOST_PORT_OPERATIONS)[number];
 export declare const FORGE_HOST_CHANNEL: {
     readonly discover: "@zihanw/pi-forge/host/v1/discover";
@@ -104,6 +104,13 @@ export interface ForgeProfileSummary {
 export interface ForgeListProfilesResponse {
     profiles: ForgeProfileSummary[];
 }
+export interface ForgeResolveProfileRequest {
+    profile: string;
+}
+export interface ForgeResolveProfileResponse {
+    /** Immutable host-owned AgentProfileSnapshot artifact (profile + stack + fingerprints). */
+    snapshot: unknown;
+}
 /**
  * Prompt-compilation access facts only — what Forge's tool negotiation reads.
  * This intentionally is NOT the runtime `AgentRequest.access`; the optional
@@ -163,6 +170,8 @@ type ValidationResult = {
 };
 export declare function validateListProfilesRequest(value: unknown): ValidationResult;
 export declare function validateListProfilesResponse(value: unknown): ValidationResult;
+export declare function validateResolveProfileRequest(value: unknown): ValidationResult;
+export declare function validateResolveProfileResponse(value: unknown): ValidationResult;
 export declare function validatePrepareRequest(value: unknown): ValidationResult;
 export declare function validatePrepareResponse(value: unknown): ValidationResult;
 export declare class ForgeHost {

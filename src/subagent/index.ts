@@ -22,6 +22,8 @@ export {
 	validateListProfilesResponse,
 	validatePrepareRequest,
 	validatePrepareResponse,
+	validateResolveProfileRequest,
+	validateResolveProfileResponse,
 } from "./host-port.ts";
 export type {
 	ForgePromptAccessFacts,
@@ -36,6 +38,8 @@ export type {
 	ForgePrepareRequest,
 	ForgePrepareResponse,
 	ForgeProfileSummary,
+	ForgeResolveProfileRequest,
+	ForgeResolveProfileResponse,
 } from "./host-port.ts";
 export {
 	appendProtectedAgentTask,

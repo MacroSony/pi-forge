@@ -40,6 +40,9 @@ export declare class ForgeWorkspace {
     /** Invoke the minimal-operation surface against the current snapshot. */
     operate(operation: string, payload: unknown): ForgeHostPortResult;
     private listProfiles;
+    private resolveProfile;
+    /** Host-owned profile resolution returns the immutable AgentProfileSnapshot artifact. */
+    private resolveProfilePlan;
     private prepare;
     /** Host owns profile/stack resolution and prompt compilation. */
     private preparePlan;

@@ -8,6 +8,8 @@ import {
 	FORGE_HOST_PORT_OPERATIONS,
 	validatePrepareRequest,
 	validatePrepareResponse,
+	validateResolveProfileRequest,
+	validateResolveProfileResponse,
 	type ForgeHostTransport,
 } from "../src/subagent/host-port.ts";
 
@@ -382,3 +384,18 @@ function validPrepareBase(): object {
 	};
 }
 
+
+test("host port validators cover resolveProfile request/response", () => {
+	const ok = validateResolveProfileRequest({ profile: "project:worker" });
+	assert.equal(ok.ok, true);
+	const missing = validateResolveProfileRequest({});
+	assert.equal(missing.ok, false);
+	const extra = validateResolveProfileRequest({ profile: "worker", extra: true });
+	assert.equal(extra.ok, false);
+	const response = validateResolveProfileResponse({ snapshot: { profileId: "project:worker" } });
+	assert.equal(response.ok, true);
+	const bad = validateResolveProfileResponse({});
+	assert.equal(bad.ok, false);
+	const nonJson = validateResolveProfileResponse({ snapshot: new Map() });
+	assert.equal(nonJson.ok, false);
+});

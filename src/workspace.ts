@@ -9,6 +9,8 @@ import {
 	validateListProfilesRequest,
 	validatePrepareRequest,
 	validatePrepareResponse,
+	validateResolveProfileRequest,
+	validateResolveProfileResponse,
 	ForgeHost,
 	type ForgeHostPortResult,
 	type ForgeHostTransport,
@@ -24,6 +26,7 @@ import {
 	SUBAGENT_CONTRACT_VERSION,
 } from "./subagent/types.ts";
 import type {
+	AgentProfileSnapshot,
 	AgentRequest,
 	BackendPreflightAccepted,
 	SubagentAccessRequest,
@@ -98,7 +101,7 @@ export class ForgeWorkspace {
 		if (!this.current) throw new Error("ForgeWorkspace must be reloaded before starting the host port.");
 		if (this.host?.isLive) return this.host;
 		const host = new ForgeHost(transport, {
-			capabilities: ["listProfiles", "prepare"],
+			capabilities: ["listProfiles", "resolveProfile", "prepare"],
 			handle: (operation, payload) => this.operate(operation, payload),
 		});
 		this.host = host;
@@ -109,6 +112,7 @@ export class ForgeWorkspace {
 	/** Invoke the minimal-operation surface against the current snapshot. */
 	operate(operation: string, payload: unknown): ForgeHostPortResult {
 		if (operation === "listProfiles") return this.listProfiles(payload);
+		if (operation === "resolveProfile") return this.resolveProfile(payload);
 		if (operation === "prepare") return this.prepare(payload);
 		return { ok: false, error: `Unknown Forge host operation: ${operation}` };
 	}
@@ -134,6 +138,37 @@ export class ForgeWorkspace {
 				}) as Record<string, unknown>),
 			},
 		};
+	}
+
+	private resolveProfile(payload: unknown): ForgeHostPortResult {
+		const validated = validateResolveProfileRequest(payload);
+		if (!validated.ok) return { ok: false, error: validated.error };
+		const request = validated.data as { profile: string };
+		try {
+			const snapshot = this.resolveProfilePlan(request.profile);
+			const response = { snapshot };
+			const responseValidated = validateResolveProfileResponse(stripUndefined(response));
+			if (!responseValidated.ok) return { ok: false, error: responseValidated.error };
+			return { ok: true, data: stripUndefined(response) };
+		} catch (error) {
+			return { ok: false, error: `resolveProfile failed: ${error instanceof Error ? error.message : String(error)}` };
+		}
+	}
+
+	/** Host-owned profile resolution returns the immutable AgentProfileSnapshot artifact. */
+	private resolveProfilePlan(profile: string): AgentProfileSnapshot {
+		const snapshot = this.snapshot();
+		const parsed = parseResourceSelector(profile);
+		if (!parsed.ok) throw new Error(`Invalid profile selector ${profile}: ${parsed.error}`);
+		const loaded = createResourceCatalog<LoadedAgentProfile>([...snapshot.profiles]).resolveSelector(parsed.selector);
+		if (!loaded) throw new Error(`Unknown profile: ${profile}`);
+		if (hasAgentProfileErrors(loaded.diagnostics)) throw new Error(`Profile ${profile} failed loading validation.`);
+		const resolved = resolveSubagentHostProfile(loaded, {
+			promptStacks: snapshot.stacks,
+			registrations: currentSubagentPromptRegistrationCatalog(),
+		});
+		if (!resolved.snapshot) throw new Error(`Profile ${profile} could not be resolved.`);
+		return resolved.snapshot;
 	}
 
 	private prepare(payload: unknown): ForgeHostPortResult {

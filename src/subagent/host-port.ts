@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
  */
 export const FORGE_HOST_PORT_VERSION = 1;
 export const FORGE_HOST_PORT_NAMESPACE = "@zihanw/pi-forge/host/v1";
-export const FORGE_HOST_PORT_OPERATIONS = ["listProfiles", "prepare"] as const;
+export const FORGE_HOST_PORT_OPERATIONS = ["listProfiles", "resolveProfile", "prepare"] as const;
 export type ForgeHostPortOperation = (typeof FORGE_HOST_PORT_OPERATIONS)[number];
 
 export const FORGE_HOST_CHANNEL = {
@@ -78,6 +78,15 @@ export interface ForgeProfileSummary {
 
 export interface ForgeListProfilesResponse {
 	profiles: ForgeProfileSummary[];
+}
+
+export interface ForgeResolveProfileRequest {
+	profile: string;
+}
+
+export interface ForgeResolveProfileResponse {
+	/** Immutable host-owned AgentProfileSnapshot artifact (profile + stack + fingerprints). */
+	snapshot: unknown;
 }
 
 /**
@@ -183,6 +192,23 @@ function assertExactKeys(record: Record<string, unknown>, fields: ReadonlySet<st
 		return { ok: false, error: `${path} contains unsupported fields: ${unknown.join(", ")}.` };
 	}
 	return undefined;
+}
+
+export function validateResolveProfileRequest(value: unknown): ValidationResult {
+	if (!isRecord(value)) return { ok: false, error: "resolveProfile request must be an object." };
+	if (Object.keys(value).length !== 1 || typeof value.profile !== "string" || !value.profile.trim()) {
+		return { ok: false, error: "resolveProfile request requires a non-empty profile selector." };
+	}
+	if (!isJsonCompatible(value)) return { ok: false, error: "resolveProfile request is not JSON-compatible." };
+	return { ok: true, data: value };
+}
+
+export function validateResolveProfileResponse(value: unknown): ValidationResult {
+	if (!isRecord(value) || !("snapshot" in value) || !isRecord(value.snapshot)) {
+		return { ok: false, error: "resolveProfile response must contain a snapshot object." };
+	}
+	if (!isJsonCompatible(value)) return { ok: false, error: "resolveProfile response is not JSON-compatible." };
+	return { ok: true, data: value };
 }
 
 export function validatePrepareRequest(value: unknown): ValidationResult {
