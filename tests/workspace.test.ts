@@ -303,3 +303,45 @@ test("ForgeWorkspace resolves an immutable profile snapshot over the bus", async
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("ForgeWorkspace falls back to autoActivate stack when persisted activeStackId is unresolvable", () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	const globalRoot = join(cwd, ".pi", "forge", "global-root");
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalRoot;
+	mkdirSync(globalRoot, { recursive: true });
+	try {
+		writeFileSync(
+			join(cwd, ".pi", "forge", "prompt-stacks", "worker.json"),
+			JSON.stringify({ schemaVersion: 1, type: "pi-forge.prompt-stack", id: "worker", autoActivate: true, items: [] }),
+			"utf8",
+		);
+		const workspace = new ForgeWorkspace();
+		workspace.reload(cwd, { activeStackId: "project:missing" });
+		const snapshot = workspace.snapshot();
+		assert.equal(snapshot.active?.stack.id, "worker");
+		assert.equal(snapshot.activeStackId, "project:worker");
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("ForgeWorkspace leaves active unset when stale persisted id has no autoActivate fallback", () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	const globalRoot = join(cwd, ".pi", "forge", "global-root");
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalRoot;
+	mkdirSync(globalRoot, { recursive: true });
+	try {
+		const workspace = new ForgeWorkspace();
+		workspace.reload(cwd, { activeStackId: "project:missing" });
+		assert.equal(workspace.snapshot().active, undefined);
+		assert.equal(workspace.snapshot().activeStackId, null);
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

@@ -1,5 +1,6 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type PiForgeRuntimeState } from "./runtime-state.ts";
+import { type CompileCycleState } from "./compile-cycle.ts";
+import type { ForgeWorkspace } from "./workspace.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
 export interface LifecycleDeps {
     reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: {
@@ -13,11 +14,11 @@ export interface LifecycleDeps {
     syncActiveToolPolicy(ctx?: ExtensionContext): void;
     restoreActiveToolPolicy(): void;
     toolPolicyBlockReason(toolName: string): string | undefined;
-    activeId(): string | undefined;
     persistActiveSelection(): void;
     recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
+    restorePersistedActiveId(id?: string): void;
     reloadForgeWorkspace(ctx: ExtensionContext): void;
     disposeForgeWorkspace(): void;
 }
-export declare function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void;
+export declare function registerLifecycleHandlers(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: LifecycleDeps): void;
 //# sourceMappingURL=lifecycle.d.ts.map

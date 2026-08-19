@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { PiForgeRuntimeState } from "./runtime-state.ts";
+import type { CompileCycleState } from "./compile-cycle.ts";
+import type { ForgeWorkspace } from "./workspace.ts";
 import type { LoadedPromptStack } from "./types.ts";
 export interface PresetCommandDeps {
     selectedActiveId(): string | undefined;
@@ -8,7 +9,6 @@ export interface PresetCommandDeps {
     openWebEditor(ctx: ExtensionCommandContext, mode?: "open" | "restart"): Promise<void>;
     stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
 }
-export declare function registerPresetCommand(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: PresetCommandDeps): void;
-export declare function selectedActiveId(state: PiForgeRuntimeState): string | undefined;
-export declare function findStack(state: PiForgeRuntimeState, selector: string): LoadedPromptStack | undefined;
+export declare function registerPresetCommand(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: PresetCommandDeps): void;
+export declare function findStack(workspace: ForgeWorkspace, selector: string): LoadedPromptStack | undefined;
 //# sourceMappingURL=preset-command.d.ts.map

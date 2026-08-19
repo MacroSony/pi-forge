@@ -2,11 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProviderPayloadCapture } from "./payload-capture.ts";
-import type { PayloadDisplayTarget, PiForgeRuntimeState } from "./runtime-state.ts";
+import type { PayloadDisplayTarget, PayloadState } from "./payload-state.ts";
 import type { LoadedPromptStack } from "./types.ts";
 import type { WebEditorPayloadCapture, WebEditorPayloadSnapshot } from "./web-editor/index.ts";
 
-export function registerPayloadCommands(pi: ExtensionAPI, state: PiForgeRuntimeState): void {
+export function registerPayloadCommands(pi: ExtensionAPI, state: PayloadState): void {
 	pi.registerCommand("intercept", {
 		description: "Display the next provider payload before it is sent",
 		handler: async (_args, ctx) => {
@@ -42,7 +42,7 @@ export function registerPayloadCommands(pi: ExtensionAPI, state: PiForgeRuntimeS
 
 export function registerPayloadRequestHandler(
 	pi: ExtensionAPI,
-	state: PiForgeRuntimeState,
+	state: PayloadState,
 	getActive: () => LoadedPromptStack | undefined,
 ): void {
 	pi.on("before_provider_request", async (event, ctx) => {
@@ -82,7 +82,7 @@ export function registerPayloadRequestHandler(
 }
 
 export function armPayloadIntercept(
-	state: PiForgeRuntimeState,
+	state: PayloadState,
 	ctx: ExtensionContext,
 	savePath?: string,
 	displayTarget: PayloadDisplayTarget = "editor",
@@ -100,7 +100,7 @@ export function armPayloadIntercept(
 	ctx.ui.notify(savePath ? `pi-forge: next provider payload will be displayed and saved to ${savePath}.` : "pi-forge: next provider payload will be displayed before sending.", "info");
 }
 
-export function clearPayloadCapture(state: PiForgeRuntimeState, ctx: ExtensionContext): void {
+export function clearPayloadCapture(state: PayloadState, ctx: ExtensionContext): void {
 	state.interceptNextProviderPayload = false;
 	state.interceptPayloadSavePath = undefined;
 	state.interceptPayloadDisplayTarget = "editor";
@@ -109,7 +109,7 @@ export function clearPayloadCapture(state: PiForgeRuntimeState, ctx: ExtensionCo
 	ctx.ui.setStatus("pi-forge-intercept", undefined);
 }
 
-export function webPayloadSnapshot(state: PiForgeRuntimeState): WebEditorPayloadSnapshot {
+export function webPayloadSnapshot(state: PayloadState): WebEditorPayloadSnapshot {
 	if (state.interceptNextProviderPayload) {
 		return {
 			status: "armed",
@@ -127,7 +127,7 @@ export function webPayloadSnapshot(state: PiForgeRuntimeState): WebEditorPayload
 }
 
 function captureProviderPayload(
-	state: PiForgeRuntimeState,
+	state: PayloadState,
 	active: LoadedPromptStack | undefined,
 	value: unknown,
 	savePath?: string,

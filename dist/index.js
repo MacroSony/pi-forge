@@ -10,7 +10,8 @@ import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { ForgeWorkspace } from "./workspace.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
-import { createRuntimeState } from "./runtime-state.js";
+import { createCompileCycleState } from "./compile-cycle.js";
+import { createPayloadState } from "./payload-state.js";
 export { formatResourceKey, formatResourceSelector, isResourceScope, isValidResourceId, parseResourceSelector, resourceKey, RESOURCE_ID_PATTERN, } from "./resource-identity.js";
 export { computeEffectiveView, createResourceCatalog, resolveEffectiveResource, resolveExactResource, resolveResourceSelector, } from "./catalog.js";
 export { getRegisteredMacros, registerMacro, } from "./macro-engine.js";
@@ -23,54 +24,55 @@ export { createVariableAccess, promptRenderHelpers, } from "./render-helpers.js"
 export * from "./subagent/contract.js";
 export { appendProtectedAgentTask, collectMacroCommandNames, collectSubagentPromptDependencies, compileProtectedAgentTaskMessages, currentSubagentPromptRegistrationCatalog, isProtectedAgentTaskPreserved, prepareSubagentHostPlan, resolveSubagentHostProfile, } from "./subagent-host.js";
 export default function piForge(pi) {
-    const state = createRuntimeState();
-    const toolPolicy = createToolPolicyRuntime(pi, state);
+    const workspace = new ForgeWorkspace();
+    const compileCycle = createCompileCycleState();
+    const payloadState = createPayloadState();
+    const currentActive = () => workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+    const toolPolicy = createToolPolicyRuntime(pi, () => currentActive());
     let profileRuntime;
-    const stackRuntime = createPromptStackRuntime(pi, state, {
+    const stackRuntime = createPromptStackRuntime(pi, workspace, compileCycle, {
         syncToolPolicy: toolPolicy.sync,
-        reloadProfiles: (ctx) => profileRuntime.reloadProfiles(ctx),
     });
-    profileRuntime = createProfileRuntime(pi, state, {
-        setActive: stackRuntime.setActive,
+    profileRuntime = createProfileRuntime(pi, workspace, {
+        setActive: (id, ctx) => stackRuntime.setActive(id, ctx),
         updateStatus: stackRuntime.updateStatus,
     });
-    const forgeWorkspace = new ForgeWorkspace({
-        activeStackId: () => stackRuntime.activeId() ?? null,
-        lastAppliedProfile: () => state.lastAppliedProfile,
-    });
     const webEditorRuntime = createWebEditorRuntime((ctx, promptOptions) => ({
-        getStacks: () => state.stacks,
-        getActive: () => state.active,
+        getStacks: () => [...workspace.snapshot().stacks],
+        getActive: () => currentActive(),
         getActiveId: stackRuntime.activeId,
         getSelectedActiveId: stackRuntime.selectedActiveId,
         setActive: (id) => stackRuntime.setActive(id, ctx),
         reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
         buildPreview: (target) => buildPreview(ctx, target, toolPolicy.previewOptions(promptOptions, target.stack)),
         getPolicyResources: () => toolPolicy.policyResources(promptOptions),
-        getProfiles: () => state.profiles,
-        getLastAppliedProfile: () => state.lastAppliedProfile,
-        getCurrentProfileRuntime: () => ({
-            model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
-            thinkingLevel: pi.getThinkingLevel(),
-            promptStack: state.active ? formatResourceKey(state.active.key) : null,
-            effectiveTools: pi.getActiveTools(),
-        }),
+        getProfiles: () => [...workspace.snapshot().profiles],
+        getLastAppliedProfile: () => workspace.snapshot().lastAppliedProfile,
+        getCurrentProfileRuntime: () => {
+            const active = currentActive();
+            return {
+                model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
+                thinkingLevel: pi.getThinkingLevel(),
+                promptStack: active ? formatResourceKey(active.key) : null,
+                effectiveTools: pi.getActiveTools(),
+            };
+        },
         resolveProfile: (target) => profileRuntime.resolveProfile(target, ctx),
         previewToolNames: (stack) => toolPolicy.previewToolNames(stack),
         reloadProfiles: () => profileRuntime.reloadProfiles(ctx),
         isIdle: () => typeof ctx.isIdle === "function" && ctx.isIdle(),
-        applyProfile: (resolved) => applyResolvedAgentProfile(pi, state, { setActive: (id) => stackRuntime.setActive(id, ctx) }, resolved, ctx),
-        getPayload: () => ({ ok: true, ...webPayloadSnapshot(state) }),
+        applyProfile: (resolved) => applyResolvedAgentProfile(pi, workspace, { setActive: (id) => stackRuntime.setActive(id, ctx) }, resolved, ctx),
+        getPayload: () => ({ ok: true, ...webPayloadSnapshot(payloadState) }),
         armPayload: (savePath) => {
-            armPayloadIntercept(state, ctx, savePath, "web");
-            return { ok: true, ...webPayloadSnapshot(state) };
+            armPayloadIntercept(payloadState, ctx, savePath, "web");
+            return { ok: true, ...webPayloadSnapshot(payloadState) };
         },
         clearPayload: () => {
-            clearPayloadCapture(state, ctx);
-            return { ok: true, ...webPayloadSnapshot(state) };
+            clearPayloadCapture(payloadState, ctx);
+            return { ok: true, ...webPayloadSnapshot(payloadState) };
         },
     }));
-    registerLifecycleHandlers(pi, state, {
+    registerLifecycleHandlers(pi, workspace, compileCycle, {
         reloadStacks: stackRuntime.reloadStacks,
         disposePromptStackRuntime: stackRuntime.dispose,
         activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
@@ -79,25 +81,24 @@ export default function piForge(pi) {
         syncActiveToolPolicy: toolPolicy.sync,
         restoreActiveToolPolicy: toolPolicy.restore,
         toolPolicyBlockReason: toolPolicy.blockReason,
-        activeId: stackRuntime.activeId,
         persistActiveSelection: stackRuntime.persistActiveSelection,
         recordCompileDiagnostics: stackRuntime.recordCompileDiagnostics,
+        restorePersistedActiveId: stackRuntime.restorePersistedActiveId,
         reloadForgeWorkspace: (ctx) => {
-            forgeWorkspace.reload(ctx.cwd, { trusted: ctx.isProjectTrusted() });
-            forgeWorkspace.startHostPort(pi.events);
+            workspace.startHostPort(pi.events);
         },
-        disposeForgeWorkspace: () => forgeWorkspace.dispose(),
+        disposeForgeWorkspace: () => workspace.dispose(),
     });
-    registerPayloadRequestHandler(pi, state, () => state.active);
-    registerPayloadCommands(pi, state);
-    registerPresetCommand(pi, state, {
+    registerPayloadRequestHandler(pi, payloadState, () => currentActive());
+    registerPayloadCommands(pi, payloadState);
+    registerPresetCommand(pi, workspace, compileCycle, {
         selectedActiveId: stackRuntime.selectedActiveId,
         setActive: stackRuntime.setActive,
         reloadStacks: stackRuntime.reloadStacks,
         openWebEditor: webEditorRuntime.open,
         stopWebEditor: webEditorRuntime.stop,
     });
-    registerProfileCommand(pi, state, {
+    registerProfileCommand(pi, workspace, {
         reloadProfiles: profileRuntime.reloadProfiles,
         resolveProfile: profileRuntime.resolveProfile,
         setActive: stackRuntime.setActive,

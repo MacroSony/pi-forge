@@ -1,14 +1,14 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
 	compileMessages,
-	compileSystemPrompt,
 	getLatestUserMessage,
 } from "./compiler.ts";
 import { PromptCompilationContext } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage } from "./regex.ts";
 import { promptRuntimeFromPi } from "./prompt-runtime.ts";
-import { isAgentProfileProvenance } from "./agent-profile.ts";
-import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE, type PiForgeRuntimeState } from "./runtime-state.ts";
+import { resetCompileCycle, type CompileCycleState } from "./compile-cycle.ts";
+import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.ts";
+import type { ForgeWorkspace } from "./workspace.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
 
 export interface LifecycleDeps {
@@ -20,14 +20,19 @@ export interface LifecycleDeps {
 	syncActiveToolPolicy(ctx?: ExtensionContext): void;
 	restoreActiveToolPolicy(): void;
 	toolPolicyBlockReason(toolName: string): string | undefined;
-	activeId(): string | undefined;
 	persistActiveSelection(): void;
 	recordCompileDiagnostics(ctx: ExtensionContext, diagnostics: PromptStackDiagnostic[]): void;
+	restorePersistedActiveId(id?: string): void;
 	reloadForgeWorkspace(ctx: ExtensionContext): void;
 	disposeForgeWorkspace(): void;
 }
 
-export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: LifecycleDeps): void {
+export function registerLifecycleHandlers(
+	pi: ExtensionAPI,
+	workspace: ForgeWorkspace,
+	compileCycle: CompileCycleState,
+	deps: LifecycleDeps,
+): void {
 	let startupToolPolicyPending = false;
 
 	pi.on("session_shutdown", async () => {
@@ -46,7 +51,7 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 		startupToolPolicyPending = true;
 		try {
 			const freshSession = shouldAutoActivateForSessionStart(event, ctx);
-			await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
+			await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
 			if (freshSession) await deps.activateFreshSessionDefaults(ctx);
 		} catch (error) {
 			startupToolPolicyPending = false;
@@ -64,14 +69,14 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
-		await restoreBranchScopedRuntime(ctx, state, deps);
+		await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
 		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after tree navigation");
 	});
 
 	pi.on("session_compact", async (_event, ctx) => {
-		await restoreBranchScopedRuntime(ctx, state, deps);
+		await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
 		deps.reloadForgeWorkspace(ctx);
 		deps.refreshWebEditorHost(ctx);
 		deps.notifyActivePreset(ctx, "after compaction");
@@ -92,72 +97,74 @@ export function registerLifecycleHandlers(pi: ExtensionAPI, state: PiForgeRuntim
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		state.currentSystemPromptOptions = event.systemPromptOptions;
+		compileCycle.currentSystemPromptOptions = event.systemPromptOptions;
 		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
-		state.currentLatestUserMessage = event.prompt;
-		state.contextRewritePending = true;
+		compileCycle.currentLatestUserMessage = event.prompt;
+		compileCycle.contextRewritePending = true;
 
-		if (!state.active) return;
+		const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!active) return;
 
 		const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
-		state.currentCompilationContext = new PromptCompilationContext(state.active.stack, compilationRuntime);
-		const result = state.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
+		compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, compilationRuntime);
+		const result = compileCycle.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
 		deps.recordCompileDiagnostics(ctx, result.diagnostics);
 
 		return { systemPrompt: result.systemPrompt };
 	});
 
 	pi.on("context", async (event, ctx) => {
-		if (!state.active || !state.currentSystemPromptOptions || !state.contextRewritePending) return;
+		const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!active || !compileCycle.currentSystemPromptOptions || !compileCycle.contextRewritePending) return;
 
 		// Rewrite the message layout only for the first provider request of a user-submitted prompt.
 		// Tool-result follow-up turns must receive Pi's natural context; otherwise post-history
 		// prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call
 		// and the model restarts its planning instead of continuing from the tool result.
-		state.contextRewritePending = false;
+		compileCycle.contextRewritePending = false;
 
-		const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
-		state.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
-		const result = state.currentCompilationContext
-			? state.currentCompilationContext.compileMessages(event.messages)
+		const latestUserMessage = getLatestUserMessage(event.messages) ?? compileCycle.currentLatestUserMessage;
+		compileCycle.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
+		const result = compileCycle.currentCompilationContext
+			? compileCycle.currentCompilationContext.compileMessages(event.messages)
 			: compileMessages(
-				state.active.stack,
-				promptRuntimeFromPi(state.currentSystemPromptOptions, ctx, latestUserMessage),
+				active.stack,
+				promptRuntimeFromPi(compileCycle.currentSystemPromptOptions, ctx, latestUserMessage),
 				event.messages,
 			);
-		deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
+		deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...result.diagnostics]);
 		return { messages: result.messages };
 	});
 
 	pi.on("message_end", async (event, ctx) => {
-		if (!state.active) return;
+		const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!active) return;
 		const diagnostics: PromptStackDiagnostic[] = [];
-		const message = applyFinalizeRegexRulesToMessage(state.active.stack, event.message, diagnostics);
-		if (diagnostics.length > 0) deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...diagnostics]);
+		const message = applyFinalizeRegexRulesToMessage(active.stack, event.message, diagnostics);
+		if (diagnostics.length > 0) deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...diagnostics]);
 		if (!message) return;
 		return { message };
 	});
 
 	pi.on("agent_end", async () => {
-		state.currentSystemPromptOptions = undefined;
-		state.currentLatestUserMessage = undefined;
-		state.currentCompilationContext = undefined;
-		state.contextRewritePending = false;
+		resetCompileCycle(compileCycle);
 	});
 }
 
 async function restoreBranchScopedRuntime(
 	ctx: ExtensionContext,
-	state: PiForgeRuntimeState,
+	workspace: ForgeWorkspace,
+	compileCycle: CompileCycleState,
 	deps: LifecycleDeps,
 	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
-	state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
-	state.currentCompilationContext = undefined;
-	state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
+	const restoredProfile = getRestoredProfileProvenance(ctx);
+	compileCycle.currentCompilationContext = undefined;
+	compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
 	const restoredActiveId = getRestoredActiveId(ctx);
-	state.lastPersistedActiveId = restoredActiveId;
+	deps.restorePersistedActiveId(restoredActiveId);
 	await deps.reloadStacks(ctx, restoredActiveId, options);
+	workspace.setLastAppliedProfile(restoredProfile);
 }
 
 function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {
@@ -193,49 +200,4 @@ function isFreshStartupBranch(entries: unknown[]): boolean {
 	// opened empty session receives another bootstrap pair, so the count limits
 	// above keep it from being mistaken for a newly created session.
 	return thinkingLevelChanges === 1;
-}
-
-function getLegacyVariableStateDiagnostic(ctx: ExtensionContext): PromptStackDiagnostic[] {
-	const entries = getCurrentBranchEntries(ctx);
-	const hasLegacyVariableState = entries.some((entry) => {
-		const candidate = entry as { type?: unknown; customType?: unknown };
-		return candidate?.type === "custom" && candidate?.customType === "pi-forge-variable-state";
-	});
-	if (!hasLegacyVariableState) return [];
-	return [{
-		level: "info",
-		message: "Legacy pi-forge-variable-state entries are ignored; mutable session variables were removed in 0.5.0.",
-	}];
-}
-
-function getRestoredProfileProvenance(ctx: ExtensionContext) {
-	const entries = getCurrentBranchEntries(ctx);
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i] as { type?: string; customType?: string; data?: { provenance?: unknown } };
-		if (entry.type !== "custom" || entry.customType !== PROFILE_ENTRY_TYPE) continue;
-		if (entry.data?.provenance === null) return undefined;
-		return isAgentProfileProvenance(entry.data?.provenance) ? entry.data.provenance : undefined;
-	}
-	return undefined;
-}
-
-function getCurrentBranchEntries(ctx: ExtensionContext): unknown[] {
-	const leafId = ctx.sessionManager.getLeafId();
-	if (leafId === null) return [];
-	const sessionManager = ctx.sessionManager as {
-		getBranch?: (fromId?: string) => unknown[];
-		getEntries: () => unknown[];
-	};
-	return sessionManager.getBranch ? sessionManager.getBranch(leafId ?? undefined) : sessionManager.getEntries();
-}
-
-function getRestoredActiveId(ctx: ExtensionContext): string | undefined {
-	const entries = getCurrentBranchEntries(ctx);
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i] as { type?: string; customType?: string; data?: { activeStackId?: unknown } };
-		if (entry.type === "custom" && entry.customType === STATE_ENTRY_TYPE) {
-			return typeof entry.data?.activeStackId === "string" ? entry.data.activeStackId : undefined;
-		}
-	}
-	return undefined;
 }

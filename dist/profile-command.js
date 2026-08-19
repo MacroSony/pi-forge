@@ -58,8 +58,8 @@ async function handleProfileCommand(pi, state, deps, args, ctx) {
         case "reload":
             await deps.reloadProfiles(ctx);
             ctx.ui.notify(ctx.isProjectTrusted()
-                ? `pi-forge: reloaded ${state.profiles.length} agent profile(s); no profile was applied.`
-                : `pi-forge: reloaded ${state.profiles.length} global agent profile(s); application and delegation remain disabled in this untrusted project.`, ctx.isProjectTrusted() ? "info" : "warning");
+                ? `pi-forge: reloaded ${state.snapshot().profiles.length} agent profile(s); no profile was applied.`
+                : `pi-forge: reloaded ${state.snapshot().profiles.length} global agent profile(s); application and delegation remain disabled in this untrusted project.`, ctx.isProjectTrusted() ? "info" : "warning");
             return;
         case "forget":
             forgetProfileProvenance(pi, state, ctx);
@@ -128,7 +128,7 @@ async function saveProfile(pi, state, deps, rest, ctx) {
         ctx.ui.notify("pi-forge: cannot save a profile because no model is currently selected.", "error");
         return;
     }
-    const existingMatches = state.profiles.filter((loaded) => loaded.scope === targetScope && loaded.profile.id === id);
+    const existingMatches = state.snapshot().profiles.filter((loaded) => loaded.scope === targetScope && loaded.profile.id === id);
     if (existingMatches.length > 1) {
         ctx.ui.notify(`pi-forge: cannot save profile ${id} while duplicate ${targetScope} profile ids exist.`, "error");
         return;
@@ -150,7 +150,7 @@ async function saveProfile(pi, state, deps, rest, ctx) {
     const capture = captureAgentProfile(id, targetScope, {
         model: { provider: ctx.model.provider, id: ctx.model.id },
         thinkingLevel: pi.getThinkingLevel(),
-        promptStack: state.active?.key ?? null,
+        promptStack: state.snapshot().active?.key ?? null,
     }, existing);
     if (!capture.ok) {
         ctx.ui.notify(`pi-forge: current runtime could not be saved as profile ${id}.`, "error");
@@ -192,7 +192,7 @@ async function previewProfile(pi, state, deps, id, ctx) {
     await showText(ctx, `pi-forge profile preview: ${id}`, renderProfilePreview(preview));
 }
 async function validateProfiles(state, deps, id, ctx) {
-    const targets = id ? [findProfile(state, id)].filter((loaded) => !!loaded) : state.profiles;
+    const targets = id ? [findProfile(state, id)].filter((loaded) => !!loaded) : state.snapshot().profiles;
     if (targets.length === 0) {
         ctx.ui.notify(id ? `Unknown agent profile: ${id}` : "No agent profiles found.", "warning");
         return;
@@ -213,20 +213,20 @@ function forgetProfileProvenance(pi, state, ctx) {
 function renderProfileList(state, deps, ctx) {
     const lines = [
         `Agent profile directory: ${agentProfilesDir(ctx.cwd)}`,
-        `Last applied: ${state.lastAppliedProfile?.profileId ?? "(none)"}`,
+        `Last applied: ${state.snapshot().lastAppliedProfile?.profileId ?? "(none)"}`,
         "",
     ];
-    if (state.profiles.length === 0) {
+    if (state.snapshot().profiles.length === 0) {
         lines.push("No agent profiles found.", "Use /profile save <id> to capture the current runtime.");
         return lines.join("\n");
     }
-    for (const loaded of state.profiles) {
+    for (const loaded of state.snapshot().profiles) {
         const resolved = deps.resolveProfile(loaded, ctx);
         const errors = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "error").length;
         const warnings = resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length;
         const markers = [
             loaded.profile.autoActivate === true ? "auto" : undefined,
-            state.lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile",
+            state.snapshot().lastAppliedProfile?.sourcePath === loaded.filePath ? "last applied" : "profile",
         ].filter((marker) => !!marker);
         const suffix = errors || warnings ? ` (${errors} errors, ${warnings} warnings)` : "";
         lines.push(`${loaded.profile.id}${loaded.profile.name ? ` — ${loaded.profile.name}` : ""} [${markers.join(", ")}]${suffix}`);
@@ -254,7 +254,7 @@ function renderProfilePreview(preview) {
     ].filter((line) => line !== undefined).join("\n");
 }
 function renderProfileStatus(pi, state, ctx) {
-    const status = getAgentProfileRuntimeStatus(state.profiles, state.lastAppliedProfile, currentRuntime(pi, state, ctx));
+    const status = getAgentProfileRuntimeStatus(state.snapshot().profiles, state.snapshot().lastAppliedProfile, currentRuntime(pi, state, ctx));
     const lines = [
         `Current model: ${modelReferenceLabel(status.current.model)}`,
         `Current thinking level: ${status.current.thinkingLevel}`,
@@ -274,14 +274,14 @@ function renderProfileStatus(pi, state, ctx) {
 function profileSelectorCandidates(state) {
     const collidingIds = new Set();
     const byId = new Map();
-    for (const loaded of state.profiles) {
+    for (const loaded of state.snapshot().profiles) {
         const count = (byId.get(loaded.profile.id) ?? 0) + 1;
         byId.set(loaded.profile.id, count);
         if (count === 2)
             collidingIds.add(loaded.profile.id);
     }
     const candidates = [];
-    for (const loaded of state.profiles) {
+    for (const loaded of state.snapshot().profiles) {
         candidates.push(collidingIds.has(loaded.profile.id) ? formatResourceKey(loaded.key) : loaded.profile.id);
     }
     return [...new Set(candidates)].sort();
@@ -290,13 +290,14 @@ function findProfile(state, selector) {
     const parsed = parseResourceSelector(selector);
     if (!parsed.ok)
         return undefined;
-    return resolveResourceSelector(state.profiles, parsed.selector);
+    return resolveResourceSelector(state.snapshot().profiles, parsed.selector);
 }
 function currentRuntime(pi, state, ctx) {
+    const active = state.snapshot().active;
     return {
         model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : null,
         thinkingLevel: pi.getThinkingLevel(),
-        promptStack: state.active ? formatResourceKey(state.active.key) : null,
+        promptStack: active ? formatResourceKey(active.key) : null,
         effectiveTools: pi.getActiveTools(),
     };
 }

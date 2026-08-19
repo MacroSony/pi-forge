@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, hasAgentProfileErrors, isResolvedAgentProfileUsable, loadAgentProfileFile, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
-import { PROFILE_ENTRY_TYPE } from "./runtime-state.js";
+import { persistProfileProvenance } from "./session-adapter.js";
 import { writeAgentProfileFile, deleteAgentProfileFile, } from "./repositories/agent-profile.js";
 import { globalAgentProfilePath } from "./storage.js";
 import { formatResourceKey } from "./resource-identity.js";
@@ -135,7 +135,7 @@ export async function applyResolvedAgentProfile(pi, state, deps, resolved, ctx) 
         },
     };
     state.lastAppliedProfile = provenance;
-    pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
+    persistProfileProvenance(pi, provenance);
     return {
         ok: true,
         warningCount: resolved.diagnostics.filter((diagnostic) => diagnostic.level === "warning").length,
@@ -146,7 +146,7 @@ export function forgetAgentProfileProvenance(pi, state) {
     if (!state.lastAppliedProfile)
         return false;
     state.lastAppliedProfile = undefined;
-    pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance: null });
+    persistProfileProvenance(pi, null);
     return true;
 }
 export function createAgentProfilePreview(resolved, current, targetEffectiveTools) {

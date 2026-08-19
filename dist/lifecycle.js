@@ -2,9 +2,9 @@ import { compileMessages, getLatestUserMessage, } from "./compiler.js";
 import { PromptCompilationContext } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage } from "./regex.js";
 import { promptRuntimeFromPi } from "./prompt-runtime.js";
-import { isAgentProfileProvenance } from "./agent-profile.js";
-import { PROFILE_ENTRY_TYPE, STATE_ENTRY_TYPE } from "./runtime-state.js";
-export function registerLifecycleHandlers(pi, state, deps) {
+import { resetCompileCycle } from "./compile-cycle.js";
+import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.js";
+export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     let startupToolPolicyPending = false;
     pi.on("session_shutdown", async () => {
         // Pi carries the old runtime's active built-in tool names into a replacement
@@ -21,7 +21,7 @@ export function registerLifecycleHandlers(pi, state, deps) {
         startupToolPolicyPending = true;
         try {
             const freshSession = shouldAutoActivateForSessionStart(event, ctx);
-            await restoreBranchScopedRuntime(ctx, state, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
+            await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
             if (freshSession)
                 await deps.activateFreshSessionDefaults(ctx);
         }
@@ -40,13 +40,13 @@ export function registerLifecycleHandlers(pi, state, deps) {
         deps.syncActiveToolPolicy(ctx);
     });
     pi.on("session_tree", async (_event, ctx) => {
-        await restoreBranchScopedRuntime(ctx, state, deps);
+        await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
         deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after tree navigation");
     });
     pi.on("session_compact", async (_event, ctx) => {
-        await restoreBranchScopedRuntime(ctx, state, deps);
+        await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
         deps.reloadForgeWorkspace(ctx);
         deps.refreshWebEditorHost(ctx);
         deps.notifyActivePreset(ctx, "after compaction");
@@ -63,59 +63,60 @@ export function registerLifecycleHandlers(pi, state, deps) {
         return reason ? { block: true, reason } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
-        state.currentSystemPromptOptions = event.systemPromptOptions;
+        compileCycle.currentSystemPromptOptions = event.systemPromptOptions;
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
-        state.currentLatestUserMessage = event.prompt;
-        state.contextRewritePending = true;
-        if (!state.active)
+        compileCycle.currentLatestUserMessage = event.prompt;
+        compileCycle.contextRewritePending = true;
+        const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+        if (!active)
             return;
         const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
-        state.currentCompilationContext = new PromptCompilationContext(state.active.stack, compilationRuntime);
-        const result = state.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
+        compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, compilationRuntime);
+        const result = compileCycle.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
         deps.recordCompileDiagnostics(ctx, result.diagnostics);
         return { systemPrompt: result.systemPrompt };
     });
     pi.on("context", async (event, ctx) => {
-        if (!state.active || !state.currentSystemPromptOptions || !state.contextRewritePending)
+        const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+        if (!active || !compileCycle.currentSystemPromptOptions || !compileCycle.contextRewritePending)
             return;
         // Rewrite the message layout only for the first provider request of a user-submitted prompt.
         // Tool-result follow-up turns must receive Pi's natural context; otherwise post-history
         // prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call
         // and the model restarts its planning instead of continuing from the tool result.
-        state.contextRewritePending = false;
-        const latestUserMessage = getLatestUserMessage(event.messages) ?? state.currentLatestUserMessage;
-        state.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
-        const result = state.currentCompilationContext
-            ? state.currentCompilationContext.compileMessages(event.messages)
-            : compileMessages(state.active.stack, promptRuntimeFromPi(state.currentSystemPromptOptions, ctx, latestUserMessage), event.messages);
-        deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...result.diagnostics]);
+        compileCycle.contextRewritePending = false;
+        const latestUserMessage = getLatestUserMessage(event.messages) ?? compileCycle.currentLatestUserMessage;
+        compileCycle.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
+        const result = compileCycle.currentCompilationContext
+            ? compileCycle.currentCompilationContext.compileMessages(event.messages)
+            : compileMessages(active.stack, promptRuntimeFromPi(compileCycle.currentSystemPromptOptions, ctx, latestUserMessage), event.messages);
+        deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...result.diagnostics]);
         return { messages: result.messages };
     });
     pi.on("message_end", async (event, ctx) => {
-        if (!state.active)
+        const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+        if (!active)
             return;
         const diagnostics = [];
-        const message = applyFinalizeRegexRulesToMessage(state.active.stack, event.message, diagnostics);
+        const message = applyFinalizeRegexRulesToMessage(active.stack, event.message, diagnostics);
         if (diagnostics.length > 0)
-            deps.recordCompileDiagnostics(ctx, [...state.latestCompileDiagnostics, ...diagnostics]);
+            deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...diagnostics]);
         if (!message)
             return;
         return { message };
     });
     pi.on("agent_end", async () => {
-        state.currentSystemPromptOptions = undefined;
-        state.currentLatestUserMessage = undefined;
-        state.currentCompilationContext = undefined;
-        state.contextRewritePending = false;
+        resetCompileCycle(compileCycle);
     });
 }
-async function restoreBranchScopedRuntime(ctx, state, deps, options) {
-    state.lastAppliedProfile = getRestoredProfileProvenance(ctx);
-    state.currentCompilationContext = undefined;
-    state.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
+async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, options) {
+    const restoredProfile = getRestoredProfileProvenance(ctx);
+    compileCycle.currentCompilationContext = undefined;
+    compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
     const restoredActiveId = getRestoredActiveId(ctx);
-    state.lastPersistedActiveId = restoredActiveId;
+    deps.restorePersistedActiveId(restoredActiveId);
     await deps.reloadStacks(ctx, restoredActiveId, options);
+    workspace.setLastAppliedProfile(restoredProfile);
 }
 function shouldAutoActivateForSessionStart(event, ctx) {
     if (event.reason === "new")
@@ -154,47 +155,5 @@ function isFreshStartupBranch(entries) {
     // opened empty session receives another bootstrap pair, so the count limits
     // above keep it from being mistaken for a newly created session.
     return thinkingLevelChanges === 1;
-}
-function getLegacyVariableStateDiagnostic(ctx) {
-    const entries = getCurrentBranchEntries(ctx);
-    const hasLegacyVariableState = entries.some((entry) => {
-        const candidate = entry;
-        return candidate?.type === "custom" && candidate?.customType === "pi-forge-variable-state";
-    });
-    if (!hasLegacyVariableState)
-        return [];
-    return [{
-            level: "info",
-            message: "Legacy pi-forge-variable-state entries are ignored; mutable session variables were removed in 0.5.0.",
-        }];
-}
-function getRestoredProfileProvenance(ctx) {
-    const entries = getCurrentBranchEntries(ctx);
-    for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = entries[i];
-        if (entry.type !== "custom" || entry.customType !== PROFILE_ENTRY_TYPE)
-            continue;
-        if (entry.data?.provenance === null)
-            return undefined;
-        return isAgentProfileProvenance(entry.data?.provenance) ? entry.data.provenance : undefined;
-    }
-    return undefined;
-}
-function getCurrentBranchEntries(ctx) {
-    const leafId = ctx.sessionManager.getLeafId();
-    if (leafId === null)
-        return [];
-    const sessionManager = ctx.sessionManager;
-    return sessionManager.getBranch ? sessionManager.getBranch(leafId ?? undefined) : sessionManager.getEntries();
-}
-function getRestoredActiveId(ctx) {
-    const entries = getCurrentBranchEntries(ctx);
-    for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = entries[i];
-        if (entry.type === "custom" && entry.customType === STATE_ENTRY_TYPE) {
-            return typeof entry.data?.activeStackId === "string" ? entry.data.activeStackId : undefined;
-        }
-    }
-    return undefined;
 }
 //# sourceMappingURL=lifecycle.js.map

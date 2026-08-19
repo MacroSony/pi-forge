@@ -6,7 +6,7 @@ import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
 import { AGENT_PROFILE_TYPE, agentProfileFingerprint, agentProfilePath, type AgentProfile, type AgentProfileProvenance } from "../src/agent-profile.ts";
 import { GLOBAL_FORGE_DIR_ENV } from "../src/storage.ts";
-import { PROFILE_ENTRY_TYPE } from "../src/runtime-state.ts";
+import { PROFILE_ENTRY_TYPE } from "../src/session-adapter.ts";
 import { createContext, createHarness, startSession, writeProfile, writeStack } from "./helpers/index-command-harness.ts";
 
 function model(provider: string, id: string): Model<any> {

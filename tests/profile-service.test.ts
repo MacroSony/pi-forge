@@ -22,7 +22,7 @@ import {
 	getAgentProfileRuntimeStatus,
 	writeAgentProfile,
 } from "../src/profile-service.ts";
-import { PROFILE_ENTRY_TYPE } from "../src/runtime-state.ts";
+import { PROFILE_ENTRY_TYPE } from "../src/session-adapter.ts";
 
 function model(provider = "test", id = "model"): Model<any> {
 	return {

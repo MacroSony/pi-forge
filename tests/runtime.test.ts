@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRuntimeState } from "../src/runtime-state.ts";
 import { createToolPolicyRuntime, reconcileToolPolicyBaseline } from "../src/runtime/tool-policy-runtime.ts";
 
 test("tool policy baseline reconciliation preserves late additions and external removals", () => {
@@ -27,7 +26,7 @@ test("tool policy runtime owns filtering, preview, and restoration state", () =>
 		getAllTools: () => allTools,
 		setActiveTools: (names: string[]) => { activeTools = [...names]; },
 	} as any;
-	const state = createRuntimeState();
+	const state: { active?: any } = {};
 	const active = {
 		filePath: "/tmp/read-only.json",
 		scope: "project" as const,
@@ -36,7 +35,7 @@ test("tool policy runtime owns filtering, preview, and restoration state", () =>
 		stack: { schemaVersion: 1 as const, id: "read-only", tools: { allow: ["read"] }, items: [] },
 	};
 	state.active = active;
-	const runtime = createToolPolicyRuntime(pi, state);
+	const runtime = createToolPolicyRuntime(pi, () => state.active);
 
 	runtime.sync();
 	assert.deepEqual(activeTools, ["read"]);

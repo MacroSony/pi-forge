@@ -1,15 +1,16 @@
-import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, loadAgentProfilesScoped, loadGlobalAgentProfiles, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
+import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
 import { chooseDefaultStack } from "../loader.js";
 import { applyResolvedAgentProfile } from "../profile-service.js";
-export function createProfileRuntime(pi, state, deps) {
+import { formatResourceKey } from "../resource-identity.js";
+export function createProfileRuntime(pi, workspace, deps) {
     function reloadProfiles(ctx) {
-        state.profiles = ctx.isProjectTrusted() ? loadAgentProfilesScoped(ctx.cwd) : loadGlobalAgentProfiles();
+        workspace.reloadProfiles(ctx.cwd, ctx.isProjectTrusted());
     }
     function resolveProfile(target, ctx) {
         return resolveAgentProfile(target, {
             models: ctx.modelRegistry.getAll(),
             availableModels: ctx.modelRegistry.getAvailable(),
-            promptStacks: state.stacks,
+            promptStacks: [...workspace.snapshot().stacks],
             toolNames: pi.getAllTools().map((tool) => tool.name),
         });
     }
@@ -19,26 +20,28 @@ export function createProfileRuntime(pi, state, deps) {
         // activate global prompt stacks during a fresh session.
         if (!ctx.isProjectTrusted())
             return;
-        const target = chooseAutoActivateAgentProfile(state.profiles);
+        const snapshot = workspace.snapshot();
+        const target = chooseAutoActivateAgentProfile(snapshot.profiles);
         if (!target) {
-            if (hasAutoActivateAgentProfile(state.profiles)) {
-                state.active = undefined;
+            if (hasAutoActivateAgentProfile(snapshot.profiles)) {
+                workspace.setActiveStack(undefined);
                 deps.updateStatus(ctx);
                 ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback prompt stack was applied.", "error");
                 return;
             }
-            state.active = chooseDefaultStack(state.stacks);
+            const fallback = chooseDefaultStack([...snapshot.stacks]);
+            workspace.setActiveStack(fallback ? formatResourceKey(fallback.key) : undefined);
             deps.updateStatus(ctx);
             return;
         }
         const resolved = resolveProfile(target, ctx);
         if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
-            state.active = undefined;
+            workspace.setActiveStack(undefined);
             deps.updateStatus(ctx);
             ctx.ui.notify(`pi-forge: auto-activation profile ${target.profile.id} failed preflight; no profile or fallback prompt stack was applied. ${renderAgentProfileDiagnostics(resolved.diagnostics)}`, "error");
             return;
         }
-        const result = await applyResolvedAgentProfile(pi, state, { setActive: deps.setActive }, resolved, ctx);
+        const result = await applyResolvedAgentProfile(pi, workspace, { setActive: deps.setActive }, resolved, ctx);
         if (!result.ok) {
             const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}.` : "";
             const detail = result.detail.endsWith(".") ? result.detail : `${result.detail}.`;

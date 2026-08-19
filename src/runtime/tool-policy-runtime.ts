@@ -1,6 +1,6 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { applyResourcePolicy, hasResourcePolicy } from "../policy.ts";
-import type { PiForgeRuntimeState } from "../runtime-state.ts";
+import type { LoadedPromptStack } from "../types.ts";
 import type { PromptStack } from "../types.ts";
 import type { WebEditorPolicyResource, WebEditorPolicyResources } from "../web-editor/index.ts";
 
@@ -13,7 +13,7 @@ export interface ToolPolicyRuntime {
 	policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources;
 }
 
-export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeState): ToolPolicyRuntime {
+export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => LoadedPromptStack | undefined): ToolPolicyRuntime {
 	let baseline: string[] | undefined;
 	let lastApplied: string[] | undefined;
 
@@ -24,7 +24,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeS
 	}
 
 	function sync(ctx?: ExtensionContext): void {
-		const policy = state.active?.stack.tools;
+		const policy = getActiveStack()?.stack.tools;
 		if (!hasResourcePolicy(policy)) {
 			restore(ctx);
 			return;
@@ -56,7 +56,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, state: PiForgeRuntimeS
 	}
 
 	function blockReason(toolName: string): string | undefined {
-		const active = state.active;
+		const active = getActiveStack();
 		if (!active || !hasResourcePolicy(active.stack.tools)) return undefined;
 		if (applyResourcePolicy([toolName], active.stack.tools).includes(toolName)) return undefined;
 		return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;

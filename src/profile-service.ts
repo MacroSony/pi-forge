@@ -17,7 +17,7 @@ import {
 	type LoadedAgentProfile,
 	type ResolvedAgentProfile,
 } from "./agent-profile.ts";
-import { PROFILE_ENTRY_TYPE } from "./runtime-state.ts";
+import { persistProfileProvenance } from "./session-adapter.ts";
 import {
 	writeAgentProfileFile,
 	deleteAgentProfileFile,
@@ -257,7 +257,7 @@ export async function applyResolvedAgentProfile(
 		},
 	};
 	state.lastAppliedProfile = provenance;
-	pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
+	persistProfileProvenance(pi, provenance);
 
 	return {
 		ok: true,
@@ -269,7 +269,7 @@ export async function applyResolvedAgentProfile(
 export function forgetAgentProfileProvenance(pi: ExtensionAPI, state: AgentProfileApplicationState): boolean {
 	if (!state.lastAppliedProfile) return false;
 	state.lastAppliedProfile = undefined;
-	pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance: null });
+	persistProfileProvenance(pi, null);
 	return true;
 }
 

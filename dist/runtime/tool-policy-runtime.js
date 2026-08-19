@@ -1,5 +1,5 @@
 import { applyResourcePolicy, hasResourcePolicy } from "../policy.js";
-export function createToolPolicyRuntime(pi, state) {
+export function createToolPolicyRuntime(pi, getActiveStack) {
     let baseline;
     let lastApplied;
     function filterKnownTools(names) {
@@ -9,7 +9,7 @@ export function createToolPolicyRuntime(pi, state) {
         return names.filter((name) => known.has(name));
     }
     function sync(ctx) {
-        const policy = state.active?.stack.tools;
+        const policy = getActiveStack()?.stack.tools;
         if (!hasResourcePolicy(policy)) {
             restore(ctx);
             return;
@@ -43,7 +43,7 @@ export function createToolPolicyRuntime(pi, state) {
             ctx.ui.setStatus("pi-forge-tools", undefined);
     }
     function blockReason(toolName) {
-        const active = state.active;
+        const active = getActiveStack();
         if (!active || !hasResourcePolicy(active.stack.tools))
             return undefined;
         if (applyResourcePolicy([toolName], active.stack.tools).includes(toolName))

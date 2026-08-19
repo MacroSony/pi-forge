@@ -1,11 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { isDisabledPromptStackId, isSafePromptStackMutationPath, promptStackPath, promptStackReadDirs } from "./loader.ts";
+import { promptStackReadDirs } from "./loader.ts";
 import { resolveResourceSelector } from "./catalog.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { renderDiagnostics, renderPreview, showText } from "./preview.ts";
-import type { PiForgeRuntimeState } from "./runtime-state.ts";
 import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migration.ts";
 import { forgeExtensionsDir, globalForgeExtensionsDir } from "./storage.ts";
+import type { CompileCycleState } from "./compile-cycle.ts";
+import type { ForgeWorkspace } from "./workspace.ts";
 import type { LoadedPromptStack } from "./types.ts";
 
 export interface PresetCommandDeps {
@@ -16,7 +17,12 @@ export interface PresetCommandDeps {
 	stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
 }
 
-export function registerPresetCommand(pi: ExtensionAPI, state: PiForgeRuntimeState, deps: PresetCommandDeps): void {
+export function registerPresetCommand(
+	pi: ExtensionAPI,
+	workspace: ForgeWorkspace,
+	compileCycle: CompileCycleState,
+	deps: PresetCommandDeps,
+): void {
 	pi.registerCommand("preset", {
 		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload, ui",
 		getArgumentCompletions: (prefix) => {
@@ -28,7 +34,7 @@ export function registerPresetCommand(pi: ExtensionAPI, state: PiForgeRuntimeSta
 			const first = parts[0];
 			if (["use", "preview", "validate"].includes(first)) {
 				const fragment = parts[1] ?? "";
-				const ids = ["none", ...stackSelectorCandidates(state)];
+				const ids = ["none", ...stackSelectorCandidates(workspace)];
 				return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
 			}
 			if (first === "ui" && parts.length <= 2) {
@@ -44,13 +50,14 @@ export function registerPresetCommand(pi: ExtensionAPI, state: PiForgeRuntimeSta
 			return null;
 		},
 		handler: async (args, ctx) => {
-			await handlePresetCommand(state, deps, args, ctx);
+			await handlePresetCommand(workspace, compileCycle, deps, args, ctx);
 		},
 	});
 }
 
 async function handlePresetCommand(
-	state: PiForgeRuntimeState,
+	workspace: ForgeWorkspace,
+	compileCycle: CompileCycleState,
 	deps: PresetCommandDeps,
 	args: string,
 	ctx: ExtensionCommandContext,
@@ -61,12 +68,12 @@ async function handlePresetCommand(
 	switch (command) {
 		case "list":
 		case "status":
-			await showText(ctx, "pi-forge prompt stacks", renderStackList(state, ctx));
+			await showText(ctx, "pi-forge prompt stacks", renderStackList(workspace, ctx));
 			return;
 
 		case "reload":
 			await deps.reloadStacks(ctx, deps.selectedActiveId());
-			ctx.ui.notify(`pi-forge: reloaded ${state.stacks.length} prompt stack(s).`, "info");
+			ctx.ui.notify(`pi-forge: reloaded ${workspace.snapshot().stacks.length} prompt stack(s).`, "info");
 			return;
 
 		case "ui": {
@@ -93,12 +100,13 @@ async function handlePresetCommand(
 				ctx.ui.notify(`Unknown prompt stack: ${id}`, "error");
 				return;
 			}
-			ctx.ui.notify(state.active ? `pi-forge: active prompt stack ${state.active.stack.id}` : "pi-forge: prompt stack disabled", "info");
+			const active = workspace.snapshot().active;
+			ctx.ui.notify(active ? `pi-forge: active prompt stack ${active.stack.id}` : "pi-forge: prompt stack disabled", "info");
 			return;
 		}
 
 		case "preview": {
-			const target = rest[0] ? findStack(state, rest[0]) : state.active;
+			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
 				ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
 				return;
@@ -108,7 +116,7 @@ async function handlePresetCommand(
 		}
 
 		case "validate": {
-			const target = rest[0] ? findStack(state, rest[0]) : state.active;
+			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
 				ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
 				return;
@@ -118,7 +126,7 @@ async function handlePresetCommand(
 		}
 
 		case "diagnostics": {
-			await showText(ctx, "pi-forge diagnostics", renderCurrentDiagnostics(state));
+			await showText(ctx, "pi-forge diagnostics", renderCurrentDiagnostics(workspace, compileCycle));
 			return;
 		}
 
@@ -150,25 +158,26 @@ async function handlePresetCommand(
 	}
 }
 
-function renderStackList(state: PiForgeRuntimeState, ctx: ExtensionCommandContext): string {
+function renderStackList(workspace: ForgeWorkspace, ctx: ExtensionCommandContext): string {
+	const snapshot = workspace.snapshot();
 	const lines = [
 		"Prompt stack directories:",
 		...promptStackReadDirs(ctx.cwd).map((dir, index) => `  ${index === 0 ? "primary" : "legacy"}: ${dir}`),
 		"Forge extension directories:",
 		`  global: ${globalForgeExtensionsDir()}`,
 		`  project: ${forgeExtensionsDir(ctx.cwd)}`,
-		`Loaded forge extensions: ${state.forgeExtensionPaths.length}`,
-		`Active stack: ${state.active?.stack.id ?? "(none)"}`,
+		`Loaded forge extensions: ${snapshot.extensionPaths.length}`,
+		`Active stack: ${snapshot.active?.stack.id ?? "(none)"}`,
 		"",
 	];
 
-	if (state.stacks.length === 0) {
+	if (snapshot.stacks.length === 0) {
 		lines.push("No prompt stacks found.", 'Create .pi/forge/prompt-stacks/<id>.json with "autoActivate": true to auto-activate a stack.');
 		return lines.join("\n");
 	}
 
-	for (const loaded of state.stacks) {
-		const marker = loaded === state.active ? "*" : " ";
+	for (const loaded of snapshot.stacks) {
+		const marker = loaded === snapshot.active ? "*" : " ";
 		const errors = loaded.diagnostics.filter((d) => d.level === "error").length;
 		const warnings = loaded.diagnostics.filter((d) => d.level === "warning").length;
 		const suffix = errors || warnings ? ` (${errors} errors, ${warnings} warnings)` : "";
@@ -180,42 +189,39 @@ function renderStackList(state: PiForgeRuntimeState, ctx: ExtensionCommandContex
 	return lines.join("\n");
 }
 
-function renderCurrentDiagnostics(state: PiForgeRuntimeState): string {
+function renderCurrentDiagnostics(workspace: ForgeWorkspace, compileCycle: CompileCycleState): string {
+	const snapshot = workspace.snapshot();
 	const lines = ["# pi-forge diagnostics", ""];
 	lines.push("## Active stack load/validation diagnostics", "");
-	lines.push(state.active ? renderDiagnostics(state.active.diagnostics) : "No active prompt stack.");
+	lines.push(snapshot.active ? renderDiagnostics(snapshot.active.diagnostics) : "No active prompt stack.");
 	lines.push("", "## pi-forge extension diagnostics", "");
-	lines.push(renderDiagnostics(state.forgeExtensionDiagnostics));
+	lines.push(renderDiagnostics([...snapshot.extensionDiagnostics]));
 	lines.push("", "## Loaded pi-forge extensions", "");
-	lines.push(state.forgeExtensionPaths.length > 0 ? state.forgeExtensionPaths.map((path) => `- ${path}`).join("\n") : "(none)");
+	lines.push(snapshot.extensionPaths.length > 0 ? snapshot.extensionPaths.map((path) => `- ${path}`).join("\n") : "(none)");
 	lines.push("", "## Latest runtime compile diagnostics", "");
-	lines.push(renderDiagnostics(state.latestCompileDiagnostics));
+	lines.push(renderDiagnostics(compileCycle.latestCompileDiagnostics));
 	return lines.join("\n");
 }
 
-function stackSelectorCandidates(state: PiForgeRuntimeState): string[] {
+function stackSelectorCandidates(workspace: ForgeWorkspace): string[] {
+	const stacks = workspace.snapshot().stacks;
 	const collidingIds = new Set<string>();
 	const byId = new Map<string, number>();
-	for (const loaded of state.stacks) {
+	for (const loaded of stacks) {
 		const count = (byId.get(loaded.stack.id) ?? 0) + 1;
 		byId.set(loaded.stack.id, count);
 		if (count === 2) collidingIds.add(loaded.stack.id);
 	}
 
 	const candidates: string[] = [];
-	for (const loaded of state.stacks) {
+	for (const loaded of stacks) {
 		candidates.push(collidingIds.has(loaded.stack.id) ? formatResourceKey(loaded.key) : loaded.stack.id);
 	}
 	return [...new Set(candidates)].sort();
 }
 
-export function selectedActiveId(state: PiForgeRuntimeState): string | undefined {
-	if (state.active) return formatResourceKey(state.active.key);
-	return isDisabledPromptStackId(state.lastPersistedActiveId) ? "none" : undefined;
-}
-
-export function findStack(state: PiForgeRuntimeState, selector: string): LoadedPromptStack | undefined {
+export function findStack(workspace: ForgeWorkspace, selector: string): LoadedPromptStack | undefined {
 	const parsed = parseResourceSelector(selector);
 	if (!parsed.ok) return undefined;
-	return resolveResourceSelector(state.stacks, parsed.selector);
+	return resolveResourceSelector(workspace.snapshot().stacks, parsed.selector);
 }
