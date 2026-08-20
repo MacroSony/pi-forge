@@ -7,3 +7,4 @@ node_modules/
 .DS_Store
 # Marketing drafts and published ad copy.
 ads/
+*.tgz

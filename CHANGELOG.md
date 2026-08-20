@@ -11,6 +11,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Fixed
 
 - Profile auto-activation now honors project-over-global shadowing: a global `autoActivate` profile whose ID exists in project scope no longer activates, matching `chooseAutoActivateStack` semantics (0.5.x review A1). Regression test covers explicit opt-out and implicit shadowing.
+- The fresh-session startup branch now evaluates auto-activation requests with the same shadow-aware candidacy (A1 follow-up, found by dogfooding): a global `autoActivate` profile shadowed by a same-ID project profile no longer triggers the spurious "multiple agent profiles request auto-activation" error, and the auto-activate stack fallback is no longer skipped in that state.
 - Extension macro/slot names may no longer contain `.` — forge-v1 uses dots as path separators, so dotted names were registerable but unreachable (0.5.x review A2). Regression test pins the rejection.
 - Static prompt analysis now reports macro dependency cycles as `recursion` diagnostics instead of silently stopping traversal (0.5.x review A5). Regression test pins a single deduplicated diagnostic per cycle.
 - Dev/test Pi SDK pins aligned across both repositories at `0.84.2` (0.5.x review A4); the optional package no longer mixes `0.83.0`/`0.84.2` instances in its tree.

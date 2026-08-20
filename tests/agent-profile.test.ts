@@ -357,6 +357,10 @@ test("chooseAutoActivateAgentProfile honors project-over-global shadowing", () =
 	assert.equal(chooseAutoActivateAgentProfile([globalLoaded, projectLoaded]), undefined);
 	// Without the shadowing project profile, the global candidate still activates.
 	assert.equal(chooseAutoActivateAgentProfile([globalLoaded])?.profile.id, "reviewer");
+	// The runtime error branch must use the same shadow-aware view: a shadowed
+	// global auto-activate profile does not count as requesting activation.
+	assert.equal(hasAutoActivateAgentProfile([globalLoaded, projectLoaded]), false);
+	assert.equal(hasAutoActivateAgentProfile([globalLoaded]), true);
 	// A same-ID project profile shadows the global definition even without an
 	// explicit autoActivate field — matching chooseAutoActivateStack semantics.
 	const projectNeutral = {
@@ -364,4 +368,5 @@ test("chooseAutoActivateAgentProfile honors project-over-global shadowing", () =
 		profile: { ...base },
 	};
 	assert.equal(chooseAutoActivateAgentProfile([globalLoaded, projectNeutral]), undefined);
+	assert.equal(hasAutoActivateAgentProfile([globalLoaded, projectNeutral]), false);
 });

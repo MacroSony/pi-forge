@@ -46,7 +46,13 @@ export function chooseAutoActivateAgentProfile(profiles) {
         : undefined;
 }
 export function hasAutoActivateAgentProfile(profiles) {
-    return profiles.some((loaded) => loaded.profile.autoActivate === true);
+    // Shadow-aware: a global auto-activate profile whose ID exists in project
+    // scope is not a candidate (see chooseAutoActivateAgentProfile), so it must
+    // not count as requesting activation either.
+    if (profiles.some((loaded) => loaded.scope === "project" && loaded.profile.autoActivate === true))
+        return true;
+    const projectIds = new Set(profiles.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.profile.id));
+    return profiles.some((loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true && !projectIds.has(loaded.profile.id));
 }
 export function resolveAgentProfile(loaded, resources) {
     const diagnostics = [...loaded.diagnostics];
