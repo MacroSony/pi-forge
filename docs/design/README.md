@@ -32,4 +32,4 @@ The original six-phase target remains the long-term goal and is preserved here:
 
 - [0.4 roadmap and implementation log](roadmap-0.4-archive.md)
 
-The current 0.4 exported semantics are in the [subagent adapter contract](../reference/subagent-adapter.md); accepted work ordering is in the [roadmap](../development/roadmap.md).
+The 0.5 host boundary is in the [subagent host port contract](../reference/subagent-host-port.md); accepted work ordering is in the [roadmap](../development/roadmap.md).

@@ -33,31 +33,16 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Project trust gates profile loading, application, and writes.
 - Shared typed profile services own capture, protected write/update/delete, application/rollback, immutable preview data, provenance changes, and runtime-drift calculation so command, web-editor, and adapter consumers do not duplicate behavior.
 
-## Subagent Adapter Contract
+## Subagent Host Port
 
-- Dedicated experimental `@zihanw/pi-forge/subagent` entry point, with the existing package-root exports retained for 0.4 compatibility.
-- Subagent types, canonicalization, request/preflight validation, tool negotiation, context preparation, plan construction, response validation, and diagnostics live in focused modules behind a compatibility contract barrel.
-- Exported pure v1 `AgentRequest`, profile snapshot, backend preflight, execution-plan, enforcement-receipt, and discriminated response types without registering or shipping a runner.
+- Experimental versioned `@zihanw/pi-forge/subagent` entry point: the minimal Forge DTO host contract (wire messages, recursive exact-field validators, transport-neutral `ForgeHostTransport`, `ForgeHost`/`ForgeHostClient` lifecycle) plus Forge-owned canonical `sha256:v1` fingerprint helpers byte-compatible with the runtime's canonical JSON.
+- Mandatory lifecycle semantics: bounded discovery timeouts, explicit duplicate-host failure, `hostId`+`generation`-bound request/reply with stale/foreign rejection, disposal with `unavailable` and full listener cleanup. The host starts only after the first workspace snapshot exists, so an advertised host implies a loaded workspace; reload honors project trust (untrusted workspaces expose global resources only).
+- Three minimal operations: `listProfiles` (loaded profile summaries with diagnostics), `resolveProfile` (immutable host-owned profile snapshot artifact with content fingerprints), and `prepare` (host-owned prompt compilation).
+- Host-owned preparation: the client sends only a profile selector, the task text, prompt-compilation access facts (`level`/`network`/`allowProcess`), and backend facts (model, thinking level, tool catalog). The workspace resolves the profile and stack from its snapshot, filters the tool catalog through stack policy and access facts, and compiles through the same compilation context as runtime and preview. Responses return the system prompt, messages ending with the protected delegated task, effective tool IDs/names, diagnostics, the profile snapshot, and `preparedAt`.
+- The port never exposes live contexts, internal registries, or execution/runtime material (access workspace model, limits, `resultProjection`, `parent`, `remoteEgressConsent`, base system prompt). The delegated-task base system prompt is host-owned and intentionally empty; the prompt stack composes the system prompt.
 - Backend-independent host profile resolution produces path-free declarative snapshots and does not consult the parent model registry or authentication state.
 - Host dependency scanning detects custom macro and slot references, records registration source identities, and fails resolution when required registrations are missing.
-- Backend tool negotiation intersects prompt-stack name policy with declared filesystem/process/network effects and per-request access.
-- Optional empty-by-default backend registry validates registration and preflight identity, requires the backend to supply a complete fingerprinted prompt runtime, binds the exact host preparation to execution, routes dry-plan discard, rejects unbound or refingerprinted substitute plans, arbitrates cancellation and host timeouts, normalizes failures, and protects opaque trace routing behind authorization-scoped handles.
-- Experimental `pi-subprocess-readonly` backend reuses the host Pi runtime for authenticated preparation, then runs a clean foreground Pi subprocess with the exact profile model, thinking level, and compiled prompt. Its candidate model tools are limited to `read`, `grep`, `find`, and `ls`, further filtered by prompt-stack policy; it loads no write/shell tools, skills, prompt templates, context files, or third-party extensions. Host-coupled capability mismatches fail closed during preflight.
-- Delegation is an explicit per-profile opt-in under the trusted project's `.pi/forge/subagents.json` `profiles` map; ordinary profile loading/application remains independent. Global profile entries warn and are ignored so project-local profile IDs cannot silently authorize unrelated projects. Disabled and unlisted profiles are omitted from `forge_subagent_profiles` and rejected before preparation by the command, model-callable tool, and concrete runtime.
-- The no-egress `forge_subagent_profiles` tool gives the main agent a live catalog of enabled profile IDs, names, descriptions, model/thinking/stack metadata, effective backend/timeout and sources, and ready/unavailable resolution status. It also reports whether the parent tool policy currently permits `forge_subagent`.
-- `summaryInToolDescription` (default `false`) embeds a compact, bounded summary of enabled profiles directly in the `forge_subagent` tool description, so the main agent can pick a frequently used profile without a discovery call. Ready profiles sort first, unavailable enabled profiles include their first resolution error, and the summary is capped at 8 profiles and 1,000 characters. It refreshes whenever profiles, stacks, or configuration change and keeps `forge_subagent_profiles` as the authoritative full-detail surface.
-- The model-callable `forge_subagent` tool and `/forge-agent run` prepare an immutable plan before provider transport. `/forge-agent run` and the default tool path require explicit human approval; a trusted-project `allowAgentInvocationWithoutApproval` option in `subagents.json` may authorize only the model-callable tool without a per-run prompt. The default review shows the task, profile/stack, provider/model/thinking level, effective tools, working directory, shared-user boundary, payload size, and fingerprint; the complete provider-bound prompt can be opened on demand.
-- Backend selection is layered configuration rather than profile schema: `backend` in global/project `subagents.json` supplies defaults, the trusted project's `profiles.<id>.backend` supplies a per-profile override, and `/forge-agent plan|run --backend <id>` or the interactive `forge_subagent` `backend` parameter overrides one run. Both the `pi-subprocess-readonly` and `pi-rpc-readonly` backends are registered; there is no fallback when the selected backend is unavailable, and unattended tool invocation is pinned to the effective configured profile backend.
-- Foreground timeout is layered host configuration rather than profile schema: `timeoutMs` in global/project `subagents.json` supplies a 60,000-millisecond default and `profiles.<id>.timeoutMs` can override it per profile; values must be from 1,000 through 3,600,000 milliseconds. Invalid values warn and preserve the preceding valid/default value; discovery, planning, and approval surfaces show the effective best-effort timeout and source.
-- Foreground progress and the bounded final report enter the normal tool-call result. A dedicated child report channel retains the normalized response, complete text transcript, tool calls/results, diagnostics, usage, approval receipt, and execution report without persisting the full prompt or inline image data; omitted images retain MIME and encoded-size metadata.
-- The subprocess backend is explicitly shared-user rather than OS-sandboxed: read-only is a tool policy, host timeout/cancellation are best effort, and `/tree` reverts conversation state rather than provider egress, billing, or external side effects.
-- `/forge-agent backends` and `/forge-agent plan <profile> <task>` expose backend discovery and provider-free exact dry planning to a human.
-- Deterministic fake-backend conformance coverage exercises accepted/rejected preflight, tool effects, access/limit refusal, exact preparation, success/failure, cancellation races, timeout, media, artifacts, and traces. An offline faux-provider test additionally executes the concrete SDK backend through a real Pi `AgentSession` without network traffic.
-- Selected parent context uses explicit provenance and deterministic exact UTF-8 budgeting; required items survive, optional items are selected newest-first, and the complete delegated text/media task remains the protected final user message.
-- Granular validators cover request access/depth/media/limits, backend capabilities and enforcement, prompt-runtime fidelity, plan correlation, all response terminal statuses, usage units, artifact namespaces/paths, and authorized trace handles.
-- Portable profile, prompt-stack, and complete execution fingerprints use canonical `sha256:v1` serialization without changing legacy branch-provenance fingerprints.
-- The opt-in internal Pi SDK spike remains available for broader live diagnostics, including media and trusted custom registrations beyond the shipped text-only walking skeleton.
-- Adapter responsibilities and unsupported runner behavior are documented in the [subagent adapter contract](subagent-adapter.md).
+- Execution ownership (delegation authorization in `subagents.json`, the 0.4 execution contract, backend preflight/plan sealing via `@zihanw/pi-subagent-runtime`, approval UX, `forge_subagent`/`forge_subagent_profiles`, and `/forge-agent`) lives in the optional `@zihanw/pi-forge-subagents` package, which consumes this port and never imports main-package internals. See the [subagent host port contract](subagent-host-port.md).
 
 ## Prompt Stack Loading and Storage
 
@@ -171,9 +156,9 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/profile validate [id]`
 - `/profile reload`
 - `/profile forget`
-- `/forge-agent backends`
-- `/forge-agent plan <profile> <task>`
-- `/forge-agent run <profile> <task>`
+- `/forge-agent backends` (optional `@zihanw/pi-forge-subagents` package)
+- `/forge-agent plan <profile> <task>` (optional package)
+- `/forge-agent run <profile> <task>` (optional package)
 - `/preset list`
 - `/preset status`
 - `/preset use <id|none>`
@@ -196,7 +181,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset ui` starts a token-protected localhost web editor for stack management.
 - Node built-in tests cover agent-profile resolution/application/provenance, compiler, loader, regex, and the command/event harness.
 - Tests cover regex validation, history-stage transforms, compiled-stage transforms, finalize transforms, replacement syntax, trim strings, depth limits, role/message/char limits, and preservation of non-text message parts.
-- Tests cover subagent host resolution, custom dependency detection, all access/required-limit/terminal-status matrices, effect-aware tool negotiation, context budgeting, protected media tasks, canonical fingerprint tamper detection, and malformed external contract values.
+- Tests cover subagent host resolution, custom dependency detection, effect-aware tool negotiation, golden canonical fingerprint vectors, and malformed host-port wire values. Execution-contract matrices (access/required-limit/terminal-status, context budgeting, protected media tasks) moved to the optional package's contract tests.
 - A real headless-Chrome smoke test covers editor load, dirty state, metadata editing, policy and regex editing, validation, save, disk persistence, export, import, and browser-console errors.
 - TypeScript strict typecheck passes.
 - Package dry-run verifies published tarball contents.
@@ -241,7 +226,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
 - Trust and path guardrails for save/import/fork/delete writes.
 - Top-level navigation between prompt stacks and project agent profiles; stack drafts, selection, and active state survive surface switches.
-- Profile list shows ID, name, model/thinking/stack targets, validation state, `autoActivate` and last-applied badges, and a `subagent` badge for delegation-enabled profiles.
+- Profile list shows ID, name, model/thinking/stack targets, validation state, and `autoActivate` and last-applied badges.
 - Profile create, edit, validate, save, one-shot apply, and delete reuse the shared resolver, transactional application service, and guarded repository; save rejects a second auto-activation profile and on-disk conflicts.
 - Profile form populates provider/model choices from the model registry and stack choices from the shared stack repository, and shows resolution diagnostics for missing models, authentication, unsupported thinking levels, invalid stacks, and unmatched tool policy.
 - A runtime/provenance card distinguishes current runtime, last-applied provenance, source-definition state, and per-field runtime drift after external model, thinking-level, or stack changes.

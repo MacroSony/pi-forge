@@ -69,9 +69,9 @@ Document the tested range separately from peer constraints. Pi-coupled experimen
 
 ## Package boundaries
 
-- `@zihanw/pi-forge` is the Pi extension and stable macro/slot registration surface.
-- `@zihanw/pi-forge/subagent` is the preferred experimental host-contract entry point.
-- `@zihanw/pi-subagent-runtime` owns execution lifecycle and fresh-process backends.
-- Legacy `@zihanw/pi-forge/src/*` aliases resolve to compiled compatibility modules and are not a promise that internals are public.
+- `@zihanw/pi-forge` is the Pi extension (default export) and the stable macro/slot registration surface; no other root exports or `src/*` aliases exist.
+- `@zihanw/pi-forge/subagent` is the experimental versioned host-port entry point (wire DTOs, validators, transport, client/host lifecycle, canonical fingerprints).
+- `@zihanw/pi-forge-subagents` is the optional package owning subagent execution, configuration, and the 0.4 execution contract.
+- `@zihanw/pi-subagent-runtime` owns execution lifecycle and fresh-process backends (a dependency of the optional package, not of the main package).
 
 See the [public API policy](../reference/public-api.md).

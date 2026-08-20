@@ -36,10 +36,10 @@
 
 ## Agent profile 工作区
 
-列表显示 profile ID、名称、模型、思考等级、stack、校验状态、auto-activation、last-applied provenance 和 delegation 状态。每个 profile 都带 `project` / `global` scope badge；同 ID 的 shadow 对会显示 `shadows global:<id>` 或 `shadowed by project:<id>`。
+列表显示 profile ID、名称、模型、思考等级、stack、校验状态、auto-activation 和 last-applied provenance。每个 profile 都带 `project` / `global` scope badge；同 ID 的 shadow 对会显示 `shadows global:<id>` 或 `shadowed by project:<id>`。
 
 可信项目通过 **New profile** 旁的 scope 下拉（默认 `project`）选择目标 scope：选择 `global` 写入用户全局 `~/.pi/forge/agent-profiles`，选择 `project` 写入项目 `.pi/forge/agent-profiles`。全局 profile 可通过显式 `global:<id>` 路由编辑、校验、保存、一次性应用和删除；未限定路由始终只作用于项目资源。编辑全局 profile 时，stack 下拉只显示全局 stack。Model 选项来自 Pi registry，thinking 选项反映模型支持，stack 选项来自同一个 repository。编辑器会拒绝同 scope 内第二个 auto-activation profile。
 
-Delegation 卡片按 profile 的 scope 修改 `subagents.profiles.<id>` 的 enable/backend/timeout：项目 profile 写入项目 config，全局 profile 写入用户全局 config。切换 profile、刷新、删除或离开页面时，未保存的 delegation 字段会得到保护。通用默认值和 `allowAgentInvocationWithoutApproval` 只能在 config 文件中设置。
+## Delegation
 
-启用前请阅读[前台 delegation](delegation.md)。
+Delegation 配置不在主编辑器中。可选包 `@zihanw/pi-forge-subagents` 持有专用的 `.pi/forge/subagents.json` 和 `~/.pi/forge/subagents.json` 文件。启用 profile 前请阅读[前台 delegation](delegation.md)。

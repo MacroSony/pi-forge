@@ -57,7 +57,7 @@ Restart Pi or run:
 /preset ui
 ```
 
-The local editor can create, fork, validate, preview, import, export, and delete prompt stacks. Its **Agent profiles** view manages one-shot model/thinking/stack presets and experimental delegation settings. Writes require a trusted project.
+The local editor can create, fork, validate, preview, import, export, and delete prompt stacks. Its **Agent profiles** view manages one-shot model/thinking/stack presets. Writes require a trusted project. Delegation settings live in the optional `@zihanw/pi-forge-subagents` package's `subagents.json` files, not in the editor.
 
 ### 3. Save a profile
 
@@ -137,7 +137,7 @@ Read [foreground delegation and its safety model](docs/guides/delegation.md) bef
 - [Macros and slots](docs/reference/macros-and-slots.md)
 - [Configuration](docs/reference/configuration.md)
 - [Public API policy](docs/reference/public-api.md)
-- [Experimental subagent adapter](docs/reference/subagent-adapter.md)
+- [Experimental subagent host port](docs/reference/subagent-host-port.md)
 
 ### Develop and design
 

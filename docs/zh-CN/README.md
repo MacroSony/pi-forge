@@ -11,7 +11,7 @@
 ## 指南
 
 - [Web 编辑器](guides/web-editor.md)
-- [迁移到 0.5](../guides/migrating-to-0.5.md)
+- [迁移到 0.5](guides/migrating-to-0.5.md)
 - [实验性前台 delegation](guides/delegation.md)：启用前请先阅读安全边界。
 - [Prompt stack 使用场景（英文）](../guides/use-cases.md)
 
@@ -27,7 +27,7 @@
 - [Macros 与 slots（英文）](../reference/macros-and-slots.md)
 - [配置（英文）](../reference/configuration.md)
 - [Public API（英文）](../reference/public-api.md)
-- [实验性 subagent adapter（英文）](../reference/subagent-adapter.md)
+- [实验性 subagent host port（英文）](../reference/subagent-host-port.md)
 
 ## 开发与设计
 

@@ -100,4 +100,4 @@ The current backends are **shared-user, not operating-system sandboxes**.
 
 The default tools intentionally provide no mutation path. Do not add write, edit, or shell access to this shared-user design. OS isolation and separately approved staged writes remain future work.
 
-For integration authors, see the [experimental adapter contract](../reference/subagent-adapter.md).
+For integration authors, see the [subagent host port contract](../reference/subagent-host-port.md).

@@ -70,11 +70,12 @@ Profiles live in `.pi/forge/agent-profiles/*.json` by default; `/profile save gl
 |---|---|
 | `.pi/forge/prompt-stacks/` | Project prompt stacks |
 | `.pi/forge/agent-profiles/` | Project agent profiles |
-| `.pi/forge/config.json` | Trusted project configuration and `project:<id>` delegation authorization |
+| `.pi/forge/config.json` | Trusted project configuration (`webEditor.*`) |
 | `.pi/forge/extensions/` | Trusted project macro/slot registration code |
 | `~/.pi/forge/prompt-stacks/` | User-global prompt stacks |
 | `~/.pi/forge/agent-profiles/` | User-global agent profiles |
-| `~/.pi/forge/config.json` | User defaults and `global:<id>` delegation authorization |
+| `~/.pi/forge/config.json` | User defaults (`webEditor.*`) |
+| `.pi/forge/subagents.json` / `~/.pi/forge/subagents.json` | Delegation authorization owned by the optional `@zihanw/pi-forge-subagents` package |
 | `~/.pi/forge/extensions/` | Trusted user macro/slot registration code |
 
 Legacy `.pi/prompt-stacks/*.json` files remain readable. Command-created stacks go to `.pi/forge/prompt-stacks`; use the web editor's `global` scope selector to create stacks in `~/.pi/forge/prompt-stacks`. Same-named new-location files shadow legacy ones. Migrate safely with:

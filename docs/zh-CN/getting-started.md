@@ -64,11 +64,12 @@ Profile 默认保存在 `.pi/forge/agent-profiles/*.json`。`/profile save globa
 |---|---|
 | `.pi/forge/prompt-stacks/` | 项目 prompt stacks |
 | `.pi/forge/agent-profiles/` | 项目 agent profiles |
-| `.pi/forge/config.json` | 项目配置和 `project:<id>` delegation 授权 |
+| `.pi/forge/config.json` | 项目配置（`webEditor.*`） |
 | `.pi/forge/extensions/` | 可信项目 macro/slot 代码 |
 | `~/.pi/forge/prompt-stacks/` | 用户全局 prompt stacks |
 | `~/.pi/forge/agent-profiles/` | 用户全局 agent profiles |
-| `~/.pi/forge/config.json` | 用户默认配置和 `global:<id>` delegation 授权 |
+| `~/.pi/forge/config.json` | 用户默认配置（`webEditor.*`） |
+| `.pi/forge/subagents.json` / `~/.pi/forge/subagents.json` | 由可选包 `@zihanw/pi-forge-subagents` 持有的 delegation 授权配置 |
 | `~/.pi/forge/extensions/` | 可信用户 macro/slot 代码 |
 
 旧的 `.pi/prompt-stacks/*.json` 仍可读取；命令创建的 stack 会写到 `.pi/forge/prompt-stacks`，使用 Web 编辑器的 `global` scope 下拉可创建到用户全局 `~/.pi/forge/prompt-stacks`。安全迁移方式：

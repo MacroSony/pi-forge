@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [Roadmap](roadmap.md)
 
-Status: accepted design; implementation complete for 0.4.1 (identity, catalogs, scoped stacks/profiles, persistence, auto-activation, delegation, zh-CN docs, and web-editor global create/fork/import with explicit scope).
+Status: accepted design; implementation complete for 0.4.1 (identity, catalogs, scoped stacks/profiles, persistence, auto-activation, delegation, zh-CN docs, and web-editor global create/fork/import with explicit scope). Historical record: the delegation-policy references to `.pi/forge/config.json` `subagents.*` below are superseded in 0.5 — delegation configuration moved to the optional package's dedicated `subagents.json` files (see the [0.5 migration guide](../guides/migrating-to-0.5.md)).
 
 ## Confirmed design decisions
 

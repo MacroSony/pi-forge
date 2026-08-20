@@ -57,7 +57,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-本地编辑器可以新建、fork、校验、预览、导入、导出和删除 prompt stack，并可在新建/fork/导入时明确选择写入项目或用户全局存储。切换到 **Agent profiles** 可以浏览项目与全局 profile、编辑和删除全局 profile（通过显式 `global:<id>` 路由），并管理实验性 delegation 配置。写入操作要求项目已被信任。
+本地编辑器可以新建、fork、校验、预览、导入、导出和删除 prompt stack，并可在新建/fork/导入时明确选择写入项目或用户全局存储。切换到 **Agent profiles** 可以浏览项目与全局 profile、编辑和删除全局 profile（通过显式 `global:<id>` 路由）。写入操作要求项目已被信任。Delegation 配置由可选包 `@zihanw/pi-forge-subagents` 的 `subagents.json` 文件管理，不在编辑器中。
 
 ### 3. 保存 profile
 

@@ -27,7 +27,7 @@ Use this page as the documentation map. Each subject has one authoritative home;
 - [Configuration](reference/configuration.md)
 - [Implemented feature inventory](reference/features.md)
 - [Public API policy](reference/public-api.md)
-- [Experimental subagent adapter contract](reference/subagent-adapter.md)
+- [Experimental subagent host port contract](reference/subagent-host-port.md)
 
 ## Development
 

@@ -1,28 +1,75 @@
 # Public API policy
 
-pi-forge is pre-1.0. This document separates supported integration surfaces from experimental 0.4 work and compatibility paths that should not become permanent dependencies.
+[Documentation](../README.md)
 
-## Stable
+pi-forge is pre-1.0. This document defines the intentional integration surfaces of the 0.5.0 line.
 
-- The package default export is the Pi extension entry point declared by `pi.extensions`.
-- Package-root macro and slot registration APIs (`registerMacro`, `registerSlot`, their registry readers, render contexts, and declarative definition types) are supported for trusted reusable extensions.
-- `ForgeExtensionApi` and related registration types are supported for trusted project-local forge extensions.
+## The three intentional entry points
 
-Stable means changes should preserve source compatibility within the documented supported release range unless a changelog entry explicitly announces a breaking release.
+`check-package` enforces this allowlist; nothing else is importable from the package.
 
-## Experimental
+### 1. Package root: extension factory
 
-- Agent-profile repository, resolution, application, preview, provenance, and drift APIs are 0.4 experimental surfaces.
-- The runner-neutral subagent contract and host-resolution helpers are 0.4 experimental surfaces. Backend registration, sealing, lifecycle, and the fresh-process backends moved to `@zihanw/pi-subagent-runtime`; Forge consumes them through its public runtime API.
-- New subagent integrations should import from `@zihanw/pi-forge/subagent`. The package root continues to re-export the current subagent names through 0.4 for compatibility.
+```ts
+import piForge from "@zihanw/pi-forge";
+```
 
-Experimental APIs are typed, tested, and documented, but may change in later releases as adapter and parent-integration experience exposes missing semantics. Changes should still be deliberate and recorded.
+The default export is the Pi extension entry point declared by `pi.extensions`. Most users install the package and never import it directly.
 
-## Internal compatibility paths
+### 2. Package root: trusted extension API
 
-- `@zihanw/pi-forge/src/*` subpath exports exist for compatibility with earlier source-shaped imports. They resolve to compiled `dist` modules and are not a promise that every implementation module is a permanent public API.
-- Browser-only `@zihanw/pi-forge/src/web-editor/client/*` implementation paths are explicitly blocked. The editor is distributed only through its generated embedded assets; these authored modules have never been a runtime integration surface.
-- The package root re-exports `@zihanw/pi-forge/subagent` contract names directly from the focused contract modules. The former `src/subagent-contract.ts` compatibility barrel and the `scripts/subagent-sdk-spike*` diagnostic harness were removed in the 0.4 cleanup.
-- Physical `src/` files are not included in the npm tarball. Runtime installation and legacy `@zihanw/pi-forge/src/*` aliases use compiled `dist` modules; source inspection or modification requires a repository clone.
+```ts
+import { registerMacro, registerSlot } from "@zihanw/pi-forge";
+import type {
+  ForgeExtensionApi,
+  ForgeExtensionRegister,
+  PromptEnvironment,
+  PromptEnvironmentValue,
+  PromptExtensionArgumentDefinition,
+  PromptExtensionOptionDefinition,
+  PromptExtensionOptionsSchema,
+  PromptExtensionOptionType,
+  PromptMacroDefinition,
+  PromptMacroRenderContext,
+  PromptMacroRenderer,
+  PromptRegistryEntry,
+  PromptRenderHelpers,
+  PromptSlotDefinition,
+  PromptSlotRenderContext,
+  PromptSlotRenderer,
+} from "@zihanw/pi-forge";
+```
 
-Before removing the compatibility subpaths, check known consumers, announce the change, and provide supported package entry points for legitimate integrations.
+Supported for trusted reusable and project-local extensions. The contract (pure renderers, declared dependencies, immutable `PromptEnvironment`, bounded output) is specified in the [0.5.0 architecture plan](../design/architecture-0.5.md#extension-port-contract-050) and the [custom macros and slots guide](../guides/custom-macros-and-slots.md).
+
+### 3. `@zihanw/pi-forge/subagent`: versioned host port
+
+```ts
+import {
+  ForgeHost, ForgeHostClient, ForgeHostPortError,
+  FORGE_HOST_CHANNEL, FORGE_HOST_PORT_VERSION, FORGE_HOST_PORT_OPERATIONS,
+  validateListProfilesRequest, validateListProfilesResponse,
+  validateResolveProfileRequest, validateResolveProfileResponse,
+  validatePrepareRequest, validatePrepareResponse,
+  canonicalSubagentJson, subagentFingerprint,
+  subagentSourceProfileFingerprint, subagentPromptStackFingerprint,
+} from "@zihanw/pi-forge/subagent";
+```
+
+The experimental host port over the Pi event bus: discovery, profile listing/snapshot, and host-owned prompt preparation with mandatory lifecycle semantics (correlation IDs, payload validation, bounded timeouts, host generation, duplicate-host failure, disposal/`unavailable`, listener cleanup). The wire DTOs and validators are self-contained Forge data contracts; the main package has no dependency on `@zihanw/pi-subagent-runtime`. The canonical `sha256:v1` fingerprint helpers are Forge-owned and byte-compatible with the runtime's canonical JSON.
+
+The optional `@zihanw/pi-forge-subagents` package consumes this port and owns subagent execution and configuration.
+
+## Compatibility policy
+
+- **Stable** surfaces (root factory, macro/slot registration) preserve source compatibility within the documented release range unless a changelog entry announces a breaking release.
+- **Experimental** surfaces (the `/subagent` host port) are typed, tested, and documented, but may change deliberately as integration experience exposes missing semantics.
+- Everything not listed above is internal and may change without notice. In particular: no `src/*` subpath aliases exist, `./examples/*` is not an import surface (examples ship as browsable files), and removed 0.4 surfaces (the execution contract re-exports, loader/profile/catalog helpers) now live either nowhere or in `@zihanw/pi-forge-subagents`.
+
+## Removed in 0.5.0
+
+- All `@zihanw/pi-forge/src/*` compatibility aliases and the `./examples/*` subpath export.
+- Root re-exports of loader, agent-profile, profile-service, catalog, resource-identity, render-helper values, the `forge-v1` engine, and registry readers.
+- Root and `/subagent` re-exports of the 0.4 execution contract (`AgentRequest`, `createAgentExecutionPlan`, `validateAgentRequest`, `negotiateSubagentTools`, `resolveSubagentHostProfile`, `prepareSubagentHostPlan`, and friends). The execution contract now belongs to `@zihanw/pi-forge-subagents`.
+
+See the [0.5 migration guide](../guides/migrating-to-0.5.md) for the complete breaking-change list.

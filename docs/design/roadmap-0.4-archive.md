@@ -10,7 +10,7 @@ This file was the forward-looking product roadmap during 0.4 development. Comple
 - [Feature inventory](../reference/features.md): implemented profile, prompt-stack, web-editor, payload, extension, packaging, and experimental subagent behavior.
 - [Changelog](../../CHANGELOG.md): release and unreleased change history.
 - [Subagent interface design](subagents/interface-design.md): accepted request/response architecture, context model, responsibility boundaries, and implementation history.
-- [Subagent adapter contract](../reference/subagent-adapter.md): current exported contract, validation, enforcement receipts, and adapter responsibilities.
+- Subagent adapter contract: the 0.4 exported contract documented the execution surface that moved to `@zihanw/pi-forge-subagents` in 0.5; see the [subagent host port contract](../reference/subagent-host-port.md) for the current boundary.
 - [SDK spike findings](subagents/sdk-spike-findings.md): historical real Pi SDK findings for model/auth resolution, exact prompt preparation, dynamic tools, media, timeout, and cleanup.
 - [Subagent design review](subagents/design-review.md): issues that drove resolution, preflight, enforcement, task-preservation, fingerprint, and response revisions.
 - [Public API policy](../reference/public-api.md): stable, experimental, and internal compatibility surfaces.

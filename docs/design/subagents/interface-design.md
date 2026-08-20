@@ -1,6 +1,6 @@
 # Subagent request/response design
 
-Status: historical design and implementation record for the completed 0.4 path. Execution ownership (backend registry, preflight binding, plan sealing, conversation/execution fingerprints, lifecycle, and the fresh-process `pi-subprocess-readonly`/`pi-rpc-readonly` backends) lives in `@zihanw/pi-subagent-runtime`; the former in-package registry and `pi-sdk-isolated` compatibility backend were removed in that migration. The broader Pi SDK spike is recorded in the [SDK spike findings](sdk-spike-findings.md) (harness since removed), and the concrete exported semantics are documented in the [subagent adapter contract](../../reference/subagent-adapter.md).
+Status: historical design and implementation record for the completed 0.4 path. Execution ownership (backend registry, preflight binding, plan sealing, conversation/execution fingerprints, lifecycle, and the fresh-process `pi-subprocess-readonly`/`pi-rpc-readonly` backends) lives in `@zihanw/pi-subagent-runtime`; the former in-package registry and `pi-sdk-isolated` compatibility backend were removed in that migration. The broader Pi SDK spike is recorded in the [SDK spike findings](sdk-spike-findings.md) (harness since removed), and the 0.5 boundary is documented in the [subagent host port contract](../../reference/subagent-host-port.md).
 
 ## Goals
 

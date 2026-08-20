@@ -43,4 +43,4 @@ Agent profile 是项目级或用户全局、带 schema version 的预设，只�
 
 `/profile status` 会把 profile 源定义变化和当前模型/思考等级/stack drift 分开显示。Provenance 只用于 branch 状态报告；reload、resume、tree navigation 和 compaction 不会重新应用 profile。
 
-普通 profile 默认不能委派。Delegation 授权跟随 profile scope：可信项目 `.pi/forge/config.json` 的 `subagents.profiles.<id>` 只授权 `project:<id>`，用户全局 `~/.pi/forge/config.json` 的 `subagents.profiles.<id>` 只授权 `global:<id>`；同 ID 的全局和项目 profile 永不互相继承授权。删除 profile 会清除同 scope 的授权，防止以后同 ID profile 继承权限。启用前见[前台 delegation](../guides/delegation.md)。
+普通 profile 默认不能委派。Delegation 授权由可选包 `@zihanw/pi-forge-subagents` 通过专用文件持有：可信项目 `.pi/forge/subagents.json` 只授权 `project:<id>`，用户全局 `~/.pi/forge/subagents.json` 只授权 `global:<id>`，并可按 profile 覆盖 backend/timeout；同 ID 的全局和项目 profile 永不互相继承授权。主包不读取任何 subagent 配置，删除 profile 也不会改动 `subagents.json`。启用前见[前台 delegation](../guides/delegation.md)。

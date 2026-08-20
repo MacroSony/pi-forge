@@ -68,14 +68,8 @@ async function loadProfiles(reloadFromDisk = false): Promise<void> {
 	}
 }
 
-function confirmDiscardDelegation(): boolean {
-	// Delegation moved to the optional pi-forge-subagents package; nothing to discard.
-	return true;
-}
-
 function selectProfile(entry: WebEditorProfileEntry): void {
 	if (entry.filePath === selected.value?.filePath) return;
-	if (!confirmDiscardDelegation()) return;
 	selectedPath.value = entry.filePath;
 	editorMode.value = undefined;
 	profileActionStatus.value = "";
@@ -83,12 +77,10 @@ function selectProfile(entry: WebEditorProfileEntry): void {
 }
 
 function startEditor(mode: "create" | "edit"): void {
-	if (!confirmDiscardDelegation()) return;
 	editorMode.value = mode;
 }
 
 function refreshProfiles(): void {
-	if (!confirmDiscardDelegation()) return;
 	void loadProfiles(true);
 }
 
@@ -137,8 +129,7 @@ async function applySelectedProfile(): Promise<void> {
 async function deleteSelectedProfile(): Promise<void> {
 	const target = selected.value;
 	if (!target) return;
-	if (!confirmDiscardDelegation()) return;
-	if (!window.confirm(`Delete agent profile ${target.profile.id} and its delegation settings?\n\n${target.filePath}`)) return;
+	if (!window.confirm(`Delete agent profile ${target.profile.id}?\n\n${target.filePath}\n\nDelegation settings in subagents.json are managed by the optional pi-forge-subagents package and are not removed.`)) return;
 	profileActionBusy.value = true;
 	profileActionStatus.value = "";
 	profileActionError.value = "";
