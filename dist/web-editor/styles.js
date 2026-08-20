@@ -376,10 +376,15 @@ html, body {
 }
 .item-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
+}
+.item-tools button,
+.main-actions button {
+  white-space: nowrap;
 }
 .item-tools-spacer {
   flex: 1 1 auto;
@@ -855,6 +860,10 @@ html, body {
   font-weight: 650;
   margin-bottom: 3px;
 }
+.policy-row:not(.header) .field > label,
+.policy-row:not(.header) .resource-picker > label {
+  display: none;
+}
 .policy-mode {
   display: flex;
   flex-wrap: wrap;
@@ -1041,6 +1050,10 @@ html, body {
   }
   .variable-row, .definition-row, .session-row, .policy-row, .regex-row {
     grid-template-columns: 1fr;
+  }
+  .policy-row:not(.header) .field > label,
+  .policy-row:not(.header) .resource-picker > label {
+    display: block;
   }
   .regex-fields {
     grid-template-columns: 1fr;

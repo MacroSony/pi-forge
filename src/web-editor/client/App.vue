@@ -2,11 +2,14 @@
 import { onMounted, onUnmounted, ref } from "vue";
 
 import ProfileBrowser from "./components/ProfileBrowser.vue";
+import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
 const activeSurface = ref<"stacks" | "profiles">("stacks");
 
 onMounted(async () => {
+	// Theme is global to the page; apply it before either surface renders.
+	applyEditorTheme(editorTheme.value);
 	try {
 		const { startLegacyEditor } = await import("./legacy-editor.ts");
 		stopLegacyEditor = startLegacyEditor({
@@ -49,6 +52,17 @@ onUnmounted(() => {
 			>
 				Agent profiles
 			</button>
+			<span class="surface-nav-spacer"></span>
+			<button
+				id="themeToggleBtn"
+				class="theme-toggle"
+				type="button"
+				:data-icon="editorTheme === 'dark' ? '☀' : '◐'"
+				:title="editorTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+				@click="toggleEditorTheme"
+			>
+				{{ editorTheme === 'dark' ? 'Light' : 'Dark' }}
+			</button>
 		</nav>
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
@@ -57,7 +71,6 @@ onUnmounted(() => {
 			<div class="brand">pi-forge stack editor</div>
 			<div id="status" class="status">Loading</div>
 			<span id="dirtyBadge" class="dirty-badge" title="The current stack has unsaved edits">Unsaved</span>
-			<button id="themeBtn" data-icon="◐" title="Toggle light or dark theme">Theme</button>
 			<button id="reloadBtn" data-icon="↻" title="Reload prompt stacks from disk">Reload</button>
 			<button id="disableBtn" data-icon="■" title="Disable the active prompt stack">Disable stack</button>
 		</header>
@@ -162,6 +175,16 @@ onUnmounted(() => {
 	border-color: var(--accent);
 	background: var(--accent-bg);
 	color: var(--accent);
+}
+
+.surface-nav-spacer {
+	flex: 1 1 auto;
+}
+
+.surface-nav .theme-toggle {
+	min-height: 32px;
+	border-color: var(--line);
+	background: var(--pane);
 }
 
 .editor-surface {

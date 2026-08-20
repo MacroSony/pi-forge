@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## Unreleased
 
+### Fixed
+
+- Web editor polish (code-review follow-up): the theme toggle moved from the legacy stacks topbar into the shared surface navigation, so it stays visible and functional on the Agent profiles surface; theme state now lives in a shared `theme.ts` module consumed by both the Vue shell and the legacy bridge. Policy editor rows no longer repeat the column labels on wide layouts (labels return when the grid stacks on narrow screens). Item/main action buttons no longer wrap their own text mid-label, and the item toolbar wraps whole buttons instead of clipping.
+
 ### Changed
 
 - Strengthened the `/subagent` host-port DTO types (code-review follow-up, no wire-behavior change): `ForgeResolveProfileResponse.snapshot`, `ForgePrepareResponse.messages`/`diagnostics`/`profileSnapshot` are no longer `unknown`. New exported types: `ForgeProfileSnapshot`, `ForgeWireAgentProfile`, `ForgeWirePromptStack`, `ForgeDelegationMessage`, `ForgeDelegationDiagnostic`, `ForgePromptDependency`/`ForgePromptDependencyKind`, `ForgeListProfilesResponse`, `ForgeHostWireMessage`, and a generic `ValidationResult<T>`; the recursive validators now return typed data. Runtime validation is byte-compatible with 0.5.0.

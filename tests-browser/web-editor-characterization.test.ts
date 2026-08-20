@@ -38,12 +38,19 @@ test("web editor preserves its shell and guarded editing state", { timeout: 20_0
 
 		const initialTheme = await page.locator("body").getAttribute("data-theme");
 		assert.ok(initialTheme === "light" || initialTheme === "dark");
-		await page.locator("#themeBtn").click();
+		await page.locator("#themeToggleBtn").click();
 		const toggledTheme = initialTheme === "light" ? "dark" : "light";
 		assert.equal(await page.locator("body").getAttribute("data-theme"), toggledTheme);
 		await page.reload({ waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
 		assert.equal(await page.locator("body").getAttribute("data-theme"), toggledTheme);
+
+		// The theme toggle lives in the shared surface nav: it must stay visible
+		// and functional on the profiles surface too.
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator("#themeToggleBtn").click();
+		assert.equal(await page.locator("body").getAttribute("data-theme"), initialTheme);
+		await page.locator("#stacksSurfaceBtn").click();
 
 		await page.locator("#sidebarToggleBtn").click();
 		assert.equal(await page.locator("#shell").getAttribute("class"), "shell sidebar-collapsed");

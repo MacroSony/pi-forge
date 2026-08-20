@@ -4,6 +4,7 @@ import { attr, el, escapeHtml, eventElement, query, queryAll, type EditorElement
 import { createInspector } from "./inspector.ts";
 import { createVueItemHost } from "./vue-item-host.ts";
 import { createVueMetadataHost } from "./vue-metadata-host.ts";
+import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import type {
   EditorPromptStack,
@@ -33,7 +34,6 @@ let latestDiagnostics: PromptStackDiagnostic[] = [];
 let diagnosticsCollapsed: boolean | null = null;
 let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
-let currentTheme: "light" | "dark" = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
 let editorStarted = false;
 let editorIsActive = () => true;
 
@@ -90,40 +90,6 @@ const vueItemHost = createVueItemHost({
   renderItemList,
   setStatus,
 });
-
-function applyTheme(theme: string) {
-  currentTheme = theme === "dark" ? "dark" : "light";
-  document.body.dataset.theme = currentTheme;
-  const button = el("themeBtn");
-  if (button) {
-    button.textContent = currentTheme === "dark" ? "Light" : "Dark";
-    button.title = currentTheme === "dark" ? "Switch to light theme" : "Switch to dark theme";
-  }
-}
-
-function toggleTheme() {
-  const next = currentTheme === "dark" ? "light" : "dark";
-  writeStoredTheme(next);
-  applyTheme(next);
-  setStatus(next === "dark" ? "Dark theme enabled" : "Light theme enabled", "success");
-}
-
-function readStoredTheme(): "light" | "dark" | "" {
-  try {
-    const theme = localStorage.getItem("pi-forge-theme");
-    return theme === "light" || theme === "dark" ? theme : "";
-  } catch {
-    return "";
-  }
-}
-
-function writeStoredTheme(theme: string) {
-  try {
-    localStorage.setItem("pi-forge-theme", theme);
-  } catch {
-    // Ignore storage failures; the current page can still switch themes.
-  }
-}
 
 function setStatus(text: string, tone: any = "") {
   el("status").textContent = text;
@@ -1048,10 +1014,9 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   resetEditorState();
   editorIsActive = options.isActive ?? (() => true);
   editorStarted = true;
-  applyTheme(currentTheme);
+  applyEditorTheme(editorTheme.value);
 
   el("sidebarToggleBtn").onclick = toggleSidebar;
-  el("themeBtn").onclick = toggleTheme;
   el("newStackBtn").onclick = () => run(createNewStack);
   el("reloadBtn").onclick = () => run(reloadFromDisk);
   el("disableBtn").onclick = () => run(disableStacks);
@@ -1132,6 +1097,5 @@ function resetEditorState(): void {
   latestDiagnostics = [];
   activeTab = "items";
   metadataCollapsed = true;
-  currentTheme = readStoredTheme() || (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light");
   vueTabHost.resetErrors();
 }
