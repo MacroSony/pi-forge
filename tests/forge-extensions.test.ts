@@ -63,7 +63,7 @@ test("registry rejects dotted macro and slot names that forge-v1 cannot address"
 		/Macro name must start with a letter/,
 	);
 	assert.throws(
-		() => registerSlot({ name: "chat.history", dependencies: [], render: () => [] }),
+		() => registerSlot({ name: "chat.history", dependencies: [], render: () => "" }),
 		/Slot name must start with a letter/,
 	);
 	// Single-segment names with underscore/hyphen remain valid.
