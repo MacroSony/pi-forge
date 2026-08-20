@@ -328,3 +328,40 @@ test("validateAgentProfilePromptStackScope rejects global-to-project references"
 	assert.equal(rejected.length, 1);
 	assert.match(rejected[0]?.message ?? "", /cannot reference project prompt stack/);
 });
+
+test("chooseAutoActivateAgentProfile honors project-over-global shadowing", () => {
+	const base = {
+		schemaVersion: 1 as const,
+		type: AGENT_PROFILE_TYPE,
+		id: "reviewer",
+		model: { provider: "test-provider", id: "test-model" },
+		thinkingLevel: "high" as const,
+		promptStack: null,
+	};
+	const globalLoaded = {
+		profile: { ...base, autoActivate: true },
+		filePath: "/global/reviewer.json",
+		scope: "global" as const,
+		key: { scope: "global" as const, id: "reviewer" },
+		diagnostics: [],
+	};
+	const projectLoaded = {
+		profile: { ...base, autoActivate: false },
+		filePath: "/project/reviewer.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: "reviewer" },
+		diagnostics: [],
+	};
+	// The shadowed global auto-activate candidate must not win over the same-ID
+	// project profile that explicitly opts out.
+	assert.equal(chooseAutoActivateAgentProfile([globalLoaded, projectLoaded]), undefined);
+	// Without the shadowing project profile, the global candidate still activates.
+	assert.equal(chooseAutoActivateAgentProfile([globalLoaded])?.profile.id, "reviewer");
+	// A same-ID project profile shadows the global definition even without an
+	// explicit autoActivate field — matching chooseAutoActivateStack semantics.
+	const projectNeutral = {
+		...projectLoaded,
+		profile: { ...base },
+	};
+	assert.equal(chooseAutoActivateAgentProfile([globalLoaded, projectNeutral]), undefined);
+});

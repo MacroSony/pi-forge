@@ -52,3 +52,21 @@ function extensionSource(extension: "ts" | "mjs" | "js" | "cjs", macroName: stri
 function renderMacro(name: string): string | undefined {
 	return getRegisteredMacros().find((definition) => definition.name === name)?.render({} as never);
 }
+
+test("registry rejects dotted macro and slot names that forge-v1 cannot address", async () => {
+	const { registerMacro } = await import("../src/macro-engine.ts");
+	const { registerSlot } = await import("../src/slot-renderers.ts");
+	// forge-v1 parses "extensions.git.branch" as three path segments, so a
+	// dotted macro name would be registerable but unreachable — reject it.
+	assert.throws(
+		() => registerMacro({ name: "git.branch", dependencies: [], render: () => "main" }),
+		/Macro name must start with a letter/,
+	);
+	assert.throws(
+		() => registerSlot({ name: "chat.history", dependencies: [], render: () => [] }),
+		/Slot name must start with a letter/,
+	);
+	// Single-segment names with underscore/hyphen remain valid.
+	const macro = registerMacro({ name: "git-branch_ok", dependencies: [], render: () => "main" });
+	macro();
+});

@@ -57,9 +57,23 @@ export function analyzePromptStack(
 	}
 
 	const transitiveExtensions = new Set<string>();
+	const reportedCycles = new Set<string>();
 	const visit = (name: string, path: Set<string>): void => {
 		if (transitiveExtensions.has(name)) return;
-		if (path.has(name)) return;
+		if (path.has(name)) {
+			// Dependency cycle: runtime rendering fails closed on these, and the
+			// static pass must surface them instead of silently stopping.
+			const cycle = [...path, name];
+			const key = [...cycle].sort().join(" -> ");
+			if (!reportedCycles.has(key)) {
+				reportedCycles.add(key);
+				diagnostics.push({
+					kind: "recursion",
+					message: `Extension dependency cycle detected: ${cycle.join(" -> ")}.`,
+				});
+			}
+			return;
+		}
 		const definition = registrations.macros.find((macro) => macro.name === name);
 		path.add(name);
 		if (definition?.dependencies) {

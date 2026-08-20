@@ -418,6 +418,27 @@ test("prompt analysis excludes disabled items", async () => {
 	assert.deepEqual([...analysis.transitiveExtensions], ["known"]);
 });
 
+test("analyzePromptStack reports macro dependency cycles as diagnostics", async () => {
+	const { analyzePromptStack } = await import("../src/prompt-analysis.ts");
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "cycle",
+		items: [{ kind: "block", id: "a", content: "{{ extensions.alpha }}" }],
+	};
+	const analysis = analyzePromptStack(stack, {
+		macros: [
+			{ name: "alpha", dependencies: ["extensions.beta"] },
+			{ name: "beta", dependencies: ["extensions.alpha"] },
+		],
+		slots: [],
+	});
+	const cycles = analysis.diagnostics.filter((diagnostic) => diagnostic.kind === "recursion");
+	assert.equal(cycles.length, 1);
+	assert.match(cycles[0]!.message, /cycle/i);
+	assert.match(cycles[0]!.message, /alpha/);
+	assert.match(cycles[0]!.message, /beta/);
+});
+
 test("PromptCompilationContext evaluates an extension once across system and messages", async () => {
 	const { PromptCompilationContext } = await import("../src/compiler.ts");
 	let calls = 0;

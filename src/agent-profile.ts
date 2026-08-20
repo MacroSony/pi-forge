@@ -66,7 +66,14 @@ export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentPro
 			? projectCandidates[0]
 			: undefined;
 	}
-	const globalCandidates = profiles.filter((loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true);
+	const projectIds = new Set(
+		profiles.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.profile.id),
+	);
+	// Global candidates shadowed by a same-ID project profile must not activate:
+	// normal resolution would never see them either.
+	const globalCandidates = profiles.filter(
+		(loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true && !projectIds.has(loaded.profile.id),
+	);
 	return globalCandidates.length === 1 && !hasAgentProfileErrors(globalCandidates[0]!.diagnostics)
 		? globalCandidates[0]
 		: undefined;
