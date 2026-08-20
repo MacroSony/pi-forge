@@ -1,6 +1,6 @@
 {
 	"name": "@zihanw/pi-forge",
-	"version": "0.5.0-beta.1",
+	"version": "0.5.0",
 	"description": "Pi extension for prompt stacks, one-shot agent profiles, policy, import, and debugging.",
 	"repository": {
 		"type": "git",
