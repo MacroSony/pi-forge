@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## Unreleased
+
+### Changed
+
+- Strengthened the `/subagent` host-port DTO types (code-review follow-up, no wire-behavior change): `ForgeResolveProfileResponse.snapshot`, `ForgePrepareResponse.messages`/`diagnostics`/`profileSnapshot` are no longer `unknown`. New exported types: `ForgeProfileSnapshot`, `ForgeWireAgentProfile`, `ForgeWirePromptStack`, `ForgeDelegationMessage`, `ForgeDelegationDiagnostic`, `ForgePromptDependency`/`ForgePromptDependencyKind`, `ForgeListProfilesResponse`, `ForgeHostWireMessage`, and a generic `ValidationResult<T>`; the recursive validators now return typed data. Runtime validation is byte-compatible with 0.5.0.
+
 ## [0.5.0] - 2026-08-20
 
 ### Planning

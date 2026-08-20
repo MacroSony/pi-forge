@@ -24,7 +24,17 @@ export {
 	validateResolveProfileResponse,
 } from "./host-port.ts";
 export type {
+	ForgeDelegationDiagnostic,
+	ForgeDelegationMessage,
+	ForgeHostWireMessage,
+	ForgeListProfilesResponse,
+	ForgePrepareRequest,
+	ForgePrepareResponse,
+	ForgeProfileSnapshot,
+	ForgeProfileSummary,
 	ForgePromptAccessFacts,
+	ForgePromptDependency,
+	ForgePromptDependencyKind,
 	ForgeBackendFacts,
 	ForgeBackendTool,
 	ForgeHostConnection,
@@ -33,11 +43,11 @@ export type {
 	ForgeHostPortOperation,
 	ForgeHostPortResult,
 	ForgeHostTransport,
-	ForgePrepareRequest,
-	ForgePrepareResponse,
-	ForgeProfileSummary,
 	ForgeResolveProfileRequest,
 	ForgeResolveProfileResponse,
+	ForgeWireAgentProfile,
+	ForgeWirePromptStack,
+	ValidationResult,
 } from "./host-port.ts";
 export {
 	SUBAGENT_FINGERPRINT_PREFIX,

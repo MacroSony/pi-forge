@@ -231,7 +231,7 @@ export class ForgeWorkspace {
 	private resolveProfile(payload: unknown): ForgeHostPortResult {
 		const validated = validateResolveProfileRequest(payload);
 		if (!validated.ok) return { ok: false, error: validated.error };
-		const request = validated.data as { profile: string };
+		const request = validated.data;
 		try {
 			const snapshot = this.resolveProfilePlan(request.profile);
 			const response = { snapshot };
@@ -262,7 +262,7 @@ export class ForgeWorkspace {
 	private prepare(payload: unknown): ForgeHostPortResult {
 		const validated = validatePrepareRequest(payload);
 		if (!validated.ok) return { ok: false, error: validated.error };
-		const request = validated.data as ForgePrepareRequest;
+		const request = validated.data;
 		let response: ForgePrepareResponse;
 		try {
 			response = stripUndefined(this.preparePlan(request)) as ForgePrepareResponse;

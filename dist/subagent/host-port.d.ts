@@ -1,3 +1,5 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { SubagentFingerprint } from "./fingerprints.ts";
 /**
  * Cross-extension Forge host port v1 over the Pi event bus.
  *
@@ -104,12 +106,89 @@ export interface ForgeProfileSummary {
 export interface ForgeListProfilesResponse {
     profiles: ForgeProfileSummary[];
 }
+/**
+ * Wire diagnostic shape for delegation resolution and preparation.
+ * Structurally compatible with the optional package's `SubagentDiagnostic`.
+ */
+export interface ForgeDelegationDiagnostic {
+    level: "error" | "warning" | "info";
+    code: string;
+    message: string;
+    path?: string;
+}
+/** Host-compiled delegation message as carried over the wire (text-only). */
+export interface ForgeDelegationMessage {
+    role: "user" | "assistant" | "custom";
+    content: Array<{
+        type: "text";
+        text: string;
+    }>;
+    protectedTask?: boolean;
+    source?: "prompt-stack" | "delegated-task";
+}
+export type ForgePromptDependencyKind = "macro" | "slot";
+export interface ForgePromptDependency {
+    kind: ForgePromptDependencyKind;
+    name: string;
+    identity: string;
+    source?: string;
+}
+/**
+ * Minimal structural mirror of the host-owned agent profile carried over the
+ * wire. The host owns the schema: at runtime extra fields may pass through for
+ * forward compatibility, but consumers must only rely on the fields below.
+ */
+export interface ForgeWireAgentProfile {
+    schemaVersion: 1;
+    type: string;
+    id: string;
+    name?: string;
+    description?: string;
+    autoActivate?: boolean;
+    model: {
+        provider: string;
+        id: string;
+    };
+    thinkingLevel: ThinkingLevel;
+    promptStack: string | null;
+}
+/**
+ * Minimal structural mirror of the host-owned prompt stack carried over the
+ * wire. Same forward-compat rule as ForgeWireAgentProfile.
+ */
+export interface ForgeWirePromptStack {
+    id: string;
+    tools?: {
+        allow?: string[];
+        deny?: never;
+    } | {
+        allow?: never;
+        deny?: string[];
+    };
+}
+/**
+ * Immutable host-owned profile snapshot artifact returned by `resolveProfile`
+ * and embedded in `prepare` responses. The wire schema version is shared with
+ * the optional package's `AgentProfileSnapshot` by design.
+ */
+export interface ForgeProfileSnapshot {
+    schemaVersion: 1;
+    /** Canonical scoped selector of the resolved profile (`project:<id>` or `global:<id>`). */
+    profileId: string;
+    profile: ForgeWireAgentProfile;
+    /** Canonical scoped selector of the resolved prompt stack, or null. */
+    promptStackId: string | null;
+    promptStack: ForgeWirePromptStack | null;
+    dependencies: ForgePromptDependency[];
+    profileFingerprint: SubagentFingerprint;
+    promptStackFingerprint: SubagentFingerprint | null;
+}
 export interface ForgeResolveProfileRequest {
     profile: string;
 }
 export interface ForgeResolveProfileResponse {
     /** Immutable host-owned AgentProfileSnapshot artifact (profile + stack + fingerprints). */
-    snapshot: unknown;
+    snapshot: ForgeProfileSnapshot;
 }
 /**
  * Prompt-compilation access facts only — what Forge's tool negotiation reads.
@@ -150,30 +229,30 @@ export interface ForgePrepareResponse {
     };
     thinkingLevel: string;
     systemPrompt: string;
-    messages: unknown[];
+    messages: ForgeDelegationMessage[];
     effectiveToolIds: string[];
     effectiveToolNames: string[];
-    diagnostics: unknown[];
-    profileSnapshot: unknown;
+    diagnostics: ForgeDelegationDiagnostic[];
+    profileSnapshot: ForgeProfileSnapshot;
     preparedAt: string;
 }
 export declare class ForgeHostPortError extends Error {
     readonly code: "timeout" | "duplicate" | "unavailable" | "protocol" | "invalid";
     constructor(code: ForgeHostPortError["code"], message: string);
 }
-type ValidationResult = {
+export type ValidationResult<T = unknown> = {
     ok: true;
-    data: unknown;
+    data: T;
 } | {
     ok: false;
     error: string;
 };
-export declare function validateListProfilesRequest(value: unknown): ValidationResult;
-export declare function validateListProfilesResponse(value: unknown): ValidationResult;
-export declare function validateResolveProfileRequest(value: unknown): ValidationResult;
-export declare function validateResolveProfileResponse(value: unknown): ValidationResult;
-export declare function validatePrepareRequest(value: unknown): ValidationResult;
-export declare function validatePrepareResponse(value: unknown): ValidationResult;
+export declare function validateListProfilesRequest(value: unknown): ValidationResult<Record<string, never>>;
+export declare function validateListProfilesResponse(value: unknown): ValidationResult<ForgeListProfilesResponse>;
+export declare function validateResolveProfileRequest(value: unknown): ValidationResult<ForgeResolveProfileRequest>;
+export declare function validateResolveProfileResponse(value: unknown): ValidationResult<ForgeResolveProfileResponse>;
+export declare function validatePrepareRequest(value: unknown): ValidationResult<ForgePrepareRequest>;
+export declare function validatePrepareResponse(value: unknown): ValidationResult<ForgePrepareResponse>;
 export declare class ForgeHost {
     private readonly transport;
     private readonly options;
@@ -214,5 +293,4 @@ export declare class ForgeHostClient {
     disconnect(): void;
     get subscriptionCount(): number;
 }
-export {};
 //# sourceMappingURL=host-port.d.ts.map

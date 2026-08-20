@@ -93,6 +93,8 @@ export function validateResolveProfileResponse(value) {
     }
     if (!isJsonCompatible(value))
         return { ok: false, error: "resolveProfile response is not JSON-compatible." };
+    // The optional package validates the snapshot profile deeply; the host port
+    // only guarantees the wire envelope.
     return { ok: true, data: value };
 }
 export function validatePrepareRequest(value) {
