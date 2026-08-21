@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 
 import ProfileBrowser from "./components/ProfileBrowser.vue";
+import { editorTabButtonId, EDITOR_TABS } from "./tab-registry.ts";
 import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
@@ -105,10 +106,15 @@ onUnmounted(() => {
 					<div id="metadataHost"></div>
 				</section>
 				<nav class="view-tabs" aria-label="Stack editor sections">
-					<button id="itemsTabBtn" data-tab="items" class="active" data-icon="☰" title="Edit prompt stack items">Items</button>
-					<button id="regexTabBtn" data-tab="regex" data-icon=".*" title="Edit regex transform rules">Regex</button>
-					<button id="policyTabBtn" data-tab="policy" data-icon="⊕" title="Edit active-tool policy and model-visible skill filtering">Policy</button>
-					<button id="stackTabBtn" data-tab="stack" data-icon="{}" title="Edit context options and raw stack JSON">Stack</button>
+					<button
+						v-for="tab in EDITOR_TABS"
+						:key="tab.id"
+						:id="editorTabButtonId(tab.id)"
+						:data-tab="tab.id"
+						:class="{ active: tab.id === 'items' }"
+						:data-icon="tab.icon"
+						:title="tab.title"
+					>{{ tab.label }}</button>
 				</nav>
 				<section id="workspace" class="workspace">
 					<div class="items-pane">
