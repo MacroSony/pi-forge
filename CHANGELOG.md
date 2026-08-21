@@ -6,23 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
-## Unreleased
-
-### Fixed
-
-- Profile auto-activation now honors project-over-global shadowing: a global `autoActivate` profile whose ID exists in project scope no longer activates, matching `chooseAutoActivateStack` semantics (0.5.x review A1). Regression test covers explicit opt-out and implicit shadowing.
-- The fresh-session startup branch now evaluates auto-activation requests with the same shadow-aware candidacy (A1 follow-up, found by dogfooding): a global `autoActivate` profile shadowed by a same-ID project profile no longer triggers the spurious "multiple agent profiles request auto-activation" error, and the auto-activate stack fallback is no longer skipped in that state.
-- Extension macro/slot names may no longer contain `.` — forge-v1 uses dots as path separators, so dotted names were registerable but unreachable (0.5.x review A2). Regression test pins the rejection.
-- Static prompt analysis now reports macro dependency cycles as `recursion` diagnostics instead of silently stopping traversal (0.5.x review A5). Regression test pins a single deduplicated diagnostic per cycle.
-- Dev/test Pi SDK pins aligned across both repositories at `0.84.2` (0.5.x review A4); the optional package no longer mixes `0.83.0`/`0.84.2` instances in its tree.
-
-- Web editor polish (code-review follow-up): the theme toggle moved from the legacy stacks topbar into the shared surface navigation, so it stays visible and functional on the Agent profiles surface; theme state now lives in a shared `theme.ts` module consumed by both the Vue shell and the legacy bridge. Policy editor rows no longer repeat the column labels on wide layouts (labels return when the grid stacks on narrow screens). Item/main action buttons no longer wrap their own text mid-label, and the item toolbar wraps whole buttons instead of clipping.
-
-### Changed
-
-- Strengthened the `/subagent` host-port DTO types (code-review follow-up, no wire-behavior change): `ForgeResolveProfileResponse.snapshot`, `ForgePrepareResponse.messages`/`diagnostics`/`profileSnapshot` are no longer `unknown`. New exported types: `ForgeProfileSnapshot`, `ForgeWireAgentProfile`, `ForgeWirePromptStack`, `ForgeDelegationMessage`, `ForgeDelegationDiagnostic`, `ForgePromptDependency`/`ForgePromptDependencyKind`, `ForgeListProfilesResponse`, `ForgeHostWireMessage`, and a generic `ValidationResult<T>`; the recursive validators now return typed data. Runtime validation is byte-compatible with 0.5.0.
-
-## [0.5.0] - 2026-08-20
+## [0.5.0] - 2026-08-21
 
 ### Planning
 
@@ -51,6 +35,18 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - ForgeWorkspace and host port v1 (Lane 2b): a minimal `ForgeWorkspace` snapshot owner (genuinely immutable, deep-frozen snapshots) over the repositories/codecs, plus a versioned `@zihanw/pi-forge/subagent` host-port protocol over the Pi event bus with the three minimal operations (discovery, profile listing, prepare). Mandatory lifecycle semantics are enforced and covered by tests: bounded timeouts, explicit duplicate-host failure, `hostId`+`generation`-bound request/reply so stale/foreign requests are rejected, disposal/`unavailable`, listener cleanup, host-owned prompt preparation (client sends only profile selector + task + backend facts), and recursive JSON-compatible operation validators. The host is wired into the real extension lifecycle via `pi.events` (host can only start after the first snapshot exists, so availability implies a loaded workspace; `reload` honors project trust; disposal runs before subagent teardown; the base system prompt is host-owned and empty for delegated subagents), with integration tests that discover, list, prepare, and observe disposal through the published `/subagent` surface — including that the host is not advertised before any session start. Operation validators are strict and recursive: exact nested field sets, typed enums, plain-object-only JSON compatibility, and unknown-field rejection — so `allowProcess` is the only process fact and no runtime access/limit/execution material crosses.
 
 - Documentation and migration notes (Lane 4d): the [public API policy](docs/reference/public-api.md) was rewritten for the three intentional entry points; the 0.4 subagent adapter contract reference was replaced by the [subagent host port contract](docs/reference/subagent-host-port.md); the [0.5 migration guide](docs/guides/migrating-to-0.5.md) now covers Lanes 1–4 with a [zh-CN translation](docs/zh-CN/guides/migrating-to-0.5.md); README, setup, getting-started, web-editor, features, and configuration docs were aligned with the optional-package split (EN + zh-CN).
+
+- Strengthened the `/subagent` host-port DTO types (code-review follow-up, no wire-behavior change): `ForgeResolveProfileResponse.snapshot`, `ForgePrepareResponse.messages`/`diagnostics`/`profileSnapshot` are no longer `unknown`. New exported types: `ForgeProfileSnapshot`, `ForgeWireAgentProfile`, `ForgeWirePromptStack`, `ForgeDelegationMessage`, `ForgeDelegationDiagnostic`, `ForgePromptDependency`/`ForgePromptDependencyKind`, `ForgeListProfilesResponse`, `ForgeHostWireMessage`, and a generic `ValidationResult<T>`; the recursive validators now return typed data. Runtime validation is byte-compatible with 0.5.0.
+
+### Fixed
+
+- Profile auto-activation now honors project-over-global shadowing: a global `autoActivate` profile whose ID exists in project scope no longer activates, matching `chooseAutoActivateStack` semantics (0.5.x review A1). Regression test covers explicit opt-out and implicit shadowing.
+- The fresh-session startup branch now evaluates auto-activation requests with the same shadow-aware candidacy (A1 follow-up, found by dogfooding): a global `autoActivate` profile shadowed by a same-ID project profile no longer triggers the spurious "multiple agent profiles request auto-activation" error, and the auto-activate stack fallback is no longer skipped in that state.
+- Extension macro/slot names may no longer contain `.` — forge-v1 uses dots as path separators, so dotted names were registerable but unreachable (0.5.x review A2). Regression test pins the rejection.
+- Static prompt analysis now reports macro dependency cycles as `recursion` diagnostics instead of silently stopping traversal (0.5.x review A5). Regression test pins a single deduplicated diagnostic per cycle.
+- Dev/test Pi SDK pins aligned across both repositories at `0.84.2` (0.5.x review A4); the optional package no longer mixes `0.83.0`/`0.84.2` instances in its tree.
+
+- Web editor polish (code-review follow-up): the theme toggle moved from the legacy stacks topbar into the shared surface navigation, so it stays visible and functional on the Agent profiles surface; theme state now lives in a shared `theme.ts` module consumed by both the Vue shell and the legacy bridge. Policy editor rows no longer repeat the column labels on wide layouts (labels return when the grid stacks on narrow screens). Item/main action buttons no longer wrap their own text mid-label, and the item toolbar wraps whole buttons instead of clipping.
 
 ## [0.4.1] - 2026-08-17
 
