@@ -47,16 +47,19 @@ export function registerPayloadRequestHandler(
 	getActive: () => LoadedPromptStack | undefined,
 ): void {
 	pi.on("before_provider_request", async (event, ctx) => {
-		if (!state.interceptNextProviderPayload) return;
+		const wasArmed = state.interceptNextProviderPayload;
 		const savePath = state.interceptPayloadSavePath;
 		const displayTarget = state.interceptPayloadDisplayTarget;
+		const capture = captureProviderPayload(state, getActive(), event.payload, savePath);
+		if (!wasArmed) return;
+
 		state.interceptNextProviderPayload = false;
 		state.interceptPayloadSavePath = undefined;
 		state.interceptPayloadDisplayTarget = "editor";
 		state.payloadCaptureArmedAt = undefined;
+		state.latestProviderPayloadCapture = capture;
 		ctx.ui.setStatus("pi-forge-intercept", undefined);
 
-		const capture = captureProviderPayload(state, getActive(), event.payload, savePath);
 		if (savePath) {
 			if (!ctx.isProjectTrusted()) {
 				ctx.ui.notify("pi-forge: project is not trusted; refusing to save provider payload.", "warning");
@@ -135,7 +138,6 @@ function captureProviderPayload(
 	savePath?: string,
 ): WebEditorPayloadCapture {
 	const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
-	state.latestProviderPayloadCapture = capture;
 	appendContextDiffCapture(state.contextDiffHistory, capture);
 	return capture;
 }

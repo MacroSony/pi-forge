@@ -54,12 +54,28 @@ test("createBlock computes chars, approxTokens, and hash", () => {
 	const b = block("system", "system", "Hello, world!");
 	assert.equal(b.chars, 13);
 	assert.equal(b.approxTokens, 4);
-	assert.equal(b.hash, hashText("Hello, world!"));
+	assert.equal(b.hash, hashText(JSON.stringify({ role: "system", text: "Hello, world!" })));
 });
 
 test("turnApproxTokens sums block tokens", () => {
 	const t = turn("t", [block("a", "user", "abcd"), block("b", "user", "abcdefgh")]);
 	assert.equal(turnApproxTokens(t), 3);
+});
+
+test("turnApproxTokens rounds the complete request instead of each tiny block", () => {
+	const t = turn("t", [block("a", "user", "a"), block("b", "user", "b"), block("c", "user", "c")]);
+	assert.equal(turnApproxTokens(t), 1);
+});
+
+test("block role changes are wire changes even when visible text is identical", () => {
+	const previous = turn("prev", [block("message", "user", "same text")]);
+	const current = turn("curr", [block("message", "assistant", "same text")]);
+	const diff = diffTurns(previous, current);
+
+	assert.notEqual(previous.blocks[0]!.hash, current.blocks[0]!.hash);
+	assert.equal(diff.blocks[0]!.status, "modified");
+	assert.equal(diff.prefixTokens, 0);
+	assert.equal(diff.prefixRatio, 0);
 });
 
 test("identical consecutive fixtures produce all-same blocks and full cache prefix", () => {
@@ -95,13 +111,35 @@ test("block added fixture marks an added tail block and keeps prefix through old
 	assert.equal(addedBlock.before, undefined);
 	assert.equal(addedBlock.after?.key, "message-4");
 	assert.equal(addedBlock.tokenDelta, addedBlock.after?.approxTokens);
-	assert.equal(diff.prefixTokens, turnApproxTokens(previous));
-	assertClose(diff.prefixRatio, turnApproxTokens(previous) / turnApproxTokens(current));
+	const previousChars = previous.blocks.reduce((sum, block) => sum + block.chars, 0);
+	const conservativePrefix = Math.floor(previousChars / 4);
+	assert.equal(diff.prefixTokens, conservativePrefix);
+	assertClose(diff.prefixRatio, conservativePrefix / turnApproxTokens(current));
 	assert.equal(diff.deltaTokens, turnApproxTokens(current) - turnApproxTokens(previous));
 	assert.equal(diff.summary.addedBlocks, 1);
 	assert.equal(diff.summary.addedTokens, diff.blocks[4].tokenDelta);
 	assert.equal(diff.summary.removedTokens, 0);
 	assert.equal(diff.summary.changedBlocks, 1);
+});
+
+test("stable block keys prevent a middle insertion from cascading into modifications", () => {
+	const previous = turn("prev", [
+		block("system", "system", "Stable system"),
+		block("history", "user", "Stable history"),
+		block("tail", "assistant", "Stable tail"),
+	]);
+	const current = turn("curr", [
+		block("system", "system", "Stable system"),
+		block("inserted", "user", "New middle block"),
+		block("history", "user", "Stable history"),
+		block("tail", "assistant", "Stable tail"),
+	]);
+	const diff = diffTurns(previous, current);
+
+	assert.deepEqual(diff.blocks.map((item) => item.status), ["same", "added", "same", "same"]);
+	assert.equal(diff.blocks[2]!.before?.key, "history");
+	assert.equal(diff.blocks[3]!.before?.key, "tail");
+	assert.equal(diff.summary.modifiedBlocks, 0);
 });
 
 test("block removed fixture marks a removed tail block and keeps prefix through remaining prompt", () => {
@@ -117,7 +155,7 @@ test("block removed fixture marks a removed tail block and keeps prefix through 
 	assert.equal(removedBlock.tokenDelta, -(removedBlock.before?.approxTokens ?? 0));
 	assert.equal(diff.prefixTokens, turnApproxTokens(current));
 	assert.equal(diff.prefixRatio, 1);
-	assert.equal(diff.deltaTokens, -20);
+	assert.equal(diff.deltaTokens, turnApproxTokens(current) - turnApproxTokens(previous));
 	assert.equal(diff.summary.removedBlocks, 1);
 	assert.equal(diff.summary.removedTokens, 20);
 	assert.equal(diff.summary.changedBlocks, 1);
@@ -135,8 +173,9 @@ test("block modified mid-array fixture trims inside the modified block", () => {
 	assert.equal(modifiedBlock.before?.key, "message-2");
 	assert.equal(modifiedBlock.after?.key, "message-2");
 	assert.equal(modifiedBlock.tokenDelta, (modifiedBlock.after?.approxTokens ?? 0) - (modifiedBlock.before?.approxTokens ?? 0));
-	assert.equal(diff.prefixTokens, 83);
-	assertClose(diff.prefixRatio, 83 / turnApproxTokens(current));
+	const conservativePrefix = 81;
+	assert.equal(diff.prefixTokens, conservativePrefix);
+	assertClose(diff.prefixRatio, conservativePrefix / turnApproxTokens(current));
 	assert.equal(diff.deltaTokens, 5);
 	assert.equal(diff.summary.modifiedBlocks, 1);
 	assert.equal(diff.summary.changedBlocks, 1);
@@ -155,8 +194,9 @@ test("first-block change puts the cache boundary at the top", () => {
 	const firstBlock = diff.blocks[0]!;
 	assert.equal(firstBlock.before?.key, "system");
 	assert.equal(firstBlock.after?.key, "system");
-	assert.equal(diff.prefixTokens, 3);
-	assertClose(diff.prefixRatio, 3 / turnApproxTokens(current));
+	const conservativePrefix = Math.floor(11 / 4);
+	assert.equal(diff.prefixTokens, conservativePrefix);
+	assertClose(diff.prefixRatio, conservativePrefix / turnApproxTokens(current));
 	assert.equal(diff.deltaTokens, 3);
 	assert.equal(diff.summary.modifiedBlocks, 1);
 	assert.equal(diff.summary.addedTokens, 3);
@@ -170,13 +210,14 @@ test("multi-block mixed changes fixture combines modified, same, and added block
 		diff.blocks.map((b) => b.status),
 		["same", "modified", "same", "same", "added"],
 	);
-	assert.equal(diff.prefixTokens, 56);
-	assertClose(diff.prefixRatio, 56 / turnApproxTokens(current));
-	assert.equal(diff.deltaTokens, 29);
+	const conservativePrefix = 55;
+	assert.equal(diff.prefixTokens, conservativePrefix);
+	assertClose(diff.prefixRatio, conservativePrefix / turnApproxTokens(current));
+	assert.equal(diff.deltaTokens, 30);
 	assert.equal(diff.summary.modifiedBlocks, 1);
 	assert.equal(diff.summary.addedBlocks, 1);
 	assert.equal(diff.summary.changedBlocks, 2);
-	assert.equal(diff.summary.addedTokens, 29);
+	assert.equal(diff.summary.addedTokens, 30);
 	assert.equal(diff.summary.removedTokens, 0);
 });
 
@@ -291,7 +332,7 @@ test("single changed block trims inside the only block", () => {
 	const current = turn("curr", [block("system", "system", "Same prompt plus more")]);
 	const diff = diffTurns(previous, current);
 	const common = 11;
-	const prefixTokens = Math.ceil(common / 4);
+	const prefixTokens = Math.floor(common / 4);
 
 	assert.deepEqual(
 		diff.blocks.map((b) => b.status),

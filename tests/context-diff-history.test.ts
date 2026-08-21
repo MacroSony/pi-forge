@@ -28,12 +28,15 @@ test("extractTurnSnapshot converts an OpenAI-style payload into ordered blocks",
 
 	assert.equal(snapshot.turnId, "2025-01-01T00:00:00.000Z");
 	assert.equal(snapshot.stackId, "stack-context-diff");
-	assert.deepEqual(snapshot.blocks.map((block) => block.key), ["system", "message-1", "message-2"]);
-	assert.deepEqual(snapshot.blocks.map((block) => block.role), ["system", "user", "assistant"]);
-	assert.deepEqual(snapshot.blocks.map((block) => block.text), ["System prompt", "User message", "Assistant message"]);
-	assert.equal(snapshot.blocks[0]!.hash, createBlock("system", "system", "System prompt").hash);
-	assert.equal(snapshot.blocks[0]!.chars, 13);
-	assert.equal(snapshot.blocks[0]!.approxTokens, 4);
+	assert.deepEqual(snapshot.blocks.map((block) => block.key), ["request", "system", "message-1", "message-2"]);
+	assert.deepEqual(snapshot.blocks.map((block) => block.role), ["request", "system", "user", "assistant"]);
+	assert.deepEqual(snapshot.blocks.slice(1).map((block) => block.text), ["System prompt", "User message", "Assistant message"]);
+	assert.equal(snapshot.blocks[1]!.hash, createBlock("system", "system", "System prompt", {
+		section: "message",
+		value: messages[0],
+	}).hash);
+	assert.equal(snapshot.blocks[1]!.chars, 13);
+	assert.equal(snapshot.blocks[1]!.approxTokens, 4);
 });
 
 test("extractTurnSnapshot handles Anthropic-style system and content arrays", () => {
@@ -105,9 +108,51 @@ test("appendContextDiffCapture returns a diff even for the first capture", () =>
 	]));
 
 	assert.ok(diff);
-	assert.equal(diff.blocks.length, 1);
-	assert.equal(diff.blocks[0]!.status, "added");
-	assert.equal(diff.summary.addedBlocks, 1);
+	assert.equal(diff.blocks.length, 2);
+	assert.deepEqual(diff.blocks.map((block) => block.status), ["added", "added"]);
+	assert.equal(diff.summary.addedBlocks, 2);
+});
+
+test("snapshot hashes preserve message metadata and request-level tool definitions", () => {
+	const previous = extractTurnSnapshot({
+		capturedAt: "2025-01-01T00:03:00.000Z",
+		stackId: "stack",
+		payload: {
+			model: "gpt-4.1",
+			messages: [{
+				role: "user",
+				name: "caller",
+				tool_call_id: "call-1",
+				content: "same text",
+				tool_calls: [{ id: "call-1", type: "function", function: { name: "lookup", arguments: "{}" } }],
+			}],
+			tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }],
+		},
+		text: "previous",
+	});
+	const current = extractTurnSnapshot({
+		capturedAt: "2025-01-01T00:04:00.000Z",
+		stackId: "stack",
+		payload: {
+			model: "gpt-4.1",
+			messages: [{
+				role: "assistant",
+				name: "caller",
+				tool_call_id: "call-2",
+				content: "same text",
+				tool_calls: [{ id: "call-2", type: "function", function: { name: "lookup", arguments: '{"full":true}' } }],
+			}],
+			tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object", properties: { full: { type: "boolean" } } } } }],
+		},
+		text: "current",
+	});
+
+	assert.deepEqual(current.blocks.map((block) => block.key), ["request", "message-0"]);
+	assert.notEqual(previous.blocks[0]!.hash, current.blocks[0]!.hash);
+	assert.notEqual(previous.blocks[1]!.hash, current.blocks[1]!.hash);
+	const diff = diffTurns(previous, current);
+	assert.deepEqual(diff.blocks.map((block) => block.status), ["modified", "modified"]);
+	assert.ok(diff.prefixRatio < 1);
 });
 
 test("getContextDiffView summarizes recent turns and exposes the latest diff", () => {

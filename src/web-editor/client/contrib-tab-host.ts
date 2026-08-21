@@ -38,6 +38,8 @@ export function startContributionTabs(): () => void {
 	let activeTabId: string | undefined;
 	let descriptors: ContributionTabDescriptor[] = [];
 	let saveTimer: number | undefined;
+	let refreshTimer: number | undefined;
+	let refreshSequence = 0;
 	let schemaFormHost: ReturnType<typeof createVueSchemaFormHost> | undefined;
 
 	const statusElement = document.getElementById("status");
@@ -54,11 +56,16 @@ export function startContributionTabs(): () => void {
 		}
 	}
 
-	function clearActiveState(): void {
+	function clearActiveState(restoreLayout = true): void {
+		const hadActiveContribution = activeTabId !== undefined;
 		activeTabId = undefined;
 		schemaFormHost?.unmount();
 		schemaFormHost = undefined;
 		setContributionActive(false);
+		if (restoreLayout && hadActiveContribution) {
+			workspaceElement.style.display = "";
+			panelElement.classList.remove("open");
+		}
 	}
 
 	function activate(tab: ContributionTabDescriptor): void {
@@ -119,6 +126,7 @@ export function startContributionTabs(): () => void {
 			if (!tab.contributed) continue;
 			const button = document.createElement("button");
 			button.type = "button";
+			button.className = "";
 			button.id = editorTabButtonId(tab.id);
 			button.dataset.contribTab = tab.id;
 			button.dataset.icon = tab.icon;
@@ -130,12 +138,15 @@ export function startContributionTabs(): () => void {
 			};
 			navElement.appendChild(button);
 		}
+		setContributionActive(activeTabId !== undefined);
 	}
 
 	async function refresh(): Promise<void> {
 		if (disposed) return;
+		const sequence = ++refreshSequence;
 		try {
 			const data = await api<ContributionListResponse>("/api/contrib");
+			if (disposed || sequence !== refreshSequence) return;
 			descriptors = Array.isArray(data.tabs) ? data.tabs : [];
 			const definitions: EditorTabDefinition[] = descriptors.map((descriptor) => ({
 				id: descriptor.tabId,
@@ -150,13 +161,15 @@ export function startContributionTabs(): () => void {
 			if (activeTabId) {
 				const stillPresent = descriptors.some((descriptor) => descriptor.tabId === activeTabId);
 				if (!stillPresent) clearActiveState();
-				else {
+				else if (!schemaFormHost) {
 					const descriptor = descriptors.find((candidate) => candidate.tabId === activeTabId);
 					if (descriptor) mount(descriptor);
 				}
 			}
 		} catch (error) {
+			if (disposed || sequence !== refreshSequence) return;
 			clearContributedTabs();
+			clearActiveState();
 			renderButtons();
 			setStatus(error instanceof Error ? error.message : String(error), "error");
 		}
@@ -167,14 +180,19 @@ export function startContributionTabs(): () => void {
 	const onNavClick = (event: MouseEvent): void => {
 		const target = event.target as HTMLElement;
 		if (target.closest("[data-contrib-tab]")) return;
-		if (target.closest("[data-tab]")) clearActiveState();
+		if (target.closest("[data-tab]")) clearActiveState(false);
 	};
 
 	navElement.addEventListener("click", onNavClick);
 	void refresh();
+	refreshTimer = window.setInterval(() => {
+		void refresh();
+	}, 1000);
 
 	return () => {
 		disposed = true;
+		refreshSequence += 1;
+		if (refreshTimer !== undefined) window.clearInterval(refreshTimer);
 		if (saveTimer !== undefined) window.clearTimeout(saveTimer);
 		navElement.removeEventListener("click", onNavClick);
 		clearActiveState();

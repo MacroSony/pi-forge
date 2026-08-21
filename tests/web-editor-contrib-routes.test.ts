@@ -167,3 +167,26 @@ test("web editor contribution routes tolerate a provider disappearing", async ()
 		provider.stop();
 	}
 });
+
+test("web editor maps malformed and oversized JSON bodies to client errors", async () => {
+	await withServer(undefined, async (server) => {
+		const token = new URL(server.url).searchParams.get("token")!;
+		const headers = { "x-pi-forge-token": token, "content-type": "application/json" };
+
+		const malformed = await fetch(new URL("/api/stacks/test", server.url), {
+			method: "PUT",
+			headers,
+			body: "{ not-json",
+		});
+		assert.equal(malformed.status, 400);
+		assert.match((await malformed.json() as { error?: string }).error ?? "", /valid JSON/);
+
+		const oversized = await fetch(new URL("/api/stacks/test", server.url), {
+			method: "PUT",
+			headers,
+			body: "x".repeat(2_000_001),
+		});
+		assert.equal(oversized.status, 413);
+		assert.match((await oversized.json() as { error?: string }).error ?? "", /too large/);
+	});
+});

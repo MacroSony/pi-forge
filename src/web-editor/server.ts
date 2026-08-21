@@ -21,6 +21,16 @@ import type {
 // Port 0 asks Node to bind any available localhost port.
 export const DEFAULT_WEB_EDITOR_PORT = 0;
 
+class RequestBodyError extends Error {
+	readonly status: 400 | 413;
+
+	constructor(status: 400 | 413, message: string) {
+		super(message);
+		this.name = "RequestBodyError";
+		this.status = status;
+	}
+}
+
 export async function startWebEditorServer(host: WebEditorHost, options: WebEditorServerOptions = {}): Promise<WebEditorServer> {
 	let currentHost = host;
 	const token = randomBytes(24).toString("base64url");
@@ -32,7 +42,8 @@ export async function startWebEditorServer(host: WebEditorHost, options: WebEdit
 		: undefined;
 	const server = createServer((req, res) => {
 		void handleRequest(currentHost, token, contributionService, req, res).catch((error) => {
-			sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+			const status = error instanceof RequestBodyError ? error.status : 500;
+			sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });
 		});
 	});
 	server.on("connection", (socket) => {
@@ -326,12 +337,17 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 	for await (const chunk of req) {
 		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 		size += buffer.length;
-		if (size > maxBytes) throw new Error("Request body is too large.");
+		if (size > maxBytes) throw new RequestBodyError(413, "Request body is too large.");
 		chunks.push(buffer);
 	}
 
 	const text = Buffer.concat(chunks).toString("utf8");
-	return text.trim() ? JSON.parse(text) : {};
+	if (!text.trim()) return {};
+	try {
+		return JSON.parse(text);
+	} catch {
+		throw new RequestBodyError(400, "Request body must contain valid JSON.");
+	}
 }
 
 function readStackPayload(body: unknown): { ok: true; stack: PromptStack } | { ok: false; error: string } {

@@ -68,14 +68,18 @@ export function hashText(text: string): string {
 	return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-export function createBlock(key: string, role: string, text: string): Block {
+export function createBlock(key: string, role: string, text: string, serialized?: unknown): Block {
+	const hashInput = serialized === undefined
+		? { role, text }
+		: { role, text, serialized };
+	const serializedHashInput = stringifyHashInput(hashInput);
 	return {
 		key,
 		role,
 		text,
 		chars: text.length,
 		approxTokens: estimateApproxTokens(text),
-		hash: hashText(text),
+		hash: hashText(serializedHashInput),
 	};
 }
 
@@ -94,7 +98,8 @@ export function createTurnSnapshot(input: {
 }
 
 export function turnApproxTokens(turn: TurnSnapshot): number {
-	return turn.blocks.reduce((sum, block) => sum + block.approxTokens, 0);
+	const chars = turn.blocks.reduce((sum, block) => sum + block.chars, 0);
+	return chars === 0 ? 0 : Math.ceil(chars / 4);
 }
 
 function commonPrefixLength(a: string, b: string): number {
@@ -104,6 +109,26 @@ function commonPrefixLength(a: string, b: string): number {
 		index++;
 	}
 	return index;
+}
+
+function stringifyHashInput(value: unknown): string {
+	try {
+		const serialized = JSON.stringify(value);
+		return serialized === undefined ? String(value) : serialized;
+	} catch {
+		return String(value);
+	}
+}
+
+/**
+ * A block hash includes fields that affect the provider wire request, while
+ * the visible block text remains the useful prompt excerpt. When a hash
+ * differs because metadata changed without changing the excerpt, no part of
+ * that excerpt is safe to count as a reusable prefix.
+ */
+function safeCommonPrefixLength(before: Block, after: Block): number {
+	if (before.role !== after.role || before.text === after.text) return 0;
+	return commonPrefixLength(before.text, after.text);
 }
 
 function classify(before: Block | undefined, after: Block | undefined): DiffBlock {
@@ -156,6 +181,13 @@ function summarize(blocks: DiffBlock[], netTokens: number): TurnDiffSummary {
 		}
 	}
 
+	const classifiedNetTokens = addedTokens - removedTokens;
+	if (classifiedNetTokens < netTokens) {
+		addedTokens += netTokens - classifiedNetTokens;
+	} else if (classifiedNetTokens > netTokens) {
+		removedTokens += classifiedNetTokens - netTokens;
+	}
+
 	return {
 		sameBlocks,
 		addedBlocks,
@@ -168,13 +200,58 @@ function summarize(blocks: DiffBlock[], netTokens: number): TurnDiffSummary {
 	};
 }
 
+function hasUniqueStableKeys(blocks: Block[]): boolean {
+	const keys = blocks.map((block) => block.key);
+	return keys.every((key) => key.length > 0) && new Set(keys).size === keys.length;
+}
+
+function alignBlocks(beforeBlocks: Block[], afterBlocks: Block[]): Array<{ before?: Block; after?: Block }> {
+	const afterKeys = new Set(afterBlocks.map((block) => block.key));
+	const useKeys = hasUniqueStableKeys(beforeBlocks)
+		&& hasUniqueStableKeys(afterBlocks)
+		&& beforeBlocks.some((block) => afterKeys.has(block.key));
+	if (!useKeys) {
+		const maxLength = Math.max(beforeBlocks.length, afterBlocks.length);
+		return Array.from({ length: maxLength }, (_, index) => ({
+			before: beforeBlocks[index],
+			after: afterBlocks[index],
+		}));
+	}
+
+	const beforeByKey = new Map(beforeBlocks.map((block) => [block.key, block]));
+	const beforeIndexByKey = new Map(beforeBlocks.map((block, index) => [block.key, index]));
+	const aligned: Array<{ before?: Block; after?: Block }> = [];
+	let beforeCursor = 0;
+	for (const after of afterBlocks) {
+		const before = beforeByKey.get(after.key);
+		if (!before) {
+			aligned.push({ after });
+			continue;
+		}
+		const beforeIndex = beforeIndexByKey.get(after.key)!;
+		while (beforeCursor < beforeIndex) {
+			const skipped = beforeBlocks[beforeCursor]!;
+			if (!afterKeys.has(skipped.key)) aligned.push({ before: skipped });
+			beforeCursor++;
+		}
+		aligned.push({ before, after });
+		beforeCursor = Math.max(beforeCursor, beforeIndex + 1);
+	}
+	while (beforeCursor < beforeBlocks.length) {
+		const before = beforeBlocks[beforeCursor]!;
+		if (!afterKeys.has(before.key)) aligned.push({ before });
+		beforeCursor++;
+	}
+	return aligned;
+}
+
 /**
  * Diff two consecutive turn snapshots.
  *
  * The cache-boundary walk compares block arrays positionally while hashes
- * match. At the first mismatch it counts the char-level common prefix inside
- * that block; remaining blocks are classified as same/added/removed/modified.
- * This intentionally avoids a full Myers diff.
+ * match. This preserves the serialized-prefix meaning even when a later
+ * block is moved. Classification uses stable block keys after the boundary so
+ * a middle insertion does not make every following block look modified.
  */
 export function diffTurns(
 	previous: TurnSnapshot | null | undefined,
@@ -182,33 +259,32 @@ export function diffTurns(
 ): TurnDiff {
 	const beforeBlocks = previous?.blocks ?? [];
 	const afterBlocks = current.blocks;
-	const maxLength = Math.max(beforeBlocks.length, afterBlocks.length);
-	const diffBlocks: DiffBlock[] = [];
-	let prefixTokens = 0;
+	const diffBlocks = alignBlocks(beforeBlocks, afterBlocks).map(({ before, after }) => classify(before, after));
+	let prefixChars = 0;
 	let boundaryCrossed = false;
-
-	for (let index = 0; index < maxLength; index++) {
+	for (let index = 0; index < Math.max(beforeBlocks.length, afterBlocks.length); index++) {
 		const before = beforeBlocks[index];
 		const after = afterBlocks[index];
 
 		if (!boundaryCrossed) {
 			if (before && after && before.hash === after.hash) {
-				diffBlocks.push({ status: "same", before, after, tokenDelta: 0 });
-				prefixTokens += after.approxTokens;
+				prefixChars += after.chars;
 				continue;
 			}
 
 			if (before && after) {
-				prefixTokens += Math.ceil(commonPrefixLength(before.text, after.text) / 4);
+				prefixChars += safeCommonPrefixLength(before, after);
 			}
 			boundaryCrossed = true;
 		}
-
-		diffBlocks.push(classify(before, after));
 	}
 
 	const currentTokens = turnApproxTokens(current);
 	const previousTokens = previous ? turnApproxTokens(previous) : 0;
+	const currentChars = afterBlocks.reduce((sum, block) => sum + block.chars, 0);
+	const prefixTokens = !boundaryCrossed || prefixChars >= currentChars
+		? currentTokens
+		: Math.min(currentTokens, Math.floor(prefixChars / 4));
 	const deltaTokens = currentTokens - previousTokens;
 	const prefixRatio = currentTokens === 0 ? 0 : prefixTokens / currentTokens;
 

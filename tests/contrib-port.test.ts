@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { ContributionService } from "../src/web-editor/contrib-service.ts";
 import {
 	UI_CONTRIBUTION_CHANNEL,
 	UI_CONTRIBUTION_PORT_OPERATIONS,
@@ -228,4 +229,55 @@ test("ui contribution port validates recursive FormSchema records", () => {
 	});
 	assert.equal(bad.ok, false);
 	assert.match((bad as { error: string }).error, /enum option value/);
+});
+
+test("ContributionService merges a partial patch when the provider omits returned values", async () => {
+	const bus = new MemoryTransport();
+	const partialDescriptor: UiContributionTabDescriptor = {
+		...descriptor,
+		values: {
+			backend: "auto",
+			profiles: { worker: { enabled: true, timeoutMs: 3000 } },
+		},
+	};
+	const provider = new UiContributionProvider(bus, {
+		handle: (operation) => {
+			if (operation === "listContributions") return { ok: true, data: { tabs: [partialDescriptor] } };
+			if (operation === "writeValues") return { ok: true, data: { ok: true } };
+			return { ok: false, error: "Unknown operation" };
+		},
+	});
+	const service = new ContributionService(bus, { discoverTimeoutMs: 50, requestTimeoutMs: 100 });
+	provider.start();
+	service.start();
+	try {
+		const result = await service.writeValues("subagent-config", {
+			backend: "cli",
+			profiles: { worker: { timeoutMs: 5000 } },
+		});
+		assert.deepEqual(result, {
+			ok: true,
+			values: {
+				backend: "cli",
+				profiles: { worker: { enabled: true, timeoutMs: 5000 } },
+			},
+		});
+	} finally {
+		await service.stop();
+		provider.stop();
+	}
+});
+
+test("ContributionService stop waits out discovery and prevents reconnect-after-disposal", async () => {
+	const bus = new MemoryTransport();
+	const provider = providerOn(bus);
+	const service = new ContributionService(bus, { discoverTimeoutMs: 100, requestTimeoutMs: 100 });
+	service.start();
+	const stopping = service.stop();
+	provider.start();
+	await stopping;
+	await wait(30);
+
+	assert.deepEqual(await service.listTabs(), []);
+	provider.stop();
 });

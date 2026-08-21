@@ -581,6 +581,51 @@ test("/payload next saves a redacted provider payload", async () => {
 	assert.match(editors.at(-1)?.title ?? "", /pi-forge: provider payload \(\d+ chars, ~\d+ tokens\)/);
 });
 
+test("ordinary provider requests populate context-diff history without arming capture", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const token = editorUrl.searchParams.get("token")!;
+		const headers = { "x-pi-forge-token": token };
+
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: {
+				Authorization: "Bearer normal-secret",
+				model: "test-model",
+				messages: [{ role: "user", content: "first normal turn" }],
+			},
+		}, context.ctx);
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: {
+				Authorization: "Bearer normal-secret",
+				model: "test-model",
+				messages: [{ role: "user", content: "second normal turn" }],
+			},
+		}, context.ctx);
+
+		const response = await fetch(new URL("/api/context-diff", editorUrl), { headers });
+		assert.equal(response.status, 200);
+		const view = await response.json() as {
+			turns: Array<{ blockCount: number }>;
+			latest?: { turn: { blocks: Array<{ text: string }> } } | null;
+		};
+		assert.equal(view.turns.length, 2);
+		assert.ok(view.turns.every((turn) => turn.blockCount > 0));
+		assert.ok(view.latest);
+		assert.doesNotMatch(JSON.stringify(view.latest), /normal-secret/);
+		assert.match(JSON.stringify(view.latest), /\[redacted\]/);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 test("web editor resources and preview survive lifecycle-only host refreshes", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {

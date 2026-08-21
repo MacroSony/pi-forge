@@ -22,7 +22,10 @@ export class ContributionService {
 	private connection?: UiContributionConnection;
 	private tabs: UiContributionTabDescriptor[] = [];
 	private discovering?: Promise<UiContributionConnection | undefined>;
+	private discoveringGeneration?: number;
 	private unavailableUnsubscribe?: () => void;
+	private lifecycleGeneration = 0;
+	private started = false;
 
 	constructor(transport: UiContributionTransport, options: ContributionServiceOptions = {}) {
 		this.discoverTimeoutMs = options.discoverTimeoutMs ?? 200;
@@ -34,19 +37,27 @@ export class ContributionService {
 	}
 
 	start(): void {
+		if (this.started) return;
+		this.started = true;
+		const generation = ++this.lifecycleGeneration;
 		this.unavailableUnsubscribe = this.client.onUnavailable(() => {
 			this.connection = undefined;
 			this.tabs = [];
 		});
-		void this.ensureConnected()
-			.then(() => this.refreshTabs())
+		void this.ensureConnected(generation)
+			.then((connection) => connection ? this.refreshTabs(generation) : undefined)
 			.catch(() => {
+				if (generation !== this.lifecycleGeneration) return;
 				this.connection = undefined;
 				this.tabs = [];
 			});
 	}
 
 	async stop(): Promise<void> {
+		if (!this.started && !this.discovering) return;
+		this.started = false;
+		this.lifecycleGeneration += 1;
+		const pendingDiscovery = this.discovering;
 		if (this.unavailableUnsubscribe) {
 			this.unavailableUnsubscribe();
 			this.unavailableUnsubscribe = undefined;
@@ -54,9 +65,11 @@ export class ContributionService {
 		this.client.disconnect();
 		this.connection = undefined;
 		this.tabs = [];
+		await pendingDiscovery?.catch(() => undefined);
 	}
 
 	async listTabs(): Promise<UiContributionTabDescriptor[]> {
+		if (!this.started) return [];
 		const connection = await this.ensureConnected();
 		if (!connection) return [];
 		if (this.tabs.length === 0) await this.refreshTabs();
@@ -64,6 +77,7 @@ export class ContributionService {
 	}
 
 	async writeValues(tabId: string, patch: Record<string, unknown>): Promise<ContributionWriteResult> {
+		if (!this.started) return { ok: false, status: 503, error: "No UI contribution provider is available." };
 		const connection = await this.ensureConnected();
 		if (!connection) return { ok: false, status: 503, error: "No UI contribution provider is available." };
 		if (this.tabs.length === 0) await this.refreshTabs();
@@ -78,8 +92,9 @@ export class ContributionService {
 		const response = result.data as UiWriteValuesResponse;
 		if (response.ok) {
 			const tab = this.tabs.find((candidate) => candidate.tabId === tabId);
-			if (tab) tab.values = response.values ?? patch;
-			return { ok: true, values: response.values ?? patch };
+			const values = response.values ?? (tab ? mergeFormValues(tab.values, patch) : patch);
+			if (tab) tab.values = values;
+			return { ok: true, values };
 		}
 		const first = Object.values(response.errors)[0];
 		return {
@@ -90,31 +105,39 @@ export class ContributionService {
 		};
 	}
 
-	private async ensureConnected(): Promise<UiContributionConnection | undefined> {
+	private async ensureConnected(generation = this.lifecycleGeneration): Promise<UiContributionConnection | undefined> {
 		if (this.connection) return this.connection;
-		if (!this.discovering) {
-			this.discovering = this.client.discover(this.discoverTimeoutMs)
+		if (!this.discovering || this.discoveringGeneration !== generation) {
+			const discovery = this.client.discover(this.discoverTimeoutMs)
 				.then((connection) => {
+					if (!this.started || generation !== this.lifecycleGeneration) return undefined;
 					this.client.connect(connection);
 					this.connection = connection;
 					return connection;
 				})
 				.catch(() => undefined)
 				.finally(() => {
-					this.discovering = undefined;
+					if (this.discovering === discovery) {
+						this.discovering = undefined;
+						this.discoveringGeneration = undefined;
+					}
 				});
+			this.discovering = discovery;
+			this.discoveringGeneration = generation;
 		}
 		return this.discovering;
 	}
 
-	private async refreshTabs(): Promise<void> {
+	private async refreshTabs(generation = this.lifecycleGeneration): Promise<void> {
 		try {
+			if (!this.started || generation !== this.lifecycleGeneration) return;
 			const connection = this.connection;
 			if (!connection) {
 				this.tabs = [];
 				return;
 			}
 			const result = await this.client.listContributions(connection, this.requestTimeoutMs);
+			if (!this.started || generation !== this.lifecycleGeneration) return;
 			if (!result.ok) {
 				this.tabs = [];
 				this.connection = undefined;
@@ -123,8 +146,26 @@ export class ContributionService {
 			const response = result.data as { tabs: UiContributionTabDescriptor[] };
 			this.tabs = response.tabs;
 		} catch {
+			if (!this.started || generation !== this.lifecycleGeneration) return;
 			this.tabs = [];
 			this.connection = undefined;
 		}
 	}
+}
+
+function mergeFormValues(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+	const merged: Record<string, unknown> = { ...base };
+	for (const [key, value] of Object.entries(patch)) {
+		const existing = merged[key];
+		if (isPlainObject(existing) && isPlainObject(value)) {
+			merged[key] = mergeFormValues(existing, value);
+		} else {
+			merged[key] = value;
+		}
+	}
+	return merged;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
 }

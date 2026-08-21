@@ -840,21 +840,11 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Contribution stack", true));
-	}, async ({ editorUrl, page }) => {
+	}, async ({ editorUrl, page, harness }) => {
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
-		await page.locator("#subagent-configTabBtn").waitFor();
 
-		await page.locator("#subagent-configTabBtn").click();
-		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
-		await page.locator('[data-field-input="timeoutMs"]').fill("999");
-		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
-		assert.deepEqual(writes, [{ backend: "auto", timeoutMs: 999 }]);
-
-		await page.locator("#itemsTabBtn").click();
-		assert.equal((await page.locator("#subagent-configTabBtn").getAttribute("class"))?.includes("active"), false);
-	}, {}, async (harness) => {
-		provider = new UiContributionProvider(harness.eventsBus, {
+		const createProvider = () => new UiContributionProvider(harness.eventsBus, {
 			handle: (operation, payload) => {
 				if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
 				if (operation === "writeValues") {
@@ -865,7 +855,25 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 				return { ok: false, error: `Unknown operation: ${operation}` };
 			},
 		});
+		provider = createProvider();
 		provider.start();
+		await page.locator("#subagent-configTabBtn").waitFor();
+
+		await page.locator("#subagent-configTabBtn").click();
+		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
+		await page.locator('[data-field-input="timeoutMs"]').fill("999");
+		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
+		assert.deepEqual(writes, [{ backend: "auto", timeoutMs: 999 }]);
+
+		provider.stop();
+		await page.locator("#subagent-configTabBtn").waitFor({ state: "detached" });
+		await page.locator("#workspace").waitFor({ state: "visible" });
+		provider = createProvider();
+		provider.start();
+		await page.locator("#subagent-configTabBtn").waitFor();
+
+		await page.locator("#itemsTabBtn").click();
+		assert.equal((await page.locator("#subagent-configTabBtn").getAttribute("class"))?.includes("active"), false);
 	});
 	t.after(() => provider?.stop());
 });

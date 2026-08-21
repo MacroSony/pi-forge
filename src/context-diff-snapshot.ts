@@ -31,13 +31,38 @@ function extractBlocks(capture: ContextDiffCapture): Block[] {
 	}
 
 	const blocks: Block[] = [];
+	const requestFields: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(payload)) {
+		if (key === "system") continue;
+		if (key === "messages" && Array.isArray(value)) continue;
+		requestFields[key] = value;
+	}
+	if (Object.keys(requestFields).length > 0) {
+		const requestText = stringify(requestFields, 2);
+		blocks.push(createBlock("request", "request", requestText, {
+			section: "request",
+			fields: requestFields,
+		}));
+	}
+
 	if (typeof payload.system === "string") {
-		blocks.push(createBlock("system", "system", payload.system));
+		blocks.push(createBlock("system", "system", payload.system, {
+			section: "system",
+			value: payload.system,
+		}));
 	} else if (Array.isArray(payload.system)) {
 		const systemText = contentBlocksToText(payload.system);
 		if (systemText.length > 0 || payload.system.length > 0) {
-			blocks.push(createBlock("system", "system", systemText || JSON.stringify(payload.system)));
+			blocks.push(createBlock("system", "system", systemText || stringify(payload.system), {
+				section: "system",
+				value: payload.system,
+			}));
 		}
+	} else if (payload.system !== undefined) {
+		blocks.push(createBlock("system", "system", stringify(payload.system), {
+			section: "system",
+			value: payload.system,
+		}));
 	}
 
 	if (Array.isArray(payload.messages)) {
@@ -45,28 +70,46 @@ function extractBlocks(capture: ContextDiffCapture): Block[] {
 		for (let index = 0; index < payload.messages.length; index++) {
 			const message = payload.messages[index];
 			if (!isPlainObject(message)) {
-				blocks.push(createBlock(`message-${index}`, "message", messageToText(message)));
+				blocks.push(createBlock(`message-${index}`, "message", messageToText(message), {
+					section: "message",
+					value: message,
+				}));
 				continue;
 			}
 			const role = typeof message.role === "string" && message.role.length > 0 ? message.role : "message";
 			const key = index === 0 && role === "system" && !hasSystemBlock ? "system" : `message-${index}`;
 			if (key === "system") hasSystemBlock = true;
-			blocks.push(createBlock(key, role, messageToText(message)));
+			blocks.push(createBlock(key, role, messageToText(message), {
+				section: "message",
+				value: message,
+			}));
 		}
 	}
 
 	if (blocks.length > 0) return blocks;
-	return [createBlock("payload", "payload", JSON.stringify(payload))];
+	return [createBlock("payload", "payload", stringify(payload), {
+		section: "payload",
+		value: payload,
+	})];
+}
+
+function stringify(value: unknown, space = 0): string {
+	try {
+		const result = JSON.stringify(value, null, space);
+		return result === undefined ? String(value) : result;
+	} catch {
+		return String(value);
+	}
 }
 
 function messageToText(message: unknown): string {
 	if (typeof message === "string") return message;
-	if (!isPlainObject(message)) return JSON.stringify(message);
+	if (!isPlainObject(message)) return stringify(message);
 
 	const content = message.content;
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) return contentBlocksToText(content);
-	return JSON.stringify(message);
+	return stringify(message);
 }
 
 function contentBlocksToText(content: unknown): string {
@@ -80,7 +123,7 @@ function contentBlocksToText(content: unknown): string {
 		} else if (typeof part === "string") {
 			parts.push(part);
 		} else if (part !== undefined && part !== null) {
-			parts.push(JSON.stringify(part));
+			parts.push(stringify(part));
 		}
 	}
 	return parts.join("\n").trim();
