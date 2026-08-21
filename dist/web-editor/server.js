@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, } from "../agent-profile.js";
+import { ContributionService } from "./contrib-service.js";
 import { renderEditorHtml } from "./page.js";
 // Port 0 asks Node to bind any available localhost port.
 export const DEFAULT_WEB_EDITOR_PORT = 0;
@@ -8,8 +9,13 @@ export async function startWebEditorServer(host, options = {}) {
     let currentHost = host;
     const token = randomBytes(24).toString("base64url");
     const sockets = new Set();
+    const contributionService = options.contributionTransport
+        ? new ContributionService(options.contributionTransport, {
+            discoverTimeoutMs: options.contributionDiscoverTimeoutMs,
+        })
+        : undefined;
     const server = createServer((req, res) => {
-        void handleRequest(currentHost, token, req, res).catch((error) => {
+        void handleRequest(currentHost, token, contributionService, req, res).catch((error) => {
             sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
         });
     });
@@ -30,16 +36,20 @@ export async function startWebEditorServer(host, options = {}) {
         throw new Error("Failed to start pi-forge editor server.");
     }
     const url = `http://127.0.0.1:${address.port}/?token=${encodeURIComponent(token)}`;
+    contributionService?.start();
     return {
         url,
         port: address.port,
         updateHost: (nextHost) => {
             currentHost = nextHost;
         },
-        close: () => closeServer(server, sockets),
+        close: async () => {
+            await contributionService?.stop();
+            await closeServer(server, sockets);
+        },
     };
 }
-async function handleRequest(host, token, req, res) {
+async function handleRequest(host, token, contributionService, req, res) {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/" && req.method === "GET") {
         if (url.searchParams.get("token") !== token) {
@@ -64,6 +74,40 @@ async function handleRequest(host, token, req, res) {
     }
     if (req.method === "GET" && parts[1] === "profiles" && parts.length === 2) {
         sendJson(res, 200, host.listProfiles());
+        return;
+    }
+    if (req.method === "GET" && parts[1] === "contrib" && parts.length === 2) {
+        if (!contributionService) {
+            sendJson(res, 200, { tabs: [] });
+            return;
+        }
+        sendJson(res, 200, { tabs: await contributionService.listTabs() });
+        return;
+    }
+    if (req.method === "PUT" && parts[1] === "contrib" && parts.length === 3) {
+        if (!contributionService) {
+            sendJson(res, 503, { error: "No UI contribution provider is available." });
+            return;
+        }
+        const body = await readJsonBody(req);
+        const patch = isPlainObject(body) && isPlainObject(body.patch)
+            ? body.patch
+            : isPlainObject(body)
+                ? body
+                : undefined;
+        if (!patch) {
+            sendJson(res, 400, { error: "Contribution patch must be a JSON object." });
+            return;
+        }
+        const result = await contributionService.writeValues(parts[2], patch);
+        if (!result.ok) {
+            sendJson(res, result.status, {
+                error: result.error,
+                ...(result.errors ? { errors: result.errors } : {}),
+            });
+            return;
+        }
+        sendJson(res, 200, { ok: true, ...(result.values ? { values: result.values } : {}) });
         return;
     }
     if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "reload" && parts.length === 3) {

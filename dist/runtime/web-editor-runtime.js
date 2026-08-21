@@ -2,7 +2,7 @@ import { showText } from "../preview.js";
 import { createWebEditorHost, loadWebEditorSettings } from "../web-host.js";
 import { startWebEditorServer } from "../web-editor/index.js";
 const WEB_EDITOR_GLOBAL_KEY = "__piForgeWebEditor";
-export function createWebEditorRuntime(createRuntime) {
+export function createWebEditorRuntime(createRuntime, getContributionTransport) {
     const sharedWebEditors = getSharedWebEditorRegistry();
     let webEditor;
     let webEditorCwd;
@@ -71,14 +71,19 @@ export function createWebEditorRuntime(createRuntime) {
         }
         if (!webEditor) {
             try {
-                webEditor = await startWebEditorServer(createHost(ctx, promptOptions), { port: settings.preferredPort });
+                webEditor = await startWebEditorServer(createHost(ctx, promptOptions), {
+                    port: settings.preferredPort,
+                    contributionTransport: getContributionTransport?.(),
+                });
             }
             catch (error) {
                 if (settings.preferredPort !== undefined) {
                     const detail = error instanceof Error ? error.message : String(error);
                     ctx.ui.notify(`pi-forge: preferred editor port 127.0.0.1:${settings.preferredPort} was unavailable (${detail}); using an available port instead.`, "warning");
                     try {
-                        webEditor = await startWebEditorServer(createHost(ctx, promptOptions));
+                        webEditor = await startWebEditorServer(createHost(ctx, promptOptions), {
+                            contributionTransport: getContributionTransport?.(),
+                        });
                     }
                     catch (fallbackError) {
                         const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);

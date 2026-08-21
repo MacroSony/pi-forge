@@ -68,7 +68,7 @@ export default function piForge(pi) {
             clearPayloadCapture(payloadState, ctx);
             return { ok: true, ...webPayloadSnapshot(payloadState) };
         },
-    }));
+    }), () => pi.events);
     registerLifecycleHandlers(pi, workspace, compileCycle, {
         reloadStacks: stackRuntime.reloadStacks,
         disposePromptStackRuntime: stackRuntime.dispose,
