@@ -17,21 +17,29 @@ const SAFE_TOKEN_METADATA_KEYS = new Set([
     "total_tokens",
 ]);
 export function createProviderPayloadCapture(value, options = {}) {
+    return createProviderPayloadCaptureWithSerialization(value, options).capture;
+}
+export function createProviderPayloadCaptureWithSerialization(value, options = {}) {
     const formatted = formatProviderPayload(value);
     return {
-        capturedAt: new Date().toISOString(),
-        stackId: options.stackId,
-        savePath: options.savePath,
-        payload: formatted.payload,
-        text: formatted.text,
-        chars: formatted.chars,
-        approxTokens: formatted.approxTokens,
-        truncated: formatted.truncated,
-        error: formatted.error,
+        capture: {
+            capturedAt: new Date().toISOString(),
+            stackId: options.stackId,
+            savePath: options.savePath,
+            payload: formatted.payload,
+            text: formatted.text,
+            chars: formatted.chars,
+            approxTokens: formatted.approxTokens,
+            truncated: formatted.truncated,
+            error: formatted.error,
+        },
+        serializedPayload: formatted.serializedPayload,
     };
 }
 export function formatProviderPayload(value) {
     try {
+        const faithfulPayload = redactPayloadFaithfully(value);
+        const serializedPayload = stringifyPayload(faithfulPayload);
         const payload = redactPayload(value);
         const renderedJson = JSON.stringify(payload, null, 2);
         const text = renderedJson === undefined ? String(payload) : renderedJson;
@@ -44,6 +52,7 @@ export function formatProviderPayload(value) {
             chars: rendered.length,
             approxTokens: estimatePayloadTokens(rendered),
             truncated,
+            serializedPayload,
         };
     }
     catch (error) {
@@ -53,6 +62,7 @@ export function formatProviderPayload(value) {
             chars: text.length,
             approxTokens: estimatePayloadTokens(text),
             truncated: false,
+            serializedPayload: text,
             error: text,
         };
     }
@@ -88,6 +98,26 @@ function redactPayload(value, depth = 0) {
         result[key] = redactPayload(raw, depth + 1);
     }
     return result;
+}
+/** Redact credentials while retaining the complete JSON-compatible request. */
+function redactPayloadFaithfully(value, ancestors = new Set()) {
+    if (typeof value === "string" || value === null || typeof value !== "object")
+        return value;
+    if (ancestors.has(value))
+        return "[pi-forge: circular reference]";
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(value);
+    if (Array.isArray(value))
+        return value.map((item) => redactPayloadFaithfully(item, nextAncestors));
+    const result = {};
+    for (const [key, raw] of Object.entries(value)) {
+        result[key] = isSecretKey(key) ? "[redacted]" : redactPayloadFaithfully(raw, nextAncestors);
+    }
+    return result;
+}
+function stringifyPayload(value) {
+    const rendered = JSON.stringify(value, null, 2);
+    return rendered === undefined ? String(value) : rendered;
 }
 function isSecretKey(key) {
     if (SAFE_TOKEN_METADATA_KEYS.has(normalizeSecretKey(key)))

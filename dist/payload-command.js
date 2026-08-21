@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createProviderPayloadCapture } from "./payload-capture.js";
+import { createProviderPayloadCaptureWithSerialization } from "./payload-capture.js";
 import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.js";
 export function registerPayloadCommands(pi, state) {
     pi.registerCommand("intercept", {
@@ -109,8 +109,11 @@ export function webPayloadSnapshot(state) {
     return { status: "idle" };
 }
 function captureProviderPayload(state, active, value, savePath) {
-    const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
-    appendContextDiffCapture(state.contextDiffHistory, capture);
+    const { capture, serializedPayload } = createProviderPayloadCaptureWithSerialization(value, {
+        stackId: active?.stack.id,
+        savePath,
+    });
+    appendContextDiffCapture(state.contextDiffHistory, { ...capture, serializedPayload });
     return capture;
 }
 //# sourceMappingURL=payload-command.js.map

@@ -10,6 +10,8 @@ export interface ContextDiffCapture {
     capturedAt: string;
     stackId?: string;
     payload?: unknown;
+    /** Secret-redacted, complete provider-request JSON used for diff identity. */
+    serializedPayload?: string;
     text: string;
 }
 /** Convert a captured provider payload into an ordered TurnSnapshot of Blocks. */
