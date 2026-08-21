@@ -1,7 +1,8 @@
 # Context Diff — design plan (post-0.5.0)
 
-Status: planned. Target release: 0.5.1 (first feature release after 0.5.0).
-Owner of truth: this document; discussion record lives in the 0.5.x review thread.
+Status: folded into `docs/design/0.5.1-plan.md` as Lane 2 — that file is now the owner of truth. Kept for discussion history.
+
+Original status: planned. Target release: 0.5.1 (first feature release after 0.5.0).
 
 ## Goal
 
