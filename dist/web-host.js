@@ -41,6 +41,7 @@ export function createWebEditorHost(ctx, runtime) {
         getPayload: () => runtime.getPayload(),
         armPayload: (savePath) => runtime.armPayload(savePath),
         clearPayload: () => runtime.clearPayload(),
+        getContextDiff: () => runtime.getContextDiff(),
         activateStack: (selector) => {
             if (!runtime.setActive(selector))
                 return { ok: false, status: 404, error: `Unknown prompt stack: ${selector}` };

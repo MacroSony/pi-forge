@@ -1,4 +1,5 @@
 import type { WebEditorPayloadCapture } from "./web-editor/index.ts";
+import { type ContextDiffHistory } from "./context-diff-history.ts";
 export type PayloadDisplayTarget = "editor" | "web";
 /**
  * Payload capture/debug state. Separate from resource state and compile-cycle
@@ -10,6 +11,7 @@ export interface PayloadState {
     interceptPayloadDisplayTarget: PayloadDisplayTarget;
     payloadCaptureArmedAt?: string;
     latestProviderPayloadCapture?: WebEditorPayloadCapture;
+    contextDiffHistory: ContextDiffHistory;
 }
 export declare function createPayloadState(): PayloadState;
 export declare function clearPayloadState(state: PayloadState): void;

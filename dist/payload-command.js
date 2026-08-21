@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createProviderPayloadCapture } from "./payload-capture.js";
+import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.js";
 export function registerPayloadCommands(pi, state) {
     pi.registerCommand("intercept", {
         description: "Display the next provider payload before it is sent",
@@ -35,16 +36,18 @@ export function registerPayloadCommands(pi, state) {
 }
 export function registerPayloadRequestHandler(pi, state, getActive) {
     pi.on("before_provider_request", async (event, ctx) => {
-        if (!state.interceptNextProviderPayload)
-            return;
+        const wasArmed = state.interceptNextProviderPayload;
         const savePath = state.interceptPayloadSavePath;
         const displayTarget = state.interceptPayloadDisplayTarget;
+        const capture = captureProviderPayload(state, getActive(), event.payload, savePath);
+        if (!wasArmed)
+            return;
         state.interceptNextProviderPayload = false;
         state.interceptPayloadSavePath = undefined;
         state.interceptPayloadDisplayTarget = "editor";
         state.payloadCaptureArmedAt = undefined;
+        state.latestProviderPayloadCapture = capture;
         ctx.ui.setStatus("pi-forge-intercept", undefined);
-        const capture = captureProviderPayload(state, getActive(), event.payload, savePath);
         if (savePath) {
             if (!ctx.isProjectTrusted()) {
                 ctx.ui.notify("pi-forge: project is not trusted; refusing to save provider payload.", "warning");
@@ -86,6 +89,7 @@ export function clearPayloadCapture(state, ctx) {
     state.interceptPayloadDisplayTarget = "editor";
     state.payloadCaptureArmedAt = undefined;
     state.latestProviderPayloadCapture = undefined;
+    state.contextDiffHistory = createContextDiffHistory();
     ctx.ui.setStatus("pi-forge-intercept", undefined);
 }
 export function webPayloadSnapshot(state) {
@@ -106,7 +110,7 @@ export function webPayloadSnapshot(state) {
 }
 function captureProviderPayload(state, active, value, savePath) {
     const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
-    state.latestProviderPayloadCapture = capture;
+    appendContextDiffCapture(state.contextDiffHistory, capture);
     return capture;
 }
 //# sourceMappingURL=payload-command.js.map

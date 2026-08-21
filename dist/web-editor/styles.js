@@ -341,6 +341,28 @@ html, body {
 .tab-panel.open {
   display: block;
 }
+.editor-dock-area {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.editor-dock-area.dock-open {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 42%);
+}
+.editor-dock-area .workspace,
+.editor-dock-area .tab-panel {
+  min-width: 0;
+  min-height: 0;
+}
+.editor-dock-area.dock-open .workspace {
+  display: grid;
+  border-right: 1px solid var(--line);
+}
+.editor-dock-area.dock-open .tab-panel {
+  display: block;
+  border-left: 1px solid var(--line);
+}
 .tab-section {
   border: 1px solid var(--line);
   border-radius: 6px;

@@ -6,7 +6,10 @@ export class ContributionService {
     connection;
     tabs = [];
     discovering;
+    discoveringGeneration;
     unavailableUnsubscribe;
+    lifecycleGeneration = 0;
+    started = false;
     constructor(transport, options = {}) {
         this.discoverTimeoutMs = options.discoverTimeoutMs ?? 200;
         this.requestTimeoutMs = options.requestTimeoutMs ?? 2_000;
@@ -16,18 +19,29 @@ export class ContributionService {
         });
     }
     start() {
+        if (this.started)
+            return;
+        this.started = true;
+        const generation = ++this.lifecycleGeneration;
         this.unavailableUnsubscribe = this.client.onUnavailable(() => {
             this.connection = undefined;
             this.tabs = [];
         });
-        void this.ensureConnected()
-            .then(() => this.refreshTabs())
+        void this.ensureConnected(generation)
+            .then((connection) => connection ? this.refreshTabs(generation) : undefined)
             .catch(() => {
+            if (generation !== this.lifecycleGeneration)
+                return;
             this.connection = undefined;
             this.tabs = [];
         });
     }
     async stop() {
+        if (!this.started && !this.discovering)
+            return;
+        this.started = false;
+        this.lifecycleGeneration += 1;
+        const pendingDiscovery = this.discovering;
         if (this.unavailableUnsubscribe) {
             this.unavailableUnsubscribe();
             this.unavailableUnsubscribe = undefined;
@@ -35,8 +49,11 @@ export class ContributionService {
         this.client.disconnect();
         this.connection = undefined;
         this.tabs = [];
+        await pendingDiscovery?.catch(() => undefined);
     }
     async listTabs() {
+        if (!this.started)
+            return [];
         const connection = await this.ensureConnected();
         if (!connection)
             return [];
@@ -45,6 +62,8 @@ export class ContributionService {
         return this.tabs;
     }
     async writeValues(tabId, patch) {
+        if (!this.started)
+            return { ok: false, status: 503, error: "No UI contribution provider is available." };
         const connection = await this.ensureConnected();
         if (!connection)
             return { ok: false, status: 503, error: "No UI contribution provider is available." };
@@ -62,9 +81,10 @@ export class ContributionService {
         const response = result.data;
         if (response.ok) {
             const tab = this.tabs.find((candidate) => candidate.tabId === tabId);
+            const values = response.values ?? (tab ? mergeFormValues(tab.values, patch) : patch);
             if (tab)
-                tab.values = response.values ?? patch;
-            return { ok: true, values: response.values ?? patch };
+                tab.values = values;
+            return { ok: true, values };
         }
         const first = Object.values(response.errors)[0];
         return {
@@ -74,31 +94,42 @@ export class ContributionService {
             errors: response.errors,
         };
     }
-    async ensureConnected() {
+    async ensureConnected(generation = this.lifecycleGeneration) {
         if (this.connection)
             return this.connection;
-        if (!this.discovering) {
-            this.discovering = this.client.discover(this.discoverTimeoutMs)
+        if (!this.discovering || this.discoveringGeneration !== generation) {
+            const discovery = this.client.discover(this.discoverTimeoutMs)
                 .then((connection) => {
+                if (!this.started || generation !== this.lifecycleGeneration)
+                    return undefined;
                 this.client.connect(connection);
                 this.connection = connection;
                 return connection;
             })
                 .catch(() => undefined)
                 .finally(() => {
-                this.discovering = undefined;
+                if (this.discovering === discovery) {
+                    this.discovering = undefined;
+                    this.discoveringGeneration = undefined;
+                }
             });
+            this.discovering = discovery;
+            this.discoveringGeneration = generation;
         }
         return this.discovering;
     }
-    async refreshTabs() {
+    async refreshTabs(generation = this.lifecycleGeneration) {
         try {
+            if (!this.started || generation !== this.lifecycleGeneration)
+                return;
             const connection = this.connection;
             if (!connection) {
                 this.tabs = [];
                 return;
             }
             const result = await this.client.listContributions(connection, this.requestTimeoutMs);
+            if (!this.started || generation !== this.lifecycleGeneration)
+                return;
             if (!result.ok) {
                 this.tabs = [];
                 this.connection = undefined;
@@ -108,9 +139,27 @@ export class ContributionService {
             this.tabs = response.tabs;
         }
         catch {
+            if (!this.started || generation !== this.lifecycleGeneration)
+                return;
             this.tabs = [];
             this.connection = undefined;
         }
     }
+}
+function mergeFormValues(base, patch) {
+    const merged = { ...base };
+    for (const [key, value] of Object.entries(patch)) {
+        const existing = merged[key];
+        if (isPlainObject(existing) && isPlainObject(value)) {
+            merged[key] = mergeFormValues(existing, value);
+        }
+        else {
+            merged[key] = value;
+        }
+    }
+    return merged;
+}
+function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
 }
 //# sourceMappingURL=contrib-service.js.map

@@ -1,7 +1,9 @@
+import { createContextDiffHistory } from "./context-diff-history.js";
 export function createPayloadState() {
     return {
         interceptNextProviderPayload: false,
         interceptPayloadDisplayTarget: "editor",
+        contextDiffHistory: createContextDiffHistory(),
     };
 }
 export function clearPayloadState(state) {
@@ -10,5 +12,6 @@ export function clearPayloadState(state) {
     state.interceptPayloadDisplayTarget = "editor";
     state.payloadCaptureArmedAt = undefined;
     state.latestProviderPayloadCapture = undefined;
+    state.contextDiffHistory = createContextDiffHistory();
 }
 //# sourceMappingURL=payload-state.js.map

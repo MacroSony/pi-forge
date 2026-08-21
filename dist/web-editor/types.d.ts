@@ -1,6 +1,7 @@
 import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
+import type { ContextDiffView } from "../context-diff-history.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
     id: string;
@@ -53,6 +54,7 @@ export interface WebEditorHost {
     getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
+    getContextDiff(): WebEditorOperationResult<ContextDiffView>;
     activateStack(id: string): WebEditorOperationResult<{
         activeId?: string;
         stacks: WebEditorStackSummary[];

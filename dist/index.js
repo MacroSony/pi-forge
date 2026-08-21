@@ -11,6 +11,7 @@ import { ForgeWorkspace } from "./workspace.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
 import { createCompileCycleState } from "./compile-cycle.js";
+import { getContextDiffView } from "./context-diff-history.js";
 import { createPayloadState } from "./payload-state.js";
 /**
  * Intentional public surface (0.5.0): the default Pi extension factory plus
@@ -68,6 +69,7 @@ export default function piForge(pi) {
             clearPayloadCapture(payloadState, ctx);
             return { ok: true, ...webPayloadSnapshot(payloadState) };
         },
+        getContextDiff: () => ({ ok: true, ...getContextDiffView(payloadState.contextDiffHistory) }),
     }), () => pi.events);
     registerLifecycleHandlers(pi, workspace, compileCycle, {
         reloadStacks: stackRuntime.reloadStacks,

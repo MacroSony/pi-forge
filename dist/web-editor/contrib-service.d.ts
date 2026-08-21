@@ -19,7 +19,10 @@ export declare class ContributionService {
     private connection?;
     private tabs;
     private discovering?;
+    private discoveringGeneration?;
     private unavailableUnsubscribe?;
+    private lifecycleGeneration;
+    private started;
     constructor(transport: UiContributionTransport, options?: ContributionServiceOptions);
     start(): void;
     stop(): Promise<void>;
