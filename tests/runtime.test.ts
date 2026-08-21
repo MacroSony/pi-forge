@@ -47,3 +47,56 @@ test("tool policy runtime owns filtering, preview, and restoration state", () =>
 	runtime.restore();
 	assert.deepEqual(activeTools, ["read", "bash", "paint", "late-tool"]);
 });
+
+test("selective tool allow activates registered inactive tools and restores the original baseline", () => {
+	let activeTools = ["read", "bash", "edit", "write"];
+	const allTools = ["read", "bash", "edit", "write", "grep", "find", "ls"].map((name) => ({ name }));
+	const pi = {
+		getActiveTools: () => [...activeTools],
+		getAllTools: () => allTools,
+		setActiveTools: (names: string[]) => { activeTools = [...names]; },
+	} as any;
+	const active = {
+		filePath: "/tmp/search-tools.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: "search-tools" },
+		diagnostics: [],
+		stack: {
+			schemaVersion: 1 as const,
+			id: "search-tools",
+			tools: { allow: ["grep", "find", "ls"] },
+			items: [],
+		},
+	};
+	const state: { active?: typeof active } = { active };
+	const runtime = createToolPolicyRuntime(pi, () => state.active);
+
+	runtime.sync();
+	assert.deepEqual(activeTools, ["grep", "find", "ls"]);
+	assert.deepEqual(runtime.previewToolNames(active.stack), ["grep", "find", "ls"]);
+
+	state.active = undefined;
+	runtime.sync();
+	assert.deepEqual(activeTools, ["read", "bash", "edit", "write"]);
+});
+
+test("an allow list containing wildcard stays on the active baseline", () => {
+	let activeTools = ["read", "bash"];
+	const pi = {
+		getActiveTools: () => [...activeTools],
+		getAllTools: () => ["read", "bash", "grep", "find", "ls"].map((name) => ({ name })),
+		setActiveTools: (names: string[]) => { activeTools = [...names]; },
+	} as any;
+	const active = {
+		filePath: "/tmp/wildcard.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: "wildcard" },
+		diagnostics: [],
+		stack: { schemaVersion: 1 as const, id: "wildcard", tools: { allow: ["*", "grep"] }, items: [] },
+	};
+	const runtime = createToolPolicyRuntime(pi, () => active);
+
+	runtime.sync();
+	assert.deepEqual(activeTools, ["read", "bash"]);
+	assert.deepEqual(runtime.previewToolNames(active.stack), ["read", "bash"]);
+});

@@ -16,12 +16,19 @@ onMounted(async () => {
 	// Theme is global to the page; apply it before either surface renders.
 	applyEditorTheme(editorTheme.value);
 	try {
-		const { startLegacyEditor } = await import("./legacy-editor.ts");
+		const {
+			getLegacyEditorDraft,
+			startLegacyEditor,
+			subscribeLegacyEditorDraft,
+		} = await import("./legacy-editor.ts");
 		stopLegacyEditor = startLegacyEditor({
 			isActive: () => activeSurface.value === "stacks",
 		});
 		stopContributionTabs = startContributionTabs();
-		stopContextDiffTabs = startContextDiffTabs();
+		stopContextDiffTabs = startContextDiffTabs({
+			getStackDraft: getLegacyEditorDraft,
+			subscribeStackDraft: subscribeLegacyEditorDraft,
+		});
 	} catch (error) {
 		const status = document.getElementById("status");
 		if (status) {

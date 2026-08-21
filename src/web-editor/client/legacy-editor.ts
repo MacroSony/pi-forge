@@ -6,6 +6,7 @@ import { createVueItemHost } from "./vue-item-host.ts";
 import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
+import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
@@ -36,6 +37,26 @@ let activeTab: "items" | "regex" | "policy" | "stack" = "items";
 let metadataCollapsed = true;
 let editorStarted = false;
 let editorIsActive = () => true;
+const draftListeners = new Set<() => void>();
+
+export interface LegacyEditorDraft {
+  selector: string;
+  stack: EditorPromptStack;
+}
+
+export function getLegacyEditorDraft(): LegacyEditorDraft | undefined {
+  if (!currentStack || !selectedId) return undefined;
+  return { selector: selectedId, stack: structuredClone(currentStack) };
+}
+
+export function subscribeLegacyEditorDraft(listener: () => void): () => void {
+  draftListeners.add(listener);
+  return () => draftListeners.delete(listener);
+}
+
+function notifyDraftChanged() {
+  for (const listener of [...draftListeners]) listener();
+}
 
 const slotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
@@ -100,6 +121,7 @@ function markDirty() {
   dirty = true;
   renderDirtyState();
   setStatus("Unsaved changes");
+  notifyDraftChanged();
 }
 
 function renderDirtyState() {
@@ -172,6 +194,7 @@ async function selectStack(id: any, options: any = {}) {
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus("Loaded " + loadedStack.id);
+  notifyDraftChanged();
 }
 
 function renderAll(diagnostics: any = []) {
@@ -891,6 +914,7 @@ function renderEmpty() {
   currentStack = null;
   selectedId = "";
   dirty = false;
+	notifyDraftChanged();
   activeTab = "items";
   vueTabHost.resetErrors();
   renderDirtyState();
@@ -1027,6 +1051,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("payloadBtn").onclick = () => run(openPayloadCapture);
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.onclick = () => {
+      activateEditorView(button.dataset.tab || "items");
       activeTab = button.dataset.tab || "items";
       renderActiveTab();
       hidePreview();
@@ -1047,6 +1072,10 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   document.addEventListener("drop", handleDocumentItemDrop);
   window.addEventListener("keydown", handleEditorShortcut);
   window.addEventListener("pi-forge:profile-applied", handleProfileApplied);
+  const stopEditorView = subscribeEditorView((viewId) => {
+    if (["items", "regex", "policy", "stack"].includes(viewId)) return;
+    vueTabHost.unmount();
+  });
   const previousBeforeUnload = window.onbeforeunload;
   const beforeUnload = () => dirty ? "Unsaved changes" : undefined;
   window.onbeforeunload = beforeUnload;
@@ -1069,11 +1098,13 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     document.removeEventListener("drop", handleDocumentItemDrop);
     window.removeEventListener("keydown", handleEditorShortcut);
     window.removeEventListener("pi-forge:profile-applied", handleProfileApplied);
+    stopEditorView();
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();
     vueMetadataHost.unmount();
     vueItemHost.unmount();
     editorIsActive = () => true;
+    draftListeners.clear();
   };
 }
 

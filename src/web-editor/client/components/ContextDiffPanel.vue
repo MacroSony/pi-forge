@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 
 import { createEditorApi } from "../api.ts";
-import type { EditorPromptStack } from "../types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "../../types.ts";
 import type { ContextDiffView } from "../../../context-diff-history.ts";
 import type { DiffBlock } from "../../../context-diff.ts";
+import type { LegacyEditorDraft } from "../legacy-editor.ts";
 
 const props = defineProps<{
-	getStackId?: () => string | undefined;
+	getStackDraft?: () => LegacyEditorDraft | undefined;
+	subscribeStackDraft?: (listener: () => void) => () => void;
 	onStatus?: (text: string, tone?: string) => void;
 }>();
 
@@ -27,8 +28,9 @@ const contextDiffLoading = ref(false);
 
 let previewTimer: number | undefined;
 let pollTimer: number | undefined;
-
-const currentStackId = computed(() => props.getStackId?.() ?? "");
+let stopDraftSubscription: (() => void) | undefined;
+let previewSequence = 0;
+let previewAbort: AbortController | undefined;
 
 const previewSections = computed<WebEditorPreviewSection[]>(() => {
 	if (!preview.value) return [];
@@ -58,23 +60,33 @@ const deltaClass = computed(() => {
 const prefixPercent = computed(() => Math.round((latestDiff.value?.prefixRatio ?? 0) * 100));
 const changedBlocks = computed(() => latestDiff.value?.summary.changedBlocks ?? 0);
 
-watch(currentStackId, () => schedulePreviewRefresh());
-
 onMounted(() => {
+	stopDraftSubscription = props.subscribeStackDraft?.(schedulePreviewRefresh);
 	void refreshPreview();
 	void refreshContextDiff();
 	pollTimer = window.setInterval(() => {
 		void refreshContextDiff();
-		schedulePreviewRefresh();
+		schedulePollingPreviewRefresh();
 	}, 2000);
 });
 
 onUnmounted(() => {
 	if (previewTimer !== undefined) window.clearTimeout(previewTimer);
 	if (pollTimer !== undefined) window.clearInterval(pollTimer);
+	stopDraftSubscription?.();
+	invalidatePreviewRequest();
 });
 
 function schedulePreviewRefresh(): void {
+	invalidatePreviewRequest();
+	schedulePreviewTimer();
+}
+
+function schedulePollingPreviewRefresh(): void {
+	schedulePreviewTimer();
+}
+
+function schedulePreviewTimer(): void {
 	if (previewTimer !== undefined) window.clearTimeout(previewTimer);
 	previewTimer = window.setTimeout(() => {
 		previewTimer = undefined;
@@ -82,9 +94,18 @@ function schedulePreviewRefresh(): void {
 	}, 500);
 }
 
+function invalidatePreviewRequest(): number {
+	const sequence = ++previewSequence;
+	previewAbort?.abort();
+	previewAbort = undefined;
+	previewLoading.value = false;
+	return sequence;
+}
+
 async function refreshPreview(): Promise<void> {
-	const stackId = props.getStackId?.();
-	if (!stackId) {
+	const sequence = invalidatePreviewRequest();
+	const draft = props.getStackDraft?.();
+	if (!draft) {
 		preview.value = null;
 		previewError.value = "";
 		previewStatus.value = "Select a stack to preview.";
@@ -93,20 +114,23 @@ async function refreshPreview(): Promise<void> {
 	previewLoading.value = true;
 	previewError.value = "";
 	previewStatus.value = "";
+	const controller = new AbortController();
+	previewAbort = controller;
 	try {
-		const loaded = await api<{ stack: EditorPromptStack }>(`/api/stacks/${encodeURIComponent(stackId)}`);
 		const data = await api<{ preview?: WebEditorPreview }>(
-			`/api/stacks/${encodeURIComponent(stackId)}/preview`,
-			{ method: "POST", body: { stack: loaded.stack } },
+			`/api/stacks/${encodeURIComponent(draft.selector)}/preview`,
+			{ method: "POST", body: { stack: draft.stack }, signal: controller.signal },
 		);
+		if (sequence !== previewSequence) return;
 		preview.value = data.preview ?? null;
 		previewStatus.value = data.preview ? "Compiled preview refreshed." : "Preview returned no structured sections.";
 		props.onStatus?.(previewStatus.value, data.preview ? "success" : "warning");
 	} catch (error) {
+		if (controller.signal.aborted || sequence !== previewSequence) return;
 		previewError.value = error instanceof Error ? error.message : String(error);
 		props.onStatus?.(previewError.value, "error");
 	} finally {
-		previewLoading.value = false;
+		if (sequence === previewSequence) previewLoading.value = false;
 	}
 }
 

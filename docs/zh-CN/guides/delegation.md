@@ -15,7 +15,7 @@ Profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json` �
   "backend": "pi-subprocess-readonly",
   "timeoutMs": 60000,
   "profiles": {
-    "reviewer": {
+    "project:reviewer": {
       "enabled": true,
       "timeoutMs": 300000
     }
@@ -23,7 +23,7 @@ Profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json` �
 }
 ```
 
-授权跟随 profile scope：项目 `subagents.json` 的 `profiles.<id>` 只授权 `project:<id>`，全局 `subagents.json` 的 `profiles.<id>` 只授权 `global:<id>`。同 ID 的全局和项目 profile 不会互相继承 enable/backend/timeout。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
+授权 key 应使用完整 selector：`project:<id>` 或 `global:<id>`。裸 key 仅为项目 profile 的兼容写法，即使写在 `~/.pi/forge/subagents.json` 中也只授权 `project:<id>`；授权全局 profile 必须显式写成 `"global:reviewer": { "enabled": true }`。同 ID 的全局和项目 profile 不会互相继承 enable/backend/timeout。未启用或未列出的 ID 不会被 discovery 返回，即使猜中 ID 也会被拒绝。
 
 ## Plan 与运行
 

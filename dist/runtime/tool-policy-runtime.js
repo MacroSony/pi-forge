@@ -8,6 +8,14 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             return names;
         return names.filter((name) => known.has(name));
     }
+    function policySourceTools(policy, activeBaseline) {
+        const hasSelectiveAllow = Array.isArray(policy?.allow)
+            && policy.allow.length > 0
+            && !policy.allow.includes("*");
+        return hasSelectiveAllow
+            ? pi.getAllTools().map((tool) => tool.name).filter((name) => typeof name === "string" && !!name)
+            : filterKnownTools(activeBaseline);
+    }
     function sync(ctx) {
         const policy = getActiveStack()?.stack.tools;
         if (!hasResourcePolicy(policy)) {
@@ -19,7 +27,7 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             baseline = reconcileToolPolicyBaseline(baseline, lastApplied, currentTools);
         const sourceTools = baseline ?? currentTools;
         baseline ??= [...sourceTools];
-        const nextTools = applyResourcePolicy(filterKnownTools(sourceTools), policy);
+        const nextTools = applyResourcePolicy(policySourceTools(policy, sourceTools), policy);
         if (!sameStringSet(currentTools, nextTools))
             pi.setActiveTools(nextTools);
         lastApplied = [...nextTools];
@@ -52,14 +60,16 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
     }
     function previewToolNames(stack) {
         const sourceTools = filterKnownTools(baseline ?? pi.getActiveTools());
-        return stack && hasResourcePolicy(stack.tools) ? applyResourcePolicy(sourceTools, stack.tools) : sourceTools;
+        return stack && hasResourcePolicy(stack.tools)
+            ? applyResourcePolicy(policySourceTools(stack.tools, sourceTools), stack.tools)
+            : sourceTools;
     }
     function previewOptions(base, stack) {
         const baseSelectedTools = Array.isArray(base.selectedTools) ? base.selectedTools : pi.getActiveTools();
         const policyActive = hasResourcePolicy(stack.tools);
         const baselineTools = policyActive ? (baseline ?? pi.getActiveTools()) : baseSelectedTools;
         const selectedTools = policyActive
-            ? applyResourcePolicy(filterKnownTools(baselineTools), stack.tools)
+            ? applyResourcePolicy(policySourceTools(stack.tools, filterKnownTools(baselineTools)), stack.tools)
             : baseSelectedTools;
         const selectedToolSet = new Set(selectedTools);
         const toolSnippets = filterToolSnippets(base.toolSnippets ?? {}, selectedToolSet);

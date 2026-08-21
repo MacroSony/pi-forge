@@ -208,7 +208,7 @@ async function saveDraft(): Promise<void> {
 	<section class="profile-editor profile-card">
 		<header class="profile-editor-head">
 			<div>
-				<div class="profile-editor-title">{{ mode === "create" ? "New agent profile" : `Edit ${source?.id}` }}</div>
+				<div class="profile-editor-title">{{ mode === "create" ? "New agent profile" : `Edit ${sourceSelector || source?.id}` }}</div>
 				<div class="profile-editor-note">
 					Profile application is preflighted separately; saving only updates the {{ scopeLabel }} definition.
 				</div>
@@ -234,7 +234,7 @@ async function saveDraft(): Promise<void> {
 					placeholder="reviewer"
 					autocomplete="off"
 				>
-				<small>Letters, numbers, dots, underscores, and hyphens; immutable after creation.</small>
+				<small>Letters, numbers, dots, underscores, and hyphens; immutable after creation. Scope is stored by location; this profile's canonical selector is {{ editScope }}:{{ draft.id || "<id>" }}.</small>
 			</label>
 			<label class="profile-field">
 				<span>Name</span>
@@ -280,7 +280,7 @@ async function saveDraft(): Promise<void> {
 						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
 					</option>
 				</select>
-				<small v-if="editScope === 'global'">Global profiles may only reference user-global prompt stacks.</small>
+				<small v-if="editScope === 'global'">Global profiles may only reference user-global prompt stacks. A same-scope stack may be stored as a relative bare ID without changing its global resolution.</small>
 				<small v-else>Project profiles may reference project stacks or explicitly qualified global stacks.</small>
 			</label>
 			<label class="profile-check profile-field-wide">

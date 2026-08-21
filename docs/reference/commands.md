@@ -49,7 +49,7 @@ The commands below are provided by the optional `@zihanw/pi-forge-subagents` pac
 | `/forge-agent plan <profile> [--backend <id>] <task>` | Prepare, validate, display, and discard an exact plan without provider transport. |
 | `/forge-agent run <profile> [--backend <id>] <task>` | Review and approve an exact foreground read-only run. |
 
-Only profiles explicitly authorized in the matching scope are accepted: the project `subagents.json` authorizes `project:<id>` profiles and the global `subagents.json` authorizes `global:<id>` profiles; `.pi/forge/config.json.subagents` remains a read-only legacy fallback. The model-callable equivalents are `forge_subagent_profiles` (local discovery) and `forge_subagent` (execution). See the [delegation safety guide](../guides/delegation.md).
+Only explicitly scoped profiles are accepted: use `project:<id>` or `global:<id>` keys in `subagents.json`. A bare authorization key always means `project:<id>`, even in the global file; `.pi/forge/config.json.subagents` remains a read-only legacy fallback. The model-callable equivalents are `forge_subagent_profiles` (local discovery) and `forge_subagent` (execution). See the [delegation safety guide](../guides/delegation.md).
 
 ## Payload inspection
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -15,6 +15,7 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { agentProfilePath } from "../src/agent-profile.ts";
 import { promptStacksDir } from "../src/loader.ts";
+import { GLOBAL_FORGE_DIR_ENV, globalAgentProfilePath } from "../src/storage.ts";
 import { UiContributionProvider } from "../src/ui-contribution/contrib-port.ts";
 
 test("web editor preserves its shell and guarded editing state", { timeout: 20_000 }, async (t) => {
@@ -821,6 +822,53 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 	});
 });
 
+test("profile editor preserves and displays a global profile selector after save", { timeout: 20_000 }, async (t) => {
+	const globalRoot = mkdtempSync(join(tmpdir(), "pi-forge-browser-global-profile-"));
+	const previousGlobalRoot = process.env[GLOBAL_FORGE_DIR_ENV];
+	try {
+		process.env[GLOBAL_FORGE_DIR_ENV] = globalRoot;
+		mkdirSync(join(globalRoot, "agent-profiles"), { recursive: true });
+		writeFileSync(globalAgentProfilePath("reviewer"), JSON.stringify({
+			schemaVersion: 1,
+			type: "pi-forge.agent-profile",
+			id: "reviewer",
+			name: "Global Reviewer",
+			model: { provider: "test", id: "target" },
+			thinkingLevel: "high",
+			promptStack: null,
+		}), "utf8");
+		const currentModel = browserModel("test", "current");
+		const targetModel = browserModel("test", "target");
+		await withBrowserEditor(t, (cwd) => {
+			writeStack(cwd, "default.json", stackFixture("default", "Default", true));
+		}, async ({ cwd, editorUrl, page }) => {
+			await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+			await page.locator("#profilesSurfaceBtn").click();
+			const row = page.locator('[data-profile-selector="global:reviewer"]');
+			await row.waitFor();
+			assert.match(await row.textContent() ?? "", /global:reviewer/);
+			await row.click();
+			assert.equal(await page.locator(".profile-selector code").textContent(), "global:reviewer");
+			await page.locator("#profileEditBtn").click();
+			assert.match(await page.locator(".profile-editor-title").textContent() ?? "", /global:reviewer/);
+			await page.locator("#profileName").fill("Global Reviewer Saved");
+			await page.locator("#profileSaveBtn").click();
+			await page.locator("#profilesStatus").filter({ hasText: "Saved global:reviewer" }).waitFor();
+			assert.equal(JSON.parse(readFileSync(globalAgentProfilePath("reviewer"), "utf8")).name, "Global Reviewer Saved");
+			assert.equal(existsSync(agentProfilePath(cwd, "reviewer")), false);
+		}, {
+			currentModel,
+			models: [currentModel, targetModel],
+			availableModels: [currentModel, targetModel],
+			thinkingLevel: "low",
+		});
+	} finally {
+		if (previousGlobalRoot === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = previousGlobalRoot;
+		rmSync(globalRoot, { recursive: true, force: true });
+	}
+});
+
 test("web editor renders a contributed tab through SchemaForm and writes values back", { timeout: 20_000 }, async (t) => {
 	const descriptor = {
 		tabId: "subagent-config",
@@ -864,6 +912,14 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 		await page.locator('[data-field-input="timeoutMs"]').fill("999");
 		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
 		assert.deepEqual(writes, [{ backend: "auto", timeoutMs: 999 }]);
+
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor();
+		await page.locator("#subagent-configTabBtn").click();
+		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
+		await page.locator('[data-field-input="backend"]').selectOption("cli");
+		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
+		assert.deepEqual(writes.at(-1), { backend: "cli", timeoutMs: 999 });
 
 		provider.stop();
 		await page.locator("#subagent-configTabBtn").waitFor({ state: "detached" });

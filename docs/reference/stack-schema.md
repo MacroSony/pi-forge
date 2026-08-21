@@ -95,7 +95,7 @@ Patterns are exact by default and support `*` wildcards:
 }
 ```
 
-Each resource may have a non-empty `allow` list or `deny` list, never both. Tool allow keeps matching active tools; deny removes matching active tools. Unmatched allow patterns are surfaced during validation/preflight.
+Each resource may have a non-empty `allow` list or `deny` list, never both. A selective tool `allow` list chooses matching tools from Pi's complete registered tool catalog, so it can activate a registered tool that was inactive when the stack was selected. A tool `deny` list removes matching tools from the active baseline. `allow: ["*"]` remains unrestricted and does not activate every registered tool. Unmatched allow patterns are surfaced during validation/preflight.
 
 Tool policy changes Pi's active tool list, is reasserted before input/turns, and has a tool-call guard. It preserves external additions in the restorable baseline and restores that baseline when policy no longer applies or the extension shuts down.
 

@@ -55,6 +55,6 @@ Provenance is branch-scoped status metadata, not ownership. Reload, resume, tree
 
 ## Delegation is separate
 
-Ordinary profiles cannot be delegated by default. Delegation authorization is owned by the optional `@zihanw/pi-forge-subagents` package in dedicated files: the trusted project's `.pi/forge/subagents.json` authorizes `project:<id>` profiles and the user-global `~/.pi/forge/subagents.json` authorizes `global:<id>` profiles, with per-profile backend/timeout overrides. The main package reads no subagent configuration, and deleting a profile does not touch `subagents.json`.
+Ordinary profiles cannot be delegated by default. Delegation authorization is owned by the optional `@zihanw/pi-forge-subagents` package in dedicated files, using canonical `project:<id>` or `global:<id>` keys with per-profile backend/timeout overrides. Bare authorization keys are project-only compatibility aliases regardless of file location. The main package reads no subagent configuration, and deleting a profile does not touch `subagents.json`.
 
 Read the [experimental delegation guide](../guides/delegation.md) before enabling it.

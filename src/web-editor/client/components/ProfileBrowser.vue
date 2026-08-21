@@ -88,9 +88,14 @@ function handleProfileSaved(mutation: WebEditorProfileMutation): void {
 	collection.value = mutation.collection;
 	selectedPath.value = mutation.selectedPath;
 	const saved = mutation.collection.profiles.find((entry) => entry.filePath === mutation.selectedPath);
-	profileActionStatus.value = `${editorMode.value === "create" ? "Created" : "Saved"} ${saved?.profile.id || "profile"}`;
+	profileActionStatus.value = `${editorMode.value === "create" ? "Created" : "Saved"} ${profileSelectorLabel(saved)}`;
 	profileActionError.value = "";
 	editorMode.value = undefined;
+}
+
+function profileSelectorLabel(entry: WebEditorProfileEntry | undefined): string {
+	if (!entry) return "profile";
+	return entry.scope === "global" ? entry.selector : entry.profile.id;
 }
 
 async function applySelectedProfile(): Promise<void> {
@@ -224,10 +229,11 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 						:disabled="profileActionBusy || !!editorMode"
 						data-profile-row
 						:data-profile-id="entry.profile.id"
+						:data-profile-selector="entry.selector"
 						@click="selectProfile(entry)"
 					>
 						<span class="profile-row-title">
-							{{ entry.profile.id }}
+							{{ profileSelectorLabel(entry) }}
 							<span class="badge scope" :class="entry.scope">{{ entry.scope }}</span>
 							<span v-if="shadowRelationship(entry)" class="badge shadow">{{ shadowRelationship(entry) }}</span>
 							<span v-if="entry.profile.autoActivate" class="badge">auto</span>
@@ -266,6 +272,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					<section class="profile-card profile-summary-card">
 						<div>
 							<div class="profile-title">{{ selected.profile.name || selected.profile.id }}</div>
+							<div class="profile-selector"><code>{{ selected.selector }}</code></div>
 							<div class="profile-path">{{ selected.filePath }}</div>
 						</div>
 						<div class="profile-summary-actions">
@@ -523,6 +530,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	font-weight: 700;
 }
 
+.profile-selector,
 .profile-path,
 .profile-note {
 	color: var(--muted);

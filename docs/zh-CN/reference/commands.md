@@ -49,7 +49,7 @@
 | `/forge-agent plan <profile> [--backend <id>] <task>` | 准备、显示并丢弃计划，不联系 provider |
 | `/forge-agent run <profile> [--backend <id>] <task>` | 审批并执行前台只读任务 |
 
-只接受匹配 scope 明确授权的 profile：项目 `subagents.json` 授权 `project:<id>`，全局 `subagents.json` 授权 `global:<id>`；也可使用 `.pi/forge/config.json.subagents` 作为只读兼容来源。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
+只接受明确 scope 的授权：请在 `subagents.json` 中使用 `project:<id>` 或 `global:<id>` key。裸授权 key 始终表示 `project:<id>`，即使它位于全局配置中；`.pi/forge/config.json.subagents` 仅作为只读兼容来源。模型工具为 `forge_subagent_profiles` 和 `forge_subagent`。见[安全说明](../guides/delegation.md)。
 
 ## Payload
 

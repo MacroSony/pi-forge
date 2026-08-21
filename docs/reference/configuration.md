@@ -38,7 +38,7 @@ Trusted project `subagents.json` may override defaults, authorize individual pro
   "allowAgentInvocationWithoutApproval": false,
   "summaryInToolDescription": false,
   "profiles": {
-    "reviewer": {
+    "project:reviewer": {
       "enabled": true,
       "backend": "pi-rpc-readonly",
       "timeoutMs": 180000
@@ -51,7 +51,7 @@ Valid timeouts are 1,000–3,600,000 ms. Invalid fields warn and fall back to th
 
 `summaryInToolDescription` (default `false`) embeds a compact, bounded summary of enabled subagent profiles directly in the `forge_subagent` tool description so the parent model can pick a profile without a discovery call. Ready profiles appear first, and unavailable enabled profiles include their first resolution error. It may be set in user or trusted-project `subagents.json` and applies wherever it is enabled.
 
-`profiles` in global `subagents.json` authorizes `global:<id>` profiles; the trusted project's `profiles` authorizes `project:<id>` profiles. Same-ID profiles never inherit enablement, backend, or timeout policy from each other. `allowAgentInvocationWithoutApproval` is project-only, requires trust, and fails closed when malformed. Deleting a profile does not modify `subagents.json`; remove any enabled entry for the deleted profile manually.
+Profile authorization keys should use canonical selectors: `project:<id>` or `global:<id>`. A bare key is a compatibility spelling for `project:<id>` regardless of which config file contains it; it never authorizes a global profile. Therefore a global profile must be written explicitly as `"global:reviewer": { "enabled": true }` in `~/.pi/forge/subagents.json`. Same-ID profiles never inherit enablement, backend, or timeout policy from each other. `allowAgentInvocationWithoutApproval` is project-only, requires trust, and fails closed when malformed. Deleting a profile does not modify `subagents.json`; remove any enabled entry for the deleted profile manually.
 
 Treat project configuration as an authorization boundary. In particular, do not commit unattended delegation unless every permitted parent agent may transmit compiled prompt and readable project content without another human approval.
 

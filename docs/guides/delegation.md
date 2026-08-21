@@ -15,11 +15,11 @@ Profiles are not delegatable by default. Enable each eligible ID in the trusted 
   "backend": "pi-subprocess-readonly",
   "timeoutMs": 60000,
   "profiles": {
-    "reviewer": {
+    "project:reviewer": {
       "enabled": true,
       "timeoutMs": 300000
     },
-    "rpc-reviewer": {
+    "project:rpc-reviewer": {
       "enabled": true,
       "backend": "pi-rpc-readonly",
       "timeoutMs": 180000
@@ -28,7 +28,7 @@ Profiles are not delegatable by default. Enable each eligible ID in the trusted 
 }
 ```
 
-Legacy `.pi/forge/config.json.subagents` is accepted as read-only fallback with a warning. Enablement follows the profile's scope. A global `~/.pi/forge/subagents.json` may define general `backend` and `timeoutMs` defaults and may authorize `global:<id>` profiles through its own `profiles` map. The trusted project's `subagents.json` authorizes `project:<id>` profiles. Same-ID global and project profiles never inherit enablement, backend, or timeout policy from one another. Disabled or unlisted profiles are hidden from discovery and rejected even if guessed.
+Legacy `.pi/forge/config.json.subagents` is accepted as read-only fallback with a warning. Authorization keys should be canonical selectors: `project:<id>` or `global:<id>`. Bare keys remain a compatibility spelling for project profiles only, even inside `~/.pi/forge/subagents.json`; use an explicit key such as `global:reviewer` to authorize a global profile. Same-ID global and project profiles never inherit enablement, backend, or timeout policy from one another. Disabled or unlisted profiles are hidden from discovery and rejected even if guessed.
 
 ## Discover, plan, and run
 

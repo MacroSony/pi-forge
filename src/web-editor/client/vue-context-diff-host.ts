@@ -1,9 +1,11 @@
 import { createApp, type App } from "vue";
 
 import ContextDiffPanel from "./components/ContextDiffPanel.vue";
+import type { LegacyEditorDraft } from "./legacy-editor.ts";
 
 export interface VueContextDiffHostDependencies {
-	getStackId(): string | undefined;
+	getStackDraft(): LegacyEditorDraft | undefined;
+	subscribeStackDraft(listener: () => void): () => void;
 	setStatus(text: string, tone?: string): void;
 }
 
@@ -14,7 +16,8 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 	function mount(root: Element): void {
 		unmount();
 		app = createApp(ContextDiffPanel, {
-			getStackId: deps.getStackId,
+			getStackDraft: deps.getStackDraft,
+			subscribeStackDraft: deps.subscribeStackDraft,
 			onStatus: deps.setStatus,
 		});
 		app.mount(root);

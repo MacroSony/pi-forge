@@ -10,6 +10,7 @@ import { createEditorApi } from "./api.ts";
 import type { FormSchema, FormValues } from "../schema-form.ts";
 import { clearContributedTabs, editorTabButtonId, getEditorTabs, setContributedTabs, type EditorTabDefinition } from "./tab-registry.ts";
 import { createVueSchemaFormHost } from "./vue-schema-form-host.ts";
+import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 
 interface ContributionTabDescriptor {
 	tabId: string;
@@ -69,6 +70,7 @@ export function startContributionTabs(): () => void {
 	}
 
 	function activate(tab: ContributionTabDescriptor): void {
+		activateEditorView(tab.tabId);
 		activeTabId = tab.tabId;
 		// The legacy editor only knows about its own [data-tab] buttons. These
 		// contribution buttons carry a separate attribute, so clear the legacy
@@ -184,6 +186,9 @@ export function startContributionTabs(): () => void {
 	};
 
 	navElement.addEventListener("click", onNavClick);
+	const stopEditorView = subscribeEditorView((viewId) => {
+		if (viewId !== activeTabId) clearActiveState(false);
+	});
 	void refresh();
 	refreshTimer = window.setInterval(() => {
 		void refresh();
@@ -195,6 +200,7 @@ export function startContributionTabs(): () => void {
 		if (refreshTimer !== undefined) window.clearInterval(refreshTimer);
 		if (saveTimer !== undefined) window.clearTimeout(saveTimer);
 		navElement.removeEventListener("click", onNavClick);
+		stopEditorView();
 		clearActiveState();
 		clearContributedTabs();
 		for (const button of navElement.querySelectorAll<HTMLButtonElement>("[data-contrib-tab]")) button.remove();

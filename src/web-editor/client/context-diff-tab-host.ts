@@ -7,8 +7,15 @@
 
 import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
+import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
+import type { LegacyEditorDraft } from "./legacy-editor.ts";
 
-export function startContextDiffTabs(): () => void {
+export interface ContextDiffTabsDependencies {
+	getStackDraft(): LegacyEditorDraft | undefined;
+	subscribeStackDraft(listener: () => void): () => void;
+}
+
+export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => void {
 	const nav = document.querySelector<HTMLElement>(".view-tabs");
 	const dockArea = document.getElementById("editorDockArea");
 	const workspace = document.getElementById("workspace");
@@ -18,8 +25,9 @@ export function startContextDiffTabs(): () => void {
 
 	const definition = getEditorTab("preview");
 	if (!definition?.internalDock) return () => {};
+	const definitionId = definition.id;
 
-	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definition.id}"]`);
+	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definitionId}"]`);
 	if (!button) return () => {};
 
 	const navElement: HTMLElement = nav;
@@ -61,6 +69,7 @@ export function startContextDiffTabs(): () => void {
 	}
 
 	function activate(): void {
+		activateEditorView(definitionId);
 		active = true;
 		clearLegacyActive();
 		setActiveButton(true);
@@ -69,10 +78,8 @@ export function startContextDiffTabs(): () => void {
 		panelElement.classList.add("open");
 		if (!contextDiffHost) {
 			contextDiffHost = createVueContextDiffHost({
-				getStackId: () => {
-					const stackId = document.querySelector<HTMLInputElement>("#stackId");
-					return stackId?.value.trim() || undefined;
-				},
+				getStackDraft: deps.getStackDraft,
+				subscribeStackDraft: deps.subscribeStackDraft,
 				setStatus,
 			});
 		}
@@ -92,10 +99,14 @@ export function startContextDiffTabs(): () => void {
 	};
 
 	navElement.addEventListener("click", onNavClick);
+	const stopEditorView = subscribeEditorView((viewId) => {
+		if (viewId !== definitionId) clearActiveState();
+	});
 
 	return () => {
 		buttonElement.onclick = null;
 		navElement.removeEventListener("click", onNavClick);
+		stopEditorView();
 		clearActiveState();
 	};
 }

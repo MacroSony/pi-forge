@@ -27,7 +27,7 @@ Prompt stack 是一份有序、声明式的 prompt 与策略描述，由固定 *
 
 ## 策略边界
 
-工具 `allow`/`deny` 会修改 Pi active tools，并在 tool call 时再次检查。Skill policy 只过滤 pi-forge 渲染给模型的列表；它不能阻止明确调用，也不是安全边界。若必须控制模型可见 skill 列表，请使用 `replace`，因为 Pi 的基础 prompt 可能已经在 `append`/`prepend` 内容之前列出 skills。
+工具 `allow`/`deny` 会修改 Pi active tools，并在 tool call 时再次检查。具体的 `allow` 列表会从 Pi 的完整已注册工具目录中选择，因此可以启用 stack 激活前处于 inactive 状态的工具；`deny` 只从原 active baseline 中移除工具，`allow: ["*"]` 仍表示不限制且不会启用全部工具。Skill policy 只过滤 pi-forge 渲染给模型的列表；它不能阻止明确调用，也不是安全边界。若必须控制模型可见 skill 列表，请使用 `replace`，因为 Pi 的基础 prompt 可能已经在 `append`/`prepend` 内容之前列出 skills。
 
 ## Scope 与自动启用
 

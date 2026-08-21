@@ -202,7 +202,7 @@ function resourceTitle(resource: WebEditorPolicyResource): string {
 	return [
 		resource.description,
 		resource.source ? `Source: ${resource.source}` : "",
-		resource.active ? "Active tool" : "",
+		resource.active ? "Currently active" : "Registered, currently inactive; a specific allow list can activate it",
 		resource.hidden ? "Hidden from model invocation" : "",
 	].filter(Boolean).join("\n") || resource.name;
 }
@@ -222,7 +222,7 @@ defineExpose({
 	<div class="tab-section">
 		<div class="tab-section-title">Tool policy and skill visibility</div>
 		<div class="tab-section-meta">
-			Tool rules constrain active tools. Skill rules only filter model-visible skills rendered by pi-forge; they do not block explicit skill invocation. Patterns support exact names and * wildcards.
+			A specific tool allow list selects from every registered tool and can activate tools that are currently inactive; deny rules constrain the current active-tool baseline. Skill rules only filter model-visible skills rendered by pi-forge; they do not block explicit skill invocation. Patterns support exact names and * wildcards.
 		</div>
 		<div id="policyRows" class="data-table">
 			<div class="data-row header policy-row">

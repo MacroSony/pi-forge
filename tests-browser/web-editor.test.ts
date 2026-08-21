@@ -177,12 +177,32 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
+		let firstPreviewSeenResolve: () => void = () => {};
+		let releaseFirstPreview: () => void = () => {};
+		const firstPreviewSeen = new Promise<void>((resolve) => { firstPreviewSeenResolve = resolve; });
+		const firstPreviewRelease = new Promise<void>((resolve) => { releaseFirstPreview = resolve; });
+		let previewRequests = 0;
+		await page.route(/\/api\/stacks\/.*\/preview$/, async (route) => {
+			previewRequests += 1;
+			if (previewRequests === 1) {
+				firstPreviewSeenResolve();
+				await firstPreviewRelease;
+			}
+			await route.continue();
+		});
 
 		await page.locator("#previewTabBtn").click();
 		await page.locator("#editorDockArea.dock-open").waitFor();
 		await page.locator("#tabPanel.open").waitFor();
 		await page.locator(".context-diff-mode-tabs").filter({ hasText: "Compiled" }).waitFor();
+		await firstPreviewSeen;
+		await page.locator("#itemContent").fill("Unsaved browser dock prompt.");
+		releaseFirstPreview();
+		await page.waitForTimeout(250);
+		assert.equal(await page.locator(".context-diff-sections").filter({ hasText: "Browser dock system prompt." }).count(), 0);
 		await page.locator(".context-diff-section").first().waitFor();
+		await page.locator(".context-diff-sections").filter({ hasText: "Unsaved browser dock prompt." }).waitFor();
+		assert.equal(await page.locator(".context-diff-sections").filter({ hasText: "Browser dock system prompt." }).count(), 0);
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Diff" }).click();
 		const emptyDiff = page.locator(".context-diff-empty").filter({ hasText: "No captured provider turns yet" });
