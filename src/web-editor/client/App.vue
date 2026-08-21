@@ -116,21 +116,28 @@ onUnmounted(() => {
 			</aside>
 			<main class="main">
 				<div class="main-actions">
-					<select id="stackCreateScope" title="Scope for new stacks, imports, and forks">
-						<option value="project">project</option>
-						<option value="global">global</option>
-					</select>
-					<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)">New stack</button>
+					<div class="new-stack-control">
+						<select id="stackCreateScope" aria-label="Stack scope" title="Scope for new stacks, imports, and forks">
+							<option value="project">Project</option>
+							<option value="global">Global</option>
+						</select>
+						<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)">New stack</button>
+					</div>
 					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session">Activate</button>
 					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)">Save</button>
 					<button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)">Validate</button>
 					<button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)">Preview</button>
-					<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
-					<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
-					<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>
-					<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
 					<span class="action-spacer"></span>
-					<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
+					<details id="moreActions" class="action-menu">
+						<summary data-icon="⋯" title="Show less-used stack actions">More</summary>
+						<div class="action-menu-popover">
+							<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
+							<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
+							<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>
+							<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
+							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
+						</div>
+					</details>
 					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
 				</div>
 				<section id="metadataPanel" class="metadata-panel">
@@ -204,8 +211,8 @@ onUnmounted(() => {
 
 .surface-nav {
 	flex: none;
-	height: 44px;
-	padding: 5px 10px;
+	height: 40px;
+	padding: 4px 10px;
 	display: flex;
 	align-items: center;
 	gap: 6px;

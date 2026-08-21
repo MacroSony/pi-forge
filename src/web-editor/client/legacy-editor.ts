@@ -1054,6 +1054,13 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("validateBtn").onclick = () => run(validateStack);
   el("previewBtn").onclick = () => run(previewStack);
   el("payloadBtn").onclick = () => run(openPayloadCapture);
+  const moreActions = el("moreActions") as HTMLDetailsElement;
+  moreActions.onclick = (event) => {
+    if ((event.target as HTMLElement).closest("button")) moreActions.open = false;
+  };
+  const closeMoreActions = (event: MouseEvent) => {
+    if (moreActions.open && !moreActions.contains(event.target as Node)) moreActions.open = false;
+  };
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.onclick = () => {
       activateEditorView(button.dataset.tab || "items");
@@ -1075,6 +1082,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
 
   document.addEventListener("dragover", handleDocumentItemDragOver);
   document.addEventListener("drop", handleDocumentItemDrop);
+  document.addEventListener("click", closeMoreActions);
   window.addEventListener("keydown", handleEditorShortcut);
   window.addEventListener("pi-forge:profile-applied", handleProfileApplied);
   const stopEditorView = subscribeEditorView((viewId) => {
@@ -1101,8 +1109,10 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     finishItemDrag();
     document.removeEventListener("dragover", handleDocumentItemDragOver);
     document.removeEventListener("drop", handleDocumentItemDrop);
+    document.removeEventListener("click", closeMoreActions);
     window.removeEventListener("keydown", handleEditorShortcut);
     window.removeEventListener("pi-forge:profile-applied", handleProfileApplied);
+    moreActions.onclick = null;
     stopEditorView();
     if (window.onbeforeunload === beforeUnload) window.onbeforeunload = previousBeforeUnload;
     vueTabHost.unmount();

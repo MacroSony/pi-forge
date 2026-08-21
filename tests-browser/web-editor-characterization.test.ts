@@ -37,6 +37,39 @@ test("web editor preserves its shell and guarded editing state", { timeout: 20_0
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
 		assert.equal(await page.locator("#itemContent").inputValue(), "Content for default.");
 		assert.equal(await page.locator("#settings").isVisible(), false);
+		const scopeBox = await page.locator("#stackCreateScope").boundingBox();
+		const newStackBox = await page.locator("#newStackBtn").boundingBox();
+		const actionsBox = await page.locator(".main-actions").boundingBox();
+		const workspaceBox = await page.locator("#workspace").boundingBox();
+		assert.ok(scopeBox && newStackBox && actionsBox && workspaceBox);
+		assert.ok(Math.abs(scopeBox.y - newStackBox.y) < 2, "scope and New stack should remain one compact control");
+		assert.ok(scopeBox.width < 120, "stack scope should not consume a full toolbar row");
+		assert.ok(actionsBox.height <= 44, "primary stack actions should fit on one compact row");
+		assert.ok(workspaceBox.y <= 225, "stack editing should begin near the top of the viewport");
+		assert.equal(await page.locator("#deleteStackBtn").isVisible(), false);
+		await page.locator("#moreActions > summary").click();
+		assert.equal(await page.locator("#deleteStackBtn").isVisible(), true);
+		await page.locator("#moreActions > summary").click();
+		await page.setViewportSize({ width: 901, height: 720 });
+		const narrowNewStackBox = await page.locator("#newStackBtn").boundingBox();
+		const narrowActivateBox = await page.locator("#activateBtn").boundingBox();
+		assert.ok(narrowNewStackBox && narrowActivateBox);
+		const controlsOverlap = !(
+			narrowNewStackBox.x + narrowNewStackBox.width <= narrowActivateBox.x
+			|| narrowActivateBox.x + narrowActivateBox.width <= narrowNewStackBox.x
+			|| narrowNewStackBox.y + narrowNewStackBox.height <= narrowActivateBox.y
+			|| narrowActivateBox.y + narrowActivateBox.height <= narrowNewStackBox.y
+		);
+		assert.equal(controlsOverlap, false, "compact stack creation must not overlap Activate at narrow desktop widths");
+		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+		await page.setViewportSize({ width: 390, height: 844 });
+		const mobileTopbarBox = await page.locator(".topbar").boundingBox();
+		const mobileSidebarBox = await page.locator(".sidebar").boundingBox();
+		assert.ok(mobileTopbarBox && mobileSidebarBox);
+		assert.ok(mobileTopbarBox.height <= 44, "mobile stack status bar should stay on one row");
+		assert.ok(mobileSidebarBox.height <= 240, "mobile stack list should not push the editor below the fold indefinitely");
+		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+		await page.setViewportSize({ width: 1280, height: 720 });
 
 		const initialTheme = await page.locator("body").getAttribute("data-theme");
 		assert.ok(initialTheme === "light" || initialTheme === "dark");
@@ -110,6 +143,7 @@ test("web editor transitions between populated and empty stack states", { timeou
 			assert.match(dialog.message(), /Delete prompt stack 'only'/);
 			await dialog.accept();
 		});
+		await page.locator("#moreActions > summary").click();
 		await page.locator("#deleteStackBtn").click();
 		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
 		assert.equal(await page.locator("#saveBtn").isDisabled(), true);
@@ -168,6 +202,7 @@ test("profile preflight refreshes after prompt-stack deletion", { timeout: 20_00
 			assert.match(dialog.message(), /Delete prompt stack 'default'/);
 			await dialog.accept();
 		});
+		await page.locator("#moreActions > summary").click();
 		await page.locator("#deleteStackBtn").click();
 		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
 

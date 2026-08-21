@@ -101,6 +101,7 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		assert.equal(saved.regex?.rules?.[0]?.replace, "Typed");
 
 		const downloadPromise = page.waitForEvent("download");
+		await page.locator("#moreActions > summary").click();
 		await page.locator("#exportBtn").click();
 		const download = await downloadPromise;
 		assert.equal(download.suggestedFilename(), "default.json");

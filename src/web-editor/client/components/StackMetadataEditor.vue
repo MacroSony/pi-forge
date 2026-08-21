@@ -49,13 +49,13 @@ function toggleMetadata(): void {
 		<button
 			id="metadataToggleBtn"
 			:data-icon="collapsed ? '▸' : '▾'"
+			:aria-expanded="!collapsed"
 			type="button"
 			title="Show or hide stack metadata"
 			@click="toggleMetadata"
 		>
-			{{ collapsed ? "Show metadata" : "Hide metadata" }}
+			Metadata
 		</button>
-		<div class="metadata-title">Stack metadata</div>
 		<div id="metadataSummary" class="metadata-summary">{{ summary }}</div>
 	</div>
 	<div id="settings" v-show="!collapsed" class="settings">

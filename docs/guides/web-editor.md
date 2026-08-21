@@ -43,7 +43,7 @@ The stack workspace provides:
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.
 
-Existing IDs are immutable during edit. Use **Fork** to create a different ID without breaking profile references or the active selection. The toolbar scope selector (default `project`) chooses where new stacks, imports, and forks are written: `global` targets the user-global `~/.pi/forge/prompt-stacks`, `project` targets `.pi/forge/prompt-stacks`. Stack rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy stacks remain editable in place.
+Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking profile references or the active selection. The compact selector attached to **New stack** (default `Project`) chooses where new stacks, imports, and forks are written: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Less-used capture, fork, import, export, and delete actions live under **More** so the stack and Preview/Diff panes keep the available viewport. Stack rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy stacks remain editable in place.
 
 Saves, imports, forks, and deletes reload stack state into the current Pi session. When another surface changes a referenced stack, returning to profiles refreshes profile resolution.
 
