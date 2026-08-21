@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createProviderPayloadCapture } from "./payload-capture.ts";
+import { createProviderPayloadCaptureWithSerialization } from "./payload-capture.ts";
 import type { PayloadDisplayTarget, PayloadState } from "./payload-state.ts";
 import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.ts";
 import type { LoadedPromptStack } from "./types.ts";
@@ -137,7 +137,10 @@ function captureProviderPayload(
 	value: unknown,
 	savePath?: string,
 ): WebEditorPayloadCapture {
-	const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
-	appendContextDiffCapture(state.contextDiffHistory, capture);
+	const { capture, serializedPayload } = createProviderPayloadCaptureWithSerialization(value, {
+		stackId: active?.stack.id,
+		savePath,
+	});
+	appendContextDiffCapture(state.contextDiffHistory, { ...capture, serializedPayload });
 	return capture;
 }

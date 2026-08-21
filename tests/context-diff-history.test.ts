@@ -8,6 +8,7 @@ import {
 	getContextDiffView,
 } from "../src/context-diff-history.ts";
 import { extractTurnSnapshot, type ContextDiffCapture } from "../src/context-diff-snapshot.ts";
+import { createProviderPayloadCaptureWithSerialization } from "../src/payload-capture.ts";
 
 function capture(capturedAt: string, messages: Array<{ role: string; content: string }>, stackId = "stack-context-diff"): ContextDiffCapture {
 	return {
@@ -28,11 +29,16 @@ test("extractTurnSnapshot converts an OpenAI-style payload into ordered blocks",
 
 	assert.equal(snapshot.turnId, "2025-01-01T00:00:00.000Z");
 	assert.equal(snapshot.stackId, "stack-context-diff");
-	assert.deepEqual(snapshot.blocks.map((block) => block.key), ["request", "system", "message-1", "message-2"]);
+	assert.deepEqual(snapshot.blocks.map((block) => block.key), [
+		"request-model",
+		"message-system-57362e4d",
+		"message-user-3d22cb12",
+		"message-assistant-c0a65ea4",
+	]);
 	assert.deepEqual(snapshot.blocks.map((block) => block.role), ["request", "system", "user", "assistant"]);
 	assert.deepEqual(snapshot.blocks.slice(1).map((block) => block.text), ["System prompt", "User message", "Assistant message"]);
-	assert.equal(snapshot.blocks[1]!.hash, createBlock("system", "system", "System prompt", {
-		section: "message",
+	assert.equal(snapshot.blocks[1]!.hash, createBlock("ignored", "system", "System prompt", {
+		section: "messages",
 		value: messages[0],
 	}).hash);
 	assert.equal(snapshot.blocks[1]!.chars, 13);
@@ -61,7 +67,7 @@ test("extractTurnSnapshot handles Anthropic-style system and content arrays", ()
 	assert.equal(snapshot.blocks.length, 2);
 	assert.equal(snapshot.blocks[0]!.key, "system");
 	assert.equal(snapshot.blocks[0]!.text, "You are helpful.");
-	assert.equal(snapshot.blocks[1]!.key, "message-0");
+	assert.match(snapshot.blocks[1]!.key, /^message-user-[0-9a-f]{8}$/);
 	assert.equal(snapshot.blocks[1]!.role, "user");
 	assert.equal(snapshot.blocks[1]!.text, "Hello\n[image content]");
 });
@@ -113,6 +119,59 @@ test("appendContextDiffCapture returns a diff even for the first capture", () =>
 	assert.equal(diff.summary.addedBlocks, 2);
 });
 
+test("the real extractor aligns inserted messages by content-derived keys", () => {
+	const previous = extractTurnSnapshot(capture("2025-01-01T00:02:00.000Z", [
+		{ role: "user", content: "A" },
+		{ role: "assistant", content: "B" },
+	]));
+	const current = extractTurnSnapshot(capture("2025-01-01T00:03:00.000Z", [
+		{ role: "user", content: "Inserted" },
+		{ role: "user", content: "A" },
+		{ role: "assistant", content: "B" },
+	]));
+	const diff = diffTurns(previous, current);
+
+	assert.deepEqual(diff.blocks.slice(1).map((block) => block.status), ["added", "same", "same"]);
+	assert.equal(diff.blocks[2]!.before?.text, "A");
+	assert.equal(diff.blocks[3]!.before?.text, "B");
+});
+
+test("faithful serialization keeps truncated request regions in the cache identity", () => {
+	const previousMessages = Array.from({ length: 81 }, (_, index) => ({
+		role: "user",
+		content: index === 80 ? "tail-before" : `message-${index}`,
+	}));
+	const currentMessages = previousMessages.map((message, index) => index === 80
+		? { ...message, content: "tail-after" }
+		: message);
+	const previousCapture = createProviderPayloadCaptureWithSerialization({
+		model: "gpt-4.1",
+		messages: previousMessages,
+	});
+	const currentCapture = createProviderPayloadCaptureWithSerialization({
+		model: "gpt-4.1",
+		messages: currentMessages,
+	});
+	assert.deepEqual(previousCapture.capture.payload, currentCapture.capture.payload);
+
+	const previous = extractTurnSnapshot({
+		...previousCapture.capture,
+		capturedAt: "2025-01-01T00:04:00.000Z",
+		serializedPayload: previousCapture.serializedPayload,
+	});
+	const current = extractTurnSnapshot({
+		...currentCapture.capture,
+		capturedAt: "2025-01-01T00:05:00.000Z",
+		serializedPayload: currentCapture.serializedPayload,
+	});
+	const diff = diffTurns(previous, current);
+
+	assert.equal(previous.blocks.length, 82);
+	assert.equal(current.blocks.length, 82);
+	assert.equal(diff.blocks.at(-1)!.status, "modified");
+	assert.notEqual(previous.blocks.at(-1)!.hash, current.blocks.at(-1)!.hash);
+});
+
 test("snapshot hashes preserve message metadata and request-level tool definitions", () => {
 	const previous = extractTurnSnapshot({
 		capturedAt: "2025-01-01T00:03:00.000Z",
@@ -147,11 +206,16 @@ test("snapshot hashes preserve message metadata and request-level tool definitio
 		text: "current",
 	});
 
-	assert.deepEqual(current.blocks.map((block) => block.key), ["request", "message-0"]);
-	assert.notEqual(previous.blocks[0]!.hash, current.blocks[0]!.hash);
+	assert.deepEqual(current.blocks.map((block) => block.key), [
+		"request-model",
+		"message-assistant-15912d92",
+		"request-tools",
+	]);
+	assert.equal(previous.blocks[0]!.hash, current.blocks[0]!.hash);
 	assert.notEqual(previous.blocks[1]!.hash, current.blocks[1]!.hash);
+	assert.notEqual(previous.blocks[2]!.hash, current.blocks[2]!.hash);
 	const diff = diffTurns(previous, current);
-	assert.deepEqual(diff.blocks.map((block) => block.status), ["modified", "modified"]);
+	assert.deepEqual(diff.blocks.map((block) => block.status), ["same", "modified", "modified"]);
 	assert.ok(diff.prefixRatio < 1);
 });
 

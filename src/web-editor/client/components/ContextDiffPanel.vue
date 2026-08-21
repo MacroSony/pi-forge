@@ -131,9 +131,7 @@ function blockRole(block: DiffBlock): string {
 }
 
 function blockTokenText(block: DiffBlock): string {
-	if (block.status === "added") return `+~${block.after?.approxTokens ?? 0}`;
-	if (block.status === "removed") return `-~${block.before?.approxTokens ?? 0}`;
-	if (block.status === "modified") {
+	if (block.status !== "same") {
 		const delta = block.tokenDelta;
 		return `${delta >= 0 ? "+" : "-"}~${Math.abs(delta)}`;
 	}
@@ -210,7 +208,7 @@ function turnLabel(): string {
 			</div>
 			<div v-if="contextDiffError" class="context-diff-error">{{ contextDiffError }}</div>
 			<div v-else-if="!latestDiff" class="context-diff-empty">
-				No captured provider turns yet. Arm a payload capture in the editor and send a prompt; the latest diff will appear here.
+				No captured provider turns yet. Send a prompt to capture the next provider request; recent turns appear here automatically.
 			</div>
 			<template v-else>
 				<div class="context-diff-summary">

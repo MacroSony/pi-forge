@@ -140,13 +140,50 @@ function classify(before: Block | undefined, after: Block | undefined): DiffBloc
 			status: "modified",
 			before,
 			after,
-			tokenDelta: after.approxTokens - before.approxTokens,
+			tokenDelta: 0,
 		};
 	}
 	if (before) {
-		return { status: "removed", before, tokenDelta: -before.approxTokens };
+		return { status: "removed", before, tokenDelta: 0 };
 	}
-	return { status: "added", after, tokenDelta: after?.approxTokens ?? 0 };
+	return { status: "added", after, tokenDelta: 0 };
+}
+
+/**
+ * Allocate the request-level chars/4 delta across changed blocks. Per-block
+ * token deltas are deliberately based on character deltas, with the single
+ * request-level rounding remainder distributed across blocks so the chips and
+ * summary describe the same integer total.
+ */
+function assignTokenDeltas(blocks: DiffBlock[], deltaTokens: number): void {
+	const candidates = blocks
+		.map((block) => ({
+			block,
+			charDelta: (block.after?.chars ?? 0) - (block.before?.chars ?? 0),
+		}))
+		.filter(({ block, charDelta }) => block.status !== "same" && charDelta !== 0);
+	if (candidates.length === 0) return;
+
+	let allocated = 0;
+	for (const candidate of candidates) {
+		candidate.block.tokenDelta = Math.trunc(candidate.charDelta / 4);
+		allocated += candidate.block.tokenDelta;
+	}
+
+	let remainder = deltaTokens - allocated;
+	if (remainder === 0) return;
+	const direction = remainder > 0 ? 1 : -1;
+	const preferred = candidates.filter(({ charDelta }) => direction > 0 ? charDelta > 0 : charDelta < 0);
+	const targets = preferred.length > 0 ? preferred : candidates;
+	const wholeShare = Math.trunc(Math.abs(remainder) / targets.length);
+	if (wholeShare > 0) {
+		for (const target of targets) target.block.tokenDelta += direction * wholeShare;
+		remainder -= direction * wholeShare * targets.length;
+	}
+	for (let index = 0; remainder !== 0; index++) {
+		targets[index % targets.length]!.block.tokenDelta += direction;
+		remainder -= direction;
+	}
 }
 
 function summarize(blocks: DiffBlock[], netTokens: number): TurnDiffSummary {
@@ -164,11 +201,13 @@ function summarize(blocks: DiffBlock[], netTokens: number): TurnDiffSummary {
 				break;
 			case "added":
 				addedBlocks++;
-				addedTokens += block.after?.approxTokens ?? 0;
+				if (block.tokenDelta > 0) addedTokens += block.tokenDelta;
+				if (block.tokenDelta < 0) removedTokens += -block.tokenDelta;
 				break;
 			case "removed":
 				removedBlocks++;
-				removedTokens += block.before?.approxTokens ?? 0;
+				if (block.tokenDelta > 0) addedTokens += block.tokenDelta;
+				if (block.tokenDelta < 0) removedTokens += -block.tokenDelta;
 				break;
 			case "modified":
 				modifiedBlocks++;
@@ -179,13 +218,6 @@ function summarize(blocks: DiffBlock[], netTokens: number): TurnDiffSummary {
 				}
 				break;
 		}
-	}
-
-	const classifiedNetTokens = addedTokens - removedTokens;
-	if (classifiedNetTokens < netTokens) {
-		addedTokens += netTokens - classifiedNetTokens;
-	} else if (classifiedNetTokens > netTokens) {
-		removedTokens += classifiedNetTokens - netTokens;
 	}
 
 	return {
@@ -211,38 +243,36 @@ function alignBlocks(beforeBlocks: Block[], afterBlocks: Block[]): Array<{ befor
 		&& hasUniqueStableKeys(afterBlocks)
 		&& beforeBlocks.some((block) => afterKeys.has(block.key));
 	if (!useKeys) {
-		const maxLength = Math.max(beforeBlocks.length, afterBlocks.length);
-		return Array.from({ length: maxLength }, (_, index) => ({
-			before: beforeBlocks[index],
-			after: afterBlocks[index],
-		}));
+		return alignPositional(beforeBlocks, afterBlocks);
 	}
 
 	const beforeByKey = new Map(beforeBlocks.map((block) => [block.key, block]));
 	const beforeIndexByKey = new Map(beforeBlocks.map((block, index) => [block.key, index]));
 	const aligned: Array<{ before?: Block; after?: Block }> = [];
 	let beforeCursor = 0;
-	for (const after of afterBlocks) {
-		const before = beforeByKey.get(after.key);
-		if (!before) {
-			aligned.push({ after });
-			continue;
-		}
-		const beforeIndex = beforeIndexByKey.get(after.key)!;
-		while (beforeCursor < beforeIndex) {
-			const skipped = beforeBlocks[beforeCursor]!;
-			if (!afterKeys.has(skipped.key)) aligned.push({ before: skipped });
-			beforeCursor++;
-		}
-		aligned.push({ before, after });
-		beforeCursor = Math.max(beforeCursor, beforeIndex + 1);
+	let afterCursor = 0;
+	for (let afterIndex = 0; afterIndex < afterBlocks.length; afterIndex++) {
+		const after = afterBlocks[afterIndex]!;
+		const beforeIndex = beforeIndexByKey.get(after.key);
+		if (beforeIndex === undefined || beforeIndex < beforeCursor) continue;
+		aligned.push(...alignPositional(
+			beforeBlocks.slice(beforeCursor, beforeIndex),
+			afterBlocks.slice(afterCursor, afterIndex),
+		));
+		aligned.push({ before: beforeByKey.get(after.key), after });
+		beforeCursor = beforeIndex + 1;
+		afterCursor = afterIndex + 1;
 	}
-	while (beforeCursor < beforeBlocks.length) {
-		const before = beforeBlocks[beforeCursor]!;
-		if (!afterKeys.has(before.key)) aligned.push({ before });
-		beforeCursor++;
-	}
+	aligned.push(...alignPositional(beforeBlocks.slice(beforeCursor), afterBlocks.slice(afterCursor)));
 	return aligned;
+}
+
+function alignPositional(beforeBlocks: Block[], afterBlocks: Block[]): Array<{ before?: Block; after?: Block }> {
+	const maxLength = Math.max(beforeBlocks.length, afterBlocks.length);
+	return Array.from({ length: maxLength }, (_, index) => ({
+		before: beforeBlocks[index],
+		after: afterBlocks[index],
+	}));
 }
 
 /**
@@ -286,6 +316,7 @@ export function diffTurns(
 		? currentTokens
 		: Math.min(currentTokens, Math.floor(prefixChars / 4));
 	const deltaTokens = currentTokens - previousTokens;
+	assignTokenDeltas(diffBlocks, deltaTokens);
 	const prefixRatio = currentTokens === 0 ? 0 : prefixTokens / currentTokens;
 
 	return {

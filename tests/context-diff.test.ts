@@ -152,13 +152,30 @@ test("block removed fixture marks a removed tail block and keeps prefix through 
 	);
 	const removedBlock = diff.blocks[3]!;
 	assert.equal(removedBlock.after, undefined);
-	assert.equal(removedBlock.tokenDelta, -(removedBlock.before?.approxTokens ?? 0));
+	assert.equal(removedBlock.tokenDelta, diff.deltaTokens);
 	assert.equal(diff.prefixTokens, turnApproxTokens(current));
 	assert.equal(diff.prefixRatio, 1);
 	assert.equal(diff.deltaTokens, turnApproxTokens(current) - turnApproxTokens(previous));
 	assert.equal(diff.summary.removedBlocks, 1);
-	assert.equal(diff.summary.removedTokens, 20);
+	assert.equal(diff.summary.removedTokens, -diff.deltaTokens);
 	assert.equal(diff.summary.changedBlocks, 1);
+});
+
+test("changed-block chips and summaries share one conservative request-level rounding", () => {
+	const previous = turn("prev", [block("base", "user", "abcd")]);
+	const current = turn("curr", [
+		block("base", "user", "abcd"),
+		block("one", "user", "x"),
+		block("two", "user", "x"),
+		block("three", "user", "x"),
+	]);
+	const diff = diffTurns(previous, current);
+
+	assert.equal(diff.deltaTokens, 1);
+	assert.deepEqual(diff.blocks.slice(1).map((block) => block.tokenDelta), [1, 0, 0]);
+	assert.equal(diff.summary.addedTokens, 1);
+	assert.equal(diff.summary.removedTokens, 0);
+	assert.equal(diff.summary.addedTokens - diff.summary.removedTokens, diff.deltaTokens);
 });
 
 test("block modified mid-array fixture trims inside the modified block", () => {

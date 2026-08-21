@@ -185,7 +185,11 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".context-diff-section").first().waitFor();
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Diff" }).click();
-		await page.locator(".context-diff-empty").filter({ hasText: "No captured provider turns yet" }).waitFor();
+		const emptyDiff = page.locator(".context-diff-empty").filter({ hasText: "No captured provider turns yet" });
+		await emptyDiff.waitFor();
+		const emptyDiffText = await emptyDiff.textContent();
+		assert.match(emptyDiffText ?? "", /automatically/);
+		assert.doesNotMatch(emptyDiffText ?? "", /Arm a payload capture/);
 
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#workspace").waitFor({ state: "visible" });

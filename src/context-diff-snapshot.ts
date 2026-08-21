@@ -4,13 +4,15 @@
  * This module stays free of Node/DOM/Vue APIs so the same extraction logic can
  * be reused by the web host and future non-web surfaces.
  */
-import { createBlock, createTurnSnapshot, type Block, type TurnSnapshot } from "./context-diff.ts";
+import { createBlock, createTurnSnapshot, hashText, type Block, type TurnSnapshot } from "./context-diff.ts";
 
 export interface ContextDiffCapture {
 	turnId?: string;
 	capturedAt: string;
 	stackId?: string;
 	payload?: unknown;
+	/** Secret-redacted, complete provider-request JSON used for diff identity. */
+	serializedPayload?: string;
 	text: string;
 }
 
@@ -25,65 +27,38 @@ export function extractTurnSnapshot(capture: ContextDiffCapture): TurnSnapshot {
 }
 
 function extractBlocks(capture: ContextDiffCapture): Block[] {
-	const payload = capture.payload;
+	const serializedPayload = parseSerializedPayload(capture.serializedPayload);
+	const payload = serializedPayload === undefined ? capture.payload : serializedPayload;
 	if (!isPlainObject(payload)) {
-		return [createBlock("payload-text", "payload", capture.text)];
+		return [createBlock("payload-text", "payload", capture.text, capture.serializedPayload === undefined ? undefined : {
+			section: "payload",
+			serializedPayload: capture.serializedPayload,
+		})];
 	}
 
 	const blocks: Block[] = [];
-	const requestFields: Record<string, unknown> = {};
+	const messageKeyCounts = new Map<string, number>();
 	for (const [key, value] of Object.entries(payload)) {
-		if (key === "system") continue;
-		if (key === "messages" && Array.isArray(value)) continue;
-		requestFields[key] = value;
-	}
-	if (Object.keys(requestFields).length > 0) {
-		const requestText = stringify(requestFields, 2);
-		blocks.push(createBlock("request", "request", requestText, {
-			section: "request",
-			fields: requestFields,
-		}));
-	}
-
-	if (typeof payload.system === "string") {
-		blocks.push(createBlock("system", "system", payload.system, {
-			section: "system",
-			value: payload.system,
-		}));
-	} else if (Array.isArray(payload.system)) {
-		const systemText = contentBlocksToText(payload.system);
-		if (systemText.length > 0 || payload.system.length > 0) {
-			blocks.push(createBlock("system", "system", systemText || stringify(payload.system), {
-				section: "system",
-				value: payload.system,
-			}));
+		if (key === "system") {
+			blocks.push(createSystemBlock(value));
+			continue;
 		}
-	} else if (payload.system !== undefined) {
-		blocks.push(createBlock("system", "system", stringify(payload.system), {
-			section: "system",
-			value: payload.system,
-		}));
-	}
-
-	if (Array.isArray(payload.messages)) {
-		let hasSystemBlock = blocks.some((block) => block.key === "system");
-		for (let index = 0; index < payload.messages.length; index++) {
-			const message = payload.messages[index];
-			if (!isPlainObject(message)) {
-				blocks.push(createBlock(`message-${index}`, "message", messageToText(message), {
-					section: "message",
+		if (key === "messages" && Array.isArray(value) && value.length > 0) {
+			for (const message of value) {
+				const text = messageToText(message);
+				const role = messageRole(message);
+				const baseKey = `message-${keyPart(role)}-${hashText(`${role}\u0000${text}`).slice(0, 8)}`;
+				const occurrence = messageKeyCounts.get(baseKey) ?? 0;
+				messageKeyCounts.set(baseKey, occurrence + 1);
+				const messageKey = occurrence === 0 ? baseKey : `${baseKey}-${occurrence + 1}`;
+				blocks.push(createBlock(messageKey, role, text, {
+					section: "messages",
 					value: message,
 				}));
-				continue;
 			}
-			const role = typeof message.role === "string" && message.role.length > 0 ? message.role : "message";
-			const key = index === 0 && role === "system" && !hasSystemBlock ? "system" : `message-${index}`;
-			if (key === "system") hasSystemBlock = true;
-			blocks.push(createBlock(key, role, messageToText(message), {
-				section: "message",
-				value: message,
-			}));
+			continue;
 		}
+		blocks.push(createRequestFieldBlock(key, value));
 	}
 
 	if (blocks.length > 0) return blocks;
@@ -91,6 +66,54 @@ function extractBlocks(capture: ContextDiffCapture): Block[] {
 		section: "payload",
 		value: payload,
 	})];
+}
+
+function createRequestFieldBlock(key: string, value: unknown): Block {
+	return createBlock(`request-${key}`, "request", stringify({ [key]: value }, 2), {
+		section: "request",
+		field: key,
+		value,
+	});
+}
+
+function createSystemBlock(value: unknown): Block {
+	if (typeof value === "string") {
+		return createBlock("system", "system", value, {
+			section: "system",
+			value,
+		});
+	}
+	if (Array.isArray(value)) {
+		const systemText = contentBlocksToText(value);
+		return createBlock("system", "system", systemText || stringify(value), {
+			section: "system",
+			value,
+		});
+	}
+	return createBlock("system", "system", stringify(value), {
+		section: "system",
+		value,
+	});
+}
+
+function messageRole(message: unknown): string {
+	return isPlainObject(message) && typeof message.role === "string" && message.role.length > 0
+		? message.role
+		: "message";
+}
+
+function keyPart(value: string): string {
+	const part = value.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+	return part || "message";
+}
+
+function parseSerializedPayload(serializedPayload: string | undefined): unknown {
+	if (serializedPayload === undefined) return undefined;
+	try {
+		return JSON.parse(serializedPayload);
+	} catch {
+		return undefined;
+	}
 }
 
 function stringify(value: unknown, space = 0): string {

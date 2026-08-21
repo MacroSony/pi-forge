@@ -19,23 +19,49 @@ const SAFE_TOKEN_METADATA_KEYS = new Set([
 	"total_tokens",
 ]);
 
+export interface ProviderPayloadCaptureWithSerialization {
+	capture: WebEditorPayloadCapture;
+	/** Secret-redacted JSON without the display capture's lossy limits. */
+	serializedPayload: string;
+}
+
 export function createProviderPayloadCapture(value: unknown, options: { stackId?: string; savePath?: string } = {}): WebEditorPayloadCapture {
+	return createProviderPayloadCaptureWithSerialization(value, options).capture;
+}
+
+export function createProviderPayloadCaptureWithSerialization(
+	value: unknown,
+	options: { stackId?: string; savePath?: string } = {},
+): ProviderPayloadCaptureWithSerialization {
 	const formatted = formatProviderPayload(value);
 	return {
-		capturedAt: new Date().toISOString(),
-		stackId: options.stackId,
-		savePath: options.savePath,
-		payload: formatted.payload,
-		text: formatted.text,
-		chars: formatted.chars,
-		approxTokens: formatted.approxTokens,
-		truncated: formatted.truncated,
-		error: formatted.error,
+		capture: {
+			capturedAt: new Date().toISOString(),
+			stackId: options.stackId,
+			savePath: options.savePath,
+			payload: formatted.payload,
+			text: formatted.text,
+			chars: formatted.chars,
+			approxTokens: formatted.approxTokens,
+			truncated: formatted.truncated,
+			error: formatted.error,
+		},
+		serializedPayload: formatted.serializedPayload,
 	};
 }
 
-export function formatProviderPayload(value: unknown): { payload?: unknown; text: string; chars: number; approxTokens: number; truncated: boolean; error?: string } {
+export function formatProviderPayload(value: unknown): {
+	payload?: unknown;
+	text: string;
+	chars: number;
+	approxTokens: number;
+	truncated: boolean;
+	serializedPayload: string;
+	error?: string;
+} {
 	try {
+		const faithfulPayload = redactPayloadFaithfully(value);
+		const serializedPayload = stringifyPayload(faithfulPayload);
 		const payload = redactPayload(value);
 		const renderedJson = JSON.stringify(payload, null, 2);
 		const text = renderedJson === undefined ? String(payload) : renderedJson;
@@ -48,6 +74,7 @@ export function formatProviderPayload(value: unknown): { payload?: unknown; text
 			chars: rendered.length,
 			approxTokens: estimatePayloadTokens(rendered),
 			truncated,
+			serializedPayload,
 		};
 	} catch (error) {
 		const text = `Failed to stringify provider payload: ${error instanceof Error ? error.message : String(error)}`;
@@ -56,6 +83,7 @@ export function formatProviderPayload(value: unknown): { payload?: unknown; text
 			chars: text.length,
 			approxTokens: estimatePayloadTokens(text),
 			truncated: false,
+			serializedPayload: text,
 			error: text,
 		};
 	}
@@ -90,6 +118,26 @@ function redactPayload(value: unknown, depth = 0): unknown {
 		result[key] = redactPayload(raw, depth + 1);
 	}
 	return result;
+}
+
+/** Redact credentials while retaining the complete JSON-compatible request. */
+function redactPayloadFaithfully(value: unknown, ancestors = new Set<object>()): unknown {
+	if (typeof value === "string" || value === null || typeof value !== "object") return value;
+	if (ancestors.has(value)) return "[pi-forge: circular reference]";
+	const nextAncestors = new Set(ancestors);
+	nextAncestors.add(value);
+	if (Array.isArray(value)) return value.map((item) => redactPayloadFaithfully(item, nextAncestors));
+
+	const result: Record<string, unknown> = {};
+	for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+		result[key] = isSecretKey(key) ? "[redacted]" : redactPayloadFaithfully(raw, nextAncestors);
+	}
+	return result;
+}
+
+function stringifyPayload(value: unknown): string {
+	const rendered = JSON.stringify(value, null, 2);
+	return rendered === undefined ? String(value) : rendered;
 }
 
 function isSecretKey(key: string): boolean {
