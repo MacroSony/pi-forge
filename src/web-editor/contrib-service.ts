@@ -25,6 +25,7 @@ export class ContributionService {
 	private discoveringGeneration?: number;
 	private unavailableUnsubscribe?: () => void;
 	private lifecycleGeneration = 0;
+	private connectionEpoch = 0;
 	private started = false;
 
 	constructor(transport: UiContributionTransport, options: ContributionServiceOptions = {}) {
@@ -76,6 +77,15 @@ export class ContributionService {
 		return this.tabs;
 	}
 
+	/**
+	 * Opaque identity for the provider session that produced the current tabs.
+	 * The browser uses this to invalidate a mounted schema even when a provider
+	 * restarts quickly enough that polling never observes an empty tab list.
+	 */
+	get providerKey(): string | null {
+		return this.connection ? `connection:${this.connectionEpoch}` : null;
+	}
+
 	async writeValues(tabId: string, patch: Record<string, unknown>): Promise<ContributionWriteResult> {
 		if (!this.started) return { ok: false, status: 503, error: "No UI contribution provider is available." };
 		const connection = await this.ensureConnected();
@@ -113,6 +123,7 @@ export class ContributionService {
 					if (!this.started || generation !== this.lifecycleGeneration) return undefined;
 					this.client.connect(connection);
 					this.connection = connection;
+					this.connectionEpoch += 1;
 					return connection;
 				})
 				.catch(() => undefined)

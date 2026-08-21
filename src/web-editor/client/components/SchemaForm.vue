@@ -345,6 +345,7 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 							:key="rowField.key"
 							class="field"
 						>
+							<label v-if="rowField.type !== 'boolean'" class="record-cell-label">{{ rowField.label }}</label>
 							<label v-if="rowField.type === 'boolean'" class="checkline">
 								<input
 									type="checkbox"
@@ -426,5 +427,23 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 	color: var(--error);
 	font-size: 12px;
 	margin-top: 4px;
+}
+
+.record-cell-label {
+	display: none;
+}
+
+@media (max-width: 700px) {
+	.schema-record-row {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.schema-record-row.header {
+		display: none;
+	}
+
+	.record-cell-label {
+		display: block;
+	}
 }
 </style>

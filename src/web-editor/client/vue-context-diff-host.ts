@@ -7,6 +7,7 @@ export interface VueContextDiffHostDependencies {
 	getStackDraft(): LegacyEditorDraft | undefined;
 	subscribeStackDraft(listener: () => void): () => void;
 	setStatus(text: string, tone?: string): void;
+	setExpanded(expanded: boolean): void;
 }
 
 /** Mounts the self-contained preview/diff dock component into a root element. */
@@ -19,6 +20,7 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 			getStackDraft: deps.getStackDraft,
 			subscribeStackDraft: deps.subscribeStackDraft,
 			onStatus: deps.setStatus,
+			onExpandedChanged: deps.setExpanded,
 		});
 		app.mount(root);
 	}

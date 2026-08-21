@@ -341,6 +341,17 @@ html, body {
 .tab-panel.open {
   display: block;
 }
+.context-diff-panel {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--pane-soft);
+}
+.context-diff-panel.open {
+  display: block;
+}
 .editor-dock-area {
   flex: 1;
   min-height: 0;
@@ -348,10 +359,11 @@ html, body {
   grid-template-columns: minmax(0, 1fr);
 }
 .editor-dock-area.dock-open {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 42%);
+  grid-template-columns: minmax(0, 1fr) minmax(440px, 48%);
 }
 .editor-dock-area .workspace,
-.editor-dock-area .tab-panel {
+.editor-dock-area .tab-panel,
+.editor-dock-area .context-diff-panel {
   min-width: 0;
   min-height: 0;
 }
@@ -359,9 +371,18 @@ html, body {
   display: grid;
   border-right: 1px solid var(--line);
 }
-.editor-dock-area.dock-open .tab-panel {
+.editor-dock-area.dock-open .context-diff-panel {
   display: block;
   border-left: 1px solid var(--line);
+}
+.editor-dock-area.dock-open.dock-focus {
+  grid-template-columns: minmax(0, 1fr);
+}
+.editor-dock-area.dock-open.dock-focus .workspace {
+  display: none;
+}
+.editor-dock-area.dock-open.dock-focus .context-diff-panel {
+  border-left: 0;
 }
 .tab-section {
   border: 1px solid var(--line);
@@ -1036,6 +1057,16 @@ html, body {
   }
   .workspace {
     display: block;
+  }
+  .editor-dock-area.dock-open,
+  .editor-dock-area.dock-open.dock-focus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .editor-dock-area.dock-open .workspace {
+    display: none;
+  }
+  .editor-dock-area.dock-open .context-diff-panel {
+    border-left: 0;
   }
   .item-form {
     height: auto;

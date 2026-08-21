@@ -6,7 +6,7 @@ import { createVueItemHost } from "./vue-item-host.ts";
 import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
-import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
+import { activateEditorView, currentEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
@@ -208,6 +208,11 @@ function renderAll(diagnostics: any = []) {
 }
 
 function renderActiveTab() {
+  if (currentEditorView() === "preview") {
+    renderItemList();
+    renderItemEditor();
+    return;
+  }
   vueTabHost.unmount();
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.classList.toggle("active", button.dataset.tab === activeTab);

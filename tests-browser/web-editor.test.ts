@@ -36,7 +36,6 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
 		],
 	});
-
 	const harness = createHarness();
 	const context = createContext(cwd);
 	await startSession(harness, context.ctx);
@@ -151,6 +150,16 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 			{ kind: "block", id: "system", enabled: true, role: "system", content: "Browser dock system prompt." },
 		],
 	});
+	writeStack(cwd, "secondary.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "secondary",
+		name: "Secondary dock",
+		mode: "replace",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: "Secondary stack preview survives selection." },
+		],
+	});
 
 	const harness = createHarness();
 	const context = createContext(cwd);
@@ -190,11 +199,34 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 			}
 			await route.continue();
 		});
+		let firstContextSeenResolve: () => void = () => {};
+		let secondContextSeenResolve: () => void = () => {};
+		let releaseFirstContext: () => void = () => {};
+		const firstContextSeen = new Promise<void>((resolve) => { firstContextSeenResolve = resolve; });
+		const secondContextSeen = new Promise<void>((resolve) => { secondContextSeenResolve = resolve; });
+		const firstContextRelease = new Promise<void>((resolve) => { releaseFirstContext = resolve; });
+		let contextRequests = 0;
+		await page.route(/\/api\/context-diff$/, async (route) => {
+			contextRequests += 1;
+			if (contextRequests === 1) {
+				firstContextSeenResolve();
+				await firstContextRelease;
+				try {
+					await route.fulfill({ json: staleContextDiffView() });
+				} catch {
+					// The client is expected to abort this superseded request.
+				}
+				return;
+			}
+			secondContextSeenResolve();
+			await route.fulfill({ json: { turns: [], latest: null, latestDiff: null } });
+		});
 
 		await page.locator("#previewTabBtn").click();
 		await page.locator("#editorDockArea.dock-open").waitFor();
-		await page.locator("#tabPanel.open").waitFor();
-		await page.locator(".context-diff-mode-tabs").filter({ hasText: "Compiled" }).waitFor();
+		await page.locator("#contextDiffPanel.open").waitFor();
+		await page.locator(".context-diff-mode-tabs").filter({ hasText: "Draft diff" }).waitFor();
+		await firstContextSeen;
 		await firstPreviewSeen;
 		await page.locator("#itemContent").fill("Unsaved browser dock prompt.");
 		releaseFirstPreview();
@@ -203,13 +235,46 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".context-diff-section").first().waitFor();
 		await page.locator(".context-diff-sections").filter({ hasText: "Unsaved browser dock prompt." }).waitFor();
 		assert.equal(await page.locator(".context-diff-sections").filter({ hasText: "Browser dock system prompt." }).count(), 0);
+		await page.locator("#itemContent").fill("Newest unsaved browser dock prompt.");
+		assert.equal(await page.locator(".context-diff-sections").count(), 0);
+		await page.locator(".context-diff-empty").filter({ hasText: "Loading preview" }).waitFor();
+		await page.locator(".context-diff-sections").filter({ hasText: "Newest unsaved browser dock prompt." }).waitFor();
 
-		await page.locator(".context-diff-mode-tabs button", { hasText: "Diff" }).click();
+		await page.locator(".context-diff-mode-tabs button", { hasText: "Draft diff" }).click();
+		const draftBlock = page.locator(".context-diff-block.modified");
+		await draftBlock.waitFor();
+		assert.match(await draftBlock.textContent() ?? "", /Browser dock system prompt/);
+		assert.match(await draftBlock.textContent() ?? "", /Newest unsaved browser dock prompt/);
+		assert.equal(await page.locator(".context-diff-block.same").count(), 0);
+		await page.locator(".context-diff-expand", { hasText: "Focus" }).click();
+		await page.locator("#editorDockArea.dock-focus").waitFor();
+		assert.equal(await page.locator("#workspace").isVisible(), false);
+		await page.locator(".context-diff-expand", { hasText: "Split" }).click();
+		await page.locator("#workspace").waitFor({ state: "visible" });
+
+		await page.locator(".context-diff-mode-tabs button", { hasText: "Run diff" }).click();
+		await page.locator(".context-diff-diff .context-diff-refresh").click();
+		await secondContextSeen;
+		releaseFirstContext();
 		const emptyDiff = page.locator(".context-diff-empty").filter({ hasText: "No captured provider turns yet" });
 		await emptyDiff.waitFor();
 		const emptyDiffText = await emptyDiff.textContent();
 		assert.match(emptyDiffText ?? "", /automatically/);
 		assert.doesNotMatch(emptyDiffText ?? "", /Arm a payload capture/);
+		assert.equal(await page.locator(".context-diff-block").filter({ hasText: "STALE CONTEXT" }).count(), 0);
+
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+		await page.locator("#contextDiffPanel.open .context-diff-mode-tabs").waitFor();
+		await page.locator(".stack-row").filter({ hasText: "Secondary dock" }).click();
+		await page.locator(".context-diff-mode-tabs button", { hasText: "Preview" }).click();
+		await page.locator(".context-diff-sections").filter({ hasText: "Secondary stack preview survives selection." }).waitFor();
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+		assert.equal(await page.locator("#workspace").isVisible(), false);
+		assert.equal(await page.locator("#contextDiffPanel").isVisible(), true);
+		await page.setViewportSize({ width: 1280, height: 720 });
 
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#workspace").waitFor({ state: "visible" });
@@ -234,4 +299,17 @@ function findChromeExecutable(): string | undefined {
 		process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe") : undefined,
 	].filter((candidate): candidate is string => !!candidate);
 	return candidates.find(existsSync);
+}
+
+function staleContextDiffView() {
+	const block = { key: "stale", role: "system", text: "STALE CONTEXT", chars: 13, approxTokens: 4, hash: "stale" };
+	const diff = {
+		blocks: [{ status: "added", after: block, tokenDelta: 4 }],
+		prefixTokens: 0,
+		prefixRatio: 0,
+		deltaTokens: 4,
+		summary: { sameBlocks: 0, addedBlocks: 1, removedBlocks: 0, modifiedBlocks: 0, changedBlocks: 1, addedTokens: 4, removedTokens: 0, netTokens: 4 },
+	};
+	const turn = { turnId: "turn-stale", capturedAt: "", stackId: "default", blocks: [block] };
+	return { turns: [], latest: { turn, diff }, latestDiff: diff };
 }

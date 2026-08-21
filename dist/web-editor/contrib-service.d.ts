@@ -22,11 +22,18 @@ export declare class ContributionService {
     private discoveringGeneration?;
     private unavailableUnsubscribe?;
     private lifecycleGeneration;
+    private connectionEpoch;
     private started;
     constructor(transport: UiContributionTransport, options?: ContributionServiceOptions);
     start(): void;
     stop(): Promise<void>;
     listTabs(): Promise<UiContributionTabDescriptor[]>;
+    /**
+     * Opaque identity for the provider session that produced the current tabs.
+     * The browser uses this to invalidate a mounted schema even when a provider
+     * restarts quickly enough that polling never observes an empty tab list.
+     */
+    get providerKey(): string | null;
     writeValues(tabId: string, patch: Record<string, unknown>): Promise<ContributionWriteResult>;
     private ensureConnected;
     private refreshTabs;

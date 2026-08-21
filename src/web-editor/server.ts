@@ -116,10 +116,11 @@ async function handleRequest(host: WebEditorHost, token: string, contributionSer
 
 	if (req.method === "GET" && parts[1] === "contrib" && parts.length === 2) {
 		if (!contributionService) {
-			sendJson(res, 200, { tabs: [] });
+			sendJson(res, 200, { tabs: [], providerKey: null });
 			return;
 		}
-		sendJson(res, 200, { tabs: await contributionService.listTabs() });
+		const tabs = await contributionService.listTabs();
+		sendJson(res, 200, { tabs, providerKey: contributionService.providerKey });
 		return;
 	}
 

@@ -10,7 +10,8 @@ import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let stopContextDiffTabs: (() => void) | undefined;
-const activeSurface = ref<"stacks" | "profiles">("stacks");
+const activeSurface = ref<"stacks" | "profiles" | "settings">("stacks");
+const hasContributionSettings = ref(false);
 
 onMounted(async () => {
 	// Theme is global to the page; apply it before either surface renders.
@@ -24,7 +25,12 @@ onMounted(async () => {
 		stopLegacyEditor = startLegacyEditor({
 			isActive: () => activeSurface.value === "stacks",
 		});
-		stopContributionTabs = startContributionTabs();
+		stopContributionTabs = startContributionTabs({
+			onAvailabilityChanged: (available) => {
+				hasContributionSettings.value = available;
+				if (!available && activeSurface.value === "settings") activeSurface.value = "stacks";
+			},
+		});
 		stopContextDiffTabs = startContextDiffTabs({
 			getStackDraft: getLegacyEditorDraft,
 			subscribeStackDraft: subscribeLegacyEditorDraft,
@@ -67,6 +73,16 @@ onUnmounted(() => {
 				@click="activeSurface = 'profiles'"
 			>
 				Agent profiles
+			</button>
+			<button
+				v-show="hasContributionSettings"
+				id="settingsSurfaceBtn"
+				type="button"
+				:class="{ active: activeSurface === 'settings' }"
+				:aria-current="activeSurface === 'settings' ? 'page' : undefined"
+				@click="activeSurface = 'settings'"
+			>
+				Settings
 			</button>
 			<span class="surface-nav-spacer"></span>
 			<button
@@ -153,6 +169,7 @@ onUnmounted(() => {
 						</div>
 					</section>
 					<section id="tabPanel" class="tab-panel"></section>
+					<section id="contextDiffPanel" class="context-diff-panel"></section>
 				</div>
 			</main>
 		</div>
@@ -161,6 +178,19 @@ onUnmounted(() => {
 			</div>
 		</section>
 		<ProfileBrowser v-show="activeSurface === 'profiles'" :active="activeSurface === 'profiles'" />
+		<section v-show="activeSurface === 'settings'" id="settingsSurface" class="settings-surface">
+			<header class="settings-surface-head">
+				<div>
+					<h1>Plugin settings</h1>
+					<p>Configuration pages contributed by installed Pi Forge plugins.</p>
+				</div>
+				<div id="settingsStatus" class="settings-surface-status">Loading settings…</div>
+			</header>
+			<div class="settings-surface-body">
+				<nav id="contribSettingsNav" class="settings-nav" aria-label="Plugin settings"></nav>
+				<main id="contribSettingsPanel" class="settings-panel"></main>
+			</div>
+		</section>
 	</div>
 </template>
 
@@ -216,6 +246,80 @@ onUnmounted(() => {
 	min-height: 0;
 }
 
+.settings-surface {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--pane-soft);
+}
+
+.settings-surface-head {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	padding: 18px 24px;
+	border-bottom: 1px solid var(--line);
+	background: var(--pane);
+}
+
+.settings-surface-head h1 {
+	margin: 0;
+	font-size: 20px;
+}
+
+.settings-surface-head p {
+	margin: 4px 0 0;
+	color: var(--muted);
+}
+
+.settings-surface-status {
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.settings-surface-body {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+}
+
+.settings-nav {
+	min-width: 0;
+	padding: 14px 10px;
+	border-right: 1px solid var(--line);
+	background: var(--pane);
+}
+
+.settings-nav button {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	margin-bottom: 6px;
+}
+
+.settings-nav button.active {
+	border-color: var(--accent);
+	background: var(--accent-bg);
+	color: var(--accent);
+}
+
+.settings-panel {
+	min-width: 0;
+	min-height: 0;
+	overflow: auto;
+	padding: 20px clamp(16px, 4vw, 48px);
+}
+
+.settings-panel > .schema-form {
+	width: min(100%, 1100px);
+	margin: 0 auto;
+}
+
 .legacy-editor-root {
 	height: 100%;
 	display: flex;
@@ -230,5 +334,51 @@ onUnmounted(() => {
 	flex: 1;
 	min-height: 0;
 	height: auto;
+}
+
+@media (max-width: 700px) {
+	.surface-nav {
+		overflow-x: auto;
+	}
+
+	.surface-nav > * {
+		flex-shrink: 0;
+	}
+
+	.surface-nav-spacer {
+		display: none;
+	}
+
+	.settings-surface-head {
+		align-items: flex-start;
+		padding: 14px 16px;
+	}
+
+	.settings-surface-status {
+		margin-left: auto;
+	}
+
+	.settings-surface-body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.settings-nav {
+		display: flex;
+		gap: 6px;
+		overflow-x: auto;
+		padding: 8px;
+		border-right: 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.settings-nav button {
+		width: auto;
+		flex: 0 0 auto;
+		margin: 0;
+	}
+
+	.settings-panel {
+		padding: 14px 10px;
+	}
 }
 </style>

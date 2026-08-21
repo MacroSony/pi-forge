@@ -17,7 +17,7 @@ Think of it as a character sheet and workbench for your AI agent.
 - Use immutable stack `parameters` with the deterministic forge-v1 template engine.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
 - Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
-- Watch per-turn prompt changes in the context diff dock: the Compiled tab live-previews the stack while you edit, and the Diff tab shows which blocks changed, the approximate token delta, and where the KV-cache prefix survives across turns.
+- Inspect prompt changes in the Preview dock: **Preview** compiles the live draft, **Draft diff** compares unsaved edits with disk, and **Run diff** compares recent provider turns. Diff views focus on changed blocks by default, keep cache metadata out of the way until expanded, and can switch between split and full-width focus layouts.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
 
 ## Install
@@ -58,7 +58,7 @@ Restart Pi or run:
 /preset ui
 ```
 
-The local editor can create, fork, validate, preview, import, export, and delete prompt stacks. Its **Agent profiles** view manages one-shot model/thinking/stack presets. Writes require a trusted project. Delegation settings live in the optional `@zihanw/pi-forge-subagents` package's `subagents.json` files, not in the editor.
+The local editor can create, fork, validate, preview, import, export, and delete prompt stacks. Its **Agent profiles** view manages one-shot model/thinking/stack presets. Writes require a trusted project. When `@zihanw/pi-forge-subagents` is installed, its schema-driven editor appears on the separate top-level **Settings** surface and persists to the optional package's `subagents.json` files.
 
 ### 3. Save a profile
 

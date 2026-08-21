@@ -6,6 +6,7 @@ import {
 	PromptCompilationContext,
 } from "./compiler.ts";
 import { estimatePayloadTokens } from "./payload-capture.ts";
+import { hashText } from "./context-diff.ts";
 import { promptRuntimeFromCompileOptions } from "./prompt-runtime.ts";
 import type { CompileMessageSource, LoadedPromptStack, PromptCompileOptions, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "./web-editor/index.ts";
@@ -41,12 +42,22 @@ export function buildPreview(
 			});
 		}
 	}
+	const diffKeyOccurrences = new Map<string, number>();
 	const messageSections = messages.messages.map((message, index) => {
 		const content = agentMessageToPreviewText(message);
 		const source = messages.messageSources[index];
-		return previewSection(`message-${index}`, previewMessageTitle(source, index), content, message.role);
+		const baseDiffKey = previewMessageDiffKey(source, content, message.role);
+		const occurrence = (diffKeyOccurrences.get(baseDiffKey) ?? 0) + 1;
+		diffKeyOccurrences.set(baseDiffKey, occurrence);
+		return previewSection(
+			`message-${index}`,
+			previewMessageTitle(source, index),
+			content,
+			message.role,
+			`${baseDiffKey}:${occurrence}`,
+		);
 	});
-	const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)");
+	const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)", undefined, "system");
 	const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);
 	const preview: WebEditorPreview = {
 		stackId: target.stack.id,
@@ -209,9 +220,18 @@ function renderPreviewSectionText(sections: WebEditorPreviewSection[], maxChars 
 	return text.trimStart();
 }
 
-function previewSection(id: string, title: string, content: string, role?: string): WebEditorPreviewSection {
+function previewMessageDiffKey(source: CompileMessageSource | undefined, content: string, role: string): string {
+	if (source?.kind === "stack-item" && source.itemId) return `stack-item:${source.itemId}`;
+	const sourceKey = source?.kind === "chat-history"
+		? `chat-history:${source.itemId ?? source.slot ?? "history"}`
+		: "implicit-history";
+	return `${sourceKey}:${hashText(`${role}\0${content}`)}`;
+}
+
+function previewSection(id: string, title: string, content: string, role?: string, diffKey?: string): WebEditorPreviewSection {
 	return {
 		id,
+		diffKey,
 		title,
 		role,
 		content,

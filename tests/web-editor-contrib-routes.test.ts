@@ -42,8 +42,9 @@ const descriptor: UiContributionTabDescriptor = {
 	values: { backend: "auto", timeoutMs: 3000 },
 };
 
-function providerOn(transport: UiContributionTransport): UiContributionProvider {
+function providerOn(transport: UiContributionTransport, providerId?: string): UiContributionProvider {
 	return new UiContributionProvider(transport, {
+		providerId,
 		handle: (operation, payload) => {
 			if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
 			if (operation === "writeValues") {
@@ -89,8 +90,9 @@ test("web editor contribution routes list descriptors and proxy writeValues", as
 
 		const listed = await fetch(new URL("/api/contrib", server.url), { headers });
 		assert.equal(listed.status, 200);
-		const listedJson = await listed.json() as { tabs: UiContributionTabDescriptor[] };
+		const listedJson = await listed.json() as { tabs: UiContributionTabDescriptor[]; providerKey: string | null };
 		assert.deepEqual(listedJson.tabs, [descriptor]);
+		assert.match(listedJson.providerKey ?? "", /^connection:\d+$/);
 
 		const written = await fetch(new URL("/api/contrib/subagent-config", server.url), {
 			method: "PUT",
@@ -127,7 +129,7 @@ test("web editor contribution routes return zero tabs when no provider is presen
 		const headers = { "x-pi-forge-token": token };
 		const listed = await fetch(new URL("/api/contrib", server.url), { headers });
 		assert.equal(listed.status, 200);
-		assert.deepEqual(await listed.json(), { tabs: [] });
+		assert.deepEqual(await listed.json(), { tabs: [], providerKey: null });
 
 		const written = await fetch(new URL("/api/contrib/subagent-config", server.url), {
 			method: "PUT",
@@ -141,7 +143,7 @@ test("web editor contribution routes return zero tabs when no provider is presen
 
 test("web editor contribution routes tolerate a provider disappearing", async () => {
 	const bus = new MemoryTransport();
-	const provider = providerOn(bus);
+	let provider = providerOn(bus, "stable-settings-provider");
 	provider.start();
 	let server: WebEditorServer | undefined;
 	try {
@@ -155,13 +157,22 @@ test("web editor contribution routes tolerate a provider disappearing", async ()
 
 		const listed = await fetch(new URL("/api/contrib", server.url), { headers });
 		assert.equal(listed.status, 200);
-		assert.deepEqual((await listed.json() as { tabs: UiContributionTabDescriptor[] }).tabs, [descriptor]);
+		const firstListing = await listed.json() as { tabs: UiContributionTabDescriptor[]; providerKey: string | null };
+		assert.deepEqual(firstListing.tabs, [descriptor]);
 
 		provider.stop();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		const after = await fetch(new URL("/api/contrib", server.url), { headers });
 		assert.equal(after.status, 200);
-		assert.deepEqual(await after.json(), { tabs: [] });
+		assert.deepEqual(await after.json(), { tabs: [], providerKey: null });
+
+		provider = providerOn(bus, "stable-settings-provider");
+		provider.start();
+		const reconnected = await fetch(new URL("/api/contrib", server.url), { headers });
+		assert.equal(reconnected.status, 200);
+		const secondListing = await reconnected.json() as { tabs: UiContributionTabDescriptor[]; providerKey: string | null };
+		assert.deepEqual(secondListing.tabs, [descriptor]);
+		assert.notEqual(secondListing.providerKey, firstListing.providerKey);
 	} finally {
 		await server?.close();
 		provider.stop();

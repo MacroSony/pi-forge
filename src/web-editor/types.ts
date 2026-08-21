@@ -86,6 +86,8 @@ export interface WebEditorProfileMutation {
 
 export interface WebEditorPreviewSection {
 	id: string;
+	/** Stable compiled-source identity used to align draft diffs across insertions. */
+	diffKey?: string;
 	title: string;
 	role?: string;
 	content: string;

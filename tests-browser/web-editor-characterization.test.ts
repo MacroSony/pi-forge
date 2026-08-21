@@ -883,6 +883,16 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 		},
 		values: { backend: "auto", timeoutMs: 3000 },
 	};
+	const secondaryDescriptor = {
+		tabId: "other-config",
+		title: "Other",
+		icon: "◇",
+		schema: {
+			title: "Other settings",
+			fields: [{ key: "level", label: "Level", type: "number", required: true, min: 1 }],
+		},
+		values: { level: 2 },
+	};
 	const writes: Record<string, unknown>[] = [];
 	let provider: UiContributionProvider | undefined;
 
@@ -892,9 +902,12 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
 
-		const createProvider = () => new UiContributionProvider(harness.eventsBus, {
+		const createProvider = (primary = descriptor) => new UiContributionProvider(harness.eventsBus, {
+			providerId: "pi-forge-subagents-settings",
 			handle: (operation, payload) => {
-				if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
+				if (operation === "listContributions") {
+					return { ok: true, data: { tabs: [primary, { ...structuredClone(primary), title: "Duplicate must be ignored" }, secondaryDescriptor] } };
+				}
 				if (operation === "writeValues") {
 					const request = payload as { tabId: string; patch: Record<string, unknown> };
 					writes.push(request.patch);
@@ -905,31 +918,120 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 		});
 		provider = createProvider();
 		provider.start();
-		await page.locator("#subagent-configTabBtn").waitFor();
+		await page.locator("#settingsSurfaceBtn").waitFor();
+		assert.equal(await page.locator(".view-tabs #settings-subagent-configTabBtn").count(), 0);
+		await page.locator("#settingsSurfaceBtn").click();
+		await page.locator("#settings-subagent-configTabBtn").waitFor();
+		assert.equal(await page.locator("#settings-subagent-configTabBtn").count(), 1);
 
-		await page.locator("#subagent-configTabBtn").click();
+		await page.locator("#settings-subagent-configTabBtn").click();
 		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
+		let firstPutSeenResolve: () => void = () => {};
+		let releaseFirstPut: () => void = () => {};
+		const firstPutSeen = new Promise<void>((resolve) => { firstPutSeenResolve = resolve; });
+		const firstPutRelease = new Promise<void>((resolve) => { releaseFirstPut = resolve; });
+		let putRequests = 0;
+		await page.route(/\/api\/contrib\/subagent-config$/, async (route) => {
+			putRequests += 1;
+			if (putRequests === 1) {
+				firstPutSeenResolve();
+				await firstPutRelease;
+			}
+			await route.continue();
+		});
 		await page.locator('[data-field-input="timeoutMs"]').fill("999");
-		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
-		assert.deepEqual(writes, [{ backend: "auto", timeoutMs: 999 }]);
+		await page.locator("#settingsStatus").filter({ hasText: "Unsaved changes" }).waitFor();
+		await firstPutSeen;
+		await page.locator('[data-field-input="timeoutMs"]').fill("777");
+		await page.waitForTimeout(350);
+		assert.equal(putRequests, 1);
+		assert.deepEqual(writes, []);
+		releaseFirstPut();
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.deepEqual(writes, [
+			{ backend: "auto", timeoutMs: 999 },
+			{ backend: "auto", timeoutMs: 777 },
+		]);
+		assert.equal(putRequests, 2);
+		await page.unroute(/\/api\/contrib\/subagent-config$/);
 
+		await page.locator('[data-field-input="timeoutMs"]').fill("666");
+		await page.locator("#settings-other-configTabBtn").click();
+		await page.locator(".schema-form").filter({ hasText: "Other settings" }).waitFor();
+		assert.equal(await page.locator("#settingsStatus").textContent(), "Settings ready");
+		await page.locator("#settings-subagent-configTabBtn").click();
+		assert.equal(await page.locator('[data-field-input="timeoutMs"]').inputValue(), "666");
+		assert.equal(await page.locator("#settingsStatus").textContent(), "Unsaved changes");
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.deepEqual(writes.at(-1), { backend: "auto", timeoutMs: 666 });
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+		assert.equal(await page.locator("#settingsSurface").isVisible(), true);
+		await page.setViewportSize({ width: 1280, height: 720 });
+
+		await page.locator("#stacksSurfaceBtn").click();
 		await page.locator("#previewTabBtn").click();
 		await page.locator("#editorDockArea.dock-open").waitFor();
-		await page.locator("#subagent-configTabBtn").click();
+		await page.locator("#settingsSurfaceBtn").click();
 		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
 		await page.locator('[data-field-input="backend"]').selectOption("cli");
-		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
-		assert.deepEqual(writes.at(-1), { backend: "cli", timeoutMs: 999 });
+		await page.locator("#settingsStatus").filter({ hasText: "Unsaved changes" }).waitFor();
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.deepEqual(writes.at(-1), { backend: "cli", timeoutMs: 666 });
+
+		const restartedDescriptor = structuredClone(descriptor);
+		restartedDescriptor.schema.title = "Restarted subagent settings";
+		restartedDescriptor.values = { backend: "auto", timeoutMs: 4242 };
+		provider.stop();
+		provider = createProvider(restartedDescriptor);
+		provider.start();
+		await page.locator(".schema-form").filter({ hasText: "Restarted subagent settings" }).waitFor();
+		assert.equal(await page.locator('[data-field-input="timeoutMs"]').inputValue(), "4242");
+
+		let staleResponseSeenResolve: () => void = () => {};
+		let releaseStaleResponse: () => void = () => {};
+		const staleResponseSeen = new Promise<void>((resolve) => { staleResponseSeenResolve = resolve; });
+		const staleResponseRelease = new Promise<void>((resolve) => { releaseStaleResponse = resolve; });
+		await page.route(/\/api\/contrib\/subagent-config$/, async (route) => {
+			const response = await route.fetch();
+			staleResponseSeenResolve();
+			await staleResponseRelease;
+			await route.fulfill({ response });
+		});
+		await page.locator('[data-field-input="timeoutMs"]').fill("5151");
+		await staleResponseSeen;
+		const secondRestartedDescriptor = structuredClone(descriptor);
+		secondRestartedDescriptor.schema.title = "Second restarted subagent settings";
+		secondRestartedDescriptor.values = { backend: "auto", timeoutMs: 6000 };
+		provider.stop();
+		provider = createProvider(secondRestartedDescriptor);
+		provider.start();
+		await page.locator(".schema-form").filter({ hasText: "Second restarted subagent settings" }).waitFor();
+		assert.equal(await page.locator('[data-field-input="timeoutMs"]').inputValue(), "5151");
+		releaseStaleResponse();
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.equal(await page.locator('[data-field-input="timeoutMs"]').inputValue(), "5151");
+		assert.deepEqual(writes.slice(-2), [
+			{ backend: "auto", timeoutMs: 5151 },
+			{ backend: "auto", timeoutMs: 5151 },
+		]);
+		await page.unroute(/\/api\/contrib\/subagent-config$/);
 
 		provider.stop();
-		await page.locator("#subagent-configTabBtn").waitFor({ state: "detached" });
+		await page.locator("#settings-subagent-configTabBtn").waitFor({ state: "detached" });
+		await page.locator("#settingsSurfaceBtn").waitFor({ state: "hidden" });
 		await page.locator("#workspace").waitFor({ state: "visible" });
 		provider = createProvider();
 		provider.start();
-		await page.locator("#subagent-configTabBtn").waitFor();
+		await page.locator("#settingsSurfaceBtn").waitFor();
+		await page.locator("#settingsSurfaceBtn").click();
+		await page.locator("#settings-subagent-configTabBtn").waitFor();
 
+		await page.locator("#stacksSurfaceBtn").click();
 		await page.locator("#itemsTabBtn").click();
-		assert.equal((await page.locator("#subagent-configTabBtn").getAttribute("class"))?.includes("active"), false);
+		assert.equal((await page.locator("#itemsTabBtn").getAttribute("class"))?.includes("active"), true);
+		assert.equal(await page.locator(".view-tabs #settings-subagent-configTabBtn").count(), 0);
 	});
 	t.after(() => provider?.stop());
 });

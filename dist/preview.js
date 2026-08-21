@@ -1,5 +1,6 @@
 import { agentMessageToPreviewText, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
+import { hashText } from "./context-diff.js";
 import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
 export function renderPreview(ctx, target) {
     return buildPreview(ctx, target, ctx.getSystemPromptOptions()).text;
@@ -20,12 +21,16 @@ export function buildPreview(ctx, target, options) {
             });
         }
     }
+    const diffKeyOccurrences = new Map();
     const messageSections = messages.messages.map((message, index) => {
         const content = agentMessageToPreviewText(message);
         const source = messages.messageSources[index];
-        return previewSection(`message-${index}`, previewMessageTitle(source, index), content, message.role);
+        const baseDiffKey = previewMessageDiffKey(source, content, message.role);
+        const occurrence = (diffKeyOccurrences.get(baseDiffKey) ?? 0) + 1;
+        diffKeyOccurrences.set(baseDiffKey, occurrence);
+        return previewSection(`message-${index}`, previewMessageTitle(source, index), content, message.role, `${baseDiffKey}:${occurrence}`);
     });
-    const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)");
+    const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)", undefined, "system");
     const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);
     const preview = {
         stackId: target.stack.id,
@@ -162,9 +167,18 @@ function renderPreviewSectionText(sections, maxChars = 8000) {
     }
     return text.trimStart();
 }
-function previewSection(id, title, content, role) {
+function previewMessageDiffKey(source, content, role) {
+    if (source?.kind === "stack-item" && source.itemId)
+        return `stack-item:${source.itemId}`;
+    const sourceKey = source?.kind === "chat-history"
+        ? `chat-history:${source.itemId ?? source.slot ?? "history"}`
+        : "implicit-history";
+    return `${sourceKey}:${hashText(`${role}\0${content}`)}`;
+}
+function previewSection(id, title, content, role, diffKey) {
     return {
         id,
+        diffKey,
         title,
         role,
         content,

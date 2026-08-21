@@ -19,9 +19,10 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 	const nav = document.querySelector<HTMLElement>(".view-tabs");
 	const dockArea = document.getElementById("editorDockArea");
 	const workspace = document.getElementById("workspace");
-	const panel = document.getElementById("tabPanel");
+	const legacyPanel = document.getElementById("tabPanel");
+	const panel = document.getElementById("contextDiffPanel");
 	const status = document.getElementById("status");
-	if (!nav || !dockArea || !workspace || !panel) return () => {};
+	if (!nav || !dockArea || !workspace || !legacyPanel || !panel) return () => {};
 
 	const definition = getEditorTab("preview");
 	if (!definition?.internalDock) return () => {};
@@ -33,6 +34,7 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 	const navElement: HTMLElement = nav;
 	const dockAreaElement: HTMLElement = dockArea;
 	const workspaceElement: HTMLElement = workspace;
+	const legacyPanelElement: HTMLElement = legacyPanel;
 	const panelElement: HTMLElement = panel;
 	const buttonElement: HTMLButtonElement = button;
 	const statusElement: HTMLElement | null = status;
@@ -54,9 +56,6 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		for (const element of navElement.querySelectorAll<HTMLButtonElement>("[data-tab]")) {
 			element.classList.remove("active");
 		}
-		for (const element of navElement.querySelectorAll<HTMLButtonElement>("[data-contrib-tab]")) {
-			element.classList.remove("active");
-		}
 	}
 
 	function clearActiveState(): void {
@@ -64,6 +63,8 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		active = false;
 		setActiveButton(false);
 		dockAreaElement.classList.remove("dock-open");
+		dockAreaElement.classList.remove("dock-focus");
+		panelElement.classList.remove("open");
 		contextDiffHost?.unmount();
 		contextDiffHost = undefined;
 	}
@@ -74,6 +75,7 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		clearLegacyActive();
 		setActiveButton(true);
 		workspaceElement.style.display = "";
+		legacyPanelElement.classList.remove("open");
 		dockAreaElement.classList.add("dock-open");
 		panelElement.classList.add("open");
 		if (!contextDiffHost) {
@@ -81,6 +83,7 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 				getStackDraft: deps.getStackDraft,
 				subscribeStackDraft: deps.subscribeStackDraft,
 				setStatus,
+				setExpanded: (expanded) => dockAreaElement.classList.toggle("dock-focus", expanded),
 			});
 		}
 		contextDiffHost.mount(panelElement);
@@ -108,5 +111,6 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		navElement.removeEventListener("click", onNavClick);
 		stopEditorView();
 		clearActiveState();
+		dockAreaElement.classList.remove("dock-focus");
 	};
 }

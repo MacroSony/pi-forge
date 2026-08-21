@@ -845,10 +845,11 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(previewResponse.status, 200);
 		const previewResult = await previewResponse.json() as {
 			text: string;
-			preview?: { system: { title: string; content: string }; messages: Array<{ title: string; role: string; content: string; chars: number }> };
+			preview?: { system: { title: string; content: string; diffKey?: string }; messages: Array<{ title: string; role: string; content: string; chars: number; diffKey?: string }> };
 		};
 		assert.ok(previewResult.preview);
 		assert.equal(previewResult.preview?.system.title, "System prompt");
+		assert.equal(previewResult.preview?.system.diffKey, "system");
 		assert.match(previewResult.preview?.system.content ?? "", /base system/);
 		assert.match(previewResult.preview?.system.content ?? "", /Available tools:\n- read: Read files\./);
 		assert.match(previewResult.preview?.system.content ?? "", /Use read before editing files\./);
@@ -856,6 +857,7 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		const longMessage = previewResult.preview?.messages.find((message) => message.content.includes("After history"));
 		assert.ok(longMessage);
 		assert.equal(longMessage?.title, "after");
+		assert.equal(longMessage?.diffKey, "stack-item:after:1");
 		assert.equal(longMessage?.content.length, longPreviewContent.length);
 		assert.ok((longMessage?.chars ?? 0) > 9000);
 		assert.match(previewResult.text, /--- after \(user\) ---/);

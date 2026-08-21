@@ -8,9 +8,8 @@ const listeners = new Set<EditorViewListener>();
 /**
  * Synchronously announces the next editor view before its host mounts.
  *
- * The stack editor is temporarily split across legacy, dock, and contribution
- * hosts. A single activation signal lets every previous host unmount from the
- * shared panel before the next host claims it.
+ * The stack editor is split across legacy tab and Preview dock hosts. A single
+ * activation signal lets the inactive Vue host unmount before view state changes.
  */
 export function activateEditorView(viewId: EditorViewId): void {
 	activeViewId = viewId;
