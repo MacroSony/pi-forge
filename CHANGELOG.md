@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.1] - Unreleased
+
+### Added
+
+- **UI contribution framework (Lane 1).** Optional packages can now contribute schema-driven configuration tabs to the web editor without shipping any UI code into the main package:
+  - New versioned `@zihanw/pi-forge/ui-contribution` entry point: a generic RPC contract over the Pi event bus (`UI_CONTRIBUTION_PORT_VERSION = 1`, with its own version counter separate from the `/subagent` host port) exposing exactly two operations — `listContributions` and `writeValues` — over discover/available/request/reply/unavailable channels. Wire messages carry `hostId` + `generation` binding, version negotiation (`minVersion`/`maxVersion`), bounded discovery timeouts, explicit duplicate-provider failure, and recursive JSON-compatibility validators. All payloads are plain data: no functions, components, or live contexts cross the bus. See the [UI contribution port contract](docs/reference/ui-contribution-port.md).
+  - Web server routes: `GET /api/contrib` returns discovered tab descriptors at page load, and `PUT /api/contrib/<tabId>` proxies submitted values to the contributing package over the bus. The forge side is fully generic and knows nothing about subagents; it never owns the schema, validation, or persistence of contributed tabs (the provider writes its own config files), and with no provider discovered there is no contributed tab and zero cost.
+  - Contribution discovery tolerates provider churn across sessions: providers that appear after startup surface their tabs, departed providers are cleared, and service stop cancels pending discovery.
+  - Data-driven tab registry: the stack editor's hardcoded `"policy" | "regex" | "stack"` tab union is replaced by a registry of stable string tab ids rendered as dynamic nav buttons in `App.vue`. Built-in tabs keep their existing hosts (including the legacy imperative items workspace as an ordinary tab), while contributed tabs render through a self-contained contribution host.
+  - Generic schema-form renderer: a self-contained Vue component bridged via the vue-host mechanism, covering deliberately restricted v1 field types — boolean, number, enum, string, plus a record/table shape for keyed per-entry lists. No imperative code was added to `legacy-editor.ts`. Known v1 limitation: pure schema cannot express dropdowns fed by live forge data (for example a profile picker backed by `listProfiles`); such values are plain text inputs validated on write.
+- **Context diff — per-turn prompt observability (Lane 2).** Consecutive real provider requests are diffed automatically so KV-cache reuse is observable:
+  - Host-neutral pure engine (`src/context-diff.ts`): `TurnSnapshot`/`TurnDiff` shapes, block classification (`same`/`added`/`removed`/`modified`) aligned by stable content-derived keys with positional fallback, and a prefix-walk cache-boundary algorithm that walks matching block hashes and trims the char-level common prefix inside the first mismatched block — no Myers diff. Token figures are chars/4 approximations: relative deltas are accurate, and absolute boundary claims are labeled approx in the UI.
+  - Automatic per-turn capture: every provider request enters a rolling history of the last 20 turns (not just manually armed captures), and each new snapshot is auto-diffed against the previous turn. Block hashes cover role and serialized wire-relevant fields, and request-level sections (tool definitions and similar) participate as blocks so wire changes break the cache boundary faithfully.
+  - `GET /api/context-diff` serves the latest snapshot, the previous-turn diff, and summary rollups (added/removed/net tokens, prefix tokens and ratio).
+  - Preview/diff dock: the preview modal is promoted into a dockable right-side panel with two tabs — **Compiled** (the live preview, auto-refreshed with a 500 ms debounce while editing) and **Diff** (a summary strip with turn number, net token delta, cache-boundary percentage, and changed-block count; per-block green/red/yellow gutters with token chips; and a scissor-line boundary marker). The panel is a self-contained Vue component riding Lane 1's data-driven registry; no imperative code was added to `legacy-editor.ts`.
+
+### Fixed
+
+- Context-diff fidelity (architecture review F1–F3/F6 and re-review R1–R4): block hashes are computed from the faithful redacted serialization rather than the lossy capture projection, preserving provider field order for request-level blocks; blocks align by stable unique keys so insertions before existing messages classify correctly; token rounding is conservative and consistent so per-block chips cannot contradict summary totals; and the empty Diff view reflects automatic per-turn capture instead of instructing manual arming.
+- UI-contribution hardening (F4/F5/F7): a partial-patch `writeValues` success no longer clobbers cached descriptor values with stale data; contribution lifecycle handles late-surfacing and departed providers and cancels pending discovery on stop; malformed or oversized `/api/contrib` request bodies return 400/413 instead of surfacing raw validator failures.
+
 ## [0.5.0] - 2026-08-21
 
 ### Planning

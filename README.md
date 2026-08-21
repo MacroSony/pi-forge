@@ -17,6 +17,7 @@ Think of it as a character sheet and workbench for your AI agent.
 - Use immutable stack `parameters` with the deterministic forge-v1 template engine.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
 - Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
+- Watch per-turn prompt changes in the context diff dock: the Compiled tab live-previews the stack while you edit, and the Diff tab shows which blocks changed, the approximate token delta, and where the KV-cache prefix survives across turns.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
 
 ## Install
