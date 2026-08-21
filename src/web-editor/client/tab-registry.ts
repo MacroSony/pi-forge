@@ -34,6 +34,11 @@ export interface EditorTabDefinition {
 	 * by legacy-editor.ts.
 	 */
 	contributed?: boolean;
+	/**
+	 * True for built-in dock tabs managed by a dedicated internal host. These
+	 * use a separate data attribute so legacy-editor.ts does not claim clicks.
+	 */
+	internalDock?: boolean;
 }
 
 export const EDITOR_TABS = [
@@ -44,6 +49,7 @@ export const EDITOR_TABS = [
 		title: "Edit prompt stack items",
 		mount: "legacy",
 		stackFields: [],
+		internalDock: false,
 	},
 	{
 		id: "regex",
@@ -52,6 +58,7 @@ export const EDITOR_TABS = [
 		title: "Edit regex transform rules",
 		mount: "vue",
 		stackFields: ["regex"],
+		internalDock: false,
 	},
 	{
 		id: "policy",
@@ -60,6 +67,7 @@ export const EDITOR_TABS = [
 		title: "Edit active-tool policy and model-visible skill filtering",
 		mount: "vue",
 		stackFields: ["tools", "skills"],
+		internalDock: false,
 	},
 	{
 		id: "stack",
@@ -68,6 +76,16 @@ export const EDITOR_TABS = [
 		title: "Edit context options and raw stack JSON",
 		mount: "vue",
 		stackFields: ["context", "variables"],
+		internalDock: false,
+	},
+	{
+		id: "preview",
+		label: "Preview",
+		icon: "◱",
+		title: "Compiled prompt and context diff",
+		mount: "vue",
+		stackFields: [],
+		internalDock: true,
 	},
 ] as const satisfies readonly EditorTabDefinition[];
 

@@ -15,7 +15,7 @@ import {
 test("tab registry lists the existing editor tabs in their display order", () => {
 	assert.deepEqual(
 		EDITOR_TABS.map((tab) => tab.id),
-		["items", "regex", "policy", "stack"],
+		["items", "regex", "policy", "stack", "preview"],
 	);
 });
 
@@ -55,10 +55,10 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 			stack: getEditorTab("stack"),
 		},
 		{
-			items: { id: "items", label: "Items", icon: "☰", title: "Edit prompt stack items", mount: "legacy", stackFields: [] },
-			regex: { id: "regex", label: "Regex", icon: ".*", title: "Edit regex transform rules", mount: "vue", stackFields: ["regex"] },
-			policy: { id: "policy", label: "Policy", icon: "⊕", title: "Edit active-tool policy and model-visible skill filtering", mount: "vue", stackFields: ["tools", "skills"] },
-			stack: { id: "stack", label: "Stack", icon: "{}", title: "Edit context options and raw stack JSON", mount: "vue", stackFields: ["context", "variables"] },
+			items: { id: "items", label: "Items", icon: "☰", title: "Edit prompt stack items", mount: "legacy", stackFields: [], internalDock: false },
+			regex: { id: "regex", label: "Regex", icon: ".*", title: "Edit regex transform rules", mount: "vue", stackFields: ["regex"], internalDock: false },
+			policy: { id: "policy", label: "Policy", icon: "⊕", title: "Edit active-tool policy and model-visible skill filtering", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
+			stack: { id: "stack", label: "Stack", icon: "{}", title: "Edit context options and raw stack JSON", mount: "vue", stackFields: ["context", "variables"], internalDock: false },
 		},
 	);
 });
@@ -66,7 +66,7 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 test("editorTabButtonId derives the stable button ids used by the legacy editor and browser tests", () => {
 	assert.deepEqual(
 		EDITOR_TABS.map((tab) => editorTabButtonId(tab.id)),
-		["itemsTabBtn", "regexTabBtn", "policyTabBtn", "stackTabBtn"],
+		["itemsTabBtn", "regexTabBtn", "policyTabBtn", "stackTabBtn", "previewTabBtn"],
 	);
 });
 
@@ -82,7 +82,7 @@ test("contributed tabs can be registered, listed, and cleared", () => {
 	]);
 	assert.equal(getEditorTab("ext-config")?.mount, "vue");
 	assert.equal(getEditorTab("ext-config")?.contributed, true);
-	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "ext-config"]);
+	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "preview", "ext-config"]);
 	clearContributedTabs();
 	assert.equal(getEditorTab("ext-config"), undefined);
 });
@@ -94,7 +94,7 @@ test("contributed tabs cannot shadow built-in ids or duplicate each other", () =
 		{ id: "ext-a", label: "A", icon: "a", title: "A", mount: "vue", stackFields: [] },
 		{ id: "ext-a", label: "A2", icon: "a", title: "A2", mount: "vue", stackFields: [] },
 	]);
-	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "ext-a"]);
+	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "preview", "ext-a"]);
 	assert.equal(getEditorTab("ext-a")?.label, "A");
 	clearContributedTabs();
 });

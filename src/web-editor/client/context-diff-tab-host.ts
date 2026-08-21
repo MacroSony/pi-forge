@@ -1,0 +1,101 @@
+// Internal dock host for the preview/context-diff tab.
+//
+// This is intentionally separate from legacy-editor.ts. It uses the data-driven
+// tab registry's built-in "preview" entry, renders through a dock-specific data
+// attribute so the legacy tab click handler does not claim it, and mounts the
+// self-contained ContextDiffPanel Vue component into the right-side dock.
+
+import { getEditorTab } from "./tab-registry.ts";
+import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
+
+export function startContextDiffTabs(): () => void {
+	const nav = document.querySelector<HTMLElement>(".view-tabs");
+	const dockArea = document.getElementById("editorDockArea");
+	const workspace = document.getElementById("workspace");
+	const panel = document.getElementById("tabPanel");
+	const status = document.getElementById("status");
+	if (!nav || !dockArea || !workspace || !panel) return () => {};
+
+	const definition = getEditorTab("preview");
+	if (!definition?.internalDock) return () => {};
+
+	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definition.id}"]`);
+	if (!button) return () => {};
+
+	const navElement: HTMLElement = nav;
+	const dockAreaElement: HTMLElement = dockArea;
+	const workspaceElement: HTMLElement = workspace;
+	const panelElement: HTMLElement = panel;
+	const buttonElement: HTMLButtonElement = button;
+	const statusElement: HTMLElement | null = status;
+
+	let active = false;
+	let contextDiffHost: ReturnType<typeof createVueContextDiffHost> | undefined;
+
+	function setStatus(text: string, tone = ""): void {
+		if (!statusElement) return;
+		statusElement.textContent = text;
+		statusElement.style.color = tone === "error" ? "var(--error)" : tone === "success" ? "var(--success)" : "var(--muted)";
+	}
+
+	function setActiveButton(activeState: boolean): void {
+		buttonElement.classList.toggle("active", activeState);
+	}
+
+	function clearLegacyActive(): void {
+		for (const element of navElement.querySelectorAll<HTMLButtonElement>("[data-tab]")) {
+			element.classList.remove("active");
+		}
+		for (const element of navElement.querySelectorAll<HTMLButtonElement>("[data-contrib-tab]")) {
+			element.classList.remove("active");
+		}
+	}
+
+	function clearActiveState(): void {
+		if (!active) return;
+		active = false;
+		setActiveButton(false);
+		dockAreaElement.classList.remove("dock-open");
+		contextDiffHost?.unmount();
+		contextDiffHost = undefined;
+	}
+
+	function activate(): void {
+		active = true;
+		clearLegacyActive();
+		setActiveButton(true);
+		workspaceElement.style.display = "";
+		dockAreaElement.classList.add("dock-open");
+		panelElement.classList.add("open");
+		if (!contextDiffHost) {
+			contextDiffHost = createVueContextDiffHost({
+				getStackId: () => {
+					const stackId = document.querySelector<HTMLInputElement>("#stackId");
+					return stackId?.value.trim() || undefined;
+				},
+				setStatus,
+			});
+		}
+		contextDiffHost.mount(panelElement);
+	}
+
+	buttonElement.onclick = (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		activate();
+	};
+
+	const onNavClick = (event: MouseEvent): void => {
+		const target = event.target as HTMLElement;
+		if (target.closest("[data-dock-tab]")) return;
+		clearActiveState();
+	};
+
+	navElement.addEventListener("click", onNavClick);
+
+	return () => {
+		buttonElement.onclick = null;
+		navElement.removeEventListener("click", onNavClick);
+		clearActiveState();
+	};
+}

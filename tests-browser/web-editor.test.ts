@@ -130,6 +130,74 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 	}
 });
 
+test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-browser-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		name: "Browser Dock",
+		autoActivate: true,
+		mode: "replace",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: "Browser dock system prompt." },
+		],
+	});
+
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	let editorStarted = false;
+	const browserErrors: string[] = [];
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		editorStarted = true;
+		const editorUrl = latestEditorUrl(context.editors);
+		browser = await chromium.launch({
+			executablePath,
+			headless: true,
+			args: process.platform === "linux" ? ["--no-sandbox"] : [],
+		});
+		const page = await browser.newPage();
+		page.setDefaultTimeout(5_000);
+		page.on("pageerror", (error) => browserErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error") browserErrors.push(message.text());
+		});
+
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor();
+		await page.locator("#tabPanel.open").waitFor();
+		await page.locator(".context-diff-mode-tabs").filter({ hasText: "Compiled" }).waitFor();
+		await page.locator(".context-diff-section").first().waitFor();
+
+		await page.locator(".context-diff-mode-tabs button", { hasText: "Diff" }).click();
+		await page.locator(".context-diff-empty").filter({ hasText: "No captured provider turns yet" }).waitFor();
+
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#workspace").waitFor({ state: "visible" });
+		assert.equal(await page.locator("#editorDockArea").getAttribute("class"), "editor-dock-area");
+
+		assert.deepEqual(browserErrors, []);
+	} finally {
+		await browser?.close();
+		if (editorStarted) await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function findChromeExecutable(): string | undefined {
 	const candidates = [
 		process.env.CHROME_PATH,

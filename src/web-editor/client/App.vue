@@ -3,11 +3,13 @@ import { onMounted, onUnmounted, ref } from "vue";
 
 import ProfileBrowser from "./components/ProfileBrowser.vue";
 import { startContributionTabs } from "./contrib-tab-host.ts";
+import { startContextDiffTabs } from "./context-diff-tab-host.ts";
 import { editorTabButtonId, EDITOR_TABS } from "./tab-registry.ts";
 import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
+let stopContextDiffTabs: (() => void) | undefined;
 const activeSurface = ref<"stacks" | "profiles">("stacks");
 
 onMounted(async () => {
@@ -19,6 +21,7 @@ onMounted(async () => {
 			isActive: () => activeSurface.value === "stacks",
 		});
 		stopContributionTabs = startContributionTabs();
+		stopContextDiffTabs = startContextDiffTabs();
 	} catch (error) {
 		const status = document.getElementById("status");
 		if (status) {
@@ -30,6 +33,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+	stopContextDiffTabs?.();
 	stopContributionTabs?.();
 	stopLegacyEditor?.();
 });
@@ -114,32 +118,35 @@ onUnmounted(() => {
 						v-for="tab in EDITOR_TABS"
 						:key="tab.id"
 						:id="editorTabButtonId(tab.id)"
-						:data-tab="tab.id"
+						:data-tab="tab.internalDock ? undefined : tab.id"
+						:data-dock-tab="tab.internalDock ? tab.id : undefined"
 						:class="{ active: tab.id === 'items' }"
 						:data-icon="tab.icon"
 						:title="tab.title"
 					>{{ tab.label }}</button>
 				</nav>
-				<section id="workspace" class="workspace">
-					<div class="items-pane">
-						<div class="pane-head">
-							<span>Items</span>
-							<span id="itemCount" class="stack-meta"></span>
+				<div id="editorDockArea" class="editor-dock-area">
+					<section id="workspace" class="workspace">
+						<div class="items-pane">
+							<div class="pane-head">
+								<span>Items</span>
+								<span id="itemCount" class="stack-meta"></span>
+							</div>
+							<div class="item-tools">
+								<button id="addItemBtn" data-icon="+" title="Add a prompt block item">Add block</button>
+								<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
+								<span class="item-tools-spacer"></span>
+								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
+							</div>
+							<div id="itemList" class="item-list"></div>
 						</div>
-						<div class="item-tools">
-							<button id="addItemBtn" data-icon="+" title="Add a prompt block item">Add block</button>
-							<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
-							<span class="item-tools-spacer"></span>
-							<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
+						<div class="editor-pane">
+							<div id="itemEditor" class="item-editor"></div>
+							<div id="diagnostics" class="diagnostics"></div>
 						</div>
-						<div id="itemList" class="item-list"></div>
-					</div>
-					<div class="editor-pane">
-						<div id="itemEditor" class="item-editor"></div>
-						<div id="diagnostics" class="diagnostics"></div>
-					</div>
-				</section>
-				<section id="tabPanel" class="tab-panel"></section>
+					</section>
+					<section id="tabPanel" class="tab-panel"></section>
+				</div>
 			</main>
 		</div>
 		<div id="preview" class="preview"></div>
