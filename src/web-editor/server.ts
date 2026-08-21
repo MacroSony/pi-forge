@@ -290,6 +290,11 @@ async function handleRequest(host: WebEditorHost, token: string, contributionSer
 		return;
 	}
 
+	if (req.method === "GET" && parts[1] === "context-diff" && parts.length === 2) {
+		sendOperation(res, host.getContextDiff());
+		return;
+	}
+
 	if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "activate") {
 		sendOperation(res, host.activateStack(parts[2]!));
 		return;

@@ -12,6 +12,7 @@ import { ForgeWorkspace } from "./workspace.ts";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.ts";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createCompileCycleState } from "./compile-cycle.ts";
+import { getContextDiffView } from "./context-diff-history.ts";
 import { createPayloadState } from "./payload-state.ts";
 
 /**
@@ -105,6 +106,7 @@ export default function piForge(pi: ExtensionAPI) {
 			clearPayloadCapture(payloadState, ctx);
 			return { ok: true, ...webPayloadSnapshot(payloadState) };
 		},
+		getContextDiff: () => ({ ok: true, ...getContextDiffView(payloadState.contextDiffHistory) }),
 	}), () => pi.events);
 
 	registerLifecycleHandlers(pi, workspace, compileCycle, {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProviderPayloadCapture } from "./payload-capture.ts";
 import type { PayloadDisplayTarget, PayloadState } from "./payload-state.ts";
+import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.ts";
 import type { LoadedPromptStack } from "./types.ts";
 import type { WebEditorPayloadCapture, WebEditorPayloadSnapshot } from "./web-editor/index.ts";
 
@@ -106,6 +107,7 @@ export function clearPayloadCapture(state: PayloadState, ctx: ExtensionContext):
 	state.interceptPayloadDisplayTarget = "editor";
 	state.payloadCaptureArmedAt = undefined;
 	state.latestProviderPayloadCapture = undefined;
+	state.contextDiffHistory = createContextDiffHistory();
 	ctx.ui.setStatus("pi-forge-intercept", undefined);
 }
 
@@ -134,5 +136,6 @@ function captureProviderPayload(
 ): WebEditorPayloadCapture {
 	const capture = createProviderPayloadCapture(value, { stackId: active?.stack.id, savePath });
 	state.latestProviderPayloadCapture = capture;
+	appendContextDiffCapture(state.contextDiffHistory, capture);
 	return capture;
 }

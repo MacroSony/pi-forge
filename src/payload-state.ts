@@ -1,4 +1,5 @@
 import type { WebEditorPayloadCapture } from "./web-editor/index.ts";
+import { createContextDiffHistory, type ContextDiffHistory } from "./context-diff-history.ts";
 
 export type PayloadDisplayTarget = "editor" | "web";
 
@@ -12,12 +13,14 @@ export interface PayloadState {
 	interceptPayloadDisplayTarget: PayloadDisplayTarget;
 	payloadCaptureArmedAt?: string;
 	latestProviderPayloadCapture?: WebEditorPayloadCapture;
+	contextDiffHistory: ContextDiffHistory;
 }
 
 export function createPayloadState(): PayloadState {
 	return {
 		interceptNextProviderPayload: false,
 		interceptPayloadDisplayTarget: "editor",
+		contextDiffHistory: createContextDiffHistory(),
 	};
 }
 
@@ -27,4 +30,5 @@ export function clearPayloadState(state: PayloadState): void {
 	state.interceptPayloadDisplayTarget = "editor";
 	state.payloadCaptureArmedAt = undefined;
 	state.latestProviderPayloadCapture = undefined;
+	state.contextDiffHistory = createContextDiffHistory();
 }

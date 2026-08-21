@@ -32,6 +32,7 @@ import {
 	type AgentProfileApplicationResult,
 	type AgentProfileCurrentRuntime,
 } from "./profile-service.ts";
+import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type {
 	WebEditorCreateStackOptions,
@@ -70,6 +71,7 @@ export interface WebHostRuntime {
 	getPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
+	getContextDiff(): WebEditorOperationResult<ContextDiffView>;
 }
 
 export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost {
@@ -105,6 +107,7 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		getPayload: () => runtime.getPayload(),
 		armPayload: (savePath) => runtime.armPayload(savePath),
 		clearPayload: () => runtime.clearPayload(),
+		getContextDiff: () => runtime.getContextDiff(),
 		activateStack: (selector) => {
 			if (!runtime.setActive(selector)) return { ok: false, status: 404, error: `Unknown prompt stack: ${selector}` };
 			return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
