@@ -1,5 +1,6 @@
 import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
+import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 
 export interface WebEditorStackSummary {
@@ -147,4 +148,11 @@ export interface WebEditorServer {
 
 export interface WebEditorServerOptions {
 	port?: number;
+	/**
+	 * Optional Pi event bus used to discover UI contribution providers. When
+	 * omitted the editor returns an empty contribution list and rejects writes.
+	 */
+	contributionTransport?: UiContributionTransport;
+	/** Timeout used for provider discovery at server start / lazy reconnect. */
+	contributionDiscoverTimeoutMs?: number;
 }

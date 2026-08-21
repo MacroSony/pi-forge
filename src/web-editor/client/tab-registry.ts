@@ -28,6 +28,12 @@ export interface EditorTabDefinition {
 	 * it reports a change. Optional fields are copied only when present.
 	 */
 	stackFields: readonly string[];
+	/**
+	 * True for tabs contributed through the UI contribution protocol. These are
+	 * rendered and activated by the self-contained contribution host rather than
+	 * by legacy-editor.ts.
+	 */
+	contributed?: boolean;
 }
 
 export const EDITOR_TABS = [
@@ -70,8 +76,33 @@ export function editorTabButtonId(id: string): string {
 	return `${id}TabBtn`;
 }
 
+let contributedTabs: EditorTabDefinition[] = [];
+
+/** All tabs: the built-in stack-editor tabs followed by discovered contributions. */
+export function getEditorTabs(): readonly EditorTabDefinition[] {
+	return [...EDITOR_TABS, ...contributedTabs];
+}
+
+/** Replaces the discovered contribution tab set. Duplicate ids are ignored. */
+export function setContributedTabs(tabs: readonly EditorTabDefinition[]): void {
+	const baseIds = new Set<string>(EDITOR_TABS.map((tab) => tab.id));
+	const seen = new Set<string>();
+	contributedTabs = tabs.filter((tab) => {
+		if (baseIds.has(tab.id) || seen.has(tab.id)) return false;
+		seen.add(tab.id);
+		return true;
+	}).map((tab) => ({
+		...tab,
+		contributed: true,
+	}));
+}
+
+export function clearContributedTabs(): void {
+	contributedTabs = [];
+}
+
 export function getEditorTab(id: string): EditorTabDefinition | undefined {
-	return EDITOR_TABS.find((tab) => tab.id === id);
+	return getEditorTabs().find((tab) => tab.id === id);
 }
 
 export function isEditorVueTab(id: string): boolean {

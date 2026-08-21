@@ -1,5 +1,6 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { showText } from "../preview.ts";
+import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import { createWebEditorHost, loadWebEditorSettings, type WebHostRuntime } from "../web-host.ts";
 import { startWebEditorServer, type WebEditorServer } from "../web-editor/index.ts";
 
@@ -28,6 +29,7 @@ export interface WebEditorRuntime {
 
 export function createWebEditorRuntime(
 	createRuntime: (ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => WebHostRuntime,
+	getContributionTransport?: () => UiContributionTransport,
 ): WebEditorRuntime {
 	const sharedWebEditors = getSharedWebEditorRegistry();
 	let webEditor: WebEditorServer | undefined;
@@ -101,13 +103,18 @@ export function createWebEditorRuntime(
 
 		if (!webEditor) {
 			try {
-				webEditor = await startWebEditorServer(createHost(ctx, promptOptions), { port: settings.preferredPort });
+				webEditor = await startWebEditorServer(createHost(ctx, promptOptions), {
+					port: settings.preferredPort,
+					contributionTransport: getContributionTransport?.(),
+				});
 			} catch (error) {
 				if (settings.preferredPort !== undefined) {
 					const detail = error instanceof Error ? error.message : String(error);
 					ctx.ui.notify(`pi-forge: preferred editor port 127.0.0.1:${settings.preferredPort} was unavailable (${detail}); using an available port instead.`, "warning");
 					try {
-						webEditor = await startWebEditorServer(createHost(ctx, promptOptions));
+						webEditor = await startWebEditorServer(createHost(ctx, promptOptions), {
+							contributionTransport: getContributionTransport?.(),
+						});
 					} catch (fallbackError) {
 						const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
 						ctx.ui.setStatus("pi-forge-editor", undefined);

@@ -26,6 +26,8 @@ for (const required of [
 	"dist/index.d.ts",
 	"dist/subagent/index.js",
 	"dist/subagent/index.d.ts",
+	"dist/ui-contribution/index.js",
+	"dist/ui-contribution/index.d.ts",
 	"docs/README.md",
 	"docs/development/release.md",
 	"docs/reference/commands.md",
@@ -56,8 +58,9 @@ for (const path of paths) {
 	if (path === "src" || path.startsWith("src/")) failures.push(`authored source leaked into npm tarball: ${path}`);
 }
 
-// 0.5.0 public surface: exactly the package root and the /subagent host port.
-const allowedExportKeys = [".", "./subagent"];
+// 0.5.1 public surface: the package root, the /subagent host port, and the
+// generic UI contribution port used by optional packages.
+const allowedExportKeys = [".", "./subagent", "./ui-contribution"];
 const exportKeys = Object.keys(packageJson.exports ?? {});
 for (const key of exportKeys) {
 	if (!allowedExportKeys.includes(key)) {

@@ -2,10 +2,12 @@
 import { onMounted, onUnmounted, ref } from "vue";
 
 import ProfileBrowser from "./components/ProfileBrowser.vue";
+import { startContributionTabs } from "./contrib-tab-host.ts";
 import { editorTabButtonId, EDITOR_TABS } from "./tab-registry.ts";
 import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
+let stopContributionTabs: (() => void) | undefined;
 const activeSurface = ref<"stacks" | "profiles">("stacks");
 
 onMounted(async () => {
@@ -16,6 +18,7 @@ onMounted(async () => {
 		stopLegacyEditor = startLegacyEditor({
 			isActive: () => activeSurface.value === "stacks",
 		});
+		stopContributionTabs = startContributionTabs();
 	} catch (error) {
 		const status = document.getElementById("status");
 		if (status) {
@@ -27,6 +30,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+	stopContributionTabs?.();
 	stopLegacyEditor?.();
 });
 </script>

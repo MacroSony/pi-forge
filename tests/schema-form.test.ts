@@ -11,7 +11,7 @@ import {
 	normalizeValues,
 	validateValues,
 	type FormSchema,
-} from "../src/web-editor/client/schema-form.ts";
+} from "../src/web-editor/schema-form.ts";
 
 const settingsSchema: FormSchema = {
 	title: "Subagent settings",

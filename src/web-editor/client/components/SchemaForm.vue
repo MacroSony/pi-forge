@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 
-import type { FormSchema, FormValues, SchemaField } from "../schema-form.ts";
+import type { FormSchema, FormValues, SchemaField } from "../../schema-form.ts";
 import {
 	defaultValueForField,
 	enumOptions,
 	isPlainObject,
 	validateValues,
-} from "../schema-form.ts";
+} from "../../schema-form.ts";
 
 interface RecordRow {
 	__id: number;

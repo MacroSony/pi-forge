@@ -3,10 +3,13 @@ import test from "node:test";
 
 import {
 	EDITOR_TABS,
+	clearContributedTabs,
 	copyStackFields,
 	editorTabButtonId,
 	getEditorTab,
+	getEditorTabs,
 	isEditorVueTab,
+	setContributedTabs,
 } from "../src/web-editor/client/tab-registry.ts";
 
 test("tab registry lists the existing editor tabs in their display order", () => {
@@ -70,6 +73,30 @@ test("editorTabButtonId derives the stable button ids used by the legacy editor 
 test("getEditorTab and isEditorVueTab tolerate unknown ids", () => {
 	assert.equal(getEditorTab("nope"), undefined);
 	assert.equal(isEditorVueTab("nope"), false);
+});
+
+test("contributed tabs can be registered, listed, and cleared", () => {
+	clearContributedTabs();
+	setContributedTabs([
+		{ id: "ext-config", label: "Ext", icon: "⚙", title: "Edit extension", mount: "vue", stackFields: [] },
+	]);
+	assert.equal(getEditorTab("ext-config")?.mount, "vue");
+	assert.equal(getEditorTab("ext-config")?.contributed, true);
+	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "ext-config"]);
+	clearContributedTabs();
+	assert.equal(getEditorTab("ext-config"), undefined);
+});
+
+test("contributed tabs cannot shadow built-in ids or duplicate each other", () => {
+	clearContributedTabs();
+	setContributedTabs([
+		{ id: "items", label: "Shadow", icon: "x", title: "Shadow", mount: "vue", stackFields: [] },
+		{ id: "ext-a", label: "A", icon: "a", title: "A", mount: "vue", stackFields: [] },
+		{ id: "ext-a", label: "A2", icon: "a", title: "A2", mount: "vue", stackFields: [] },
+	]);
+	assert.deepEqual(getEditorTabs().map((tab) => tab.id), ["items", "regex", "policy", "stack", "ext-a"]);
+	assert.equal(getEditorTab("ext-a")?.label, "A");
+	clearContributedTabs();
 });
 
 test("copyStackFields copies present optional fields and deletes absent ones", () => {

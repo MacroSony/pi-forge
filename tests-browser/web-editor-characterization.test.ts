@@ -15,6 +15,7 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { agentProfilePath } from "../src/agent-profile.ts";
 import { promptStacksDir } from "../src/loader.ts";
+import { UiContributionProvider } from "../src/ui-contribution/contrib-port.ts";
 
 test("web editor preserves its shell and guarded editing state", { timeout: 20_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
@@ -820,6 +821,55 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 	});
 });
 
+test("web editor renders a contributed tab through SchemaForm and writes values back", { timeout: 20_000 }, async (t) => {
+	const descriptor = {
+		tabId: "subagent-config",
+		title: "Subagent",
+		icon: "⚙",
+		schema: {
+			title: "Subagent settings",
+			fields: [
+				{ key: "backend", label: "Backend", type: "enum", options: ["auto", "cli"] },
+				{ key: "timeoutMs", label: "Timeout (ms)", type: "number", required: true, min: 1 },
+			],
+		},
+		values: { backend: "auto", timeoutMs: 3000 },
+	};
+	const writes: Record<string, unknown>[] = [];
+	let provider: UiContributionProvider | undefined;
+
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Contribution stack", true));
+	}, async ({ editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		await page.locator("#subagent-configTabBtn").waitFor();
+
+		await page.locator("#subagent-configTabBtn").click();
+		await page.locator(".schema-form").filter({ hasText: "Subagent settings" }).waitFor();
+		await page.locator('[data-field-input="timeoutMs"]').fill("999");
+		await page.locator("#status").filter({ hasText: "Saved" }).waitFor();
+		assert.deepEqual(writes, [{ backend: "auto", timeoutMs: 999 }]);
+
+		await page.locator("#itemsTabBtn").click();
+		assert.equal((await page.locator("#subagent-configTabBtn").getAttribute("class"))?.includes("active"), false);
+	}, {}, async (harness) => {
+		provider = new UiContributionProvider(harness.eventsBus, {
+			handle: (operation, payload) => {
+				if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
+				if (operation === "writeValues") {
+					const request = payload as { tabId: string; patch: Record<string, unknown> };
+					writes.push(request.patch);
+					return { ok: true, data: { ok: true, values: request.patch } };
+				}
+				return { ok: false, error: `Unknown operation: ${operation}` };
+			},
+		});
+		provider.start();
+	});
+	t.after(() => provider?.stop());
+});
+
 function stackFixture(id: string, name: string, autoActivate = false) {
 	return {
 		schemaVersion: 1,
@@ -847,6 +897,7 @@ async function withBrowserEditor(
 		page: Page;
 	}) => Promise<void>,
 	harnessOptions: Parameters<typeof createHarness>[0] = {},
+	setupHarness?: (harness: ReturnType<typeof createHarness>) => Promise<void> | void,
 ): Promise<void> {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
 		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
@@ -866,6 +917,7 @@ async function withBrowserEditor(
 		},
 	});
 	await startSession(harness, context.ctx);
+	await setupHarness?.(harness);
 	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 	let editorStarted = false;
 	const browserErrors: string[] = [];

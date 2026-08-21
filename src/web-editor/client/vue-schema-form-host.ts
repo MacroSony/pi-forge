@@ -1,7 +1,7 @@
-import { createApp, type App } from "vue";
+import { createApp, reactive, type App } from "vue";
 
 import SchemaForm from "./components/SchemaForm.vue";
-import { cloneJson, normalizeValues, type FormSchema, type FormValues } from "./schema-form.ts";
+import { cloneJson, normalizeValues, type FormSchema, type FormValues } from "../schema-form.ts";
 
 export interface VueSchemaFormHostDependencies {
 	getSchema(): FormSchema;
@@ -25,7 +25,7 @@ export function createVueSchemaFormHost(deps: VueSchemaFormHostDependencies) {
 	function mount(root: Element): void {
 		unmount();
 		const schema = deps.getSchema();
-		draft = normalizeValues(schema, cloneJson(deps.getValues()));
+		draft = reactive(normalizeValues(schema, cloneJson(deps.getValues())));
 		app = createApp(SchemaForm, {
 			schema,
 			values: draft,

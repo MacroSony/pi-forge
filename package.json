@@ -17,6 +17,11 @@
 			"types": "./dist/subagent/index.d.ts",
 			"import": "./dist/subagent/index.js",
 			"default": "./dist/subagent/index.js"
+		},
+		"./ui-contribution": {
+			"types": "./dist/ui-contribution/index.d.ts",
+			"import": "./dist/ui-contribution/index.js",
+			"default": "./dist/ui-contribution/index.js"
 		}
 	},
 	"keywords": [
