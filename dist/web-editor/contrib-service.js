@@ -58,8 +58,7 @@ export class ContributionService {
         const connection = await this.ensureConnected();
         if (!connection)
             return [];
-        if (this.tabs.length === 0)
-            await this.refreshTabs();
+        await this.refreshTabs();
         return this.tabs;
     }
     /**

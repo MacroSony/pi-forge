@@ -43,13 +43,19 @@ export type UiContributionPortResult =
 	| { ok: true; data: unknown }
 	| { ok: false; error: string };
 
+export interface UiContributionRequestContext {
+	/** Aborted when the provider generation stops; handlers must check before side effects after an await. */
+	signal: AbortSignal;
+	generation: number;
+}
+
 export interface UiContributionProviderOptions {
 	providerId?: string;
 	capabilities?: readonly string[];
 	minVersion?: number;
 	maxVersion?: number;
 	/** Operation handler; must never throw across the bus. */
-	handle(operation: string, payload: unknown): UiContributionPortResult;
+	handle(operation: string, payload: unknown, context: UiContributionRequestContext): UiContributionPortResult | Promise<UiContributionPortResult>;
 }
 
 export interface UiContributionConnection {
@@ -203,7 +209,7 @@ function validateSchemaField(value: unknown): ValidationResult<unknown> {
 	if (!isRecord(value)) return { ok: false, error: "field must be an object." };
 	const allowed = new Set([
 		"key", "label", "type", "description", "required", "default", "options",
-		"min", "max", "maxLength", "pattern", "placeholder", "recordFields", "keyLabel", "keyPlaceholder",
+		"min", "max", "maxLength", "pattern", "placeholder", "recordFields", "keyLabel", "keyPlaceholder", "keyOptions",
 	]);
 	const unknown = Object.keys(value).filter((key) => !allowed.has(key));
 	if (unknown.length > 0) {
@@ -238,6 +244,17 @@ function validateSchemaField(value: unknown): ValidationResult<unknown> {
 		return { ok: false, error: "field min cannot be greater than max." };
 	}
 	if (value.type === "record") {
+		if (value.keyOptions !== undefined) {
+			if (!Array.isArray(value.keyOptions)) return { ok: false, error: "keyOptions must be an array when provided." };
+			const values = new Set<string>();
+			for (const [index, option] of value.keyOptions.entries()) {
+				const optionResult = validateEnumOption(option);
+				if (!optionResult.ok) return { ok: false, error: `keyOptions[${index}]: ${optionResult.error}` };
+				const optionValue = typeof option === "string" ? option : option.value;
+				if (values.has(optionValue)) return { ok: false, error: `keyOptions[${index}]: option values must be unique.` };
+				values.add(optionValue);
+			}
+		}
 		if (value.recordFields !== undefined) {
 			if (!Array.isArray(value.recordFields)) return { ok: false, error: "recordFields must be an array when provided." };
 			for (const [index, rowField] of value.recordFields.entries()) {
@@ -250,7 +267,9 @@ function validateSchemaField(value: unknown): ValidationResult<unknown> {
 }
 
 function validateEnumOption(value: unknown): ValidationResult<unknown> {
-	if (typeof value === "string") return { ok: true, data: value };
+	if (typeof value === "string") return value
+		? { ok: true, data: value }
+		: { ok: false, error: "enum option string must be non-empty." };
 	if (!isRecord(value)) return { ok: false, error: "enum option must be a string or an object." };
 	if (typeof value.value !== "string" || !value.value) return { ok: false, error: "enum option value must be a non-empty string." };
 	if (value.label !== undefined && typeof value.label !== "string") return { ok: false, error: "enum option label must be a string when provided." };
@@ -350,6 +369,7 @@ export class UiContributionProvider {
 	private generationId = 1;
 	private started = false;
 	private unsubscribers: (() => void)[] = [];
+	private readonly pendingRequests = new Set<AbortController>();
 
 	constructor(transport: UiContributionTransport, options: UiContributionProviderOptions) {
 		this.transport = transport;
@@ -381,13 +401,15 @@ export class UiContributionProvider {
 		if (this.started) return;
 		this.started = true;
 		this.unsubscribers.push(this.transport.on(UI_CONTRIBUTION_CHANNEL.discover, (data) => this.onDiscover(data)));
-		this.unsubscribers.push(this.transport.on(UI_CONTRIBUTION_CHANNEL.request, (data) => this.onRequest(data)));
+		this.unsubscribers.push(this.transport.on(UI_CONTRIBUTION_CHANNEL.request, (data) => void this.onRequest(data)));
 		this.transport.emit(UI_CONTRIBUTION_CHANNEL.available, this.availableMessage());
 	}
 
 	stop(): void {
 		if (!this.started) return;
 		this.started = false;
+		for (const controller of this.pendingRequests) controller.abort();
+		this.pendingRequests.clear();
 		for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
 		this.transport.emit(UI_CONTRIBUTION_CHANNEL.unavailable, {
 			type: "unavailable",
@@ -412,20 +434,26 @@ export class UiContributionProvider {
 		this.transport.emit(UI_CONTRIBUTION_CHANNEL.available, this.availableMessage());
 	}
 
-	private onRequest(data: unknown): void {
+	private async onRequest(data: unknown): Promise<void> {
 		if (!this.started) return;
 		const message = parseRequest(data);
 		if (!message) return;
 		if (message.hostId !== this.hostId || message.generation !== this.generationId) return;
 
+		const generation = this.generationId;
+		const controller = new AbortController();
+		this.pendingRequests.add(controller);
 		let result: UiContributionPortResult;
 		try {
 			result = typeof this.options.handle === "function"
-				? this.options.handle(message.operation, message.payload)
+				? await this.options.handle(message.operation, message.payload, { signal: controller.signal, generation })
 				: { ok: false, error: "UI contribution provider has no operation handler." };
 		} catch (error) {
 			result = { ok: false, error: `UI contribution provider operation threw: ${error instanceof Error ? error.message : String(error)}` };
+		} finally {
+			this.pendingRequests.delete(controller);
 		}
+		if (controller.signal.aborted || !this.started || generation !== this.generationId) return;
 		this.transport.emit(UI_CONTRIBUTION_CHANNEL.reply, {
 			...normalizeProviderResult(result),
 			type: "reply",

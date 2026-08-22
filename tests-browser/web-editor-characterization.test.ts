@@ -1071,6 +1071,206 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 	t.after(() => provider?.stop());
 });
 
+test("clean contributed forms absorb live values while dirty drafts survive refresh", { timeout: 25_000 }, async (t) => {
+	type MutableDescriptor = {
+		tabId: string;
+		title: string;
+		icon: string;
+		schema: {
+			title: string;
+			description?: string;
+			fields: Array<Record<string, unknown>>;
+		};
+		values: Record<string, unknown>;
+	};
+	let descriptor: MutableDescriptor = {
+		tabId: "live-settings",
+		title: "Live settings",
+		icon: "⚙",
+		schema: {
+			title: "Live settings",
+			fields: [{ key: "timeoutMs", label: "Timeout", type: "number" }],
+		},
+		values: { timeoutMs: 3000 },
+	};
+	let provider: UiContributionProvider | undefined;
+
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Live settings stack", true));
+	}, async ({ editorUrl, expectBrowserError, page, harness }) => {
+		provider = new UiContributionProvider(harness.eventsBus, {
+			handle: (operation, payload) => {
+				if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
+				if (operation === "writeValues") {
+					const values = structuredClone((payload as { patch: Record<string, unknown> }).patch);
+					descriptor = { ...descriptor, values };
+					return { ok: true, data: { ok: true, values } };
+				}
+				return { ok: false, error: "Unknown operation" };
+			},
+		});
+		provider.start();
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#settingsSurfaceBtn").waitFor();
+		await page.locator("#settingsSurfaceBtn").click();
+		const timeout = page.locator('[data-field-input="timeoutMs"]');
+		assert.equal(await timeout.inputValue(), "3000");
+
+		// A same-generation external update must replace a clean mounted form.
+		descriptor = { ...descriptor, values: { timeoutMs: 4000 } };
+		await page.waitForFunction(() => (
+			document.querySelector<HTMLInputElement>('[data-field-input="timeoutMs"]')?.value === "4000"
+		));
+
+		// A GET that captured old values before a newer PUT must not roll the
+		// now-clean saved form back when that delayed response finally arrives.
+		let releaseStaleGet!: () => void;
+		let staleGetRead!: () => void;
+		const staleGetRelease = new Promise<void>((resolve) => { releaseStaleGet = resolve; });
+		const staleGetStarted = new Promise<void>((resolve) => { staleGetRead = resolve; });
+		await page.route(/\/api\/contrib$/, async (route) => {
+			const response = await route.fetch();
+			staleGetRead();
+			await staleGetRelease;
+			await route.fulfill({ response });
+		});
+		await staleGetStarted;
+		await timeout.fill("4500");
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		releaseStaleGet();
+		await page.waitForTimeout(300);
+		assert.equal(await timeout.inputValue(), "4500");
+		await page.unroute(/\/api\/contrib$/);
+
+		// The same stale boundary applies to a failed response: an old polling
+		// error must not tear down a form after a newer save has committed.
+		let releaseStaleFailure!: () => void;
+		let staleFailureRead!: () => void;
+		const staleFailureRelease = new Promise<void>((resolve) => { releaseStaleFailure = resolve; });
+		const staleFailureStarted = new Promise<void>((resolve) => { staleFailureRead = resolve; });
+		await page.route(/\/api\/contrib$/, async (route) => {
+			await route.fetch();
+			staleFailureRead();
+			await staleFailureRelease;
+			await route.fulfill({
+				status: 500,
+				contentType: "application/json",
+				body: JSON.stringify({ error: "stale polling failure" }),
+			});
+		});
+		await staleFailureStarted;
+		await timeout.fill("4600");
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		expectBrowserError(/Failed to load resource: the server responded with a status of 500/);
+		releaseStaleFailure();
+		await page.waitForTimeout(300);
+		assert.equal(await page.locator("#settingsSurface").isVisible(), true);
+		assert.equal(await timeout.inputValue(), "4600");
+		await page.unroute(/\/api\/contrib$/);
+
+		let releaseWrite!: () => void;
+		let writeStarted!: () => void;
+		const writeRelease = new Promise<void>((resolve) => { releaseWrite = resolve; });
+		const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+		await page.route(/\/api\/contrib\/live-settings$/, async (route) => {
+			writeStarted();
+			await writeRelease;
+			await route.continue();
+		});
+		await timeout.fill("5000");
+		await started;
+		descriptor = { ...descriptor, values: { timeoutMs: 6000 } };
+		await page.waitForTimeout(1200);
+		assert.equal(await timeout.inputValue(), "5000", "polling must not replace a dirty draft");
+		releaseWrite();
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		await page.unroute(/\/api\/contrib\/live-settings$/);
+
+		// This mirrors a malformed config descriptor followed by an on-disk repair.
+		descriptor = {
+			...descriptor,
+			schema: { ...descriptor.schema, description: "Cannot edit: malformed JSON" },
+			values: { timeoutMs: "" },
+		};
+		await page.locator(".tab-section-meta").filter({ hasText: "malformed JSON" }).waitFor();
+		assert.equal(await timeout.inputValue(), "");
+		descriptor = {
+			...descriptor,
+			schema: { ...descriptor.schema, description: "Configuration repaired" },
+			values: { timeoutMs: 7000 },
+		};
+		await page.locator(".tab-section-meta").filter({ hasText: "Configuration repaired" }).waitFor();
+		assert.equal(await timeout.inputValue(), "7000");
+	});
+	t.after(() => provider?.stop());
+});
+
+test("schema record key options render a profile picker and deletion submits replacement state", { timeout: 20_000 }, async (t) => {
+	const descriptor = {
+		tabId: "profile-picker",
+		title: "Profile picker",
+		icon: "⚙",
+		schema: {
+			title: "Scoped profiles",
+			fields: [{
+				key: "profiles",
+				label: "Project profiles",
+				type: "record",
+				keyLabel: "Agent profile",
+				keyOptions: [
+					{ value: "project:worker", label: "Project · worker" },
+					{ value: "project:reviewer", label: "Project · reviewer" },
+				],
+				recordFields: [{ key: "enabled", label: "Enabled", type: "boolean" }],
+			}],
+		},
+		values: { profiles: { "project:worker": { enabled: true } } },
+	};
+	const writes: Record<string, unknown>[] = [];
+	let provider: UiContributionProvider | undefined;
+
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", stackFixture("default", "Profile picker stack", true));
+	}, async ({ editorUrl, page, harness }) => {
+		provider = new UiContributionProvider(harness.eventsBus, {
+			handle: (operation, payload) => {
+				if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
+				if (operation === "writeValues") {
+					const values = (payload as { patch: Record<string, unknown> }).patch;
+					writes.push(structuredClone(values));
+					return { ok: true, data: { ok: true, values } };
+				}
+				return { ok: false, error: "Unknown operation" };
+			},
+		});
+		provider.start();
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#settingsSurfaceBtn").waitFor();
+		await page.locator("#settingsSurfaceBtn").click();
+		await page.locator("#settings-profile-pickerTabBtn").click();
+
+		const table = page.locator('[data-record-table="profiles"]');
+		assert.equal(await table.locator('input[data-record-key="profiles"]').count(), 0);
+		const keySelect = table.locator('select[data-record-key="profiles"]');
+		assert.equal(await keySelect.inputValue(), "project:worker");
+		assert.match(await keySelect.locator("option:checked").textContent() ?? "", /Project · worker/);
+		descriptor.schema.fields[0]!.keyOptions.push({ value: "project:new", label: "Project · new" });
+		await keySelect.locator('option[value="project:new"]').waitFor({ state: "attached" });
+
+		await table.locator('[data-delete-record="profiles"]').click();
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.deepEqual(writes.at(-1), { profiles: {} });
+		assert.equal(await table.locator("[data-record-row]").count(), 0);
+
+		await page.locator('[data-add-record="profiles"]').click();
+		const addedSelect = table.locator('select[data-record-key="profiles"]');
+		await addedSelect.selectOption("project:reviewer");
+		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		assert.deepEqual(writes.at(-1), { profiles: { "project:reviewer": { enabled: false } } });
+	});
+	t.after(() => provider?.stop());
+});
+
 function stackFixture(id: string, name: string, autoActivate = false) {
 	return {
 		schemaVersion: 1,

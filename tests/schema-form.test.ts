@@ -58,6 +58,10 @@ const settingsSchema: FormSchema = {
 			type: "record",
 			keyLabel: "Profile id",
 			keyPlaceholder: "profile-id",
+			keyOptions: [
+				{ value: "project:agent-a", label: "Project · agent-a" },
+				{ value: "global:agent-b", label: "Global · agent-b" },
+			],
 			recordFields: [
 				{
 					key: "enabled",
@@ -118,6 +122,17 @@ test("enumOptions normalizes string and object options", () => {
 		{ value: "cli", label: "cli" },
 		{ value: "auto", label: "Automatic" },
 	]);
+});
+
+test("record key options are descriptive only and preserve configured keys", () => {
+	const normalized = normalizeValues(settingsSchema, {
+		profiles: {
+			"legacy-or-missing": { enabled: true, backend: "cli", timeoutMs: 3000 },
+		},
+	});
+	assert.deepEqual(normalized.profiles, {
+		"legacy-or-missing": { enabled: true, backend: "cli", timeoutMs: 3000 },
+	});
 });
 
 test("normalizeValues fills defaults and coerces provided values", () => {

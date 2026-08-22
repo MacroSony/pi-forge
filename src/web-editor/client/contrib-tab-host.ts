@@ -57,6 +57,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	let saveInFlight = false;
 	let refreshTimer: number | undefined;
 	let refreshSequence = 0;
+	let committedSaveEpoch = 0;
 	let schemaFormHost: ReturnType<typeof createVueSchemaFormHost> | undefined;
 
 	const statusElement = document.getElementById("settingsStatus");
@@ -184,6 +185,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			}
 			const canonicalValues = response.values ?? values;
 			const mountedValues = activeTabId === tabId ? schemaFormHost?.getValues() : undefined;
+			committedSaveEpoch += 1;
 			draftValues.set(tabId, cloneJson(canonicalValues));
 			savedRevisions.set(tabId, revision);
 			const current = descriptors.find((candidate) => candidate.tabId === tabId);
@@ -220,16 +222,17 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	async function refresh(): Promise<void> {
 		if (disposed) return;
 		const sequence = ++refreshSequence;
+		const saveEpochAtStart = committedSaveEpoch;
 		try {
 			const data = await api<ContributionListResponse>("/api/contrib");
-			if (disposed || sequence !== refreshSequence) return;
+			if (disposed || sequence !== refreshSequence || saveEpochAtStart !== committedSaveEpoch) return;
 			const nextProviderKey = typeof data.providerKey === "string" ? data.providerKey : null;
 			const providerChanged = providerKey !== nextProviderKey;
 			providerKey = nextProviderKey;
 			const previousDescriptors = new Map(descriptors.map((descriptor) => [descriptor.tabId, descriptor]));
 			descriptors = uniqueContributionDescriptors(Array.isArray(data.tabs) ? data.tabs : []);
 			for (const descriptor of descriptors) {
-				if (!draftValues.has(descriptor.tabId) || (providerChanged && !isDirty(descriptor.tabId))) {
+				if (!draftValues.has(descriptor.tabId) || !isDirty(descriptor.tabId)) {
 					draftValues.set(descriptor.tabId, cloneJson(descriptor.values));
 					if (providerChanged) {
 						editRevisions.set(descriptor.tabId, 0);
@@ -247,13 +250,16 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 					const descriptor = descriptors.find((candidate) => candidate.tabId === activeTabId);
 					const previous = previousDescriptors.get(activeTabId);
 					const schemaChanged = !!descriptor && JSON.stringify(previous?.schema) !== JSON.stringify(descriptor.schema);
-					if (descriptor && (!schemaFormHost || providerChanged || schemaChanged)) mount(descriptor);
+					const cleanValuesChanged = !!descriptor
+						&& !isDirty(activeTabId)
+						&& JSON.stringify(previous?.values) !== JSON.stringify(descriptor.values);
+					if (descriptor && (!schemaFormHost || providerChanged || schemaChanged || cleanValuesChanged)) mount(descriptor);
 					showActiveStatus();
 				}
 			} else if (descriptors[0]) activate(descriptors[0]);
 			if (descriptors.length > 0 && statusElement?.textContent === "Loading settings…") setStatus("Settings ready");
 		} catch (error) {
-			if (disposed || sequence !== refreshSequence) return;
+			if (disposed || sequence !== refreshSequence || saveEpochAtStart !== committedSaveEpoch) return;
 			clearActiveState();
 			descriptors = [];
 			options.onAvailabilityChanged?.(false);

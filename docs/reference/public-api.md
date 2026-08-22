@@ -4,7 +4,7 @@
 
 pi-forge is pre-1.0. This document defines the intentional integration surfaces of the 0.5.0 line.
 
-## The three intentional entry points
+## The four intentional entry points
 
 `check-package` enforces this allowlist; nothing else is importable from the package.
 
@@ -60,10 +60,22 @@ The experimental host port over the Pi event bus: discovery, profile listing/sna
 
 The optional `@zihanw/pi-forge-subagents` package consumes this port and owns subagent execution and configuration.
 
+### 4. `@zihanw/pi-forge/ui-contribution`: versioned settings port
+
+```ts
+import {
+  UiContributionProvider,
+  UiContributionClient,
+  UI_CONTRIBUTION_PORT_VERSION,
+} from "@zihanw/pi-forge/ui-contribution";
+```
+
+The experimental generic Settings integration surface. Optional packages contribute recursively validated, JSON-compatible schemas and values over the Pi event bus; pi-forge owns only the renderer and web proxy. Providers own validation and persistence, may resolve operations asynchronously, and receive an abort signal tied to provider generation so stale requests can stop before side effects. The full contract is documented in the [UI contribution port reference](ui-contribution-port.md).
+
 ## Compatibility policy
 
 - **Stable** surfaces (root factory, macro/slot registration) preserve source compatibility within the documented release range unless a changelog entry announces a breaking release.
-- **Experimental** surfaces (the `/subagent` host port) are typed, tested, and documented, but may change deliberately as integration experience exposes missing semantics.
+- **Experimental** surfaces (the `/subagent` and `/ui-contribution` ports) are typed, tested, and documented, but may change deliberately as integration experience exposes missing semantics.
 - Everything not listed above is internal and may change without notice. In particular: no `src/*` subpath aliases exist, `./examples/*` is not an import surface (examples ship as browsable files), and removed 0.4 surfaces (the execution contract re-exports, loader/profile/catalog helpers) now live either nowhere or in `@zihanw/pi-forge-subagents`.
 
 ## Removed in 0.5.0

@@ -22,7 +22,7 @@ Lifecycle rules:
 2. A second compatible provider fails discovery explicitly (`duplicate`).
 3. `request`/`reply` messages carry `requestId` + `hostId` + `generation`; stale-generation and wrong-host requests are rejected server-side, mismatched replies ignored client-side.
 4. Provider disposal sends `unavailable`. The web editor clears that provider's contributed Settings pages and re-discovers when a provider reappears across sessions; late-surfacing providers are picked up without a page reload path change. The local HTTP listing also carries a forge-owned monotonic, opaque provider-session key so a fast restart refreshes a still-visible form even when browser polling never observes the empty interval. Browser PUT handling binds each response to the session that received it; a delayed success from an older session cannot mark or overwrite the newer session and the preserved draft is retried instead.
-5. Operation handlers must never throw across the bus; failures return `{ ok: false, error }` results.
+5. Operation handlers may return a result or a promise of one and must never throw across the bus; rejected promises and thrown failures are converted to `{ ok: false, error }` results. Each invocation receives `{ signal, generation }`; stopping the provider aborts the signal. Handlers that await before persistence must check it before side effects. Replies from a stopped generation are discarded as a final transport guard.
 
 The Settings host keeps the first descriptor for each `tabId`; later duplicates are ignored. Browser button IDs use a Settings-specific prefix and cannot collide with built-in stack tabs. Providers should still emit unique stable `tabId` values because `writeValues` routes by that identifier. In-progress drafts and save status are tracked per tab, so switching between contributed pages does not discard a pending edit or leak its status into another page.
 
@@ -34,17 +34,17 @@ The web host acts as the client: `UiContributionClient.discover()` announces on 
 
 ### `listContributions`
 
-Request: `{}`. Response: `{ tabs: UiContributionTabDescriptor[] }` — each descriptor carries `tabId`, `title`, `icon`, a `FormSchema`, and the current `values`. Read-only; listing a tab contributes it to the editor but performs no other side effect.
+Request: `{}`. Response: `{ tabs: UiContributionTabDescriptor[] }` — each descriptor carries `tabId`, `title`, `icon`, a `FormSchema`, and the current `values`. Read-only; listing a tab contributes it to the editor but performs no other side effect. Every HTTP `GET /api/contrib` refreshes this operation, so providers may update plain-data option catalogs without restarting their session.
 
 ### `writeValues`
 
-Request: `{ tabId, patch }` — a partial values patch for one contributed tab. The provider merges the patch over its current values, re-validates server-side, and persists the result to its own storage. Response: `{ ok: true, values? }` with the canonical stored values, or `{ ok: false, errors }` with per-field error strings keyed by field key (dotted paths for record rows). The web server exposes this as `PUT /api/contrib/<tabId>` and rejects malformed or oversized request bodies with 400/413 before any bus call.
+Request: `{ tabId, patch }` — a partial values patch for one contributed tab. Omitted top-level fields preserve their stored values. A supplied `record` field is the complete keyed table produced by the form, so omitted rows represent deletion. The provider merges those semantics over its current values, re-validates server-side, and persists the result to its own storage. Response: `{ ok: true, values? }` with the canonical stored values, or `{ ok: false, errors }` with per-field error strings keyed by field key (dotted paths for record rows). The web server exposes this as `PUT /api/contrib/<tabId>` and rejects malformed or oversized request bodies with 400/413 before any bus call.
 
 The browser serializes autosave requests. If the form changes while a PUT is in flight, the latest complete normalized snapshot is queued and written only after the current request settles. This ordering prevents older provider writes from landing after newer ones.
 
 ## Form schema
 
-v1 field types are deliberately restricted: `boolean`, `number`, `enum`, `string`, and `record` (a keyed table of entries — for example per-profile settings). Fields carry `key`, `label`, optional `description`/`required`/`default`, enum `options` (plain strings or `{ value, label }`), numeric `min`/`max`, string `maxLength`/`pattern`/`placeholder`, and record sub-fields (`recordFields`, `keyLabel`, `keyPlaceholder`). There is intentionally no remote-data-source field type yet (a dropdown fed by live forge data); such values are plain text inputs validated on write.
+v1 field types are deliberately restricted: `boolean`, `number`, `enum`, `string`, and `record` (a keyed table of entries — for example per-profile settings). Fields carry `key`, `label`, optional `description`/`required`/`default`, enum `options` (plain strings or `{ value, label }`), numeric `min`/`max`, string `maxLength`/`pattern`/`placeholder`, and record sub-fields (`recordFields`, `keyLabel`, `keyPlaceholder`). A record may also provide `keyOptions` (the same string-or-labelled-option shape as enum options); the generic renderer then uses a selector for row identity and prevents choosing a key already used by another row. Providers remain responsible for refreshing those plain-data options and validating them again on write.
 
 ## Errors
 

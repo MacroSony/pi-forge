@@ -36,6 +36,15 @@ It is not a platformization release.
 12. **Public surfaces are exactly three intentional entry points:** package root default factory, package root named extension API (`registerMacro`, `registerSlot`, and their contract types), and `@zihanw/pi-forge/subagent`. All other root re-exports and `src/*` aliases are removed. `check-package` enforces this allowlist.
 13. **Migration is a small utility plus release notes, not a framework.** A v1-to-v2 script converts mechanical `variables`/macro fields with explicit diagnostics; removed behavior is never silently approximated.
 
+## Accepted 0.5.1 amendment: generic settings contributions
+
+Dogfooding invalidated decisions 10 and 12 as forward-looking constraints, while preserving their 0.5.0 historical outcome. The accepted 0.5.1 amendment is:
+
+1. `@zihanw/pi-forge/ui-contribution` is a fourth intentional, experimental entry point. It is a generic, versioned, data-only event-bus port; main pi-forge owns the renderer and HTTP proxy but has no subagent-specific schema or persistence logic.
+2. Optional packages may contribute restricted schema-driven Settings pages. Schemas and values are recursively validated JSON data; provider handlers may be asynchronous and receive generation-bound cancellation before side effects.
+3. `pi-forge-subagents` remains the sole owner of both `subagents.json` files. It obtains profile choices only through `/subagent`, contributes plain settings descriptors through `/ui-contribution`, and performs all subagent validation and persistence itself.
+4. This amendment does not authorize a general plugin UI/component runtime, arbitrary browser code, a second resource registry, or main-package reads/writes of optional-package configuration.
+
 ## Extension port contract (0.5.0)
 
 The 0.5.0 extension contract is part of the breaking release. It is a trusted-extension port, not a security boundary.
@@ -77,6 +86,7 @@ flowchart LR
     Workspace --> Compiler["forge-v1 compiler"]
     Compiler --> Extensions["Trusted extension port"]
     Workspace -. "event-bus host port v1" .-> Optional["pi-forge-subagents"]
+    WebEditor["Generic Settings renderer"] -. "UI contribution port v1" .-> Optional
     Optional --> Runtime["pi-subagent-runtime"]
 ```
 
@@ -193,6 +203,7 @@ Lane 4e: release.
 - Schema v2, extension contract, and migration notes are documented.
 - Main package has no subagent runtime dependency and passes packed smoke tests alone.
 - Optional package passes packed smoke tests through host port v1 and owns only its dedicated config files.
+- UI contribution port passes schema validation, async generation cancellation, provider churn, and packed optional-consumer tests.
 - No non-allowlisted root exports or `src/*` aliases remain.
 - User-facing breaking changes are documented in English and Chinese.
 
@@ -205,7 +216,7 @@ These items come from the archived full plan and are intentionally not part of 0
 - automatic dependency-direction checking;
 - full `PromptStackService` / `AgentProfileService` application facades;
 - complete host RPC operation catalogue, progress events, and richer lifecycle features beyond host port v1;
-- optional-package standalone delegation UI or a main-editor contribution port;
+- optional-package standalone delegation UI and arbitrary contributed UI components;
 - full public-surface classification register and consumer audit repeat;
 - rolling Pi compatibility matrix and scheduled latest-Pi probe;
 - sandbox, staged writes, new prompt features, richer imports, and orchestration.

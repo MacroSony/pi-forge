@@ -125,13 +125,39 @@ function recordKeyLabel(field: SchemaField): string {
 	return field.keyLabel ?? "Key";
 }
 
+function recordKeyOptions(field: SchemaField, row?: RecordRow): Array<{ value: string; label: string }> {
+	const rows = recordRows[field.key] ?? [];
+	const used = new Set(rows.filter((candidate) => candidate !== row).map((candidate) => candidate.key));
+	const options = (field.keyOptions ?? []).map((option) => typeof option === "string"
+		? { value: option, label: option }
+		: { value: option.value, label: option.label ?? option.value });
+	if (row?.key && !options.some((option) => option.value === row.key)) {
+		options.push({ value: row.key, label: `${row.key} · configured profile unavailable` });
+	}
+	return options.filter((option) => !used.has(option.value));
+}
+
+function canAddRecordRow(field: SchemaField): boolean {
+	return field.keyOptions === undefined || recordKeyOptions(field).length > 0;
+}
+
 function addRecordRow(field: SchemaField): void {
 	const rows = (recordRows[field.key] ??= []);
-	const base = field.keyPlaceholder || "entry";
 	const existing = new Set(rows.map((row) => row.key.trim()).filter(Boolean));
-	let key = base;
-	let suffix = 2;
-	while (existing.has(key)) key = `${base}-${suffix++}`;
+	let key: string;
+	if (field.keyOptions !== undefined) {
+		const option = recordKeyOptions(field)[0];
+		if (!option) {
+			emit("status", `Every available ${recordKeyLabel(field).toLowerCase()} already has an entry.`, "error");
+			return;
+		}
+		key = option.value;
+	} else {
+		const base = field.keyPlaceholder || "entry";
+		key = base;
+		let suffix = 2;
+		while (existing.has(key)) key = `${base}-${suffix++}`;
+	}
 	const value: Record<string, unknown> = {};
 	for (const rowField of field.recordFields ?? []) {
 		value[rowField.key] = defaultValueForField(rowField);
@@ -308,6 +334,7 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						data-icon="+"
 						:data-add-record="field.key"
 						:title="`Add a ${recordKeyLabel(field).toLowerCase()} entry`"
+						:disabled="!canAddRecordRow(field)"
 						@click="addRecordRow(field)"
 					>
 						Add entry
@@ -332,8 +359,21 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						:data-record-row="index"
 					>
 						<div class="field">
-							<input
-								type="text"
+						<select
+							v-if="field.keyOptions !== undefined"
+							:data-record-key="field.key"
+							:value="row.key"
+							@change="setRecordRowKey(field, index, $event)"
+						>
+							<option
+								v-for="option in recordKeyOptions(field, row)"
+								:key="option.value"
+								:value="option.value"
+							>{{ option.label }}</option>
+						</select>
+						<input
+							v-else
+							type="text"
 								:data-record-key="field.key"
 								:value="row.key"
 								:placeholder="field.keyPlaceholder"

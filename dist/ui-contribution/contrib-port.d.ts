@@ -68,13 +68,18 @@ export type UiContributionPortResult = {
     ok: false;
     error: string;
 };
+export interface UiContributionRequestContext {
+    /** Aborted when the provider generation stops; handlers must check before side effects after an await. */
+    signal: AbortSignal;
+    generation: number;
+}
 export interface UiContributionProviderOptions {
     providerId?: string;
     capabilities?: readonly string[];
     minVersion?: number;
     maxVersion?: number;
     /** Operation handler; must never throw across the bus. */
-    handle(operation: string, payload: unknown): UiContributionPortResult;
+    handle(operation: string, payload: unknown, context: UiContributionRequestContext): UiContributionPortResult | Promise<UiContributionPortResult>;
 }
 export interface UiContributionConnection {
     hostId: string;
@@ -127,6 +132,7 @@ export declare class UiContributionProvider {
     private generationId;
     private started;
     private unsubscribers;
+    private readonly pendingRequests;
     constructor(transport: UiContributionTransport, options: UiContributionProviderOptions);
     get generation(): number;
     get isLive(): boolean;

@@ -29,6 +29,8 @@ export interface SchemaField {
     keyLabel?: string;
     /** record: placeholder hint for row keys. */
     keyPlaceholder?: string;
+    /** record: optional allowed/suggested row keys rendered as a selector. */
+    keyOptions?: readonly (string | SchemaEnumOption)[];
 }
 export interface FormSchema {
     title?: string;

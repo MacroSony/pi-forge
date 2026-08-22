@@ -204,6 +204,7 @@ test("ui contribution port validates recursive FormSchema records", () => {
 				key: "profiles",
 				label: "Per-profile",
 				type: "record",
+				keyOptions: [{ value: "project:worker", label: "Project · worker" }],
 				recordFields: [
 					{ key: "enabled", label: "Enabled", type: "boolean" },
 					{ key: "backend", label: "Backend", type: "enum", options: ["auto", "cli"] },
@@ -229,6 +230,80 @@ test("ui contribution port validates recursive FormSchema records", () => {
 	});
 	assert.equal(bad.ok, false);
 	assert.match((bad as { error: string }).error, /enum option value/);
+
+	const badKeyOptions = validateUiContributionTabDescriptor({
+		...descriptor,
+		schema: {
+			fields: [{ key: "profiles", label: "Per-profile", type: "record", keyOptions: [{ value: "" }] }],
+		},
+		values: {},
+	});
+	assert.equal(badKeyOptions.ok, false);
+	assert.match((badKeyOptions as { error: string }).error, /keyOptions/);
+	const emptyStringKeyOption = validateUiContributionTabDescriptor({
+		...descriptor,
+		schema: { fields: [{ key: "profiles", label: "Per-profile", type: "record", keyOptions: [""] }] },
+		values: {},
+	});
+	assert.equal(emptyStringKeyOption.ok, false);
+	const duplicateKeyOption = validateUiContributionTabDescriptor({
+		...descriptor,
+		schema: { fields: [{ key: "profiles", label: "Per-profile", type: "record", keyOptions: ["worker", { value: "worker", label: "Worker" }] }] },
+		values: {},
+	});
+	assert.equal(duplicateKeyOption.ok, false);
+	assert.match((duplicateKeyOption as { error: string }).error, /unique/);
+});
+
+test("ui contribution providers may resolve operation results asynchronously", async () => {
+	const bus = new MemoryTransport();
+	const provider = new UiContributionProvider(bus, {
+		handle: async (operation) => {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			if (operation === "listContributions") return { ok: true, data: { tabs: [descriptor] } };
+			return { ok: false, error: "Unknown operation" };
+		},
+	});
+	provider.start();
+	const client = new UiContributionClient(bus, { defaultTimeoutMs: 100 });
+	const connection = await client.discover();
+	client.connect(connection);
+	try {
+		const result = await client.listContributions(connection);
+		assert.equal(result.ok, true);
+	} finally {
+		client.disconnect();
+		provider.stop();
+	}
+});
+
+test("stopping a provider aborts pending async operation contexts", async () => {
+	const bus = new MemoryTransport();
+	let release!: () => void;
+	let started!: () => void;
+	let requestSignal: AbortSignal | undefined;
+	const gate = new Promise<void>((resolve) => { release = resolve; });
+	const entered = new Promise<void>((resolve) => { started = resolve; });
+	const provider = new UiContributionProvider(bus, {
+		handle: async (_operation, _payload, context) => {
+			requestSignal = context.signal;
+			started();
+			await gate;
+			return { ok: true, data: { tabs: [descriptor] } };
+		},
+	});
+	provider.start();
+	const client = new UiContributionClient(bus, { defaultTimeoutMs: 100 });
+	const connection = await client.discover();
+	client.connect(connection);
+	const pending = client.listContributions(connection);
+	await entered;
+	provider.stop();
+	assert.equal(requestSignal?.aborted, true);
+	release();
+	const result = await pending;
+	assert.equal(result.ok, false);
+	client.disconnect();
 });
 
 test("ContributionService merges a partial patch when the provider omits returned values", async () => {
@@ -262,6 +337,33 @@ test("ContributionService merges a partial patch when the provider omits returne
 				profiles: { worker: { enabled: true, timeoutMs: 5000 } },
 			},
 		});
+	} finally {
+		await service.stop();
+		provider.stop();
+	}
+});
+
+test("ContributionService refreshes contribution schemas on every list request", async () => {
+	const bus = new MemoryTransport();
+	let title = "Initial";
+	let reads = 0;
+	const provider = new UiContributionProvider(bus, {
+		handle: (operation) => {
+			if (operation !== "listContributions") return { ok: false, error: "Unknown operation" };
+			reads += 1;
+			return { ok: true, data: { tabs: [{ ...descriptor, schema: { ...descriptor.schema, title } }] } };
+		},
+	});
+	const service = new ContributionService(bus, { discoverTimeoutMs: 50, requestTimeoutMs: 100 });
+	provider.start();
+	service.start();
+	try {
+		const first = await service.listTabs();
+		assert.equal(first[0]?.schema.title, "Initial");
+		title = "Refreshed";
+		const second = await service.listTabs();
+		assert.equal(second[0]?.schema.title, "Refreshed");
+		assert.ok(reads >= 2);
 	} finally {
 		await service.stop();
 		provider.stop();
