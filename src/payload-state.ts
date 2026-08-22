@@ -14,6 +14,7 @@ export interface PayloadState {
 	payloadCaptureArmedAt?: string;
 	latestProviderPayloadCapture?: WebEditorPayloadCapture;
 	contextDiffHistory: ContextDiffHistory;
+	pendingContextDiffUsageTurnIds: string[];
 }
 
 export function createPayloadState(): PayloadState {
@@ -21,6 +22,7 @@ export function createPayloadState(): PayloadState {
 		interceptNextProviderPayload: false,
 		interceptPayloadDisplayTarget: "editor",
 		contextDiffHistory: createContextDiffHistory(),
+		pendingContextDiffUsageTurnIds: [],
 	};
 }
 
@@ -31,4 +33,5 @@ export function clearPayloadState(state: PayloadState): void {
 	state.payloadCaptureArmedAt = undefined;
 	state.latestProviderPayloadCapture = undefined;
 	state.contextDiffHistory = createContextDiffHistory();
+	state.pendingContextDiffUsageTurnIds = [];
 }

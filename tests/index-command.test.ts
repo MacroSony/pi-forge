@@ -626,6 +626,111 @@ test("ordinary provider requests populate context-diff history without arming ca
 	}
 });
 
+test("provider request captures correlate with authoritative assistant usage", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-usage-"));
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		const editorUrl = latestEditorUrl(context.editors);
+		const headers = { "x-pi-forge-token": editorUrl.searchParams.get("token")! };
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: { model: "test-model", messages: [{ role: "user", content: "first usage" }] },
+		}, context.ctx);
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: { model: "test-model", messages: [{ role: "user", content: "second usage" }] },
+		}, context.ctx);
+		await harness.events.message_end({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "done" }],
+				api: "test",
+				provider: "test-provider",
+				model: "test-model",
+				usage: {
+					input: 20,
+					output: 5,
+					cacheRead: 80,
+					cacheWrite: 0,
+					totalTokens: 105,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "stop",
+				timestamp: 1,
+			},
+		}, context.ctx);
+		await harness.events.message_end({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "aborted after usage" }],
+				api: "test",
+				provider: "test-provider",
+				model: "test-model",
+				usage: {
+					input: 90,
+					output: 2,
+					cacheRead: 10,
+					cacheWrite: 0,
+					totalTokens: 102,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "aborted",
+				timestamp: 2,
+			},
+		}, context.ctx);
+
+		const response = await fetch(new URL("/api/context-diff", editorUrl), { headers });
+		const view = await response.json() as {
+			turns: Array<{ usage?: { cacheHitRatio: number | null } }>;
+			latest: { usage?: { provider: string; promptTokens: number; cacheHitRatio: number | null; stopReason: string } } | null;
+		};
+		assert.equal(response.status, 200);
+		assert.equal(view.turns[0]!.usage?.cacheHitRatio, 0.8);
+		assert.equal(view.turns[1]!.usage?.cacheHitRatio, 0.1);
+		assert.equal(view.latest?.usage?.provider, "test-provider");
+		assert.equal(view.latest?.usage?.promptTokens, 100);
+		assert.equal(view.latest?.usage?.cacheHitRatio, 0.1);
+		assert.equal(view.latest?.usage?.stopReason, "aborted");
+
+		await harness.events.before_provider_request({
+			type: "before_provider_request",
+			payload: { model: "test-model", messages: [{ role: "user", content: "cleared pending usage" }] },
+		}, context.ctx);
+		const cleared = await fetch(new URL("/api/payload", editorUrl), { method: "DELETE", headers });
+		assert.equal(cleared.status, 200);
+		await harness.events.message_end({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [],
+				api: "test",
+				provider: "test-provider",
+				model: "test-model",
+				usage: {
+					input: 50,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 50,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "error",
+				timestamp: 3,
+			},
+		}, context.ctx);
+		const afterClear = await fetch(new URL("/api/context-diff", editorUrl), { headers });
+		assert.deepEqual((await afterClear.json() as { turns: unknown[] }).turns, []);
+	} finally {
+		await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 test("web editor resources and preview survive lifecycle-only host refreshes", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {

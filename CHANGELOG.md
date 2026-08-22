@@ -24,6 +24,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- Preview/Draft/Run diffs now render git-style unified or split line views with old/new line numbers, inline changed spans, and changes-only/three-line/all-line context controls. Chars/4 figures are labeled strictly as estimates. Each captured provider request is correlated with its completed assistant message, so Run metadata shows Pi's actual input/output/cache-read/cache-write usage and a provider-reported cache-hit rate when cache reporting has been observed; otherwise it says the rate is not reported instead of presenting a synthetic zero.
+
 - Schema-driven record settings can now provide catalog-backed `keyOptions`, rendered as a duplicate-safe selector instead of a free-text identity field. UI-contribution handlers may resolve asynchronously, allowing optional packages to refresh host-owned catalogs before returning a schema or validating a write; stale replies are suppressed if that provider generation stops while the handler is pending.
 
 - Selective stack tool allow lists now select from Pi's complete registered tool catalog, so built-in inactive tools such as `grep`, `find`, and `ls` can be activated by a stack and are restored to their prior inactive state when the policy is removed. Allow lists containing `*` remain on the active baseline and do not expand to every inactive tool. The web editor now states the active-vs-registered distinction explicitly.

@@ -1,4 +1,5 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type CompileCycleState } from "./compile-cycle.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
@@ -19,6 +20,7 @@ export interface LifecycleDeps {
     restorePersistedActiveId(id?: string): void;
     reloadForgeWorkspace(ctx: ExtensionContext): void;
     disposeForgeWorkspace(): void;
+    recordProviderResponseUsage(message: AssistantMessage): void;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: LifecycleDeps): void;
 //# sourceMappingURL=lifecycle.d.ts.map

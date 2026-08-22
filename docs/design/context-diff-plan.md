@@ -2,6 +2,11 @@
 
 Status: folded into `docs/design/0.5.1-plan.md` as Lane 2 — that file is now the owner of truth. Kept for discussion history.
 
+Implemented follow-up: the dock now provides git-style line diffs and correlates
+captured requests with Pi's assistant usage. The structural cache-prefix figure
+remains a chars/4 estimate; provider-reported cache hit rate is shown separately
+and is unavailable until cache reporting is observed for that provider/model.
+
 Original status: planned. Target release: 0.5.1 (first feature release after 0.5.0).
 
 ## Goal

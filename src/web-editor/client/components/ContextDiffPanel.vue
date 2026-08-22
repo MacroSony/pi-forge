@@ -10,6 +10,14 @@ import {
 	type DiffBlock,
 	type TurnDiff,
 } from "../../../context-diff.ts";
+import {
+	buildSplitLineRows,
+	diffTextLines,
+	filterLineRows,
+	type LineDiffDisplayRow,
+	type LineDiffRow,
+	type SplitLineDiffRow,
+} from "../../line-diff.ts";
 import type { LegacyEditorDraft } from "../legacy-editor.ts";
 import { previewSections, previewToTurnSnapshot } from "../preview-diff.ts";
 
@@ -35,6 +43,8 @@ const contextDiff = ref<ContextDiffView | null>(null);
 const contextDiffError = ref("");
 const contextDiffLoading = ref(false);
 const showUnchanged = ref(false);
+const diffLayout = ref<"unified" | "split">("unified");
+const lineContext = ref<"0" | "3" | "all">("3");
 const expanded = ref(false);
 
 let previewTimer: number | undefined;
@@ -67,6 +77,7 @@ const deltaClass = computed(() => {
 
 const prefixPercent = computed(() => Math.round((latestDiff.value?.prefixRatio ?? 0) * 100));
 const changedBlocks = computed(() => activeDiff.value?.summary.changedBlocks ?? 0);
+const latestUsage = computed(() => contextDiff.value?.latest?.usage ?? null);
 
 onMounted(() => {
 	stopDraftSubscription = props.subscribeStackDraft?.(schedulePreviewRefresh);
@@ -209,14 +220,60 @@ function blockRole(block: DiffBlock): string {
 function blockTokenText(block: DiffBlock): string {
 	if (block.status !== "same") {
 		const delta = block.tokenDelta;
-		return `${delta > 0 ? "+" : ""}${delta}`;
+		return `est. Δ ~${delta > 0 ? "+" : ""}${delta}`;
 	}
-	return `~${block.after?.approxTokens ?? 0}`;
+	return `est. ~${block.after?.approxTokens ?? 0}`;
+}
+
+function blockLineRows(block: DiffBlock): LineDiffDisplayRow[] {
+	const rows = diffTextLines(block.before?.text ?? "", block.after?.text ?? "");
+	const context = block.status === "same" || lineContext.value === "all"
+		? null
+		: Number(lineContext.value);
+	return filterLineRows(rows, context);
+}
+
+function blockSplitRows(block: DiffBlock): SplitLineDiffRow[] {
+	return buildSplitLineRows(blockLineRows(block));
+}
+
+function lineMarker(row: LineDiffRow): string {
+	return row.kind === "added" ? "+" : row.kind === "removed" ? "−" : row.kind === "note" ? "\\" : " ";
+}
+
+function eofNoteSide(row: LineDiffRow): string {
+	return row.noteSide === "before" ? "Before" : "After";
+}
+
+function metadataOnlyChange(block: DiffBlock): boolean {
+	return block.status === "modified"
+		&& block.before?.text === block.after?.text
+		&& block.before?.hash !== block.after?.hash;
+}
+
+function metadataChangeText(block: DiffBlock): string {
+	const beforeRole = block.before?.role ?? "—";
+	const afterRole = block.after?.role ?? "—";
+	const roleDetail = beforeRole === afterRole
+		? `Role unchanged (${afterRole}); another serialized provider field changed.`
+		: `Role changed: ${beforeRole} → ${afterRole}.`;
+	return `Provider-visible metadata changed; text is unchanged. ${roleDetail}`;
+}
+
+function formatUsageTokens(value: number | undefined): string {
+	return value === undefined ? "—" : value.toLocaleString();
+}
+
+function cacheHitText(): string {
+	const usage = latestUsage.value;
+	if (!usage) return "—";
+	if (usage.cacheHitRatio === null) return "not reported";
+	return `${(usage.cacheHitRatio * 100).toFixed(1)}%`;
 }
 
 function sectionMeta(section: WebEditorPreviewSection): string {
 	const role = section.role ? `${section.role} · ` : "";
-	return `${role}${section.chars} chars · ~${section.approxTokens} tokens`;
+	return `${role}${section.chars} chars · estimate ~${section.approxTokens} tokens`;
 }
 
 function turnLabel(): string {
@@ -239,7 +296,7 @@ function turnLabel(): string {
 			<div class="context-diff-panel-head">
 				<div class="context-diff-title">Compiled draft</div>
 				<div class="context-diff-meta">
-					<span v-if="preview">~{{ preview.approxTokens }} tokens · {{ preview.totalChars }} chars</span>
+					<span v-if="preview">Estimate ~{{ preview.approxTokens }} tokens (chars/4) · {{ preview.totalChars }} chars</span>
 					<span v-else-if="previewLoading">Refreshing…</span>
 					<span v-else-if="previewError" class="error">{{ previewError }}</span>
 					<span v-else>No preview</span>
@@ -283,8 +340,22 @@ function turnLabel(): string {
 			</div>
 			<template v-else>
 				<div class="context-diff-summary">
-					<span :class="['summary-delta', deltaClass]">~{{ deltaText }} tokens</span>
+					<span :class="['summary-delta', deltaClass]">Estimated Δ ~{{ deltaText }} tokens</span>
 					<span>{{ changedBlocks }} changed</span>
+					<div class="diff-view-controls" aria-label="Diff display options">
+						<div class="diff-layout-buttons">
+							<button type="button" :class="{ active: diffLayout === 'unified' }" :aria-pressed="diffLayout === 'unified'" @click="diffLayout = 'unified'">Unified</button>
+							<button type="button" :class="{ active: diffLayout === 'split' }" :aria-pressed="diffLayout === 'split'" @click="diffLayout = 'split'">Split</button>
+						</div>
+						<label>
+							<span>Lines</span>
+							<select v-model="lineContext" aria-label="Diff line context">
+								<option value="0">Changes only</option>
+								<option value="3">3 lines context</option>
+								<option value="all">All lines</option>
+							</select>
+						</label>
+					</div>
 					<label v-if="hiddenUnchangedCount" class="unchanged-toggle">
 						<input v-model="showUnchanged" type="checkbox">
 						Show {{ hiddenUnchangedCount }} unchanged
@@ -292,7 +363,17 @@ function turnLabel(): string {
 				</div>
 				<details v-if="mode === 'run'" class="context-diff-details">
 					<summary>Run metadata</summary>
-					<div>Turn {{ turnLabel() }} · cache prefix ~{{ latestDiff?.prefixTokens }} tokens ({{ prefixPercent }}%) · approximate token counts</div>
+					<div class="run-metadata-grid">
+						<span>Turn</span><strong>{{ turnLabel() }}</strong>
+						<span>Provider/model</span><strong>{{ latestUsage ? `${latestUsage.provider}/${latestUsage.model}` : "usage pending" }}</strong>
+						<span>Actual prompt tokens</span><strong>{{ formatUsageTokens(latestUsage?.promptTokens) }}</strong>
+						<span>Actual cache read / write</span><strong>{{ formatUsageTokens(latestUsage?.cacheRead) }} / {{ formatUsageTokens(latestUsage?.cacheWrite) }}</strong>
+						<span>Actual cache hit rate</span><strong>{{ cacheHitText() }}</strong>
+						<span>Actual uncached input / output</span><strong>{{ formatUsageTokens(latestUsage?.input) }} / {{ formatUsageTokens(latestUsage?.output) }}</strong>
+						<span>Estimated reusable prefix</span><strong>~{{ latestDiff?.prefixTokens }} tokens ({{ prefixPercent }}%)</strong>
+					</div>
+					<p v-if="latestUsage?.cacheStatus === 'not-reported'" class="metadata-note">Pi has not observed provider-reported cache reads or writes for this model yet, so a real hit rate cannot be distinguished from an unreported zero.</p>
+					<p class="metadata-note">Estimated values use captured text length (chars/4); actual values come from the provider usage returned by Pi.</p>
 				</details>
 				<div v-if="visibleDiffBlocks.length === 0" class="context-diff-empty compact">
 					{{ mode === "draft" ? "Draft and saved prompt compile to the same content." : "The latest two runs have the same captured content." }}
@@ -307,13 +388,36 @@ function turnLabel(): string {
 								<span v-if="blockRole(block)" class="block-role">{{ blockRole(block) }}</span>
 								<span class="block-token-chip">{{ blockTokenText(block) }} tokens</span>
 							</div>
-							<pre v-if="block.status === 'removed'" class="block-text removed">{{ block.before?.text }}</pre>
-							<pre v-else-if="block.status === 'added'" class="block-text added">{{ block.after?.text }}</pre>
-							<div v-else-if="block.status === 'modified'" class="block-modified-grid">
-								<div><div class="block-label before">Before</div><pre class="block-text before">{{ block.before?.text }}</pre></div>
-								<div><div class="block-label after">After</div><pre class="block-text after">{{ block.after?.text }}</pre></div>
+							<div v-if="metadataOnlyChange(block)" class="metadata-only-change">{{ metadataChangeText(block) }}</div>
+							<div v-else-if="diffLayout === 'unified'" class="git-diff unified" role="table" aria-label="Unified line diff">
+								<template v-for="(row, rowIndex) in blockLineRows(block)" :key="rowIndex">
+									<div v-if="row.kind === 'separator'" class="git-line-separator" role="row">⋯</div>
+									<div v-else :class="['git-line', row.kind]" role="row">
+										<span class="line-number old">{{ row.beforeLine ?? "" }}</span>
+										<span class="line-number new">{{ row.afterLine ?? "" }}</span>
+										<span class="line-marker">{{ lineMarker(row) }}</span>
+										<code><span v-if="row.kind === 'note'" class="note-side">{{ eofNoteSide(row) }} · </span><template v-for="(part, partIndex) in row.parts" :key="partIndex"><mark v-if="part.changed && row.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+									</div>
+								</template>
 							</div>
-							<pre v-else class="block-text">{{ block.after?.text }}</pre>
+							<div v-else class="git-diff split" role="table" aria-label="Split line diff">
+								<div class="split-header"><span>Before</span><span>After</span></div>
+								<template v-for="(row, rowIndex) in blockSplitRows(block)" :key="rowIndex">
+									<div v-if="row.kind === 'separator'" class="git-line-separator split-separator" role="row">⋯</div>
+									<div v-else class="split-line" role="row">
+										<div :class="['git-line', row.before?.kind ?? 'blank']">
+											<span class="line-number">{{ row.before?.beforeLine ?? "" }}</span>
+											<span class="line-marker">{{ row.before ? lineMarker(row.before) : "" }}</span>
+											<code><template v-for="(part, partIndex) in row.before?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.before?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+										</div>
+										<div :class="['git-line', row.after?.kind ?? 'blank']">
+											<span class="line-number">{{ row.after?.afterLine ?? "" }}</span>
+											<span class="line-marker">{{ row.after ? lineMarker(row.after) : "" }}</span>
+											<code><template v-for="(part, partIndex) in row.after?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.after?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+										</div>
+									</div>
+								</template>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -344,11 +448,22 @@ function turnLabel(): string {
 .summary-delta.positive { color: var(--success); }
 .summary-delta.negative { color: var(--error); }
 .summary-delta.neutral { color: var(--muted); }
-.unchanged-toggle { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.diff-view-controls { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.diff-view-controls label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.diff-view-controls select { width: auto; min-height: 26px; padding: 2px 24px 2px 7px; font-size: 11px; }
+.diff-layout-buttons { display: inline-flex; }
+.diff-layout-buttons button { min-height: 26px; padding: 2px 7px; border-radius: 0; font-size: 11px; }
+.diff-layout-buttons button:first-child { border-radius: 4px 0 0 4px; }
+.diff-layout-buttons button:last-child { margin-left: -1px; border-radius: 0 4px 4px 0; }
+.diff-layout-buttons button.active { position: relative; border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.unchanged-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
 .unchanged-toggle input { width: auto; }
 .context-diff-details { border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; color: var(--muted); font-size: 12px; background: var(--pane-soft); }
 .context-diff-details summary { cursor: pointer; color: var(--text); font-weight: 650; }
 .context-diff-details[open] summary { margin-bottom: 6px; }
+.run-metadata-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
+.run-metadata-grid strong { color: var(--text); overflow-wrap: anywhere; }
+.metadata-note { margin: 7px 0 0; line-height: 1.4; }
 .context-diff-block { display: grid; grid-template-columns: 4px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 6px; background: var(--pane); overflow: hidden; }
 .block-gutter { background: var(--line); }
 .context-diff-block.added .block-gutter { background: var(--success); }
@@ -363,16 +478,32 @@ function turnLabel(): string {
 .block-key { font-weight: 650; }
 .block-role { color: var(--muted); font-size: 12px; }
 .block-token-chip { margin-left: auto; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 12px; background: var(--control-muted); }
-.block-text { border-radius: 4px; }
-.block-text.before { border-left: 3px solid var(--error); }
-.block-text.after { border-left: 3px solid var(--success); }
-.block-modified-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.block-label { margin: 0 0 4px 3px; font-size: 11px; font-weight: 750; text-transform: uppercase; }
-.block-label.before { color: var(--error); }
-.block-label.after { color: var(--success); }
+.metadata-only-change { padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--line)); border-radius: 4px; background: color-mix(in srgb, var(--warning) 10%, var(--pane)); color: var(--text); font-size: 12px; line-height: 1.45; }
+.git-diff { overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.git-line { min-width: max-content; color: var(--code-text); }
+.git-diff.unified .git-line { display: grid; grid-template-columns: 44px 44px 20px minmax(max-content, 1fr); }
+.git-line.added { background: color-mix(in srgb, var(--success) 12%, var(--code-bg)); }
+.git-line.removed { background: color-mix(in srgb, var(--error) 12%, var(--code-bg)); }
+.git-line.blank { min-height: 19px; background: var(--pane-soft); }
+.git-line code { display: block; min-height: 1.55em; padding: 0 8px; white-space: pre; }
+.git-line mark { border-radius: 2px; background: color-mix(in srgb, currentColor 22%, transparent); color: inherit; font: inherit; }
+.line-number { padding: 0 7px; border-right: 1px solid var(--line); color: var(--muted); text-align: right; user-select: none; }
+.line-marker { text-align: center; user-select: none; }
+.git-line.added .line-marker { color: var(--success); }
+.git-line.removed .line-marker { color: var(--error); }
+.git-line.note { color: var(--muted); font-style: italic; }
+.note-side { color: var(--text); font-style: normal; font-weight: 650; }
+.git-line-separator { min-width: max-content; padding: 1px 12px; border-block: 1px solid var(--line); background: var(--accent-bg); color: var(--muted); text-align: center; }
+.split-header { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 720px; border-bottom: 1px solid var(--line); background: var(--pane); color: var(--muted); font: 600 11px/1.8 system-ui, sans-serif; text-transform: uppercase; }
+.split-header span { padding-left: 52px; }
+.split-header span + span { border-left: 1px solid var(--line); }
+.split-line { display: grid; grid-template-columns: repeat(2, minmax(360px, 1fr)); min-width: 720px; }
+.split-line > .git-line { display: grid; grid-template-columns: 44px 20px minmax(max-content, 1fr); }
+.split-line > .git-line + .git-line { border-left: 1px solid var(--line); }
+.split-separator { min-width: 720px; }
 .context-diff-empty { color: var(--muted); padding: 20px; border: 1px dashed var(--line); border-radius: 6px; }
 .context-diff-empty.compact { padding: 12px; }
 .context-diff-error { padding: 10px; border: 1px solid var(--error); border-radius: 6px; background: var(--error-bg); }
-@media (max-width: 1100px) { .block-modified-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1100px) { .diff-view-controls { order: 3; margin-left: 0; width: 100%; } }
 @media (max-width: 900px) { .context-diff-expand { display: none; } }
 </style>

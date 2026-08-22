@@ -1,4 +1,5 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
 	compileMessages,
 	getLatestUserMessage,
@@ -25,6 +26,7 @@ export interface LifecycleDeps {
 	restorePersistedActiveId(id?: string): void;
 	reloadForgeWorkspace(ctx: ExtensionContext): void;
 	disposeForgeWorkspace(): void;
+	recordProviderResponseUsage(message: AssistantMessage): void;
 }
 
 export function registerLifecycleHandlers(
@@ -137,6 +139,7 @@ export function registerLifecycleHandlers(
 	});
 
 	pi.on("message_end", async (event, ctx) => {
+		if (event.message.role === "assistant") deps.recordProviderResponseUsage(event.message);
 		const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
 		if (!active) return;
 		const diagnostics: PromptStackDiagnostic[] = [];

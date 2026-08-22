@@ -94,6 +94,8 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         return { messages: result.messages };
     });
     pi.on("message_end", async (event, ctx) => {
+        if (event.message.role === "assistant")
+            deps.recordProviderResponseUsage(event.message);
         const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
         if (!active)
             return;

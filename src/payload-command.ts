@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProviderPayloadCaptureWithSerialization } from "./payload-capture.ts";
 import type { PayloadDisplayTarget, PayloadState } from "./payload-state.ts";
-import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.ts";
+import { appendContextDiffCapture, attachContextDiffUsage, createContextDiffHistory } from "./context-diff-history.ts";
 import type { LoadedPromptStack } from "./types.ts";
 import type { WebEditorPayloadCapture, WebEditorPayloadSnapshot } from "./web-editor/index.ts";
 
@@ -83,6 +84,23 @@ export function registerPayloadRequestHandler(
 
 		console.log(capture.text);
 	});
+
+}
+
+export function recordProviderResponseUsage(state: PayloadState, message: AssistantMessage): void {
+	const turnId = state.pendingContextDiffUsageTurnIds.shift();
+	if (!turnId) return;
+	const usage = message.usage;
+	attachContextDiffUsage(state.contextDiffHistory, turnId, {
+		provider: message.provider,
+		model: message.model,
+		stopReason: message.stopReason,
+		input: finiteUsage(usage.input),
+		output: finiteUsage(usage.output),
+		cacheRead: finiteUsage(usage.cacheRead),
+		cacheWrite: finiteUsage(usage.cacheWrite),
+		totalTokens: finiteUsage(usage.totalTokens),
+	});
 }
 
 export function armPayloadIntercept(
@@ -111,6 +129,7 @@ export function clearPayloadCapture(state: PayloadState, ctx: ExtensionContext):
 	state.payloadCaptureArmedAt = undefined;
 	state.latestProviderPayloadCapture = undefined;
 	state.contextDiffHistory = createContextDiffHistory();
+	state.pendingContextDiffUsageTurnIds = [];
 	ctx.ui.setStatus("pi-forge-intercept", undefined);
 }
 
@@ -142,5 +161,11 @@ function captureProviderPayload(
 		savePath,
 	});
 	appendContextDiffCapture(state.contextDiffHistory, { ...capture, serializedPayload });
+	const turnId = state.contextDiffHistory.turns.at(-1)?.turnId;
+	if (turnId) state.pendingContextDiffUsageTurnIds.push(turnId);
 	return capture;
+}
+
+function finiteUsage(value: number): number {
+	return Number.isFinite(value) && value >= 0 ? value : 0;
 }

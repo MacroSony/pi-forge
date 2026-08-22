@@ -3,6 +3,7 @@ import test from "node:test";
 import { createBlock, diffTurns, turnApproxTokens } from "../src/context-diff.ts";
 import {
 	appendContextDiffCapture,
+	attachContextDiffUsage,
 	CONTEXT_DIFF_HISTORY_LIMIT,
 	createContextDiffHistory,
 	getContextDiffView,
@@ -240,4 +241,55 @@ test("getContextDiffView summarizes recent turns and exposes the latest diff", (
 	assert.ok(view.latest);
 	assert.equal(view.latest.diff, history.latestDiff);
 	assert.equal(view.latest.turn, history.turns.at(-1));
+});
+
+test("provider usage exposes real prompt/cache counts without confusing estimates", () => {
+	const history = createContextDiffHistory();
+	appendContextDiffCapture(history, capture("2025-01-01T00:00:00.000Z", [{ role: "user", content: "first" }]));
+	const firstTurnId = history.turns.at(-1)!.turnId;
+	attachContextDiffUsage(history, firstTurnId, {
+		provider: "test",
+		model: "model",
+		stopReason: "stop",
+		input: 100,
+		output: 20,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 120,
+	});
+
+	appendContextDiffCapture(history, capture("2025-01-01T00:01:00.000Z", [{ role: "user", content: "second" }]));
+	const secondTurnId = history.turns.at(-1)!.turnId;
+	attachContextDiffUsage(history, secondTurnId, {
+		provider: "test",
+		model: "model",
+		stopReason: "toolUse",
+		input: 25,
+		output: 10,
+		cacheRead: 75,
+		cacheWrite: 0,
+		totalTokens: 110,
+	});
+
+	appendContextDiffCapture(history, capture("2025-01-01T00:02:00.000Z", [{ role: "user", content: "third" }]));
+	const thirdTurnId = history.turns.at(-1)!.turnId;
+	attachContextDiffUsage(history, thirdTurnId, {
+		provider: "test",
+		model: "model",
+		stopReason: "stop",
+		input: 100,
+		output: 5,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 105,
+	});
+
+	const view = getContextDiffView(history);
+	assert.deepEqual(view.turns.map((turn) => turn.usage?.cacheStatus), ["not-reported", "reported", "reported"]);
+	assert.equal(view.turns[0]!.usage?.cacheHitRatio, null);
+	assert.equal(view.turns[1]!.usage?.promptTokens, 100);
+	assert.equal(view.turns[1]!.usage?.cacheHitRatio, 0.75);
+	assert.equal(view.turns[2]!.usage?.cacheHitRatio, 0);
+	assert.equal(view.latest?.usage?.cacheHitRatio, 0);
+	assert.equal(view.latest?.diff.prefixRatio, view.latestDiff?.prefixRatio);
 });

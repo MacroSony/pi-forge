@@ -1,6 +1,6 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
-import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.ts";
+import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.ts";
 import { buildPreview } from "./preview.ts";
 import { registerPresetCommand } from "./preset-command.ts";
 import { registerProfileCommand } from "./profile-command.ts";
@@ -125,6 +125,7 @@ export default function piForge(pi: ExtensionAPI) {
 			workspace.startHostPort(pi.events);
 		},
 		disposeForgeWorkspace: () => workspace.dispose(),
+		recordProviderResponseUsage: (message) => recordProviderResponseUsage(payloadState, message),
 	});
 	registerPayloadRequestHandler(pi, payloadState, () => currentActive());
 	registerPayloadCommands(pi, payloadState);

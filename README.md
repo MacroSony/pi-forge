@@ -17,7 +17,7 @@ Think of it as a character sheet and workbench for your AI agent.
 - Use immutable stack `parameters` with the deterministic forge-v1 template engine.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
 - Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
-- Inspect prompt changes in the Preview dock: **Preview** compiles the live draft, **Draft diff** compares unsaved edits with disk, and **Run diff** compares recent provider turns. Diff views focus on changed blocks by default, keep cache metadata out of the way until expanded, and can switch between split and full-width focus layouts.
+- Inspect prompt changes in the Preview dock: **Preview** compiles the live draft, **Draft diff** compares unsaved edits with disk, and **Run diff** compares recent provider turns. Git-style unified/split views include old/new line numbers, inline highlights, and changes-only/three-line/all-line context. Run metadata keeps chars/4 estimates separate from Pi's provider-reported prompt/cache usage and real cache-hit rate.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
 
 ## Install

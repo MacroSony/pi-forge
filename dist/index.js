@@ -1,5 +1,5 @@
 import { registerLifecycleHandlers } from "./lifecycle.js";
-import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, webPayloadSnapshot } from "./payload-command.js";
+import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.js";
 import { buildPreview } from "./preview.js";
 import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
@@ -87,6 +87,7 @@ export default function piForge(pi) {
             workspace.startHostPort(pi.events);
         },
         disposeForgeWorkspace: () => workspace.dispose(),
+        recordProviderResponseUsage: (message) => recordProviderResponseUsage(payloadState, message),
     });
     registerPayloadRequestHandler(pi, payloadState, () => currentActive());
     registerPayloadCommands(pi, payloadState);

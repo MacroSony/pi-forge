@@ -4,6 +4,7 @@ export function createPayloadState() {
         interceptNextProviderPayload: false,
         interceptPayloadDisplayTarget: "editor",
         contextDiffHistory: createContextDiffHistory(),
+        pendingContextDiffUsageTurnIds: [],
     };
 }
 export function clearPayloadState(state) {
@@ -13,5 +14,6 @@ export function clearPayloadState(state) {
     state.payloadCaptureArmedAt = undefined;
     state.latestProviderPayloadCapture = undefined;
     state.contextDiffHistory = createContextDiffHistory();
+    state.pendingContextDiffUsageTurnIds = [];
 }
 //# sourceMappingURL=payload-state.js.map

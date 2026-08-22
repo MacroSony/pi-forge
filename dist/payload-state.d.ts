@@ -12,6 +12,7 @@ export interface PayloadState {
     payloadCaptureArmedAt?: string;
     latestProviderPayloadCapture?: WebEditorPayloadCapture;
     contextDiffHistory: ContextDiffHistory;
+    pendingContextDiffUsageTurnIds: string[];
 }
 export declare function createPayloadState(): PayloadState;
 export declare function clearPayloadState(state: PayloadState): void;

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createProviderPayloadCaptureWithSerialization } from "./payload-capture.js";
-import { appendContextDiffCapture, createContextDiffHistory } from "./context-diff-history.js";
+import { appendContextDiffCapture, attachContextDiffUsage, createContextDiffHistory } from "./context-diff-history.js";
 export function registerPayloadCommands(pi, state) {
     pi.registerCommand("intercept", {
         description: "Display the next provider payload before it is sent",
@@ -70,6 +70,22 @@ export function registerPayloadRequestHandler(pi, state, getActive) {
         console.log(capture.text);
     });
 }
+export function recordProviderResponseUsage(state, message) {
+    const turnId = state.pendingContextDiffUsageTurnIds.shift();
+    if (!turnId)
+        return;
+    const usage = message.usage;
+    attachContextDiffUsage(state.contextDiffHistory, turnId, {
+        provider: message.provider,
+        model: message.model,
+        stopReason: message.stopReason,
+        input: finiteUsage(usage.input),
+        output: finiteUsage(usage.output),
+        cacheRead: finiteUsage(usage.cacheRead),
+        cacheWrite: finiteUsage(usage.cacheWrite),
+        totalTokens: finiteUsage(usage.totalTokens),
+    });
+}
 export function armPayloadIntercept(state, ctx, savePath, displayTarget = "editor") {
     state.interceptNextProviderPayload = true;
     state.interceptPayloadSavePath = savePath;
@@ -90,6 +106,7 @@ export function clearPayloadCapture(state, ctx) {
     state.payloadCaptureArmedAt = undefined;
     state.latestProviderPayloadCapture = undefined;
     state.contextDiffHistory = createContextDiffHistory();
+    state.pendingContextDiffUsageTurnIds = [];
     ctx.ui.setStatus("pi-forge-intercept", undefined);
 }
 export function webPayloadSnapshot(state) {
@@ -114,6 +131,12 @@ function captureProviderPayload(state, active, value, savePath) {
         savePath,
     });
     appendContextDiffCapture(state.contextDiffHistory, { ...capture, serializedPayload });
+    const turnId = state.contextDiffHistory.turns.at(-1)?.turnId;
+    if (turnId)
+        state.pendingContextDiffUsageTurnIds.push(turnId);
     return capture;
+}
+function finiteUsage(value) {
+    return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 //# sourceMappingURL=payload-command.js.map

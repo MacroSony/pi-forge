@@ -207,6 +207,7 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		const secondContextSeen = new Promise<void>((resolve) => { secondContextSeenResolve = resolve; });
 		const firstContextRelease = new Promise<void>((resolve) => { releaseFirstContext = resolve; });
 		let contextRequests = 0;
+		let serveLatestRunDiff = false;
 		await page.route(/\/api\/context-diff$/, async (route) => {
 			contextRequests += 1;
 			if (contextRequests === 1) {
@@ -220,7 +221,7 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 				return;
 			}
 			secondContextSeenResolve();
-			await route.fulfill({ json: { turns: [], latest: null, latestDiff: null } });
+			await route.fulfill({ json: serveLatestRunDiff ? latestContextDiffView() : { turns: [], latest: null, latestDiff: null } });
 		});
 
 		await page.locator("#previewTabBtn").click();
@@ -247,6 +248,14 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		assert.match(await draftBlock.textContent() ?? "", /Browser dock system prompt/);
 		assert.match(await draftBlock.textContent() ?? "", /Newest unsaved browser dock prompt/);
 		assert.equal(await page.locator(".context-diff-block.same").count(), 0);
+		assert.equal(await draftBlock.locator(".git-diff.unified").count(), 1);
+		assert.ok(await draftBlock.locator(".line-number").count() >= 2);
+		assert.ok(await draftBlock.locator("mark").count() >= 2);
+		await page.locator('select[aria-label="Diff line context"]').selectOption("0");
+		assert.equal(await draftBlock.locator(".git-line.same").count(), 0);
+		await page.locator(".diff-layout-buttons button", { hasText: "Split" }).click();
+		assert.equal(await draftBlock.locator(".git-diff.split .split-header").count(), 1);
+		await page.locator(".diff-layout-buttons button", { hasText: "Unified" }).click();
 		await page.locator(".context-diff-expand", { hasText: "Focus" }).click();
 		await page.locator("#editorDockArea.dock-focus").waitFor();
 		assert.equal(await page.locator("#workspace").isVisible(), false);
@@ -263,6 +272,22 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		assert.match(emptyDiffText ?? "", /automatically/);
 		assert.doesNotMatch(emptyDiffText ?? "", /Arm a payload capture/);
 		assert.equal(await page.locator(".context-diff-block").filter({ hasText: "STALE CONTEXT" }).count(), 0);
+		serveLatestRunDiff = true;
+		await page.locator(".context-diff-diff .context-diff-refresh").click();
+		await page.locator(".context-diff-block.modified").filter({ hasText: "current run line" }).waitFor();
+		const eofNote = page.locator(".git-diff.unified .git-line.note").filter({ hasText: "Before · No newline at end of file" });
+		await eofNote.waitFor();
+		assert.equal(await eofNote.count(), 1);
+		const metadataOnly = page.locator(".metadata-only-change");
+		await metadataOnly.waitFor();
+		assert.match(await metadataOnly.textContent() ?? "", /Provider-visible metadata changed/);
+		assert.match(await metadataOnly.textContent() ?? "", /Role changed: system → user/);
+		await page.locator(".context-diff-details > summary").click();
+		const metadata = await page.locator(".context-diff-details").textContent() ?? "";
+		assert.match(metadata, /Actual prompt tokens\s*100/);
+		assert.match(metadata, /Actual cache hit rate\s*80\.0%/);
+		assert.match(metadata, /Estimated reusable prefix/);
+		assert.match(metadata, /chars\/4/);
 
 		await page.locator("#saveBtn").click();
 		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
@@ -313,4 +338,39 @@ function staleContextDiffView() {
 	};
 	const turn = { turnId: "turn-stale", capturedAt: "", stackId: "default", blocks: [block] };
 	return { turns: [], latest: { turn, diff }, latestDiff: diff };
+}
+
+function latestContextDiffView() {
+	const before = { key: "message-user", role: "user", text: "shared line\nprevious run line", chars: 29, approxTokens: 8, hash: "before" };
+	const after = { key: "message-user", role: "user", text: "shared line\ncurrent run line", chars: 28, approxTokens: 7, hash: "after" };
+	const metadataBefore = { key: "metadata-only", role: "system", text: "same visible text", chars: 17, approxTokens: 5, hash: "metadata-before" };
+	const metadataAfter = { key: "metadata-only", role: "user", text: "same visible text", chars: 17, approxTokens: 5, hash: "metadata-after" };
+	const newlineBefore = { key: "newline-only", role: "user", text: "trailing line", chars: 13, approxTokens: 4, hash: "newline-before" };
+	const newlineAfter = { key: "newline-only", role: "user", text: "trailing line\n", chars: 14, approxTokens: 4, hash: "newline-after" };
+	const diff = {
+		blocks: [
+			{ status: "modified", before, after, tokenDelta: -1 },
+			{ status: "modified", before: metadataBefore, after: metadataAfter, tokenDelta: 0 },
+			{ status: "modified", before: newlineBefore, after: newlineAfter, tokenDelta: 0 },
+		],
+		prefixTokens: 3,
+		prefixRatio: 0.3,
+		deltaTokens: -1,
+		summary: { sameBlocks: 0, addedBlocks: 0, removedBlocks: 0, modifiedBlocks: 3, changedBlocks: 3, addedTokens: 0, removedTokens: 1, netTokens: -1 },
+	};
+	const turn = { turnId: "turn-2", capturedAt: "", stackId: "default", blocks: [after, metadataAfter, newlineAfter] };
+	const usage = {
+		provider: "test",
+		model: "model",
+		stopReason: "stop",
+		input: 20,
+		output: 5,
+		cacheRead: 80,
+		cacheWrite: 0,
+		totalTokens: 105,
+		promptTokens: 100,
+		cacheHitRatio: 0.8,
+		cacheStatus: "reported",
+	};
+	return { turns: [], latest: { turn, diff, usage }, latestDiff: diff };
 }
