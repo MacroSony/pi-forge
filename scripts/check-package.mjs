@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const packed = spawnSync(npmCommand, ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+const npmCli = process.env.npm_execpath;
+const npmCommand = npmCli ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm";
+const npmPrefix = npmCli ? [npmCli] : [];
+const packed = spawnSync(npmCommand, [...npmPrefix, "pack", "--dry-run", "--json", "--ignore-scripts"], {
 	cwd: rootDir,
 	encoding: "utf8",
 });

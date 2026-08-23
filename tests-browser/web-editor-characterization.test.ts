@@ -1114,6 +1114,10 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 		await page.locator("#settingsSurfaceBtn").waitFor();
 		await page.locator("#settingsSurfaceBtn").click();
 		const timeout = page.locator('[data-field-input="timeoutMs"]');
+		const waitForAutosave = async (): Promise<void> => {
+			await page.locator("#settingsStatus").filter({ hasText: /^(Unsaved changes|Saving)$/ }).waitFor();
+			await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		};
 		assert.equal(await timeout.inputValue(), "3000");
 
 		// A same-generation external update must replace a clean mounted form.
@@ -1136,7 +1140,7 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 		});
 		await staleGetStarted;
 		await timeout.fill("4500");
-		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		await waitForAutosave();
 		releaseStaleGet();
 		await page.waitForTimeout(300);
 		assert.equal(await timeout.inputValue(), "4500");
@@ -1160,7 +1164,7 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 		});
 		await staleFailureStarted;
 		await timeout.fill("4600");
-		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
+		await waitForAutosave();
 		expectBrowserError(/Failed to load resource: the server responded with a status of 500/);
 		releaseStaleFailure();
 		await page.waitForTimeout(300);

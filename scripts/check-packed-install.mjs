@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const optionalRoot = process.env.PI_FORGE_SUBAGENTS_ROOT ?? resolve(rootDir, "../pi-forge-subagents");
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = process.env.npm_execpath;
+const npm = npmCli ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm";
+const npmPrefix = npmCli ? [npmCli] : [];
 
 function run(command, args, opts = {}) {
 	const result = spawnSync(command, args, { encoding: "utf8", ...opts });
@@ -20,7 +22,7 @@ function run(command, args, opts = {}) {
 }
 
 function packInto(cwd, into) {
-	const stdout = run(npm, ["pack", "--pack-destination", into, "--json", "--ignore-scripts"], { cwd });
+	const stdout = run(npm, [...npmPrefix, "pack", "--pack-destination", into, "--json", "--ignore-scripts"], { cwd });
 	const [manifest] = JSON.parse(stdout);
 	return join(into, manifest.filename);
 }
@@ -71,7 +73,7 @@ try {
 	const mainOnly = mkdtempSync(join(tmpdir(), "pi-forge-packed-main-"));
 	try {
 		writeFileSync(join(mainOnly, "package.json"), JSON.stringify({ name: "smoke-main", private: true, type: "module" }));
-		run(npm, ["install", mainPack,
+		run(npm, [...npmPrefix, "install", mainPack,
 			"@earendil-works/pi-coding-agent@0.83.0",
 			"@earendil-works/pi-ai@0.83.0",
 			"@earendil-works/pi-agent-core@0.83.0",
@@ -100,7 +102,7 @@ try {
 					"@zihanw/pi-forge-subagents": `file:${optionalPack}`,
 				},
 			}));
-			run(npm, ["install",
+			run(npm, [...npmPrefix, "install",
 				"@earendil-works/pi-coding-agent@0.83.0",
 				"@earendil-works/pi-ai@0.84.2",
 				"@earendil-works/pi-agent-core@0.84.2",
