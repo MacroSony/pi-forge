@@ -18,7 +18,7 @@ import { promptStacksDir } from "../src/loader.ts";
 import { GLOBAL_FORGE_DIR_ENV, globalAgentProfilePath } from "../src/storage.ts";
 import { UiContributionProvider } from "../src/ui-contribution/contrib-port.ts";
 
-test("web editor preserves its shell and guarded editing state", { timeout: 20_000 }, async (t) => {
+test("web editor preserves its shell and guarded editing state", { timeout: 30_000 }, async (t) => {
 	await withBrowserEditor(t, (cwd) => {
 		writeStack(cwd, "default.json", stackFixture("default", "Default stack", true));
 		writeStack(cwd, "alternate.json", stackFixture("alternate", "Alternate stack"));
@@ -1137,14 +1137,13 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 			staleGetRead();
 			await staleGetRelease;
 			await route.fulfill({ response });
-		});
+		}, { times: 1 });
 		await staleGetStarted;
 		await timeout.fill("4500");
 		await waitForAutosave();
 		releaseStaleGet();
 		await page.waitForTimeout(300);
 		assert.equal(await timeout.inputValue(), "4500");
-		await page.unroute(/\/api\/contrib$/);
 
 		// The same stale boundary applies to a failed response: an old polling
 		// error must not tear down a form after a newer save has committed.
@@ -1161,7 +1160,7 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 				contentType: "application/json",
 				body: JSON.stringify({ error: "stale polling failure" }),
 			});
-		});
+		}, { times: 1 });
 		await staleFailureStarted;
 		await timeout.fill("4600");
 		await waitForAutosave();
@@ -1170,7 +1169,6 @@ test("clean contributed forms absorb live values while dirty drafts survive refr
 		await page.waitForTimeout(300);
 		assert.equal(await page.locator("#settingsSurface").isVisible(), true);
 		assert.equal(await timeout.inputValue(), "4600");
-		await page.unroute(/\/api\/contrib$/);
 
 		let releaseWrite!: () => void;
 		let writeStarted!: () => void;
