@@ -6,11 +6,17 @@
 
 1. Confirm the changelog and user documentation describe the intended version and experimental surfaces accurately.
 2. Publish and smoke-test any required `@zihanw/pi-subagent-runtime` version first.
-3. Install dependencies from the lockfile and run `npm run verify`.
+3. Install dependencies from the lockfile and run `npm run verify`; require the
+   Ubuntu, macOS, and Windows GitHub Actions jobs to pass for the release commit.
 4. Test a packed installation against the documented minimum and current Pi versions.
 5. Exercise ordinary stack/profile use independently of delegation.
 6. Exercise both configured foreground backends and confirm unsupported host capabilities fail closed before provider transport.
 7. Inspect `npm pack --dry-run` for package size and unexpected or missing files.
+
+The macOS and Windows jobs run the same complete verification surface as Linux,
+including the real-browser editor suite against the hosted runner's system
+Chrome. Compatibility-version and scheduled latest-Pi probes remain Linux-only;
+they test dependency drift rather than operating-system behavior.
 
 ## Dependency policy
 

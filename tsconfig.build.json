@@ -7,6 +7,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "newLine": "lf",
     "rewriteRelativeImportExtensions": true
   },
   "include": ["src/**/*.ts"],

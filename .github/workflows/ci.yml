@@ -21,6 +21,24 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
+  platform-verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
   compatibility:
     runs-on: ubuntu-latest
     strategy:

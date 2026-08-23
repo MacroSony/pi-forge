@@ -10,6 +10,11 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Added
 
+- **Cross-platform release CI.** The complete verification surface, including
+  the real-browser editor suite and packed-install smoke, now runs on GitHub's
+  macOS and Windows hosted runners in addition to Linux. Generated TypeScript
+  output and repository text files are pinned to LF so tracked `dist/` checks
+  remain deterministic across operating systems.
 - **UI contribution framework (Lane 1).** Optional packages can now contribute schema-driven configuration pages to the web editor without shipping any UI code into the main package:
   - New versioned `@zihanw/pi-forge/ui-contribution` entry point: a generic RPC contract over the Pi event bus (`UI_CONTRIBUTION_PORT_VERSION = 1`, with its own version counter separate from the `/subagent` host port) exposing exactly two operations — `listContributions` and `writeValues` — over discover/available/request/reply/unavailable channels. Wire messages carry `hostId` + `generation` binding, version negotiation (`minVersion`/`maxVersion`), bounded discovery timeouts, explicit duplicate-provider failure, and recursive JSON-compatibility validators. All payloads are plain data: no functions, components, or live contexts cross the bus. See the [UI contribution port contract](docs/reference/ui-contribution-port.md).
   - Web server routes: `GET /api/contrib` returns discovered tab descriptors at page load, and `PUT /api/contrib/<tabId>` proxies submitted values to the contributing package over the bus. The forge side is fully generic and knows nothing about subagents; it never owns the schema, validation, or persistence of contributed tabs (the provider writes its own config files), and with no provider discovered there is no contributed tab and zero cost.
