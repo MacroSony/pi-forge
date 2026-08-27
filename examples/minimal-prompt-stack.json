@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "type": "pi-forge.prompt-stack",
+  "id": "minimal",
+  "name": "Minimal Worker",
+  "description": "Bare-minimum stack: one role block, one tools slot, chat history. Policy allows bash only - what you see is literally everything that gets sent.",
+  "autoActivate": false,
+  "mode": "replace",
+  "defaults": {
+    "syntheticMessagesVisible": false,
+    "unresolvedMacroPolicy": "warn"
+  },
+  "tools": {
+    "allow": [
+      "bash"
+    ]
+  },
+  "items": [
+    {
+      "kind": "block",
+      "id": "worker-role",
+      "name": "Worker Role",
+      "enabled": true,
+      "role": "system",
+      "content": "You are a minimal shell worker. Answer by running commands. No project conventions, no guidelines, no ceremony - if a bash command can settle it, run it."
+    },
+    {
+      "kind": "slot",
+      "id": "tools",
+      "name": "Available Tools",
+      "enabled": true,
+      "role": "system",
+      "slot": "tools",
+      "options": {
+        "format": "plain",
+        "onlyWithSnippets": true
+      }
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History",
+      "enabled": true,
+      "slot": "chat-history"
+    }
+  ],
+  "parameters": {}
+}
