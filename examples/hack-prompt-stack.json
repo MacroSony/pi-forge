@@ -3,7 +3,7 @@
   "type": "pi-forge.prompt-stack",
   "id": "regex-hack",
   "name": "Regex Hack Pack",
-  "description": "Default layout plus a regex rule table: AI disclaimers are stripped from history the moment they appear (so the model stops reinforcing them), and runaway thinking loops get cut. The SillyTavern-style tricks, on a coding agent.",
+  "description": "Default layout plus outgoing-history regex rules: ANSI terminal escape codes are removed and known API-key formats are redacted before the next model request.",
   "autoActivate": false,
   "mode": "replace",
   "defaults": {
@@ -70,34 +70,28 @@
     "schemaVersion": 1,
     "rules": [
       {
-        "id": "strip-ai-disclaimers",
-        "name": "Disclaimers wiped on sight",
+        "id": "strip-ansi-escapes",
+        "name": "ANSI terminal escape codes removed from outgoing history",
         "enabled": true,
         "stage": "history",
         "targets": [
           "messages"
         ],
-        "roles": [
-          "assistant"
-        ],
-        "pattern": "(I('m| am) sorry,? but[^.\\n]*[.]?|as an AI( language model)?[^.\\n]*[.]?|作为(一个)?(AI|人工智能|大语言模型)[^。\\n]*。?)",
-        "replace": "",
-        "flags": "gi"
+        "pattern": "\\x1B\\[[0-?]*[ -/]*[@-~]",
+        "flags": "g",
+        "replace": ""
       },
       {
-        "id": "thinking-loop-guard",
-        "name": "Runaway thinking loop cut",
+        "id": "redact-api-keys",
+        "name": "Known API-key formats redacted before sending",
         "enabled": true,
         "stage": "history",
         "targets": [
           "messages"
         ],
-        "roles": [
-          "assistant"
-        ],
-        "pattern": "((等等|wait|hmm)[，,。.\\s]*){3,}",
-        "flags": "gi",
-        "replace": "等等——停。直接选一个最可能的方案往下走。\n"
+        "pattern": "\\b(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,})\\b",
+        "flags": "g",
+        "replace": "[REDACTED]"
       }
     ]
   },
