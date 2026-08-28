@@ -3,7 +3,7 @@
   "type": "pi-forge.prompt-stack",
   "id": "minimal",
   "name": "Minimal Worker",
-  "description": "Bare-minimum stack: one role block, one tools slot, chat history. Policy allows bash only - what you see is literally everything that gets sent.",
+  "description": "DeepSeek Harness Minimal approximation: the exact persona, chat history, and only bash plus str_replace_editor when the optional Pi tool extension is installed. PTY, sandbox, and deployment guarantees still differ.",
   "autoActivate": false,
   "mode": "replace",
   "defaults": {
@@ -12,7 +12,8 @@
   },
   "tools": {
     "allow": [
-      "bash"
+      "bash",
+      "str_replace_editor"
     ]
   },
   "items": [
@@ -29,7 +30,10 @@
       "id": "chat-history",
       "name": "Chat History",
       "enabled": true,
-      "slot": "chat-history"
+      "slot": "chat-history",
+      "options": {
+        "includeSummaries": false
+      }
     }
   ],
   "parameters": {}

@@ -24,7 +24,7 @@ interface ForgeRegistrationApi {
 	}): () => void;
 }
 
-interface SystemStatusSnapshot {
+export interface SystemStatusSnapshot {
 	logicalCores: number;
 	cpuModel: string;
 	load1: number;
@@ -37,20 +37,23 @@ interface SystemStatusSnapshot {
 	uptimeSeconds: number;
 }
 
-export default function registerSystemStatus(api: ForgeRegistrationApi): void {
-	const snapshot = Object.freeze(readSystemStatus());
+export default function registerSystemStatus(
+	api: ForgeRegistrationApi,
+	sampleSystemStatus: () => SystemStatusSnapshot = readSystemStatus,
+): void {
 	api.registerMacro({
 		name: "cpuLoad",
 		source: "pi-forge-example-system-status",
-		description: "Machine CPU load captured when the trusted extension was registered.",
+		description: "Machine CPU load sampled when the prompt is compiled.",
 		dependencies: [],
-		render: () => formatCpuLoad(snapshot),
+		// Renderers run during prompt compilation. Read a fresh snapshot for each render.
+		render: () => formatCpuLoad(Object.freeze(sampleSystemStatus())),
 	});
 
 	api.registerSlot({
 		name: "machine-status",
 		source: "pi-forge-example-system-status",
-		description: "Machine CPU, memory, and uptime captured when the trusted extension was registered.",
+		description: "Machine CPU, memory, and uptime sampled when the prompt is compiled.",
 		dependencies: [],
 		options: {
 			format: { type: "enum", values: ["plain", "xml"], default: "plain" },
@@ -59,6 +62,8 @@ export default function registerSystemStatus(api: ForgeRegistrationApi): void {
 			includeUptime: { type: "boolean", default: true },
 		},
 		render: (ctx) => {
+			// Do not capture this at registration time: sample when the slot is rendered.
+			const snapshot = Object.freeze(sampleSystemStatus());
 			const includeMemory = ctx.options.includeMemory !== false;
 			const includeUptime = ctx.options.includeUptime !== false;
 			const heading = typeof ctx.options.heading === "string" && ctx.options.heading.trim()

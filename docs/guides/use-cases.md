@@ -60,4 +60,4 @@ Allow read/search tools, include the `pi-docs` and project-context slots, and ke
 
 ## Trusted runtime status
 
-The [custom system-status example](../../examples/custom-system-status-extension/README.md) captures host data once when its trusted module registers, then exposes that immutable snapshot through `{{ extensions.cpuLoad }}` and a `machine-status` slot. Use this pattern when registration-time data is sufficient; reload the extension to capture a new snapshot.
+The [custom system-status example](../../examples/custom-system-status-extension/README.md) samples host data when its trusted macro or slot renders during prompt compilation, then exposes that fresh snapshot through `{{ extensions.cpuLoad }}` and a `machine-status` slot. Use this pattern when a new user turn should see current machine state; it is compile-time telemetry, not a continuous background monitor.
