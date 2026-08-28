@@ -92,6 +92,7 @@ Start with these examples:
 - [Minimal worker](examples/minimal-prompt-stack.json) shows the smallest usable stack with a narrow tool allow-list.
 - [Regex hack pack](examples/hack-prompt-stack.json) demonstrates request-frequency outgoing redaction plus transcript-finalize scrubbing for two illustrative token shapes; it is not an exhaustive secret scanner.
 - [Custom system-status extension](examples/custom-system-status-extension/README.md) registers a trusted macro and slot.
+- [Fake-assistant direct-output experiment](examples/fake-assistant-direct-output-prompt-stack.json) appends ordinary assistant text after chat history to test a model-specific reasoning shortcut; support varies by model/provider/endpoint and must be verified with an A/B run.
 
 ## Common commands
 

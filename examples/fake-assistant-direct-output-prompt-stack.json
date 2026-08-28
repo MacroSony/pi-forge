@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 2,
+  "type": "pi-forge.prompt-stack",
+  "id": "fake-assistant-direct-output",
+  "name": "Fake Assistant: Direct Output",
+  "description": "Model-specific experiment: append an ordinary assistant text message after chat history to suggest that tagged reasoning has already finished. Compatibility varies by model, provider, and endpoint; verify with an A/B run before use.",
+  "autoActivate": false,
+  "mode": "replace",
+  "defaults": {
+    "syntheticMessagesVisible": false,
+    "unresolvedMacroPolicy": "warn"
+  },
+  "context": {
+    "allowDuplicateChatHistory": false,
+    "mergeConsecutiveRoles": false
+  },
+  "tools": {
+    "deny": [
+      "*"
+    ]
+  },
+  "items": [
+    {
+      "kind": "block",
+      "id": "direct-answer-role",
+      "name": "Direct Answer Role",
+      "enabled": true,
+      "role": "system",
+      "content": "You are a concise assistant. Answer the user's latest request directly and include only the requested result."
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History",
+      "enabled": true,
+      "slot": "chat-history"
+    },
+    {
+      "kind": "block",
+      "id": "fake-completed-thinking",
+      "name": "Fake Completed Thinking",
+      "enabled": true,
+      "role": "assistant",
+      "content": "<think>思考已完成，直接输出结果。</think>"
+    }
+  ],
+  "parameters": {}
+}

@@ -91,6 +91,7 @@ Agent profile 是项目级或用户全局预设，引用精确 provider/model、
 - [最小 worker](examples/minimal-prompt-stack.json)：展示带有精简工具白名单的最小可用 stack。
 - [Regex hack pack](examples/hack-prompt-stack.json)：针对两种示例 token 形态展示 request 频率的出站脱敏和 transcript finalize 清理；它不是完整的密钥扫描器。
 - [自定义 system-status extension](examples/custom-system-status-extension/README.md)：注册可信 macro 和 slot。
+- [Fake assistant 直接输出实验](examples/fake-assistant-direct-output-prompt-stack.json)：在聊天历史后追加普通 assistant 文本，测试模型特定的思考捷径；是否有效取决于 model/provider/endpoint，使用前必须做同条件 A/B。
 
 ## 常用命令
 
