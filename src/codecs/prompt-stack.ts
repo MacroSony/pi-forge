@@ -202,12 +202,27 @@ export function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[]
 
 	if (!stack.id.trim()) diagnostics.push({ level: "error", message: "Stack id must not be empty." });
 
+	let seenNonSystemItem = false;
 	for (const item of stack.items) {
 		if (ids.has(item.id)) diagnostics.push({ level: "error", message: `Duplicate item id: ${item.id}`, itemId: item.id });
 		ids.add(item.id);
 
 		if (item.role && !VALID_ROLES.has(item.role)) {
 			diagnostics.push({ level: "error", message: `Invalid role: ${item.role}`, itemId: item.id });
+		}
+
+		if (item.enabled !== false) {
+			if (item.role === "system") {
+				if (seenNonSystemItem) {
+					diagnostics.push({
+						level: "warning",
+						message: "System item appears after non-system items; item position across the system/message channels has no effect on compilation. Use a user-role item for in-conversation injection.",
+						itemId: item.id,
+					});
+				}
+			} else if (item.role === "user" || item.role === "assistant" || item.role === "custom") {
+				seenNonSystemItem = true;
+			}
 		}
 
 		if (item.kind === "slot") {
@@ -339,6 +354,8 @@ function validateRawContext(value: unknown, diagnostics: PromptStackDiagnostic[]
 		return;
 	}
 	validateOptionalBoolean(value, "allowDuplicateChatHistory", "context.allowDuplicateChatHistory", diagnostics);
+	validateOptionalBoolean(value, "mergeConsecutiveRoles", "context.mergeConsecutiveRoles", diagnostics);
+	validateOptionalString(value, "mergeSeparator", "context.mergeSeparator", diagnostics);
 }
 
 function validateRawVariables(value: unknown, diagnostics: PromptStackDiagnostic[]): void {

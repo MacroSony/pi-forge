@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 
 import type { AgentProfile } from "../../../agent-profile.ts";
 import { createEditorApi } from "../api.ts";
+import { t, tp } from "../i18n.ts";
 import type {
 	WebEditorProfileCollection,
 	WebEditorProfileMutation,
@@ -44,7 +45,7 @@ const editScope = computed<"project" | "global">(() => {
 	if (props.mode !== "edit") return props.createScope ?? "project";
 	return (props.sourceSelector ?? "").startsWith("global:") ? "global" : "project";
 });
-const scopeLabel = computed(() => editScope.value === "global" ? "user-global" : "project-local");
+const scopeLabel = computed(() => t(editScope.value === "global" ? "profileEditor.scopeGlobal" : "profileEditor.scopeProject"));
 
 const providerOptions = computed(() => {
 	return [...new Set(props.collection.models.map((model) => model.provider))].sort();
@@ -150,7 +151,7 @@ onMounted(() => window.addEventListener("beforeunload", handleBeforeUnload));
 onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnload));
 
 function requestCancel(): void {
-	if (dirty.value && !window.confirm("Discard unsaved agent-profile changes?")) return;
+	if (dirty.value && !window.confirm(t("profileEditor.confirmDiscard"))) return;
 	emit("cancel");
 }
 
@@ -169,10 +170,10 @@ async function validateDraft(): Promise<WebEditorProfileValidation | undefined> 
 		});
 		validation.value = result;
 		status.value = result.errors
-			? `${result.errors} validation error${result.errors === 1 ? "" : "s"}`
+			? tp("profileEditor.validationErrorOne", "profileEditor.validationErrorMany", result.errors)
 			: result.warnings
-				? `Valid with ${result.warnings} warning${result.warnings === 1 ? "" : "s"}`
-				: "Valid and ready to apply";
+				? tp("profileEditor.validWithWarningOne", "profileEditor.validWithWarningMany", result.warnings)
+				: t("profileEditor.validReady");
 		return result;
 	} catch (caught) {
 		error.value = caught instanceof Error ? caught.message : String(caught);
@@ -208,86 +209,86 @@ async function saveDraft(): Promise<void> {
 	<section class="profile-editor profile-card">
 		<header class="profile-editor-head">
 			<div>
-				<div class="profile-editor-title">{{ mode === "create" ? "New agent profile" : `Edit ${sourceSelector || source?.id}` }}</div>
+				<div class="profile-editor-title">{{ mode === "create" ? t("profileEditor.newTitle") : t("profileEditor.editTitle", { id: sourceSelector || source?.id || "" }) }}</div>
 				<div class="profile-editor-note">
-					Profile application is preflighted separately; saving only updates the {{ scopeLabel }} definition.
+					{{ t("profileEditor.note", { scope: scopeLabel }) }}
 				</div>
 			</div>
 			<span class="action-spacer"></span>
-			<span v-if="dirty" class="profile-editor-dirty">Unsaved</span>
-			<button id="profileCancelBtn" type="button" :disabled="busy" @click="requestCancel">Cancel</button>
+			<span v-if="dirty" class="profile-editor-dirty">{{ t("chrome.unsaved") }}</span>
+			<button id="profileCancelBtn" type="button" :disabled="busy" @click="requestCancel">{{ t("profileEditor.cancel") }}</button>
 			<button id="profileValidateBtn" data-icon="!" type="button" :disabled="busy" @click="validateDraft">
-				Validate
+				{{ t("regex.validate") }}
 			</button>
 			<button id="profileSaveBtn" class="primary" data-icon="✓" type="button" :disabled="busy" @click="saveDraft">
-				{{ mode === "create" ? "Create profile" : "Save profile" }}
+				{{ mode === "create" ? t("profileEditor.createSave") : t("profileEditor.editSave") }}
 			</button>
 		</header>
 
 		<div class="profile-form">
 			<label class="profile-field">
-				<span>Profile ID</span>
+				<span>{{ t("profileEditor.id") }}</span>
 				<input
 					id="profileId"
 					v-model="draft.id"
 					:readonly="mode === 'edit'"
-					placeholder="reviewer"
+					:placeholder="t('profileEditor.idPlaceholder')"
 					autocomplete="off"
 				>
-				<small>Letters, numbers, dots, underscores, and hyphens; immutable after creation. Scope is stored by location; this profile's canonical selector is {{ editScope }}:{{ draft.id || "<id>" }}.</small>
+				<small>{{ t("profileEditor.idHint", { scope: editScope, id: draft.id || "<id>" }) }}</small>
 			</label>
 			<label class="profile-field">
-				<span>Name</span>
-				<input id="profileName" v-model="draft.name" placeholder="Reviewer" autocomplete="off">
+				<span>{{ t("metadata.name") }}</span>
+				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
 			</label>
 			<label class="profile-field profile-field-wide">
-				<span>Description</span>
-				<textarea id="profileDescription" v-model="draft.description" placeholder="What this profile is for."></textarea>
+				<span>{{ t("metadata.description") }}</span>
+				<textarea id="profileDescription" v-model="draft.description" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
 			</label>
 			<label class="profile-field">
-				<span>Model provider</span>
+				<span>{{ t("profileEditor.modelProvider") }}</span>
 				<input id="profileModelProvider" v-model="draft.provider" list="profileProviderOptions" autocomplete="off">
 				<datalist id="profileProviderOptions">
 					<option v-for="provider in providerOptions" :key="provider" :value="provider"></option>
 				</datalist>
 			</label>
 			<label class="profile-field">
-				<span>Model ID</span>
+				<span>{{ t("profileEditor.modelId") }}</span>
 				<input id="profileModelId" v-model="draft.modelId" list="profileModelOptions" autocomplete="off">
 				<datalist id="profileModelOptions">
 					<option
 						v-for="model in modelOptions"
 						:key="`${model.provider}/${model.id}`"
 						:value="model.id"
-						:label="`${model.name || model.id}${model.available ? '' : ' (authentication unavailable)'}`"
+						:label="`${model.name || model.id}${model.available ? '' : t('profileEditor.authUnavailable')}`"
 					></option>
 				</datalist>
 				<small v-if="typedModelUnavailable" class="profile-field-warning" data-model-auth-warning>
-					This model has no configured authentication; applying the profile will fail preflight.
+					{{ t("profileEditor.authWarning") }}
 				</small>
 			</label>
 			<label class="profile-field">
-				<span>Thinking level</span>
+				<span>{{ t("profileEditor.thinkingLevel") }}</span>
 				<select id="profileThinkingLevel" v-model="draft.thinkingLevel">
 					<option v-for="level in thinkingLevels" :key="level" :value="level">{{ level }}</option>
 				</select>
 			</label>
 			<label class="profile-field">
-				<span>Prompt stack</span>
+				<span>{{ t("profiles.promptStack") }}</span>
 				<select id="profilePromptStack" v-model="draft.promptStack">
-					<option value="">(none)</option>
+					<option value="">{{ t("common.none") }}</option>
 					<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
 						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
 					</option>
 				</select>
-				<small v-if="editScope === 'global'">Global profiles may only reference user-global prompt stacks. A same-scope stack may be stored as a relative bare ID without changing its global resolution.</small>
-				<small v-else>Project profiles may reference project stacks or explicitly qualified global stacks.</small>
+				<small v-if="editScope === 'global'">{{ t("profileEditor.globalStackHint") }}</small>
+				<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
 			</label>
 			<label class="profile-check profile-field-wide">
 				<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
 				<span>
-					<strong>Auto-activate on a fresh session</strong>
-					<small>Only one {{ editScope }} profile may request auto-activation.</small>
+					<strong>{{ t("profileEditor.autoActivate") }}</strong>
+					<small>{{ t("profileEditor.autoActivateHint", { scope: editScope }) }}</small>
 				</span>
 			</label>
 		</div>
@@ -297,11 +298,11 @@ async function saveDraft(): Promise<void> {
 		</div>
 		<div v-if="validation" class="profile-editor-validation">
 			<div class="profile-editor-validation-summary" :class="{ error: validation.errors > 0, ready: validation.errors === 0 }">
-				{{ validation.preview.applicable ? "Ready to apply" : "Preflight failed" }}
-				· {{ validation.errors }} error(s) · {{ validation.warnings }} warning(s)
+				{{ validation.preview.applicable ? t("profiles.readyToApply") : t("profiles.preflightFailed") }}
+				· {{ tp("diag.errorOne", "diag.errorMany", validation.errors) }} · {{ tp("diag.warningOne", "diag.warningMany", validation.warnings) }}
 			</div>
 			<div class="profile-diagnostics">
-				<div v-if="!validation.diagnostics.length" class="diagnostic info">No diagnostics.</div>
+				<div v-if="!validation.diagnostics.length" class="diagnostic info">{{ t("diag.noDiagnostics") }}</div>
 				<div
 					v-for="(diagnostic, index) in validation.diagnostics"
 					:key="`${diagnostic.field || ''}-${index}-${diagnostic.message}`"

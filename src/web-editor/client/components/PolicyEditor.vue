@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 
+import { t, tp } from "../i18n.ts";
 import type { EditorPromptStack, WebEditorPolicyResource } from "../types.ts";
 
 type PolicyKind = "tools" | "skills";
@@ -27,9 +28,13 @@ const emit = defineEmits<{
 }>();
 
 const policyKinds = [
-	{ kind: "tools", label: "Tools" },
-	{ kind: "skills", label: "Skills" },
+	{ kind: "tools" },
+	{ kind: "skills" },
 ] as const;
+
+function kindLabel(kind: PolicyKind): string {
+	return t(kind === "tools" ? "policy.tools" : "policy.skills");
+}
 
 const rows = reactive<Record<PolicyKind, PolicyRowState>>({
 	tools: createRowState("tools"),
@@ -149,7 +154,7 @@ function syncPolicies(): void {
 		const row = rows[kind];
 		const patterns = row.mode === "none" ? [] : parsePolicyPatterns(row.patternsText);
 		const duplicate = duplicatePolicyPattern(patterns);
-		if (duplicate) errors.push(`${kind}.${row.mode} has duplicate pattern: ${duplicate}`);
+		if (duplicate) errors.push(t("error.duplicatePattern", { kind, mode: row.mode, pattern: duplicate }));
 
 		const policy = { ...stackPolicyObject(kind) };
 		delete policy.allow;
@@ -175,13 +180,13 @@ function policySummary(kind: PolicyKind): string {
 	const mode = rows[kind].mode;
 	const patterns = mode === "none" ? [] : parsePolicyPatterns(rows[kind].patternsText);
 	if (mode === "allow" && patterns.some((pattern) => pattern !== "*")) {
-		return `Allow list active: ${patterns.length} pattern${patterns.length === 1 ? "" : "s"}.`;
+		return tp("policy.allowListActiveOne", "policy.allowListActiveMany", patterns.length);
 	}
-	if (mode === "allow" && patterns.length) return `Unrestricted ${kind}.`;
+	if (mode === "allow" && patterns.length) return t("policy.unrestricted", { kind: kindLabel(kind) });
 	if (mode === "deny" && patterns.length) {
-		return `Deny list active: ${patterns.length} pattern${patterns.length === 1 ? "" : "s"}.`;
+		return tp("policy.denyListActiveOne", "policy.denyListActiveMany", patterns.length);
 	}
-	return `Unrestricted ${kind}.`;
+	return t("policy.unrestricted", { kind: kindLabel(kind) });
 }
 
 function policyResourceMatchesFilter(resource: WebEditorPolicyResource, needle: string): boolean {
@@ -201,14 +206,14 @@ function availableResources(kind: PolicyKind, filter = rows[kind].filter): WebEd
 function resourceTitle(resource: WebEditorPolicyResource): string {
 	return [
 		resource.description,
-		resource.source ? `Source: ${resource.source}` : "",
-		resource.active ? "Currently active" : "Registered, currently inactive; a specific allow list can activate it",
-		resource.hidden ? "Hidden from model invocation" : "",
+		resource.source ? t("policy.sourceLabel", { source: resource.source }) : "",
+		resource.active ? t("policy.currentlyActive") : t("policy.registeredInactive"),
+		resource.hidden ? t("policy.hiddenFromModel") : "",
 	].filter(Boolean).join("\n") || resource.name;
 }
 
 function resourceLabel(resource: WebEditorPolicyResource): string {
-	const suffix = resource.active ? " *" : resource.hidden ? " hidden" : "";
+	const suffix = resource.active ? " *" : resource.hidden ? t("policy.suffixHidden") : "";
 	return resource.name + suffix;
 }
 
@@ -220,20 +225,20 @@ defineExpose({
 
 <template>
 	<div class="tab-section">
-		<div class="tab-section-title">Tool policy and skill visibility</div>
+		<div class="tab-section-title">{{ t("policy.title") }}</div>
 		<div class="tab-section-meta">
-			A specific tool allow list selects from every registered tool and can activate tools that are currently inactive; deny rules constrain the current active-tool baseline. Skill rules only filter model-visible skills rendered by pi-forge; they do not block explicit skill invocation. Patterns support exact names and * wildcards.
+			{{ t("policy.meta") }}
 		</div>
 		<div id="policyRows" class="data-table">
 			<div class="data-row header policy-row">
-				<div>Resource</div>
-				<div>Mode</div>
-				<div>Patterns</div>
-				<div>Available</div>
-				<div>Status</div>
+				<div>{{ t("policy.resource") }}</div>
+				<div>{{ t("policy.mode") }}</div>
+				<div>{{ t("policy.patterns") }}</div>
+				<div>{{ t("policy.available") }}</div>
+				<div>{{ t("policy.status") }}</div>
 			</div>
 			<div
-				v-for="{ kind, label } in policyKinds"
+				v-for="{ kind } in policyKinds"
 				:key="kind"
 				class="data-row policy-row"
 				data-policy-row
@@ -241,17 +246,17 @@ defineExpose({
 				:data-policy-mode="rows[kind].mode"
 			>
 				<div>
-					<div class="policy-title">{{ label }}</div>
+					<div class="policy-title">{{ kindLabel(kind) }}</div>
 					<div class="modal-meta">{{ kind }}</div>
 				</div>
 				<div class="field">
-					<label>Mode</label>
+					<label>{{ t("policy.mode") }}</label>
 					<div class="segmented policy-mode">
 						<button
 							v-for="option in [
-								{ value: 'none', label: 'Unrestricted' },
-								{ value: 'allow', label: 'Allow' },
-								{ value: 'deny', label: 'Deny' },
+								{ value: 'none', labelKey: 'policy.unrestrictedOption' },
+								{ value: 'allow', labelKey: 'policy.allow' },
+								{ value: 'deny', labelKey: 'policy.deny' },
 							] as const"
 							:key="option.value"
 							type="button"
@@ -259,14 +264,14 @@ defineExpose({
 							:class="{ active: rows[kind].mode === option.value }"
 							@click="setMode(kind, option.value)"
 						>
-							{{ option.label }}
+							{{ t(option.labelKey) }}
 						</button>
 					</div>
 				</div>
 				<div class="field">
-					<label>Patterns</label>
+					<label>{{ t("policy.patterns") }}</label>
 					<div class="selected-patterns" data-selected-patterns>
-						<span v-if="!selectedPatterns(kind).length" class="selected-pattern-empty">No selected patterns.</span>
+						<span v-if="!selectedPatterns(kind).length" class="selected-pattern-empty">{{ t("policy.noPatterns") }}</span>
 						<button
 							v-for="(pattern, index) in selectedPatterns(kind)"
 							v-else
@@ -274,7 +279,7 @@ defineExpose({
 							type="button"
 							class="selected-pattern-chip"
 							:data-remove-policy-pattern="pattern"
-							title="Remove selected pattern"
+							:title="t('policy.removePatternTitle')"
 							@click="removePolicyPattern(kind, pattern)"
 						>
 							{{ pattern }}<span aria-hidden="true">x</span>
@@ -291,13 +296,13 @@ defineExpose({
 					></textarea>
 				</div>
 				<div class="resource-picker">
-					<label>Available {{ kind }}</label>
+					<label>{{ t("policy.availableKind", { kind: kindLabel(kind) }) }}</label>
 					<div v-if="props.resources[kind]?.length">
 						<input
 							class="resource-filter"
 							data-resource-filter
 							:list="`resource-options-${kind}`"
-							placeholder="Type to filter or add"
+							:placeholder="t('policy.filterPlaceholder')"
 							:value="rows[kind].filter"
 							@input="onFilterInput(kind, $event)"
 							@keydown.enter.prevent="addAutocompletePattern(kind)"
@@ -311,7 +316,7 @@ defineExpose({
 						</datalist>
 						<div class="resource-list" data-resource-list>
 							<div v-if="!availableResources(kind).length" class="resource-empty">
-								No matching unselected {{ kind }}.
+								{{ t("policy.noMatching", { kind: kindLabel(kind) }) }}
 							</div>
 							<button
 								v-for="resource in availableResources(kind)"
@@ -328,7 +333,7 @@ defineExpose({
 							</button>
 						</div>
 					</div>
-					<div v-else class="resource-empty">No registered {{ kind }} reported.</div>
+					<div v-else class="resource-empty">{{ t("policy.noRegistered", { kind: kindLabel(kind) }) }}</div>
 				</div>
 				<div class="policy-summary" data-policy-summary>{{ policySummary(kind) }}</div>
 			</div>

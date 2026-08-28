@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { createApp, type App } from "vue";
 
 import StackMetadataEditor from "./components/StackMetadataEditor.vue";
@@ -26,7 +27,7 @@ export function createVueMetadataHost(deps: VueMetadataHostDependencies) {
 			onChange: deps.markDirty,
 			onToggle: (collapsed: boolean) => {
 				deps.setCollapsed(collapsed);
-				deps.setStatus(collapsed ? "Stack metadata hidden" : "Stack metadata shown");
+				deps.setStatus(collapsed ? t("status.metadataHidden") : t("status.metadataShown"));
 			},
 		});
 		app.mount(root);

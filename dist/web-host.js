@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
 import { isValidPromptStackId, validatePromptStack, } from "./loader.js";
 import { deletePromptStackFile, promptStackTargetPath, writePromptStackFile, } from "./repositories/prompt-stack.js";
@@ -10,6 +11,8 @@ import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeSt
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
+        getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
+        setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),
         listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),
         listProfiles: () => profileCollection(ctx, runtime),
         reloadProfiles: async () => {
@@ -315,6 +318,7 @@ export function stackSummary(loaded, active) {
 export function stackSummaries(stacks, active) {
     return stacks.map((loaded) => stackSummary(loaded, active));
 }
+const WEB_EDITOR_LOCALES = new Set(["en", "zh-CN", "auto"]);
 export function loadWebEditorSettings(ctx) {
     const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
     if (!ctx.isProjectTrusted() || !existsSync(configPath)) {
@@ -327,26 +331,94 @@ export function loadWebEditorSettings(ctx) {
     catch (error) {
         return {
             configPath,
-            warnings: [`pi-forge: failed to read ${configPath}; using an available editor port. ${error instanceof Error ? error.message : String(error)}`],
+            warnings: [`pi-forge: failed to read ${configPath}; using editor defaults. ${error instanceof Error ? error.message : String(error)}`],
         };
     }
     if (!isPlainObject(raw)) {
         return {
             configPath,
-            warnings: [`pi-forge: ${configPath} must be a JSON object; using an available editor port.`],
+            warnings: [`pi-forge: ${configPath} must be a JSON object; using editor defaults.`],
         };
     }
+    const settings = { configPath, warnings: [] };
     const webEditorConfig = isPlainObject(raw.webEditor) ? raw.webEditor : undefined;
     const rawPort = webEditorConfig?.port ?? raw.webEditorPort;
-    if (rawPort === undefined)
-        return { configPath, warnings: [] };
-    if (typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535) {
-        return { preferredPort: rawPort, configPath, warnings: [] };
+    if (rawPort !== undefined) {
+        if (typeof rawPort === "number" && Number.isInteger(rawPort) && rawPort >= 1 && rawPort <= 65535) {
+            settings.preferredPort = rawPort;
+        }
+        else {
+            settings.warnings.push(`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using an available editor port.`);
+        }
     }
-    return {
-        configPath,
-        warnings: [`pi-forge: ${configPath} webEditor.port must be an integer from 1 to 65535; using an available editor port.`],
-    };
+    const rawLocale = webEditorConfig?.locale;
+    if (rawLocale !== undefined) {
+        if (typeof rawLocale === "string" && WEB_EDITOR_LOCALES.has(rawLocale)) {
+            settings.locale = rawLocale;
+        }
+        else {
+            settings.warnings.push(`pi-forge: ${configPath} webEditor.locale must be "en", "zh-CN", or "auto"; using "auto".`);
+        }
+    }
+    return settings;
+}
+function saveWebEditorLocale(ctx, locale) {
+    if (!ctx.isProjectTrusted()) {
+        return { ok: false, status: 403, error: "Project is not trusted; refusing to change editor settings." };
+    }
+    if (!WEB_EDITOR_LOCALES.has(locale)) {
+        return { ok: false, status: 400, error: 'webEditor.locale must be "en", "zh-CN", or "auto".' };
+    }
+    const configPath = join(ctx.cwd, ".pi", "forge", "config.json");
+    let raw = {};
+    if (existsSync(configPath)) {
+        try {
+            const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+            if (!isPlainObject(parsed)) {
+                return { ok: false, status: 400, error: `pi-forge: ${configPath} must be a JSON object; fix it before changing editor settings.` };
+            }
+            raw = parsed;
+        }
+        catch (error) {
+            return { ok: false, status: 400, error: `pi-forge: failed to read ${configPath}; fix it before changing editor settings. ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    const webEditor = isPlainObject(raw.webEditor) ? { ...raw.webEditor } : {};
+    if (locale === "auto")
+        delete webEditor.locale;
+    else
+        webEditor.locale = locale;
+    if (Object.keys(webEditor).length > 0)
+        raw.webEditor = webEditor;
+    else
+        delete raw.webEditor;
+    try {
+        mkdirSync(dirname(configPath), { recursive: true });
+        writeTextFileAtomically(configPath, `${JSON.stringify(raw, null, 2)}\n`);
+    }
+    catch (error) {
+        return { ok: false, status: 500, error: `pi-forge: failed to write ${configPath}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    return { ok: true, locale };
+}
+function writeTextFileAtomically(filePath, content) {
+    const tempPath = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.${randomUUID()}.tmp`);
+    let descriptor;
+    try {
+        descriptor = openSync(tempPath, "wx", 0o600);
+        writeFileSync(descriptor, content, "utf8");
+        fsyncSync(descriptor);
+        closeSync(descriptor);
+        descriptor = undefined;
+        renameSync(tempPath, filePath);
+    }
+    catch (error) {
+        if (descriptor !== undefined)
+            closeSync(descriptor);
+        if (existsSync(tempPath))
+            unlinkSync(tempPath);
+        throw error;
+    }
 }
 async function saveStackFile(ctx, runtime, id, stack) {
     if (!ctx.isProjectTrusted()) {

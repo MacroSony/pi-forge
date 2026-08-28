@@ -23,9 +23,9 @@ test("tab registry ids are unique and every definition carries its button metada
 	for (const tab of EDITOR_TABS) {
 		assert.equal(typeof tab.id, "string");
 		assert.ok(tab.id.length > 0);
-		assert.equal(typeof tab.label, "string");
+		assert.equal(typeof tab.labelKey, "string");
 		assert.equal(typeof tab.icon, "string");
-		assert.equal(typeof tab.title, "string");
+		assert.equal(typeof tab.titleKey, "string");
 		assert.ok(tab.mount === "legacy" || tab.mount === "vue");
 	}
 });
@@ -52,10 +52,10 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 			stack: getEditorTab("stack"),
 		},
 		{
-			items: { id: "items", label: "Items", icon: "☰", title: "Edit prompt stack items", mount: "legacy", stackFields: [], internalDock: false },
-			regex: { id: "regex", label: "Regex", icon: ".*", title: "Edit regex transform rules", mount: "vue", stackFields: ["regex"], internalDock: false },
-			policy: { id: "policy", label: "Policy", icon: "⊕", title: "Edit active-tool policy and model-visible skill filtering", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
-			stack: { id: "stack", label: "Stack", icon: "{}", title: "Edit context options and raw stack JSON", mount: "vue", stackFields: ["context", "variables"], internalDock: false },
+			items: { id: "items", labelKey: "tab.items", icon: "☰", titleKey: "tab.itemsTitle", mount: "legacy", stackFields: [], internalDock: false },
+			regex: { id: "regex", labelKey: "tab.regex", icon: ".*", titleKey: "tab.regexTitle", mount: "vue", stackFields: ["regex"], internalDock: false },
+			policy: { id: "policy", labelKey: "tab.policy", icon: "⊕", titleKey: "tab.policyTitle", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
+			stack: { id: "stack", labelKey: "tab.stack", icon: "{}", titleKey: "tab.stackTitle", mount: "vue", stackFields: ["context", "variables"], internalDock: false },
 		},
 	);
 });

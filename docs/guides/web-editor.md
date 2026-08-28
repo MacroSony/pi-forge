@@ -28,6 +28,10 @@ Choose a preferred port in `.pi/forge/config.json`:
 
 If that port is unavailable, pi-forge selects another and shows the actual URL.
 
+## Interface language
+
+The editor interface is available in English and Chinese. Use the language selector in the top bar (Auto / English / 中文); the choice is written to `webEditor.locale` in the project config. `Auto` (the default) follows the browser language, and the initial page render also honors the browser's `Accept-Language` header. Interface chrome, built-in stack/profile surfaces, and the preview/diff dock are localized; compiler diagnostics, provider-contributed settings pages, and stack content (item names, block text) stay in their authored language.
+
 ## Prompt-stack workspace
 
 The stack workspace provides:

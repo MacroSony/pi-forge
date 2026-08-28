@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.2] - 2026-08-28
+
+### Added
+
+- **Optional consecutive-role message merge.** Stacks can set `context.mergeConsecutiveRoles: true` (plus an optional `context.mergeSeparator`, default a blank line) to compile runs of consecutive stack items that share the same declared role into a single provider message. Only stack-authored `user`/`assistant` items merge: chat-history output (including the implicit history tail and a trailing user history message) and custom-role items are hard boundaries, and merging runs after compiled-stage regex so existing rule semantics are unchanged. Preview reflects the merged layout and attributes merged messages to their source items ("A + B"). The web editor's Stack tab exposes both options.
+- **System-position validation warning.** Stack validation now warns when an enabled `system` item appears after enabled non-system items, since item position across the system/message channels has no effect on compilation. Roles are never silently converted; the warning suggests a user-role item for in-conversation injection.
+- **Per-rule regex frequency.** Regex rules accept `frequency: "turn" | "request"` (default `"turn"`, preserving prior behavior). Outgoing message rules with `"request"` also run on tool-result follow-up requests over Pi's full natural context — closing the gap where tool output (for example an API key returned by a tool) reached the provider unfiltered until the next user turn. Wire-consistent by construction: each request is rebuilt from the transcript, so re-application never doubles. `finalize` rules and system-only targets ignore `frequency` with a validation warning. The regex editor exposes the field, and preview notes that follow-up applications are not represented.
+- **Finalize rules can scrub stored tool results.** A `finalize` rule whose `roles` explicitly includes `"toolResult"` now rewrites stored tool-result messages at `message_end` — before the follow-up request, so the wire inherits the scrubbed transcript. Rules without `roles` keep assistant-only behavior; user messages are never finalized. The `hack-prompt-stack.json` example demonstrates the wire-plus-transcript pair (`redact-api-keys-outgoing` with `frequency: "request"` + `redact-api-keys-finalize`) for two illustrative token shapes; regex redaction is not an exhaustive secret scanner.
+
+- **Web editor localization.** The editor interface is available in English and Chinese: a language selector in the top bar (Auto / English / 中文) writes `webEditor.locale` in the project config, `"auto"` (default) follows the browser language, and the initial page render honors `Accept-Language`. Navigation, the stack workspace chrome, all built-in stack/profile tabs, the preview/diff dock, and the generic settings form renderer are localized with instant switching; contributed settings tabs remain provider-owned and are not translated, and compiler/server-generated diagnostics stay in English.
+
+### Fixed
+
+- The settings status no longer compares localized placeholder text to decide when to show "Settings ready", so the contribution surface behaves identically in both interface languages.
+
 ## [0.5.1] - 2026-08-23
 
 ### Added

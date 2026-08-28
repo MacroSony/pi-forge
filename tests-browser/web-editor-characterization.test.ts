@@ -800,6 +800,7 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 
 		await page.locator("#regexTabBtn").click();
 		const regexRow = page.locator("[data-regex-row]").first();
+		await regexRow.locator("[data-regex-frequency]").selectOption("request");
 		await regexRow.locator("[data-regex-max-messages]").fill("0");
 		assert.match(
 			await page.locator("#status").textContent() ?? "",
@@ -844,6 +845,7 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 		assert.equal(saved.name, "Vue tabs edited");
 		assert.deepEqual(saved.tools?.futurePolicyField, { preserve: true });
 		assert.deepEqual(saved.regex?.rules?.[0]?.futureRuleField, { preserve: true });
+		assert.equal(saved.regex?.rules?.[0]?.frequency, "request");
 		assert.deepEqual(saved.tools?.allow, ["read"]);
 		assert.equal(saved.regex?.rules?.[0]?.maxMessages, 2);
 		assert.deepEqual(saved.variables, { var1: "resolved" });

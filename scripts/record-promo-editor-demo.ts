@@ -1,13 +1,13 @@
 /**
  * 宣传片原型：真实 web 编辑器 + Playwright 脚本驱动录屏
  * 场景（约 45s @1920x1080）：
- *   1. 打开编辑器，default 栈已加载（左侧列表 default / reviewer 两条）
+ *   1. 打开编辑器，default 栈已加载（左侧列表 default / minimal 两条）
  *   2. 逐个点选积木行，预览跟随
  *   3. 关掉一块积木（On→Off），dirty 徽标出现
  *   4. 打开预览 dock（Draft diff），编辑文本，实时重新组装
  *   5. 把积木开回来，保存
- * 运行：cd /home/bruhw/programming/pi-forge && node scripts/record-promo-editor-demo.ts
- * 输出：<视频项目>/screencap_editor_demo_v1.mp4（webm 转码）
+ * 运行：PI_FORGE_PROMO_OUT_DIR=/path/to/output node scripts/record-promo-editor-demo.ts
+ * 输出：$PI_FORGE_PROMO_OUT_DIR/screencap_editor_demo_v1.mp4（webm 转码）
  */
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
@@ -23,21 +23,22 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { promptStacksDir } from "../src/loader.ts";
 
-const OUT_DIR =
-	"/home/bruhw/programming/AIGC/VIDEO_PRODUCTION/projects/pi_forge_promo_20260826";
+const OUT_DIR = process.env.PI_FORGE_PROMO_OUT_DIR
+	?? join(process.cwd(), ".pi", "forge", "recordings");
 const CHROME = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
 const HOLD = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+mkdirSync(OUT_DIR, { recursive: true });
 const cwd = mkdtempSync(join(tmpdir(), "pi-forge-promo-"));
 mkdirSync(promptStacksDir(cwd), { recursive: true });
-// 真实示例配置：default（复刻原版）+ reviewer（审查档案）
+// 真实示例配置：default（复刻原版）+ minimal（最小工作栈）
 copyFileSync(
 	"examples/default-prompt-stack.json",
 	join(promptStacksDir(cwd), "default.json"),
 );
 copyFileSync(
-	"examples/reviewer-prompt-stack.json",
-	join(promptStacksDir(cwd), "reviewer.json"),
+	"examples/minimal-prompt-stack.json",
+	join(promptStacksDir(cwd), "minimal.json"),
 );
 
 const harness = createHarness();

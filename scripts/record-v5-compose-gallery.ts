@@ -1,13 +1,12 @@
 /**
  * v5.3 素材录制 A：编排章 + 预设画廊
  * 场景（~50s @1920x1080，暗色主题）：
- *   1. 打开编辑器（6 个真实 stack：default / reviewer / minimal / neko / regex-hack / butler）
+ *   1. 打开编辑器（4 个真实 stack：default / minimal / regex-hack / system-status）
  *   2. 逐个切换左侧 stack 列表 —— 画廊镜头（每个 stack 载入自己的 items）
  *   3. default：点选积木 → 关掉一块 → Preview dock → 编辑文本 → Draft diff → 保存
- *   4. reviewer：Policy tab 展示 deny edit/write
- *   5. regex-hack：Regex tab 展示规则表
- *   6. butler：items 里可见 custom slot（受信任扩展真实注册）
- * 运行：cd /home/bruhw/programming/pi-forge && node scripts/record-v5-compose-gallery.ts
+ *   4. regex-hack：Regex tab 展示规则表
+ *   5. system-status：items 里可见 custom slot（受信任扩展真实注册）
+ * 运行：PI_FORGE_PROMO_OUT_DIR=/path/to/output node scripts/record-v5-compose-gallery.ts
  */
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,24 +22,23 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { promptStacksDir } from "../src/loader.ts";
 
-const OUT_DIR = "/home/bruhw/programming/AIGC/VIDEO_PRODUCTION/projects/pi_forge_promo_20260826";
+const OUT_DIR = process.env.PI_FORGE_PROMO_OUT_DIR
+	?? join(process.cwd(), ".pi", "forge", "recordings");
 const CHROME = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
 const HOLD = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+mkdirSync(OUT_DIR, { recursive: true });
 const cwd = mkdtempSync(join(tmpdir(), "pi-forge-v5-"));
 mkdirSync(promptStacksDir(cwd), { recursive: true });
 for (const [src, name] of [
 	["examples/default-prompt-stack.json", "default.json"],
-	["examples/reviewer-prompt-stack.json", "reviewer.json"],
 	["examples/minimal-prompt-stack.json", "minimal.json"],
-	["examples/neko-prompt-stack.json", "neko.json"],
 	["examples/hack-prompt-stack.json", "regex-hack.json"],
-	["examples/smart-home-butler-prompt-stack.json", "smart-home-butler.json"],
+	["examples/custom-system-status-extension/prompt-stack.json", "system-status.json"],
 ]) copyFileSync(src, join(promptStacksDir(cwd), name));
 
-// 管家预设的受信任扩展：真实注册 smarthome-status slot
-process.env.SMART_HOME_STATE = join(process.cwd(), "examples/smart-home-butler-extension/state.json");
-writeForgeExtension(cwd, "smarthome.ts", readFileSync("examples/smart-home-butler-extension/index.ts", "utf8"));
+// system-status 预设的受信任扩展：真实注册 machine-status slot
+writeForgeExtension(cwd, "system-status.ts", readFileSync("examples/custom-system-status-extension/index.ts", "utf8"));
 
 const harness = createHarness();
 const context = createContext(cwd, [], { trusted: true });
@@ -80,7 +78,7 @@ try {
 	await HOLD(1400); // 定场
 
 	// --- 画廊：逐个切换 stack ---
-	for (const name of ["reviewer", "minimal", "neko", "regex-hack", "smart-home-butler", "default"]) {
+	for (const name of ["minimal", "regex-hack", "system-status", "default"]) {
 		await selectStack(name);
 	}
 
@@ -109,16 +107,12 @@ try {
 	await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
 	await HOLD(1000);
 
-	// --- reviewer：Policy tab ---
-	await selectStack("reviewer");
-	if (await clickTab(/^Policy$/i)) await HOLD(1800);
-
 	// --- regex-hack：Regex tab ---
 	await selectStack("regex-hack");
 	if (await clickTab(/^Regex$/i)) await HOLD(2000);
 
-	// --- butler：custom slot 行 ---
-	await selectStack("smart-home-butler");
+	// --- system-status：custom slot 行 ---
+	await selectStack("system-status");
 	await HOLD(1200);
 } finally {
 	const video = page.video();

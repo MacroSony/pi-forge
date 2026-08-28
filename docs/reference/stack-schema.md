@@ -25,7 +25,7 @@ Block:
 }
 ```
 
-Valid roles are `system`, `user`, `assistant`, and `custom`. Custom-role content participates in compilation but does not produce a provider message directly.
+Valid roles are `system`, `user`, `assistant`, and `custom`. Custom-role content participates in compilation and reaches the provider as a `user` message: Pi converts `custom` messages to `user` when it builds the wire request, so the wire carries no distinct custom role. Custom-role items never merge with other items (see [Context options](#context-options)).
 
 Slot:
 
@@ -45,11 +45,29 @@ Slot:
 
 Item IDs must be unique. Unsupported slots and missing required custom registrations produce diagnostics. Multiple chat-history slots warn unless explicitly permitted.
 
+Item position only matters within each channel: all `system` items join the system prompt in their relative order, and all non-system items become messages in their relative order. A `system` item placed after non-system items therefore has no effect on placement and produces a validation warning; roles are never silently converted. Use a `user` item for in-conversation injection.
+
 ## Modes
 
 - `replace` replaces Pi's base system prompt; empty output falls back to the base.
 - `append` places stack system text after Pi's base.
 - `prepend` places stack system text before Pi's base.
+
+## Context options
+
+```json
+{
+  "context": {
+    "allowDuplicateChatHistory": false,
+    "mergeConsecutiveRoles": true,
+    "mergeSeparator": "\n\n"
+  }
+}
+```
+
+- `allowDuplicateChatHistory` permits multiple enabled chat-history slots; otherwise only the first expands.
+- `mergeConsecutiveRoles` (default `false`) merges runs of consecutive stack items that share the same declared role into a single message, joined by `mergeSeparator` (default a blank line). Only stack-authored `user`/`assistant` items merge: chat-history output (including the implicit history tail) and `custom` items are hard boundaries, and merging runs after compiled-stage regex so regex semantics are unchanged. The web editor preview reflects the merged layout.
+- `mergeSeparator` is inserted verbatim between merged texts and may be an empty string.
 
 ## Chat-history options
 
@@ -151,6 +169,43 @@ Regex rules are ordered, deterministic JavaScript `RegExp` replacements. There i
 
 Message rules may filter by `roles`, `maxMessages`, `maxChars`, `minDepth`, and `maxDepth` (depth 0 is latest). `trimStrings` removes literal strings from expanded matches/captures. Supported flags are `g`, `i`, `m`, `s`, and `u`. Replacements use JavaScript `$&`/`$1`; `$0` is accepted as a full-match alias and `$$` yields a literal dollar sign.
 
+### Frequency
+
+Outgoing rules default to `"frequency": "turn"`: they run during the full compilation on the first provider request of each user turn. Tool-result follow-up requests receive Pi's natural context, so a turn-scoped rule never sees tool output until the next user turn.
+
+Set `"frequency": "request"` to also run an outgoing message rule on every tool-result follow-up request, applied to Pi's full natural context:
+
+```json
+{
+  "id": "redact-api-keys",
+  "stage": "history",
+  "effect": "outgoing",
+  "frequency": "request",
+  "pattern": "\\b(sk-[A-Za-z0-9_-]{12,})\\b",
+  "flags": "g",
+  "replace": "[REDACTED]"
+}
+```
+
+Each provider request is rebuilt from the stored transcript, so re-applying a rule to older messages is wire-consistent and never doubles. History-stage rules and compiled-stage rules with a `messages` target both participate; on follow-ups there is no stack layout rewrite, so both stages collapse onto the natural context (history-stage rules run first). `frequency` has no effect on `finalize` rules or system-only targets, and validation says so. It is wire-only scrubbing: the stored transcript keeps the original text.
+
+Regex rules only cover the text targets and patterns you declare. They cannot recognize every credential format and do not scan system text, tool definitions, or arbitrary request metadata unless those targets are explicitly supported and selected. Treat them as deterministic text transforms, not as a security boundary.
+
+To scrub the same recognized shapes from stored assistant/tool-result text, pair a request-frequency outgoing rule with a `finalize` rule:
+
+```json
+{
+  "id": "redact-api-keys-finalize",
+  "stage": "compiled",
+  "effect": "finalize",
+  "targets": ["messages"],
+  "roles": ["assistant", "toolResult"],
+  "pattern": "\\b(sk-[A-Za-z0-9_-]{12,})\\b",
+  "flags": "g",
+  "replace": "[REDACTED]"
+}
+```
+
 Outgoing rules change future model input. To destructively change a completed assistant transcript message:
 
 ```json
@@ -170,3 +225,5 @@ Outgoing rules change future model input. To destructively change a completed as
 > `finalize` runs at `message_end`, after raw output may have streamed. It replaces the stored assistant message, so the original output is not preserved.
 
 `effect: "outgoing"` and `"finalize"` are the only valid effects; `"display"` and `"both"` are rejected during validation. Runtime diagnostics report match and changed-segment counts.
+
+`finalize` applies to assistant messages by default, and additionally to stored tool-result messages when a rule's `roles` explicitly includes `"toolResult"` — useful for scrubbing secrets out of stored tool output before the follow-up request replays it. Rules without `roles` keep assistant-only behavior, user messages are never finalized, and unsupported roles warn.

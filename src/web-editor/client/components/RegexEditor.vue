@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
+import { t } from "../i18n.ts";
 import type {
 	EditorPromptStack,
 	EditorRegexRule,
@@ -9,6 +10,7 @@ import type {
 
 type RegexStage = PromptRegexRule["stage"];
 type RegexEffect = NonNullable<PromptRegexRule["effect"]>;
+type RegexFrequency = NonNullable<PromptRegexRule["frequency"]>;
 type RegexTarget = NonNullable<PromptRegexRule["targets"]>[number];
 
 interface RegexRuleForm {
@@ -19,6 +21,7 @@ interface RegexRuleForm {
 	enabled: boolean;
 	stage: RegexStage;
 	effect: RegexEffect;
+	frequency: RegexFrequency;
 	flags: string;
 	targets: RegexTarget[];
 	roles: string[];
@@ -42,8 +45,9 @@ const emit = defineEmits<{
 
 const regexStages = ["history", "compiled"] as const satisfies readonly RegexStage[];
 const regexEffects = ["outgoing", "finalize"] as const satisfies readonly RegexEffect[];
+const regexFrequencies = ["turn", "request"] as const satisfies readonly RegexFrequency[];
 const regexTargets = ["system", "messages"] as const satisfies readonly RegexTarget[];
-const regexRoles = ["system", "user", "assistant", "custom"] as const;
+const regexRoles = ["system", "user", "assistant", "custom", "toolResult"] as const;
 
 let nextRowKey = 1;
 const rows = ref(readStackRules());
@@ -84,6 +88,7 @@ function formFromRule(rule: EditorRegexRule): RegexRuleForm {
 		enabled: rule.enabled !== false,
 		stage: selectedChoice(rule.stage, regexStages, "compiled"),
 		effect: selectedChoice(rule.effect, regexEffects, "outgoing"),
+		frequency: selectedChoice(rule.frequency, regexFrequencies, "turn"),
 		flags: textValue(rule.flags),
 		targets: selectedValues(rule.targets, regexTargets),
 		roles: selectedValues(rule.roles, regexRoles),
@@ -159,29 +164,29 @@ function syncRules(): void {
 
 	rows.value.forEach((row, index) => {
 		const rule = ruleFromForm(row);
-		const label = rule.id || `rule ${index + 1}`;
-		if (!rule.id) errors.push(`Regex rule ${index + 1} needs an id.`);
-		else if (seen.has(rule.id)) errors.push(`Duplicate regex rule id: ${rule.id}`);
+		const label = rule.id || t("regex.ruleLabel", { index: index + 1 });
+		if (!rule.id) errors.push(t("regex.errorId", { index: index + 1 }));
+		else if (seen.has(rule.id)) errors.push(t("regex.errorDuplicateId", { id: rule.id }));
 		seen.add(rule.id);
-		if (!rule.pattern) errors.push(`Regex rule ${label} needs a pattern.`);
+		if (!rule.pattern) errors.push(t("regex.errorPattern", { label }));
 		if (hasInputValue(row.maxMessages) && !rule.maxMessages) {
-			errors.push(`Regex rule ${label} maxMessages must be a positive integer.`);
+			errors.push(t("regex.errorPositiveInteger", { label, field: "maxMessages" }));
 		}
 		if (hasInputValue(row.maxChars) && !rule.maxChars) {
-			errors.push(`Regex rule ${label} maxChars must be a positive integer.`);
+			errors.push(t("regex.errorPositiveInteger", { label, field: "maxChars" }));
 		}
 		if (hasInputValue(row.minDepth) && rule.minDepth === undefined) {
-			errors.push(`Regex rule ${label} minDepth must be a non-negative integer.`);
+			errors.push(t("regex.errorNonNegativeInteger", { label, field: "minDepth" }));
 		}
 		if (hasInputValue(row.maxDepth) && rule.maxDepth === undefined) {
-			errors.push(`Regex rule ${label} maxDepth must be a non-negative integer.`);
+			errors.push(t("regex.errorNonNegativeInteger", { label, field: "maxDepth" }));
 		}
 		if (
 			rule.minDepth !== undefined
 			&& rule.maxDepth !== undefined
 			&& rule.maxDepth < rule.minDepth
 		) {
-			errors.push(`Regex rule ${label} maxDepth must be greater than or equal to minDepth.`);
+			errors.push(t("regex.errorDepthOrder", { label }));
 		}
 		rules.push(rule);
 	});
@@ -208,6 +213,7 @@ function ruleFromForm(form: RegexRuleForm): EditorRegexRule {
 		"enabled",
 		"stage",
 		"effect",
+		"frequency",
 		"pattern",
 		"flags",
 		"replace",
@@ -227,6 +233,8 @@ function ruleFromForm(form: RegexRuleForm): EditorRegexRule {
 	rule.enabled = form.enabled;
 	rule.stage = form.stage || "compiled";
 	rule.effect = form.effect || "outgoing";
+	// frequency is only meaningful for outgoing rules; never write it for finalize.
+	if (rule.effect !== "finalize") rule.frequency = form.frequency || "turn";
 	rule.pattern = form.pattern;
 
 	const flags = form.flags.trim();
@@ -277,10 +285,10 @@ function warningForForm(form: RegexRuleForm): string {
 
 function regexRuleWarning(rule: PromptRegexRule): string {
 	if (rule.effect === "finalize") {
-		return 'Warning: finalize runs after streaming and replaces the stored assistant transcript. Use stage "compiled" with target "messages".';
+		return t("regex.warnFinalize");
 	}
 	if (typeof rule.replace === "string" && /\{\{\s*match\s*\}\}/i.test(rule.replace)) {
-		return "Warning: {{match}} is not pi-forge replacement syntax. Use $& or $0 for the full match.";
+		return t("regex.warnMatch");
 	}
 	return "";
 }
@@ -296,31 +304,31 @@ defineExpose({
 
 <template>
 	<div class="tab-section">
-		<div class="tab-section-title">Regex rules</div>
+		<div class="tab-section-title">{{ t("regex.title") }}</div>
 		<div class="tab-section-meta">
-			Ordered JavaScript RegExp replacements for outgoing prompt text and finalized assistant messages.
+			{{ t("regex.meta") }}
 		</div>
 		<div class="modal-toolbar">
 			<button
 				id="addRegexRuleBtn"
 				data-icon="+"
-				title="Add a regex rule"
+				:title="t('regex.addRuleTitle')"
 				type="button"
 				@click="addRule"
 			>
-				Add rule
+				{{ t("regex.addRule") }}
 			</button>
 			<button
 				id="validateRegexRulesBtn"
 				data-icon="!"
-				title="Validate the edited stack"
+				:title="t('regex.validateTitle')"
 				type="button"
 				@click="emit('validate')"
 			>
-				Validate
+				{{ t("regex.validate") }}
 			</button>
 			<span class="modal-spacer"></span>
-			<span class="modal-meta">Save writes these rules to stack.regex.rules.</span>
+			<span class="modal-meta">{{ t("regex.saveNote") }}</span>
 		</div>
 
 		<div id="regexRows" class="data-table">
@@ -335,19 +343,19 @@ defineExpose({
 						type="button"
 						data-regex-up="true"
 						data-icon="↑"
-						title="Move this rule up"
+						:title="t('regex.upTitle')"
 						@click="moveRule(index, -1)"
 					>
-						Up
+						{{ t("regex.up") }}
 					</button>
 					<button
 						type="button"
 						data-regex-down="true"
 						data-icon="↓"
-						title="Move this rule down"
+						:title="t('regex.downTitle')"
 						@click="moveRule(index, 1)"
 					>
-						Down
+						{{ t("regex.down") }}
 					</button>
 				</div>
 
@@ -359,39 +367,45 @@ defineExpose({
 					></textarea>
 					<label class="checkline">
 						<input v-model="row.enabled" type="checkbox" data-regex-enabled>
-						Enabled
+						{{ t("regex.enabled") }}
 					</label>
 
 					<div class="field">
-						<label>ID</label>
-						<input v-model="row.id" data-regex-id placeholder="trim-ooc">
+						<label>{{ t("regex.id") }}</label>
+						<input v-model="row.id" data-regex-id :placeholder="t('regex.idPlaceholder')">
 					</div>
 					<div class="field">
-						<label>Name</label>
-						<input v-model="row.name" data-regex-name placeholder="Readable label">
+						<label>{{ t("regex.name") }}</label>
+						<input v-model="row.name" data-regex-name :placeholder="t('regex.namePlaceholder')">
 					</div>
 					<div class="field">
-						<label>Stage</label>
+						<label>{{ t("regex.stage") }}</label>
 						<select v-model="row.stage" data-regex-stage>
 							<option v-for="stage in regexStages" :key="stage" :value="stage">{{ stage }}</option>
 						</select>
 					</div>
 					<div class="field">
-						<label>Effect</label>
+						<label>{{ t("regex.effect") }}</label>
 						<select v-model="row.effect" data-regex-effect>
 							<option v-for="effect in regexEffects" :key="effect" :value="effect">{{ effect }}</option>
 						</select>
 					</div>
+					<div v-show="row.effect !== 'finalize'" class="field">
+						<label>{{ t("regex.frequency") }}</label>
+						<select v-model="row.frequency" data-regex-frequency :title="t('regex.frequencyTitle')">
+							<option v-for="frequency in regexFrequencies" :key="frequency" :value="frequency">{{ frequency }}</option>
+						</select>
+					</div>
 					<div class="field">
-						<label>Flags</label>
-						<input v-model="row.flags" data-regex-flags placeholder="gimsu">
+						<label>{{ t("regex.flags") }}</label>
+						<input v-model="row.flags" data-regex-flags :placeholder="t('regex.flagsPlaceholder')">
 					</div>
 
 					<div class="field span-2">
-						<label>Targets</label>
+						<label>{{ t("regex.targets") }}</label>
 						<div
 							class="regex-checks"
-							title="compiled only; empty means default"
+							:title="t('regex.targetsTitle')"
 						>
 							<label v-for="target in regexTargets" :key="target">
 								<input
@@ -405,10 +419,10 @@ defineExpose({
 						</div>
 					</div>
 					<div class="field span-2">
-						<label>Roles</label>
+						<label>{{ t("regex.roles") }}</label>
 						<div
 							class="regex-checks"
-							title="message rules only; empty means all roles"
+							:title="t('regex.rolesTitle')"
 						>
 							<label v-for="role in regexRoles" :key="role">
 								<input
@@ -423,7 +437,7 @@ defineExpose({
 					</div>
 
 					<div class="field">
-						<label>Max messages</label>
+						<label>{{ t("item.maxMessages") }}</label>
 						<input
 							v-model="row.maxMessages"
 							type="number"
@@ -432,7 +446,7 @@ defineExpose({
 						>
 					</div>
 					<div class="field">
-						<label>Max chars</label>
+						<label>{{ t("item.maxChars") }}</label>
 						<input
 							v-model="row.maxChars"
 							type="number"
@@ -441,7 +455,7 @@ defineExpose({
 						>
 					</div>
 					<div class="field">
-						<label>Min depth</label>
+						<label>{{ t("regex.minDepth") }}</label>
 						<input
 							v-model="row.minDepth"
 							type="number"
@@ -450,7 +464,7 @@ defineExpose({
 						>
 					</div>
 					<div class="field">
-						<label>Max depth</label>
+						<label>{{ t("regex.maxDepth") }}</label>
 						<input
 							v-model="row.maxDepth"
 							type="number"
@@ -460,25 +474,25 @@ defineExpose({
 					</div>
 
 					<div class="field span-2">
-						<label>Trim strings</label>
+						<label>{{ t("regex.trimStrings") }}</label>
 						<textarea
 							v-model="row.trimStrings"
 							data-regex-trim-strings
 							spellcheck="false"
-							placeholder="one per line"
+							:placeholder="t('regex.trimStringsPlaceholder')"
 						></textarea>
 					</div>
 					<div class="field span-3">
-						<label>Pattern</label>
+						<label>{{ t("regex.pattern") }}</label>
 						<textarea
 							v-model="row.pattern"
 							data-regex-pattern
 							spellcheck="false"
-							placeholder="\\(OOC:[^)]+\\)"
+							:placeholder="t('regex.patternPlaceholder')"
 						></textarea>
 					</div>
 					<div class="field span-3">
-						<label>Replace</label>
+						<label>{{ t("regex.replace") }}</label>
 						<textarea
 							v-model="row.replace"
 							data-regex-replace
@@ -500,10 +514,10 @@ defineExpose({
 					class="danger"
 					data-delete-row="true"
 					data-icon="×"
-					title="Delete this regex rule"
+					:title="t('regex.deleteTitle')"
 					@click="deleteRule(index)"
 				>
-					Delete
+					{{ t("stackTab.deleteVariable") }}
 				</button>
 			</div>
 		</div>

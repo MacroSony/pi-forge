@@ -3,7 +3,7 @@
   "type": "pi-forge.prompt-stack",
   "id": "regex-hack",
   "name": "Regex Hack Pack",
-  "description": "Default layout plus outgoing-history regex rules: ANSI terminal escape codes are removed and known API-key formats are redacted before the next model request.",
+  "description": "Default layout plus outgoing-history regex rules: ANSI escapes are removed and illustrative sk-/ghp_ token shapes are redacted. This is a non-exhaustive demo, not a general secret scanner.",
   "autoActivate": false,
   "mode": "replace",
   "defaults": {
@@ -82,12 +82,31 @@
         "replace": ""
       },
       {
-        "id": "redact-api-keys",
-        "name": "Known API-key formats redacted before sending",
+        "id": "redact-api-keys-outgoing",
+        "name": "Illustrative sk-/ghp_ token shapes redacted on every provider request",
         "enabled": true,
         "stage": "history",
+        "effect": "outgoing",
+        "frequency": "request",
         "targets": [
           "messages"
+        ],
+        "pattern": "\\b(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,})\\b",
+        "flags": "g",
+        "replace": "[REDACTED]"
+      },
+      {
+        "id": "redact-api-keys-finalize",
+        "name": "Illustrative sk-/ghp_ token shapes scrubbed from the stored transcript",
+        "enabled": true,
+        "stage": "compiled",
+        "effect": "finalize",
+        "targets": [
+          "messages"
+        ],
+        "roles": [
+          "assistant",
+          "toolResult"
         ],
         "pattern": "\\b(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,})\\b",
         "flags": "g",

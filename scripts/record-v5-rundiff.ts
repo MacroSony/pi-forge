@@ -2,7 +2,7 @@
  * v5.3 素材录制 B：Verify 章 Run diff
  * 通过真实捕获管线播种两轮 provider payload（before_provider_request 事件），
  * 编辑器 Run diff tab 展示两次请求的差异与前缀复用。
- * 运行：node scripts/record-v5-rundiff.ts
+ * 运行：PI_FORGE_PROMO_OUT_DIR=/path/to/output node scripts/record-v5-rundiff.ts
  */
 import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,10 +17,12 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { promptStacksDir } from "../src/loader.ts";
 
-const OUT_DIR = "/home/bruhw/programming/AIGC/VIDEO_PRODUCTION/projects/pi_forge_promo_20260826";
+const OUT_DIR = process.env.PI_FORGE_PROMO_OUT_DIR
+	?? join(process.cwd(), ".pi", "forge", "recordings");
 const CHROME = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
 const HOLD = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+mkdirSync(OUT_DIR, { recursive: true });
 const cwd = mkdtempSync(join(tmpdir(), "pi-forge-v5rd-"));
 mkdirSync(promptStacksDir(cwd), { recursive: true });
 copyFileSync("examples/default-prompt-stack.json", join(promptStacksDir(cwd), "default.json"));

@@ -12,10 +12,10 @@ interface ForgeRegistrationApi {
 		name: string;
 		source?: string;
 		description?: string;
+		dependencies?: string[];
 		options?: Record<string, unknown>;
 		render: (ctx: {
 			options: Record<string, unknown>;
-			format: () => "xml" | "plain" | "json";
 			helpers: {
 				escapeXml(value: string): string;
 				plainBullet(label: string, value: string): string;
@@ -38,17 +38,20 @@ interface SystemStatusSnapshot {
 }
 
 export default function registerSystemStatus(api: ForgeRegistrationApi): void {
+	const snapshot = Object.freeze(readSystemStatus());
 	api.registerMacro({
 		name: "cpuLoad",
 		source: "pi-forge-example-system-status",
-		description: "Current machine CPU load as normalized 1-minute OS load average.",
-		render: () => formatCpuLoad(readSystemStatus()),
+		description: "Machine CPU load captured when the trusted extension was registered.",
+		dependencies: [],
+		render: () => formatCpuLoad(snapshot),
 	});
 
 	api.registerSlot({
 		name: "machine-status",
 		source: "pi-forge-example-system-status",
-		description: "Current machine CPU, memory, and uptime snapshot.",
+		description: "Machine CPU, memory, and uptime captured when the trusted extension was registered.",
+		dependencies: [],
 		options: {
 			format: { type: "enum", values: ["plain", "xml"], default: "plain" },
 			heading: { type: "string", default: "Machine status" },
@@ -56,14 +59,13 @@ export default function registerSystemStatus(api: ForgeRegistrationApi): void {
 			includeUptime: { type: "boolean", default: true },
 		},
 		render: (ctx) => {
-			const snapshot = readSystemStatus();
 			const includeMemory = ctx.options.includeMemory !== false;
 			const includeUptime = ctx.options.includeUptime !== false;
 			const heading = typeof ctx.options.heading === "string" && ctx.options.heading.trim()
 				? ctx.options.heading.trim()
 				: "Machine status";
 
-			if (ctx.format() === "xml") {
+			if (ctx.options.format === "xml") {
 				const lines = [
 					"<machine_status>",
 					`  <cpu logical_cores=\"${snapshot.logicalCores}\" normalized_load_1m=\"${snapshot.normalizedLoad1.toFixed(3)}\" model=\"${ctx.helpers.escapeXml(snapshot.cpuModel)}\">${ctx.helpers.escapeXml(formatCpuLoad(snapshot))}</cpu>`,

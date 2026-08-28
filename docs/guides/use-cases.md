@@ -17,7 +17,7 @@ This keeps the latest request clear and avoids duplication. Static `{{ parameter
 
 ## Focused code review
 
-Start from [the reviewer example](../../examples/reviewer-prompt-stack.json). It denies writing tools, wraps prior history as background, omits the latest user message from history, then reinserts it as the explicit review target.
+Fork the default Pi mirror, deny writing tools, wrap prior history as background, omit the latest user message from history, then reinsert it as the explicit review target.
 
 Use a rule such as “prioritize correctness, regressions, security, and missing tests.” Keep tools, project context, and history when the reviewer must inspect the repository. Use `append` to retain Pi's normal coding prompt, or `replace` when the stack must fully control prompt and skill visibility.
 
@@ -52,10 +52,12 @@ Keep the Pi mirror, require the tools needed for the workflow, strip prior assis
 
 Include `active-model` and `date-cwd`, then add compiled regex rules for deterministic redaction or formatting. Pair the stack with `/payload next` or the web editor's capture view to audit exactly what changed.
 
+Redaction is limited to the declared patterns and supported text targets. It is useful for known shapes but is not an exhaustive credential scanner or security boundary.
+
 ## Pi-docs expert
 
 Allow read/search tools, include the `pi-docs` and project-context slots, and keep a focused system instruction. This encourages answers grounded in installed Pi documentation rather than general model memory.
 
 ## Trusted runtime status
 
-The [custom system-status example](../../examples/custom-system-status-extension/README.md) registers `{{ extensions.cpuLoad }}` and a `machine-status` slot from trusted project code. Use this pattern for deterministic host data that cannot be represented as static stack JSON.
+The [custom system-status example](../../examples/custom-system-status-extension/README.md) captures host data once when its trusted module registers, then exposes that immutable snapshot through `{{ extensions.cpuLoad }}` and a `machine-status` slot. Use this pattern when registration-time data is sufficient; reload the extension to capture a new snapshot.

@@ -94,3 +94,64 @@ test("prompt-stack codec parse->serialize->parse is idempotent", () => {
 	assert.equal(serializePromptStack(second.stack), serializePromptStack(first.stack));
 	assert.equal(second.stack.id, first.stack.id);
 });
+
+test("prompt-stack codec validates merge context option shapes", () => {
+	const source = JSON.stringify({
+		schemaVersion: 1,
+		id: "merge-shape",
+		context: { mergeConsecutiveRoles: "yes", mergeSeparator: 42 },
+		items: [],
+	});
+	const loaded = parsePromptStack(source, "/proj/.pi/forge/prompt-stacks/merge-shape.json", "project");
+	const errors = loaded.diagnostics.filter((d) => d.level === "error");
+	assert.equal(errors.filter((d) => d.message.includes("context.mergeConsecutiveRoles")).length, 1);
+	assert.equal(errors.filter((d) => d.message.includes("context.mergeSeparator")).length, 1);
+});
+
+test("prompt-stack codec accepts merge context options", () => {
+	const source = JSON.stringify({
+		schemaVersion: 1,
+		id: "merge-ok",
+		context: { mergeConsecutiveRoles: true, mergeSeparator: "\n---\n" },
+		items: [{ id: "h", kind: "slot", role: "user", slot: "chat-history" }],
+	});
+	const loaded = parsePromptStack(source, "/proj/.pi/forge/prompt-stacks/merge-ok.json", "project");
+	assert.equal(loaded.diagnostics.some((d) => d.level === "error"), false);
+	assert.equal(loaded.stack.context?.mergeConsecutiveRoles, true);
+	assert.equal(loaded.stack.context?.mergeSeparator, "\n---\n");
+});
+
+test("prompt-stack codec warns when a system item appears after non-system items", () => {
+	const source = JSON.stringify({
+		schemaVersion: 1,
+		id: "system-position",
+		items: [
+			{ id: "intro", kind: "block", role: "system", content: "S" },
+			{ id: "h", kind: "slot", role: "user", slot: "chat-history" },
+			{ id: "late", kind: "block", role: "system", content: "late" },
+			{ id: "off", kind: "block", role: "system", content: "disabled", enabled: false },
+		],
+	});
+	const loaded = parsePromptStack(source, "/proj/.pi/forge/prompt-stacks/system-position.json", "project");
+	const warnings = loaded.diagnostics.filter((d) => d.level === "warning" && /System item appears after non-system items/.test(d.message));
+	assert.equal(warnings.length, 1);
+	assert.equal(warnings[0].itemId, "late");
+});
+
+test("prompt-stack codec does not warn when system items precede non-system items", () => {
+	const source = JSON.stringify({
+		schemaVersion: 1,
+		id: "system-position-ok",
+		items: [
+			{ id: "a", kind: "block", role: "system", content: "A" },
+			{ id: "b", kind: "block", role: "system", content: "B" },
+			{ id: "h", kind: "slot", role: "user", slot: "chat-history" },
+			{ id: "u", kind: "block", role: "user", content: "U" },
+		],
+	});
+	const loaded = parsePromptStack(source, "/proj/.pi/forge/prompt-stacks/system-position-ok.json", "project");
+	assert.equal(
+		loaded.diagnostics.some((d) => /System item appears after non-system items/.test(d.message)),
+		false,
+	);
+});

@@ -859,3 +859,157 @@ test("unsupported slots produce diagnostics", () => {
 	assert.equal(result.diagnostics[0]?.itemId, "bad-slot");
 	assert.match(result.diagnostics[0]?.message ?? "", /Unsupported slot/);
 });
+
+test("compileMessages keeps consecutive same-role items separate by default", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-off",
+		items: [
+			{ kind: "block", id: "a", enabled: true, role: "user", content: "A" },
+			{ kind: "block", id: "b", enabled: true, role: "user", content: "B" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.deepEqual(result.messages.map(textOf), ["A", "B"]);
+	assert.deepEqual(result.messageSources.map((source) => source.itemId), ["a", "b"]);
+	assert.equal(result.messageSources.every((source) => source.mergedItems === undefined), true);
+});
+
+test("compileMessages merges consecutive same-role stack items when enabled", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-on",
+		context: { mergeConsecutiveRoles: true },
+		items: [
+			{ kind: "block", id: "sys", enabled: true, role: "system", content: "S" },
+			{ kind: "block", id: "a", enabled: true, role: "user", name: "Alpha", content: "A" },
+			{ kind: "block", id: "b", enabled: true, role: "user", name: "Beta", content: "B" },
+			{ kind: "block", id: "c", enabled: true, role: "user", name: "Gamma", content: "C" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.equal(result.messages.length, 1);
+	assert.equal(result.messages[0].role, "user");
+	assert.equal(textOf(result.messages[0]), "A\n\nB\n\nC");
+	const source = result.messageSources[0];
+	assert.equal(source.kind, "stack-item");
+	assert.equal(source.itemName, "Alpha + Beta + Gamma");
+	assert.deepEqual(source.mergedItems?.map((item) => item.itemId), ["a", "b", "c"]);
+	assert.equal(
+		result.diagnostics.some((d) => d.level === "info" && /Merged consecutive user stack items/.test(d.message) && d.itemId === "a"),
+		true,
+	);
+});
+
+test("compileMessages merge honours a custom separator and does not merge across roles", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-roles",
+		context: { mergeConsecutiveRoles: true, mergeSeparator: " | " },
+		items: [
+			{ kind: "block", id: "u1", enabled: true, role: "user", content: "U1" },
+			{ kind: "block", id: "a1", enabled: true, role: "assistant", content: "A1" },
+			{ kind: "block", id: "a2", enabled: true, role: "assistant", content: "A2" },
+			{ kind: "block", id: "u2", enabled: true, role: "user", content: "U2" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.deepEqual(result.messages.map((message) => message.role), ["user", "assistant", "user"]);
+	assert.deepEqual(result.messages.map(textOf), ["U1", "A1 | A2", "U2"]);
+});
+
+test("compileMessages merge treats chat-history output as a hard boundary", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-history",
+		context: { mergeConsecutiveRoles: true },
+		items: [
+			{ kind: "block", id: "pre", enabled: true, role: "user", content: "before" },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history", options: { includeLastUserMessage: false } },
+			{ kind: "block", id: "post", enabled: true, role: "user", content: "after" },
+		],
+	};
+	// History ends with a user message; the trailing user block must not merge into it.
+	const messages = [user("first"), user("latest request")];
+
+	const result = compileMessages(stack, runtime({ latestUserMessage: "latest request" }), messages);
+
+	assert.deepEqual(result.messages.map(textOf), ["before", "first", "after"]);
+	assert.deepEqual(result.messageSources.map((source) => source.kind), ["stack-item", "chat-history", "stack-item"]);
+	assert.equal(result.messageSources.every((source) => source.mergedItems === undefined), true);
+});
+
+test("compileMessages merge treats custom-role items as a hard boundary", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-custom",
+		context: { mergeConsecutiveRoles: true },
+		items: [
+			{ kind: "block", id: "u1", enabled: true, role: "user", content: "U1" },
+			{ kind: "block", id: "mid", enabled: true, role: "custom", content: "C" },
+			{ kind: "block", id: "u2", enabled: true, role: "user", content: "U2" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.deepEqual(result.messages.map((message) => message.role), ["user", "custom", "user"]);
+	assert.deepEqual(result.messages.map(textOf), ["U1", "C", "U2"]);
+});
+
+test("compileMessages merge applies after compiled-stage regex", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-regex",
+		context: { mergeConsecutiveRoles: true },
+		regex: {
+			schemaVersion: 1,
+			rules: [
+				{
+					id: "rename",
+					enabled: true,
+					stage: "compiled",
+					effect: "outgoing",
+					targets: ["messages"],
+					roles: ["user"],
+					pattern: "foo",
+					flags: "g",
+					replace: "bar",
+				},
+			],
+		},
+		items: [
+			{ kind: "block", id: "a", enabled: true, role: "user", content: "foo A" },
+			{ kind: "block", id: "b", enabled: true, role: "user", content: "foo B" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.equal(result.messages.length, 1);
+	assert.equal(textOf(result.messages[0]), "bar A\n\nbar B");
+});
+
+test("compileMessages merge combines consecutive slot items of the same role", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "merge-slots",
+		context: { mergeConsecutiveRoles: true },
+		items: [
+			{ kind: "slot", id: "d1", enabled: true, role: "user", slot: "date" },
+			{ kind: "block", id: "note", enabled: true, role: "user", content: "note" },
+		],
+	};
+
+	const result = compileMessages(stack, runtime(), []);
+
+	assert.equal(result.messages.length, 1);
+	assert.match(textOf(result.messages[0]), /\n\nnote$/);
+	assert.deepEqual(result.messageSources[0].mergedItems?.map((item) => item.itemId), ["d1", "note"]);
+});

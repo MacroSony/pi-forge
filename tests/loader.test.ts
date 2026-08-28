@@ -25,7 +25,12 @@ test("published example prompt stacks validate", () => {
 	assert.ok(files.length > 0);
 	for (const file of files) {
 		const stack = JSON.parse(readFileSync(join(examplesDir, file), "utf8"));
-		const diagnostics = validatePromptStack(stack);
+		// The finalize advisory is a deliberate, documented notice that fires for
+		// every finalize rule; hack-prompt-stack.json demonstrates finalize, so it
+		// always carries that one warning.
+		const diagnostics = validatePromptStack(stack).filter(
+			(diagnostic) => !/effect "finalize" rewrites stored/.test(diagnostic.message),
+		);
 
 		assert.deepEqual(diagnostics, [], file);
 	}

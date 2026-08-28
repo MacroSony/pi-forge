@@ -2,7 +2,11 @@
 
 [中文文档](../README.md) · [English](../../concepts/prompt-stacks.md)
 
-Prompt stack 是一份有序、声明式的 prompt 与策略描述，由固定 **block** 和动态 **slot** 组成。Stack 可以放在项目 `.pi/forge/prompt-stacks/`，也可以放在用户全局 `~/.pi/forge/prompt-stacks/`。命令接受 `reviewer`、`project:reviewer` 和 `global:reviewer`；未限定 ID 优先解析项目 stack，项目 stack 会遮蔽同 ID 全局 stack。重复 ID 只在同一 scope 内算错误。
+Prompt stack 是一份有序、声明式的 prompt 与策略描述，由固定 **block** 和动态 **slot** 组成。
+
+> **命名说明。** Prompt stack 由 `/preset` 命令族管理：stack 文件把编排与策略打包在一起，实际作用相当于一份完整预设。命名将在未来版本统一；本文档沿用"prompt stack／提示词栈"指代该资源。
+
+Stack 可以放在项目 `.pi/forge/prompt-stacks/`，也可以放在用户全局 `~/.pi/forge/prompt-stacks/`。命令接受 `reviewer`、`project:reviewer` 和 `global:reviewer`；未限定 ID 优先解析项目 stack，项目 stack 会遮蔽同 ID 全局 stack。重复 ID 只在同一 scope 内算错误。
 
 ## 编译模型
 
@@ -13,8 +17,8 @@ Prompt stack 是一份有序、声明式的 prompt 与策略描述，由固定 *
 3. 在可移动 `chat-history` 周围插入 user/assistant 消息。
 4. 用 forge-v1 编译 `runtime.*` / `parameters.*` / `extensions.*` 模板。
 5. 对 Pi 执行工具策略，并过滤 pi-forge 渲染的 skills。
-6. 应用 history/compiled outgoing regex。
-7. 可选地在消息完成后应用破坏性的 finalize regex。
+6. 应用 history/compiled outgoing regex。`frequency: "request"` 的 outgoing 消息规则还会在 tool 结果后续请求上对 Pi 的完整自然上下文再次运行；默认 `"turn"` 保持仅在每轮首次请求运行。
+7. 可选地在消息完成后应用破坏性的 finalize regex；`roles` 显式包含 `"toolResult"` 的 finalize 规则还会改写存储的 tool 结果消息。
 
 ## 常用历史布局
 
@@ -24,6 +28,8 @@ Prompt stack 是一份有序、声明式的 prompt 与策略描述，由固定 *
 4. 包含 `{{ runtime.lastUserMessage }}` 的最终 user block。
 
 这样既保留旧上下文，又只在最后明确出现一次当前请求。History 还可以过滤 summary/role、去掉旧工具消息、移除 assistant thinking，并限制消息数或字符数。
+
+Stack 还可以通过 `context.mergeConsecutiveRoles`（及可选的 `context.mergeSeparator`）把连续的同角色条目合并成一条消息；chat-history 输出和 custom 角色条目永远不会被合并。详见英文 [stack schema](../../reference/stack-schema.md#context-options)。
 
 ## 策略边界
 

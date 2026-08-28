@@ -72,12 +72,16 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Chat history can filter summaries/roles, drop prior tool history, and cap recent history by message count or approximate characters with dangling tool calls/results repaired after filtering.
 - Duplicate chat-history warning unless explicitly allowed.
 - Synthetic `user`, `assistant`, and hidden `custom` messages.
+- Optional consecutive-role merge (`context.mergeConsecutiveRoles`/`mergeSeparator`): runs of consecutive stack-authored `user`/`assistant` items compile into a single message; chat-history output and custom-role items are hard boundaries, and merging runs after compiled-stage regex.
+- Validation warning when an enabled `system` item appears after non-system items (cross-channel item position has no effect on compilation).
 - Context rewrite limited to the first provider request of each user-submitted turn.
 - Tool policy filters Pi's active tool list while the stack is active and restores the previous active tools when the stack no longer applies.
 - Tool policy restores its pre-policy baseline during extension shutdown so Pi reload/session replacement cannot carry a restricted built-in tool set into the replacement runtime.
 - Startup tool enforcement waits until extension `session_start` configuration is complete, reasserts before user input and turns, and blocks disallowed model tool calls at execution time.
 - Skill policy filters skills rendered by pi-forge `skills` slots.
 - Outgoing regex transforms can run after `chat-history` insertion and after final prompt compilation.
+- Per-rule `frequency: "request"` re-runs an outgoing message rule on every tool-result follow-up request over Pi's full natural context; the default `"turn"` keeps first-request-only behavior.
+- `finalize` rules whose `roles` explicitly include `"toolResult"` also rewrite stored tool-result messages at completion time (destructive, documented); rules without `roles` stay assistant-only.
 - Finalize regex transforms can rewrite completed assistant messages at `message_end`.
 
 ## Regex Transforms
@@ -197,6 +201,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Collapsible prompt-stack sidebar.
 - Collapsible stack metadata panel and main-area tabs for Items, Regex, Policy, and Stack JSON/context/variables work.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
+- English/中文 interface switch (`webEditor.locale`: `"en"`, `"zh-CN"`, or `"auto"` following the browser language); contributed settings tabs remain provider-authored and are not translated.
 - Unsaved-change badge in the top bar.
 - Create a new prompt stack from the browser, including when no stack files exist yet; new stacks start from the default Pi prompt mirror layout.
 - View immutable stack ID and edit name, mode, `autoActivate`, description, and existing stack file content; use Fork to create a new ID.

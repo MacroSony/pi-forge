@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
 import { createEditorApi } from "../api.ts";
+import { t } from "../i18n.ts";
 import type { EditorPromptStack } from "../types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "../../types.ts";
 import type { ContextDiffView } from "../../../context-diff-history.ts";
@@ -109,7 +110,7 @@ function schedulePreviewRefresh(): void {
 	savedPreview.value = null;
 	draftDiff.value = null;
 	previewLoading.value = true;
-	previewStatus.value = "Draft changed; refreshing…";
+	previewStatus.value = t("diff.draftChangedRefreshing");
 	schedulePreviewTimer();
 }
 
@@ -141,7 +142,7 @@ async function refreshPreview(): Promise<void> {
 		savedPreview.value = null;
 		draftDiff.value = null;
 		previewError.value = "";
-		previewStatus.value = "Select a stack to preview.";
+		previewStatus.value = t("diff.selectStackToPreview");
 		return;
 	}
 	previewLoading.value = true;
@@ -172,7 +173,7 @@ async function refreshPreview(): Promise<void> {
 		draftDiff.value = preview.value && savedPreview.value
 			? diffTurns(previewToTurnSnapshot(savedPreview.value, "saved"), previewToTurnSnapshot(preview.value, "draft"))
 			: null;
-		previewStatus.value = preview.value ? "Compiled draft refreshed." : "Preview returned no structured sections.";
+		previewStatus.value = preview.value ? t("diff.draftRefreshed") : t("diff.previewNoSections");
 		props.onStatus?.(previewStatus.value, preview.value ? "success" : "warning");
 	} catch (error) {
 		if (controller.signal.aborted || sequence !== previewSequence) return;
@@ -220,9 +221,9 @@ function blockRole(block: DiffBlock): string {
 function blockTokenText(block: DiffBlock): string {
 	if (block.status !== "same") {
 		const delta = block.tokenDelta;
-		return `est. Δ ~${delta > 0 ? "+" : ""}${delta}`;
+		return t("diff.blockTokensDelta", { delta: `${delta > 0 ? "+" : ""}${delta}` });
 	}
-	return `est. ~${block.after?.approxTokens ?? 0}`;
+	return t("diff.blockTokens", { count: block.after?.approxTokens ?? 0 });
 }
 
 function blockLineRows(block: DiffBlock): LineDiffDisplayRow[] {
@@ -242,7 +243,7 @@ function lineMarker(row: LineDiffRow): string {
 }
 
 function eofNoteSide(row: LineDiffRow): string {
-	return row.noteSide === "before" ? "Before" : "After";
+	return row.noteSide === "before" ? t("diff.before") : t("diff.after");
 }
 
 function metadataOnlyChange(block: DiffBlock): boolean {
@@ -255,9 +256,9 @@ function metadataChangeText(block: DiffBlock): string {
 	const beforeRole = block.before?.role ?? "—";
 	const afterRole = block.after?.role ?? "—";
 	const roleDetail = beforeRole === afterRole
-		? `Role unchanged (${afterRole}); another serialized provider field changed.`
-		: `Role changed: ${beforeRole} → ${afterRole}.`;
-	return `Provider-visible metadata changed; text is unchanged. ${roleDetail}`;
+		? t("diff.roleUnchanged", { role: afterRole })
+		: t("diff.roleChanged", { before: beforeRole, after: afterRole });
+	return t("diff.metadataChanged", { detail: roleDetail });
 }
 
 function formatUsageTokens(value: number | undefined): string {
@@ -267,13 +268,13 @@ function formatUsageTokens(value: number | undefined): string {
 function cacheHitText(): string {
 	const usage = latestUsage.value;
 	if (!usage) return "—";
-	if (usage.cacheHitRatio === null) return "not reported";
+	if (usage.cacheHitRatio === null) return t("diff.notReported");
 	return `${(usage.cacheHitRatio * 100).toFixed(1)}%`;
 }
 
 function sectionMeta(section: WebEditorPreviewSection): string {
-	const role = section.role ? `${section.role} · ` : "";
-	return `${role}${section.chars} chars · estimate ~${section.approxTokens} tokens`;
+	const rolePrefix = section.role ? `${section.role} · ` : "";
+	return t("diff.sectionMeta", { rolePrefix, chars: section.chars, tokens: section.approxTokens });
 }
 
 function turnLabel(): string {
@@ -285,27 +286,27 @@ function turnLabel(): string {
 
 <template>
 	<div class="context-diff-dock">
-		<div class="context-diff-mode-tabs" role="tablist" aria-label="Preview dock">
-			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="mode = 'compiled'">Preview</button>
-			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="mode = 'draft'">Draft diff</button>
-			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="mode = 'run'">Run diff</button>
-			<button type="button" class="context-diff-expand" :title="expanded ? 'Return to split editor' : 'Use the full editor width'" @click="toggleExpanded">{{ expanded ? "Split" : "Focus" }}</button>
+		<div class="context-diff-mode-tabs" role="tablist" :aria-label="t('diff.dockAria')">
+			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="mode = 'compiled'">{{ t("tab.preview") }}</button>
+			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="mode = 'draft'">{{ t("diff.draftTab") }}</button>
+			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="mode = 'run'">{{ t("diff.runTab") }}</button>
+			<button type="button" class="context-diff-expand" :title="expanded ? t('diff.splitTitle') : t('diff.focusTitle')" @click="toggleExpanded">{{ expanded ? t("diff.split") : t("diff.focus") }}</button>
 		</div>
 
 		<div v-show="mode === 'compiled'" class="context-diff-compiled" role="tabpanel">
 			<div class="context-diff-panel-head">
-				<div class="context-diff-title">Compiled draft</div>
+				<div class="context-diff-title">{{ t("diff.compiledDraft") }}</div>
 				<div class="context-diff-meta">
-					<span v-if="preview">Estimate ~{{ preview.approxTokens }} tokens (chars/4) · {{ preview.totalChars }} chars</span>
-					<span v-else-if="previewLoading">Refreshing…</span>
+					<span v-if="preview">{{ t("diff.compiledMeta", { tokens: preview.approxTokens, chars: preview.totalChars }) }}</span>
+					<span v-else-if="previewLoading">{{ t("diff.refreshing") }}</span>
 					<span v-else-if="previewError" class="error">{{ previewError }}</span>
-					<span v-else>No preview</span>
+					<span v-else>{{ t("diff.noPreview") }}</span>
 				</div>
-				<button type="button" class="context-diff-refresh" @click="schedulePreviewRefresh">Refresh</button>
+				<button type="button" class="context-diff-refresh" @click="schedulePreviewRefresh">{{ t("profiles.refresh") }}</button>
 			</div>
 			<div v-if="previewError" class="context-diff-error">{{ previewError }}</div>
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
-				{{ previewLoading ? "Loading preview…" : "Select a stack to see its compiled prompt." }}
+				{{ previewLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
 			<div v-else class="context-diff-sections">
 				<details v-for="section in compiledSections" :key="section.id" class="context-diff-section" open>
@@ -320,63 +321,63 @@ function turnLabel(): string {
 
 		<div v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
 			<div class="context-diff-panel-head">
-				<div class="context-diff-title">{{ mode === "draft" ? "Compiled draft vs saved output" : "Latest run vs previous run" }}</div>
+				<div class="context-diff-title">{{ mode === "draft" ? t("diff.draftTitle") : t("diff.runTitle") }}</div>
 				<div class="context-diff-meta">
-					<span v-if="mode === 'draft' && previewLoading">Refreshing…</span>
-					<span v-else-if="mode === 'run' && contextDiffLoading">Refreshing…</span>
+					<span v-if="mode === 'draft' && previewLoading">{{ t("diff.refreshing") }}</span>
+					<span v-else-if="mode === 'run' && contextDiffLoading">{{ t("diff.refreshing") }}</span>
 					<span v-else-if="mode === 'draft' && previewError" class="error">{{ previewError }}</span>
 					<span v-else-if="mode === 'run' && contextDiffError" class="error">{{ contextDiffError }}</span>
-					<span v-else-if="activeDiff">{{ changedBlocks === 0 ? "No changes" : `${changedBlocks} changed blocks` }}</span>
-					<span v-else>{{ mode === "draft" ? "No draft comparison" : "No captured runs" }}</span>
+					<span v-else-if="activeDiff">{{ changedBlocks === 0 ? t("diff.noChanges") : t("diff.changedBlocks", { count: changedBlocks }) }}</span>
+					<span v-else>{{ mode === "draft" ? t("diff.noDraftComparison") : t("diff.noCapturedRuns") }}</span>
 				</div>
-				<button type="button" class="context-diff-refresh" @click="mode === 'draft' ? schedulePreviewRefresh() : refreshContextDiff()">Refresh</button>
+				<button type="button" class="context-diff-refresh" @click="mode === 'draft' ? schedulePreviewRefresh() : refreshContextDiff()">{{ t("profiles.refresh") }}</button>
 			</div>
 			<div v-if="mode === 'draft' && previewError" class="context-diff-error">{{ previewError }}</div>
 			<div v-else-if="mode === 'run' && contextDiffError" class="context-diff-error">{{ contextDiffError }}</div>
 			<div v-else-if="!activeDiff" class="context-diff-empty">
 				{{ mode === "draft"
-					? "Select a saved stack to compare its current draft with disk."
-					: "No captured provider turns yet. Send a prompt; recent turns appear here automatically." }}
+					? t("diff.draftEmpty")
+					: t("diff.runEmpty") }}
 			</div>
 			<template v-else>
 				<div class="context-diff-summary">
-					<span :class="['summary-delta', deltaClass]">Estimated Δ ~{{ deltaText }} tokens</span>
-					<span>{{ changedBlocks }} changed</span>
-					<div class="diff-view-controls" aria-label="Diff display options">
+					<span :class="['summary-delta', deltaClass]">{{ t("diff.estimatedDelta", { delta: deltaText }) }}</span>
+					<span>{{ t("diff.changed", { count: changedBlocks }) }}</span>
+					<div class="diff-view-controls" :aria-label="t('diff.displayOptionsAria')">
 						<div class="diff-layout-buttons">
-							<button type="button" :class="{ active: diffLayout === 'unified' }" :aria-pressed="diffLayout === 'unified'" @click="diffLayout = 'unified'">Unified</button>
-							<button type="button" :class="{ active: diffLayout === 'split' }" :aria-pressed="diffLayout === 'split'" @click="diffLayout = 'split'">Split</button>
+							<button type="button" :class="{ active: diffLayout === 'unified' }" :aria-pressed="diffLayout === 'unified'" @click="diffLayout = 'unified'">{{ t("diff.unified") }}</button>
+							<button type="button" :class="{ active: diffLayout === 'split' }" :aria-pressed="diffLayout === 'split'" @click="diffLayout = 'split'">{{ t("diff.split") }}</button>
 						</div>
 						<label>
-							<span>Lines</span>
-							<select v-model="lineContext" aria-label="Diff line context">
-								<option value="0">Changes only</option>
-								<option value="3">3 lines context</option>
-								<option value="all">All lines</option>
+							<span>{{ t("diff.lines") }}</span>
+							<select v-model="lineContext" :aria-label="t('diff.lineContextAria')">
+								<option value="0">{{ t("diff.changesOnly") }}</option>
+								<option value="3">{{ t("diff.threeLinesContext") }}</option>
+								<option value="all">{{ t("diff.allLines") }}</option>
 							</select>
 						</label>
 					</div>
 					<label v-if="hiddenUnchangedCount" class="unchanged-toggle">
 						<input v-model="showUnchanged" type="checkbox">
-						Show {{ hiddenUnchangedCount }} unchanged
+						{{ t("diff.showUnchanged", { count: hiddenUnchangedCount }) }}
 					</label>
 				</div>
 				<details v-if="mode === 'run'" class="context-diff-details">
-					<summary>Run metadata</summary>
+					<summary>{{ t("diff.runMetadata") }}</summary>
 					<div class="run-metadata-grid">
-						<span>Turn</span><strong>{{ turnLabel() }}</strong>
-						<span>Provider/model</span><strong>{{ latestUsage ? `${latestUsage.provider}/${latestUsage.model}` : "usage pending" }}</strong>
-						<span>Actual prompt tokens</span><strong>{{ formatUsageTokens(latestUsage?.promptTokens) }}</strong>
-						<span>Actual cache read / write</span><strong>{{ formatUsageTokens(latestUsage?.cacheRead) }} / {{ formatUsageTokens(latestUsage?.cacheWrite) }}</strong>
-						<span>Actual cache hit rate</span><strong>{{ cacheHitText() }}</strong>
-						<span>Actual uncached input / output</span><strong>{{ formatUsageTokens(latestUsage?.input) }} / {{ formatUsageTokens(latestUsage?.output) }}</strong>
-						<span>Estimated reusable prefix</span><strong>~{{ latestDiff?.prefixTokens }} tokens ({{ prefixPercent }}%)</strong>
+						<span>{{ t("diff.turn") }}</span><strong>{{ turnLabel() }}</strong>
+						<span>{{ t("diff.providerModel") }}</span><strong>{{ latestUsage ? `${latestUsage.provider}/${latestUsage.model}` : t("diff.usagePending") }}</strong>
+						<span>{{ t("diff.actualPromptTokens") }}</span><strong>{{ formatUsageTokens(latestUsage?.promptTokens) }}</strong>
+						<span>{{ t("diff.actualCacheReadWrite") }}</span><strong>{{ formatUsageTokens(latestUsage?.cacheRead) }} / {{ formatUsageTokens(latestUsage?.cacheWrite) }}</strong>
+						<span>{{ t("diff.actualCacheHitRate") }}</span><strong>{{ cacheHitText() }}</strong>
+						<span>{{ t("diff.actualUncached") }}</span><strong>{{ formatUsageTokens(latestUsage?.input) }} / {{ formatUsageTokens(latestUsage?.output) }}</strong>
+						<span>{{ t("diff.estimatedPrefix") }}</span><strong>{{ t("diff.prefixValue", { tokens: latestDiff?.prefixTokens ?? 0, percent: prefixPercent }) }}</strong>
 					</div>
-					<p v-if="latestUsage?.cacheStatus === 'not-reported'" class="metadata-note">Pi has not observed provider-reported cache reads or writes for this model yet, so a real hit rate cannot be distinguished from an unreported zero.</p>
-					<p class="metadata-note">Estimated values use captured text length (chars/4); actual values come from the provider usage returned by Pi.</p>
+					<p v-if="latestUsage?.cacheStatus === 'not-reported'" class="metadata-note">{{ t("diff.cacheNotReportedNote") }}</p>
+					<p class="metadata-note">{{ t("diff.estimateNote") }}</p>
 				</details>
 				<div v-if="visibleDiffBlocks.length === 0" class="context-diff-empty compact">
-					{{ mode === "draft" ? "Draft and saved prompt compile to the same content." : "The latest two runs have the same captured content." }}
+					{{ mode === "draft" ? t("diff.draftSame") : t("diff.runSame") }}
 				</div>
 				<div v-else class="context-diff-blocks">
 					<div v-for="(block, index) in visibleDiffBlocks" :key="`${blockKey(block)}-${index}`" :class="['context-diff-block', block.status]">
@@ -386,10 +387,10 @@ function turnLabel(): string {
 								<span class="block-status">{{ block.status }}</span>
 								<span class="block-key">{{ blockKey(block) }}</span>
 								<span v-if="blockRole(block)" class="block-role">{{ blockRole(block) }}</span>
-								<span class="block-token-chip">{{ blockTokenText(block) }} tokens</span>
+								<span class="block-token-chip">{{ blockTokenText(block) }}</span>
 							</div>
 							<div v-if="metadataOnlyChange(block)" class="metadata-only-change">{{ metadataChangeText(block) }}</div>
-							<div v-else-if="diffLayout === 'unified'" class="git-diff unified" role="table" aria-label="Unified line diff">
+							<div v-else-if="diffLayout === 'unified'" class="git-diff unified" role="table" :aria-label="t('diff.unifiedAria')">
 								<template v-for="(row, rowIndex) in blockLineRows(block)" :key="rowIndex">
 									<div v-if="row.kind === 'separator'" class="git-line-separator" role="row">⋯</div>
 									<div v-else :class="['git-line', row.kind]" role="row">
@@ -400,8 +401,8 @@ function turnLabel(): string {
 									</div>
 								</template>
 							</div>
-							<div v-else class="git-diff split" role="table" aria-label="Split line diff">
-								<div class="split-header"><span>Before</span><span>After</span></div>
+							<div v-else class="git-diff split" role="table" :aria-label="t('diff.splitAria')">
+								<div class="split-header"><span>{{ t("diff.before") }}</span><span>{{ t("diff.after") }}</span></div>
 								<template v-for="(row, rowIndex) in blockSplitRows(block)" :key="rowIndex">
 									<div v-if="row.kind === 'separator'" class="git-line-separator split-separator" role="row">⋯</div>
 									<div v-else class="split-line" role="row">

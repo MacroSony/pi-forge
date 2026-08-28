@@ -6,6 +6,7 @@
 // It never reaches into stack-editor layout or imperative state.
 
 import { createEditorApi } from "./api.ts";
+import { t } from "./i18n.ts";
 import { cloneJson, type FormValues } from "../schema-form.ts";
 import { createVueSchemaFormHost } from "./vue-schema-form-host.ts";
 import {
@@ -61,9 +62,13 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	let schemaFormHost: ReturnType<typeof createVueSchemaFormHost> | undefined;
 
 	const statusElement = document.getElementById("settingsStatus");
+	// Tracks whether the settings status still shows its initial loading
+	// placeholder, without comparing localized text.
+	let placeholderActive = true;
 
 	function setStatus(text: string, tone = ""): void {
 		if (!statusElement) return;
+		placeholderActive = false;
 		statusElement.textContent = text;
 		statusElement.style.color = tone === "error" ? "var(--error)" : tone === "success" ? "var(--success)" : "var(--muted)";
 	}
@@ -77,7 +82,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 		if (!activeTabId) return;
 		const status = tabStatuses.get(activeTabId);
 		if (status) setStatus(status.text, status.tone);
-		else setStatus("Settings ready");
+		else setStatus(t("settings.ready"));
 	}
 
 	function isDirty(tabId: string): boolean {
@@ -122,7 +127,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 					setTabStatus(tab.tabId, error, "error");
 					return;
 				}
-				setTabStatus(tab.tabId, "Unsaved changes");
+				setTabStatus(tab.tabId, t("status.unsavedChanges"));
 				clearSaveTimer(tab.tabId);
 				const timer = window.setTimeout(() => {
 					saveTimers.delete(tab.tabId);
@@ -170,7 +175,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	async function save(job: ContributionSaveJob): Promise<void> {
 		const { tabId, values, revision } = job;
 		const requestProviderKey = providerKey;
-		if (revision === editRevisions.get(tabId)) setTabStatus(tabId, "Saving");
+		if (revision === editRevisions.get(tabId)) setTabStatus(tabId, t("settings.saving"));
 		try {
 			const response = await api<{ ok: true; values?: FormValues }>(`/api/contrib/${encodeURIComponent(tabId)}`, {
 				method: "PUT",
@@ -179,7 +184,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			if (disposed || revision !== editRevisions.get(tabId)) return;
 			if (requestProviderKey !== providerKey) {
 				const latestValues = draftValues.get(tabId) ?? values;
-				setTabStatus(tabId, "Provider restarted; retrying");
+				setTabStatus(tabId, t("settings.providerRetrying"));
 				enqueueSave({ tabId, values: cloneJson(latestValues), revision });
 				return;
 			}
@@ -191,7 +196,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			const current = descriptors.find((candidate) => candidate.tabId === tabId);
 			if (current) current.values = canonicalValues;
 			if (current && mountedValues && JSON.stringify(mountedValues) !== JSON.stringify(canonicalValues)) mount(current);
-			setTabStatus(tabId, "Saved", "success");
+			setTabStatus(tabId, t("settings.saved"), "success");
 		} catch (error) {
 			if (!disposed && revision === editRevisions.get(tabId)) {
 				setTabStatus(tabId, error instanceof Error ? error.message : String(error), "error");
@@ -208,7 +213,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			button.id = settingsContributionButtonId(tab.tabId);
 			button.dataset.contribTab = tab.tabId;
 			button.dataset.icon = tab.icon;
-			button.title = `Edit ${tab.title}`;
+			button.title = t("settings.editTab", { title: tab.title });
 			button.textContent = tab.title;
 			button.onclick = () => {
 				const descriptor = descriptors.find((candidate) => candidate.tabId === tab.tabId);
@@ -257,7 +262,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 					showActiveStatus();
 				}
 			} else if (descriptors[0]) activate(descriptors[0]);
-			if (descriptors.length > 0 && statusElement?.textContent === "Loading settings…") setStatus("Settings ready");
+			if (descriptors.length > 0 && placeholderActive) setStatus(t("settings.ready"));
 		} catch (error) {
 			if (disposed || sequence !== refreshSequence || saveEpochAtStart !== committedSaveEpoch) return;
 			clearActiveState();

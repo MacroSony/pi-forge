@@ -1,4 +1,5 @@
 import { attr, el, escapeHtml } from "./dom.ts";
+import { t } from "./i18n.ts";
 import type { EditorRequestInit } from "./api.ts";
 import type { EditorPayloadRefreshOptions, EditorPromptStack, PromptStackDiagnostic, WebEditorPayloadSnapshot } from "./types.ts";
 
@@ -23,7 +24,7 @@ async function validateStack() {
   renderDiagnostics(data.diagnostics || []);
   renderItemList();
   hidePreview();
-  setStatus("Validation complete", "success");
+  setStatus(t("inspector.validationComplete"), "success");
 }
 
 async function previewStack() {
@@ -32,7 +33,7 @@ async function previewStack() {
   renderDiagnostics(data.diagnostics || []);
   renderItemList();
   renderPreviewInspector(data);
-  setStatus("Preview rendered", "success");
+  setStatus(t("inspector.previewRendered"), "success");
 }
 
 async function refreshPayloadCapture(options: any = {}) {
@@ -50,7 +51,7 @@ async function armPayloadCapture(showInspector: any = false) {
   const data = await api("/api/payload/arm", { method: "POST" });
   payloadSnapshot = data;
   updatePayloadButton();
-  setStatus("Payload capture armed; send the next Pi prompt");
+  setStatus(t("inspector.armed"));
   if (showInspector) renderPayloadInspector(payloadSnapshot);
 }
 
@@ -59,7 +60,7 @@ async function clearPayloadCapture() {
   payloadSnapshot = data;
   updatePayloadButton();
   hidePreview();
-  setStatus("Payload capture cleared", "success");
+  setStatus(t("inspector.cleared"), "success");
 }
 
 async function openPayloadCapture() {
@@ -76,18 +77,18 @@ function updatePayloadButton() {
   if (!button) return;
   button.classList.remove("primary");
   if (payloadSnapshot.status === "armed") {
-    button.textContent = "Payload armed";
+    button.textContent = t("inspector.armedButton");
     button.classList.add("primary");
-    button.title = "Waiting for the next provider payload";
+    button.title = t("inspector.armedButtonTitle");
     return;
   }
   if (payloadSnapshot.status === "captured") {
-    button.textContent = "View payload";
-    button.title = "Open the latest captured provider payload";
+    button.textContent = t("inspector.viewPayload");
+    button.title = t("inspector.viewPayloadTitle");
     return;
   }
-  button.textContent = "Arm payload";
-  button.title = "Capture the next provider payload in this editor";
+  button.textContent = t("chrome.armPayload");
+  button.title = t("inspector.armTitle");
 }
 
 function hidePreview() {
@@ -102,9 +103,9 @@ function renderPreviewInspector(data: any) {
   const preview = data.preview;
   if (!preview) {
     previewCopyTexts = [data.text || ""];
-    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
-      '<div class="preview-head"><div><div class="preview-title">Preview</div><div class="preview-meta">Plain text fallback</div></div>' +
-      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full preview text">Copy</button><button data-preview-close="true" data-icon="×" title="Close the preview">Close</button></div></div>' +
+    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.previewAria")) + '">' +
+      '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("chrome.preview")) + '</div><div class="preview-meta">' + escapeHtml(t("inspector.plainTextFallback")) + '</div></div>' +
+      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="' + attr(t("inspector.copyFullTitle")) + '">' + escapeHtml(t("inspector.copy")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePreview")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
       '<div class="preview-body"><pre class="preview-text">' + escapeHtml(data.text || "") + '</pre></div></div>';
     pane.classList.add("open");
     return;
@@ -117,16 +118,16 @@ function renderPreviewInspector(data: any) {
     const label = section.role ? section.role + " · " : "";
     return '<details class="preview-section"' + open + '>' +
       '<summary><span class="preview-title">' + escapeHtml(section.title || section.id) + '</span>' +
-      '<span class="preview-meta">' + escapeHtml(label + formatCount(section.chars) + " chars · ~" + formatCount(section.approxTokens) + " tokens") + '</span>' +
-      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="Copy this preview section" onclick="event.preventDefault()">Copy</button></summary>' +
+      '<span class="preview-meta">' + escapeHtml(label + t("inspector.sectionMeta", { chars: formatCount(section.chars), tokens: formatCount(section.approxTokens) })) + '</span>' +
+      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="' + attr(t("inspector.copySectionTitle")) + '" onclick="event.preventDefault()">' + escapeHtml(t("inspector.copy")) + '</button></summary>' +
       '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
       '</details>';
   }).join("");
 
-  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Prompt preview">' +
-    '<div class="preview-head"><div><div class="preview-title">Prompt preview: ' + escapeHtml(preview.stackId || selectedId()) + '</div>' +
-    '<div class="preview-meta">' + escapeHtml(formatCount(preview.totalChars) + " chars · ~" + formatCount(preview.approxTokens) + " tokens · " + (preview.messages || []).length + " messages") + '</div></div>' +
-    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full prompt preview">Copy full</button><button data-preview-close="true" data-icon="×" title="Close the preview">Close</button></div></div>' +
+  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.previewAria")) + '">' +
+    '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("inspector.previewTitleId", { id: preview.stackId || selectedId() })) + '</div>' +
+    '<div class="preview-meta">' + escapeHtml(t("inspector.previewMeta", { chars: formatCount(preview.totalChars), tokens: formatCount(preview.approxTokens), count: (preview.messages || []).length })) + '</div></div>' +
+    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="' + attr(t("inspector.copyFullPromptTitle")) + '">' + escapeHtml(t("inspector.copyFull")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePreview")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
     '<div class="preview-body">' + sectionHtml + '</div></div>';
   pane.classList.add("open");
 }
@@ -135,21 +136,21 @@ function renderPayloadInspector(snapshot: any) {
   const pane = el("preview");
   if (snapshot.status === "idle") {
     previewCopyTexts = [];
-    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
-      '<div class="preview-head"><div><div class="preview-title">Provider payload</div><div class="preview-meta">No payload captured.</div></div>' +
-      '<div class="preview-actions"><button data-payload-arm="true" data-icon="◆" title="Capture the next provider payload">Arm next</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
-      '<div class="preview-body"><div class="empty">Arm capture, then send the next prompt in Pi. The provider payload will appear here before it is sent.</div></div></div>';
+    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.payloadTitle")) + '">' +
+      '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("inspector.payloadTitle")) + '</div><div class="preview-meta">' + escapeHtml(t("inspector.noPayload")) + '</div></div>' +
+      '<div class="preview-actions"><button data-payload-arm="true" data-icon="◆" title="' + attr(t("inspector.armNextTitle")) + '">' + escapeHtml(t("inspector.armNext")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePayload")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
+      '<div class="preview-body"><div class="empty">' + escapeHtml(t("inspector.armEmptyBody")) + '</div></div></div>';
     pane.classList.add("open");
     return;
   }
 
   if (snapshot.status === "armed") {
-    const meta = snapshot.armedAt ? "Armed at " + snapshot.armedAt : "Waiting for next provider request";
+    const meta = snapshot.armedAt ? t("inspector.armedAt", { time: snapshot.armedAt }) : t("inspector.armedWaiting");
     previewCopyTexts = [];
-    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
-      '<div class="preview-head"><div><div class="preview-title">Payload capture armed</div><div class="preview-meta">' + escapeHtml(meta) + '</div></div>' +
-      '<div class="preview-actions"><button class="danger" data-payload-clear="true" data-icon="×" title="Clear the armed payload capture">Clear</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
-      '<div class="preview-body"><div class="empty">Send the next prompt in Pi. The exact provider payload will be captured here and redacted before display.</div></div></div>';
+    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.payloadTitle")) + '">' +
+      '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("inspector.armedTitle")) + '</div><div class="preview-meta">' + escapeHtml(meta) + '</div></div>' +
+      '<div class="preview-actions"><button class="danger" data-payload-clear="true" data-icon="×" title="' + attr(t("inspector.clearArmedTitle")) + '">' + escapeHtml(t("inspector.clear")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePayload")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
+      '<div class="preview-body"><div class="empty">' + escapeHtml(t("inspector.armedBody")) + '</div></div></div>';
     pane.classList.add("open");
     return;
   }
@@ -162,20 +163,20 @@ function renderPayloadInspector(snapshot: any) {
     return '<details class="preview-section"' + open + '>' +
       '<summary><span class="preview-title">' + escapeHtml(section.title) + '</span>' +
       '<span class="preview-meta">' + escapeHtml(section.meta) + '</span>' +
-      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="Copy this payload section" onclick="event.preventDefault()">Copy</button></summary>' +
+      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="' + attr(t("inspector.copySectionTitle")) + '" onclick="event.preventDefault()">' + escapeHtml(t("inspector.copy")) + '</button></summary>' +
       '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
       '</details>';
   }).join("");
   const metaParts = [
-    formatCount(capture.chars) + " chars",
+    t("inspector.chars", { count: formatCount(capture.chars) }),
     "~" + formatCount(capture.approxTokens) + " tokens",
-    capture.stackId ? "stack " + capture.stackId : undefined,
-    capture.truncated ? "truncated" : undefined,
+    capture.stackId ? t("inspector.stackId", { id: capture.stackId }) : undefined,
+    capture.truncated ? t("inspector.truncated") : undefined,
   ].filter(Boolean);
-  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Provider payload capture">' +
-    '<div class="preview-head"><div><div class="preview-title">Provider payload</div>' +
+  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.payloadTitle")) + '">' +
+    '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("inspector.payloadTitle")) + '</div>' +
     '<div class="preview-meta">' + escapeHtml(metaParts.join(" · ") + (capture.capturedAt ? " · " + capture.capturedAt : "")) + '</div></div>' +
-    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="Copy the full redacted payload">Copy full</button><button data-payload-arm="true" data-icon="◆" title="Capture the next provider payload">Arm again</button><button class="danger" data-payload-clear="true" data-icon="×" title="Clear the captured payload">Clear</button><button data-preview-close="true" data-icon="×" title="Close the payload inspector">Close</button></div></div>' +
+    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="' + attr(t("inspector.copyPayloadTitle")) + '">' + escapeHtml(t("inspector.copyFull")) + '</button><button data-payload-arm="true" data-icon="◆" title="' + attr(t("inspector.armNextTitle")) + '">' + escapeHtml(t("inspector.armAgain")) + '</button><button class="danger" data-payload-clear="true" data-icon="×" title="' + attr(t("inspector.clearCapturedTitle")) + '">' + escapeHtml(t("inspector.clear")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePayload")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
     '<div class="preview-body">' + sectionHtml + '</div></div>';
   pane.classList.add("open");
 }
@@ -190,8 +191,8 @@ function payloadSections(capture: any) {
     if (entries.length) return entries.map(([key, item]: any) => payloadSection(key, item));
   }
   return [{
-    title: capture.error ? "Stringify error" : capture.truncated ? "Raw truncated payload" : "Raw payload",
-    meta: formatCount((capture.text || "").length) + " chars",
+    title: capture.error ? t("inspector.stringifyError") : capture.truncated ? t("inspector.rawTruncated") : t("inspector.rawPayload"),
+    meta: t("inspector.chars", { count: formatCount((capture.text || "").length) }),
     content: capture.text || "",
   }];
 }
@@ -199,7 +200,7 @@ function payloadSections(capture: any) {
 function payloadSection(title: any, value: any) {
   const rendered = JSON.stringify(value, null, 2);
   const content = rendered === undefined ? String(value) : rendered;
-  const meta = describePayloadValue(value) + " · " + formatCount(content.length) + " chars";
+  const meta = describePayloadValue(value) + " · " + t("inspector.chars", { count: formatCount(content.length) });
   return { title, meta, content };
 }
 
@@ -218,7 +219,7 @@ async function copyPreviewText(index: any) {
   const text = previewCopyTexts[index] || "";
   if (!text) return;
   await copyTextToClipboard(text);
-  setStatus("Copied text", "success");
+  setStatus(t("inspector.copiedText"), "success");
 }
 
 async function copyTextToClipboard(text: any) {

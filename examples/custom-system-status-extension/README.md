@@ -2,12 +2,12 @@
 
 This example shows how trusted pi-forge extension modules can register a custom macro and custom slot without importing `@zihanw/pi-forge` from a loose Pi extension file.
 
-It registers:
+At registration time it captures one machine snapshot, then registers:
 
 - `{{ extensions.cpuLoad }}` macro: one-line CPU load summary.
 - `machine-status` slot: CPU load, OS load average, memory, and uptime snapshot.
 
-The renderers are synchronous, so this example uses Node's OS load average and memory APIs. It is a rough machine-load signal, not an async sampled CPU-utilization profiler.
+The renderers only format that captured value, so repeated prompt compilation over the same registered extension is deterministic. The snapshot stays fixed until the extension is reloaded; this is intentionally a registration/pure-render example, not live telemetry or an async sampled CPU-utilization profiler.
 
 ## Try It
 
@@ -27,6 +27,7 @@ Start Pi, trust the project if prompted, then run:
 ```
 
 Use `/preset diagnostics` to confirm the extension file is listed under loaded pi-forge extensions.
+Run `/preset reload` whenever you want to capture a fresh machine snapshot.
 
 ## Where To Put The Extension
 
@@ -54,7 +55,7 @@ Each module exports a default function or named `register` function:
 ```ts
 export default function register(api) {
   api.registerMacro({ name: "cpuLoad", dependencies: [], render: ({ env, helpers }) => "..." });
-  api.registerSlot({ name: "machine-status", render: () => "..." });
+  api.registerSlot({ name: "machine-status", dependencies: [], render: ({ options, helpers }) => "..." });
 }
 ```
 

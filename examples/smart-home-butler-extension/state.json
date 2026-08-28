@@ -1,6 +1,0 @@
-{
-  "lights": { "living_room": true, "bedroom": false, "study": true },
-  "curtains": { "living_room": 80, "bedroom": 0 },
-  "doors": { "front": "locked", "balcony": "unlocked" },
-  "updatedAt": "2026-08-27T23:40:00+08:00"
-}

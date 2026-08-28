@@ -1,3 +1,4 @@
+import { t } from "./i18n.ts";
 import { createApp, type App } from "vue";
 
 import StackItemEditor from "./components/StackItemEditor.vue";
@@ -38,7 +39,7 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 			},
 			onError: (message: string) => {
 				error = message;
-				if (message) deps.setStatus("Invalid item options JSON", "error");
+				if (message) deps.setStatus(t("error.invalidItemOptionsShort"), "error");
 			},
 			onMode: (next: "form" | "json") => {
 				mode = next;

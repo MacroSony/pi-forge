@@ -7,17 +7,21 @@
 // (`mount: "legacy"`) so the nav, active-state handling, and
 // disable-when-empty behavior in legacy-editor.ts keep working unchanged.
 
+// Type-only import: this module stays runtime-free of Vue/DOM so it remains
+// unit-testable under Node.
+import type { MessageKey } from "./i18n.ts";
+
 export type EditorTabMount = "legacy" | "vue";
 
 export interface EditorTabDefinition {
 	/** Stable string tab id; also emitted as the button's data-tab attribute. */
 	id: string;
-	/** Visible label on the tab button. */
-	label: string;
+	/** Visible label on the tab button (i18n message key). */
+	labelKey: MessageKey;
 	/** Glyph rendered via the button's data-icon attribute. */
 	icon: string;
-	/** Accessible tooltip on the tab button. */
-	title: string;
+	/** Accessible tooltip on the tab button (i18n message key). */
+	titleKey: MessageKey;
 	/**
 	 * "legacy" tabs (items) render the imperative workspace; "vue" tabs mount a
 	 * Vue component into the tab panel via vue-tab-host.
@@ -38,45 +42,45 @@ export interface EditorTabDefinition {
 export const EDITOR_TABS = [
 	{
 		id: "items",
-		label: "Items",
+		labelKey: "tab.items",
 		icon: "☰",
-		title: "Edit prompt stack items",
+		titleKey: "tab.itemsTitle",
 		mount: "legacy",
 		stackFields: [],
 		internalDock: false,
 	},
 	{
 		id: "regex",
-		label: "Regex",
+		labelKey: "tab.regex",
 		icon: ".*",
-		title: "Edit regex transform rules",
+		titleKey: "tab.regexTitle",
 		mount: "vue",
 		stackFields: ["regex"],
 		internalDock: false,
 	},
 	{
 		id: "policy",
-		label: "Policy",
+		labelKey: "tab.policy",
 		icon: "⊕",
-		title: "Edit active-tool policy and model-visible skill filtering",
+		titleKey: "tab.policyTitle",
 		mount: "vue",
 		stackFields: ["tools", "skills"],
 		internalDock: false,
 	},
 	{
 		id: "stack",
-		label: "Stack",
+		labelKey: "tab.stack",
 		icon: "{}",
-		title: "Edit context options and raw stack JSON",
+		titleKey: "tab.stackTitle",
 		mount: "vue",
 		stackFields: ["context", "variables"],
 		internalDock: false,
 	},
 	{
 		id: "preview",
-		label: "Preview",
+		labelKey: "tab.preview",
 		icon: "◱",
-		title: "Compiled prompt, unsaved draft diff, and recent run diff",
+		titleKey: "tab.previewTitle",
 		mount: "vue",
 		stackFields: [],
 		internalDock: true,

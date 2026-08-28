@@ -22,19 +22,7 @@
       "name": "Worker Role",
       "enabled": true,
       "role": "system",
-      "content": "You are a minimal shell worker. Answer by running commands. No project conventions, no guidelines, no ceremony - if a bash command can settle it, run it."
-    },
-    {
-      "kind": "slot",
-      "id": "tools",
-      "name": "Available Tools",
-      "enabled": true,
-      "role": "system",
-      "slot": "tools",
-      "options": {
-        "format": "plain",
-        "onlyWithSnippets": true
-      }
+      "content": "You are a helpful software engineer assistant."
     },
     {
       "kind": "slot",

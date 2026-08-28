@@ -313,6 +313,197 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 	}
 });
 
+test("web editor switches between English and Chinese", { timeout: 20_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-browser-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		name: "Locale Browser",
+		autoActivate: true,
+		mode: "replace",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: "Locale browser prompt." },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	let editorStarted = false;
+	const browserErrors: string[] = [];
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		editorStarted = true;
+		const editorUrl = latestEditorUrl(context.editors);
+		browser = await chromium.launch({
+			executablePath,
+			headless: true,
+			args: process.platform === "linux" ? ["--no-sandbox"] : [],
+		});
+		const page = await browser.newPage();
+		page.setDefaultTimeout(5_000);
+		page.on("pageerror", (error) => browserErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error") browserErrors.push(message.text());
+		});
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#stackList .stack-row").first().waitFor();
+
+		// English baseline.
+		assert.equal(await page.locator("html").getAttribute("lang"), "en");
+		await page.locator("#localeSelect").waitFor();
+		assert.match(await page.locator("#stacksSurfaceBtn").textContent() ?? "", /Prompt stacks/);
+		assert.match(await page.locator("#saveBtn").textContent() ?? "", /Save/);
+
+		// Switch to Chinese: chrome, Vue surfaces, and the legacy workspace switch live.
+		await page.locator("#localeSelect").selectOption("zh-CN");
+		assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+		await page.locator("#stacksSurfaceBtn").filter({ hasText: "提示词堆栈" }).waitFor();
+		await page.locator("#saveBtn").filter({ hasText: "保存" }).waitFor();
+		await page.locator("#itemsTabBtn").filter({ hasText: "条目" }).waitFor();
+		await page.locator(".sidebar .side-title").filter({ hasText: "提示词堆栈" }).waitFor();
+		await page.locator("#addItemBtn").filter({ hasText: "添加块" }).waitFor();
+		await page.locator("#diagnostics").filter({ hasText: "诊断" }).waitFor();
+		await page.locator("#profilesSurfaceBtn").click();
+		await page.locator(".profile-heading").filter({ hasText: "代理配置" }).waitFor();
+		await page.locator("#stacksSurfaceBtn").click();
+
+		// The choice persists to project config and survives a page reload.
+		const config = JSON.parse(readFileSync(join(cwd, ".pi", "forge", "config.json"), "utf8")) as { webEditor?: { locale?: string } };
+		assert.equal(config.webEditor?.locale, "zh-CN");
+		await page.reload();
+		await page.locator("#stackList .stack-row").first().waitFor();
+		assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+		await page.locator("#saveBtn").filter({ hasText: "保存" }).waitFor();
+		assert.equal(await page.locator(".surface-nav").getAttribute("aria-label"), "Pi Forge 编辑器区域");
+		assert.equal(await page.locator(".view-tabs").getAttribute("aria-label"), "堆栈编辑器区域");
+		await page.locator("#regexTabBtn").click();
+		await page.locator("#addRegexRuleBtn").click();
+		await page.locator("[data-regex-row] label").filter({ hasText: /^规则 ID$/ }).waitFor();
+		await page.locator("[data-regex-row] label").filter({ hasText: /^名称$/ }).waitFor();
+		await page.locator("#status").filter({ hasText: /正则规则 regex-1 需要填写模式/ }).waitFor();
+
+		// Switching back restores English.
+		await page.locator("#localeSelect").selectOption("en");
+		assert.equal(await page.locator("html").getAttribute("lang"), "en");
+		await page.locator("#stacksSurfaceBtn").filter({ hasText: "Prompt stacks" }).waitFor();
+		await page.locator("#saveBtn").filter({ hasText: "Save" }).waitFor();
+
+		assert.deepEqual(browserErrors, []);
+	} finally {
+		await browser?.close();
+		if (editorStarted) await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
+test("web editor edits merge options and previews merged messages", { timeout: 20_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-browser-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		name: "Merge Browser",
+		autoActivate: true,
+		mode: "replace",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: "Merge browser system prompt." },
+			{ kind: "block", id: "alpha", name: "Alpha", enabled: true, role: "user", content: "First user block." },
+			{ kind: "block", id: "beta", name: "Beta", enabled: true, role: "user", content: "Second user block." },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	let editorStarted = false;
+	const browserErrors: string[] = [];
+
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		editorStarted = true;
+		const editorUrl = latestEditorUrl(context.editors);
+		browser = await chromium.launch({
+			executablePath,
+			headless: true,
+			args: process.platform === "linux" ? ["--no-sandbox"] : [],
+		});
+		const page = await browser.newPage();
+		page.setDefaultTimeout(5_000);
+		page.on("pageerror", (error) => browserErrors.push(error.message));
+		page.on("console", (message) => {
+			if (message.type() === "error") browserErrors.push(message.text());
+		});
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator("#stackList .stack-row").first().waitFor();
+
+		// Enable merging with a custom separator on the Stack tab and save.
+		await page.locator("#stackTabBtn").click();
+		await page.locator("#mergeConsecutiveRolesInput").check();
+		await page.locator("#customMergeSeparatorInput").check();
+		await page.locator("#mergeSeparatorInput").fill("\n====\n");
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+
+		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			context?: Record<string, unknown>;
+		};
+		assert.equal(saved.context?.mergeConsecutiveRoles, true);
+		assert.equal(saved.context?.mergeSeparator, "\n====\n");
+
+		// The compiled preview shows the two user blocks as one merged message.
+		await page.locator("#previewTabBtn").click();
+		const merged = page.locator(".context-diff-section").filter({ hasText: "First user block." });
+		await merged.waitFor();
+		assert.match((await merged.locator(".section-title").textContent()) ?? "", /Alpha \+ Beta/);
+		assert.match((await merged.locator(".section-text").textContent()) ?? "", /First user block\.\n====\nSecond user block\./);
+
+		// An explicitly empty custom separator is distinct from the omitted
+		// default and joins the message texts directly.
+		await page.locator("#stackTabBtn").click();
+		await page.locator("#mergeSeparatorInput").fill("");
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+		const emptySeparator = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			context?: Record<string, unknown>;
+		};
+		assert.equal(emptySeparator.context?.mergeSeparator, "");
+
+		// Turning custom mode off restores the omitted/default separator.
+		await page.locator("#customMergeSeparatorInput").uncheck();
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+		const defaultSeparator = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			context?: Record<string, unknown>;
+		};
+		assert.equal(Object.hasOwn(defaultSeparator.context ?? {}, "mergeSeparator"), false);
+
+		assert.deepEqual(browserErrors, []);
+	} finally {
+		await browser?.close();
+		if (editorStarted) await harness.commands.preset.handler("ui stop", context.ctx);
+	}
+});
+
 function findChromeExecutable(): string | undefined {
 	const candidates = [
 		process.env.CHROME_PATH,

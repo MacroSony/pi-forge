@@ -1,6 +1,6 @@
 import { compileMessages, getLatestUserMessage, } from "./compiler.js";
 import { PromptCompilationContext } from "./compiler.js";
-import { applyFinalizeRegexRulesToMessage } from "./regex.js";
+import { applyFinalizeRegexRulesToMessage, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules } from "./regex.js";
 import { promptRuntimeFromPi } from "./prompt-runtime.js";
 import { resetCompileCycle } from "./compile-cycle.js";
 import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.js";
@@ -78,8 +78,23 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     });
     pi.on("context", async (event, ctx) => {
         const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
-        if (!active || !compileCycle.currentSystemPromptOptions || !compileCycle.contextRewritePending)
+        if (!active || !compileCycle.currentSystemPromptOptions)
             return;
+        if (!compileCycle.contextRewritePending) {
+            // Tool-result follow-up requests receive Pi's natural context. Outgoing
+            // rules that opt into every-request application (frequency: "request")
+            // still run over the full natural context — this is the only regex
+            // pipeline entry on follow-ups, and it is wire-consistent because each
+            // request is rebuilt from the transcript rather than from the first
+            // request's rewritten output.
+            if (!hasRequestFrequencyRules(active.stack))
+                return;
+            const diagnostics = [];
+            const messages = applyRequestFrequencyRulesToMessages(active.stack, event.messages, diagnostics);
+            if (diagnostics.length > 0)
+                deps.recordCompileDiagnostics(ctx, diagnostics);
+            return messages === event.messages ? undefined : { messages };
+        }
         // Rewrite the message layout only for the first provider request of a user-submitted prompt.
         // Tool-result follow-up turns must receive Pi's natural context; otherwise post-history
         // prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call

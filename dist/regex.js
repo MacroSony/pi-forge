@@ -2,6 +2,8 @@ const ALLOWED_REGEX_FLAGS = new Set(["g", "i", "m", "s", "u"]);
 const VALID_STAGES = new Set(["history", "compiled"]);
 const VALID_EFFECTS = new Set(["outgoing", "finalize"]);
 const VALID_TARGETS = new Set(["system", "messages"]);
+const VALID_FREQUENCIES = new Set(["turn", "request"]);
+const FINALIZE_ROLES = new Set(["assistant", "toolResult"]);
 export function validateRegexConfig(config) {
     const diagnostics = [];
     if (config === undefined)
@@ -47,11 +49,63 @@ export function applyRegexRulesToMessages(stack, messages, stage, diagnostics) {
     }
     return result;
 }
+/** True when the stack has outgoing message rules that opt into every-request application. */
+export function hasRequestFrequencyRules(stack) {
+    return requestFrequencyMessageRules(stack, []).length > 0;
+}
+/**
+ * Apply outgoing rules with `frequency: "request"` to Pi's natural context on
+ * a tool-result follow-up request. On follow-ups there is no stack layout
+ * rewrite, so both stages collapse onto the transcript: history-stage rules
+ * and compiled-stage rules targeting messages all apply to the full natural
+ * context. History-stage rules run first, mirroring compile order. Each
+ * provider request is rebuilt from the transcript, so re-application is
+ * wire-consistent and never doubled.
+ */
+export function applyRequestFrequencyRulesToMessages(stack, messages, diagnostics) {
+    let result = messages;
+    for (const rule of requestFrequencyMessageRules(stack, diagnostics)) {
+        const stats = { matches: 0, changedSegments: 0 };
+        result = transformMessages(result, rule, stats);
+        addRuleStats(diagnostics, rule, rule.stage, "messages", stats);
+    }
+    return result;
+}
+function requestFrequencyMessageRules(stack, diagnostics) {
+    const rules = Array.isArray(stack.regex?.rules) ? stack.regex.rules : [];
+    const historyRules = [];
+    const compiledRules = [];
+    for (const rawRule of rules) {
+        if (!isPlainObject(rawRule))
+            continue;
+        if (rawRule.enabled === false)
+            continue;
+        if (rawRule.frequency !== "request")
+            continue;
+        if ((rawRule.effect ?? "outgoing") !== "outgoing")
+            continue;
+        if (rawRule.stage === "compiled" && Array.isArray(rawRule.targets) && !rawRule.targets.includes("messages"))
+            continue;
+        const rule = compileRuntimeRule(rawRule, diagnostics);
+        if (!rule)
+            continue;
+        if (rule.stage === "history")
+            historyRules.push(rule);
+        else
+            compiledRules.push(rule);
+    }
+    return [...historyRules, ...compiledRules];
+}
 export function applyFinalizeRegexRulesToMessage(stack, message, diagnostics) {
-    if (String(message.role) !== "assistant")
+    const role = String(message.role);
+    if (!FINALIZE_ROLES.has(role))
         return undefined;
     let result = message;
     for (const rule of regexRulesFor(stack, "compiled", "messages", "finalize", diagnostics)) {
+        // toolResult requires explicit opt-in via the rule's roles; rules without
+        // roles keep their assistant-only behavior from before the extension.
+        if (role === "toolResult" && !rule.roles?.includes("toolResult"))
+            continue;
         const stats = { matches: 0, changedSegments: 0 };
         const [next = result] = transformMessages([result], rule, stats);
         result = next;
@@ -61,7 +115,7 @@ export function applyFinalizeRegexRulesToMessage(stack, message, diagnostics) {
         return undefined;
     diagnostics.push({
         level: "warning",
-        message: "Finalize regex replaced finalized assistant message content; original model output is not preserved in the stored transcript.",
+        message: "Finalize regex replaced stored message content; the original content is not preserved in the transcript.",
     });
     return result;
 }
@@ -93,7 +147,21 @@ function validateRule(rawRule, index, seenIds, diagnostics) {
             diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} effect must be "outgoing" or "finalize".` });
         }
         else if (rawRule.effect === "finalize") {
-            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" rewrites finalized assistant messages and replaces the original model output in the stored transcript.` });
+            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" rewrites stored assistant/tool-result messages at completion time; the original content is not preserved in the transcript.` });
+        }
+    }
+    if (rawRule.frequency !== undefined) {
+        if (!VALID_FREQUENCIES.has(rawRule.frequency)) {
+            diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} frequency must be "turn" or "request".` });
+        }
+        else if (effect === "finalize") {
+            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} frequency has no effect for "finalize" rules; finalize runs when each message completes.` });
+        }
+        else if (rawRule.frequency === "request"
+            && rawRule.stage === "compiled"
+            && isStringArray(rawRule.targets)
+            && !rawRule.targets.includes("messages")) {
+            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} frequency "request" has no effect: the rule does not target messages.` });
         }
     }
     if (effect === "finalize" && rawRule.stage !== "compiled") {
@@ -144,8 +212,15 @@ function validateRule(rawRule, index, seenIds, diagnostics) {
             }
         }
     }
-    if (effect === "finalize" && isStringArray(rawRule.roles) && !rawRule.roles.includes("assistant")) {
-        diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" only runs for finalized assistant messages, but roles does not include "assistant".` });
+    if (effect === "finalize" && isStringArray(rawRule.roles)) {
+        const runnable = rawRule.roles.filter((role) => FINALIZE_ROLES.has(role));
+        const unsupported = rawRule.roles.filter((role) => !FINALIZE_ROLES.has(role));
+        if (runnable.length === 0) {
+            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" only runs for finalized assistant and tool-result messages, but roles includes neither.` });
+        }
+        else if (unsupported.length > 0) {
+            diagnostics.push({ level: "warning", message: `${regexRuleLabel(id, index)} effect "finalize" ignores unsupported roles: ${unsupported.join(", ")} (only assistant and tool-result messages are finalized).` });
+        }
     }
     if (rawRule.maxMessages !== undefined && !isPositiveInteger(rawRule.maxMessages)) {
         diagnostics.push({ level: "error", message: `${regexRuleLabel(id, index)} maxMessages must be a positive integer when provided.` });
@@ -202,6 +277,7 @@ function compileRuntimeRule(rule, diagnostics) {
             id: rule.id.trim(),
             stage: rule.stage,
             effect,
+            frequency: VALID_FREQUENCIES.has(rule.frequency) ? rule.frequency : "turn",
             targets: normalizeTargets(rule.targets),
             roles: isStringArray(rule.roles) ? rule.roles : undefined,
             maxMessages: isPositiveInteger(rule.maxMessages) ? Math.floor(rule.maxMessages) : undefined,

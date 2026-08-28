@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
+import { t } from "../i18n.ts";
 import type { EditorPromptStack } from "../types.ts";
 
 const props = defineProps<{
@@ -15,8 +16,8 @@ const emit = defineEmits<{
 
 const collapsed = ref(props.collapsed);
 const summary = computed(() => [
-	props.stack.id || "(no id)",
-	props.stack.name || "(unnamed)",
+	props.stack.id || t("metadata.noId"),
+	props.stack.name || t("stackList.unnamed"),
 	props.stack.mode || "replace",
 	props.filePath,
 ].filter(Boolean).join(" | "));
@@ -51,24 +52,24 @@ function toggleMetadata(): void {
 			:data-icon="collapsed ? '▸' : '▾'"
 			:aria-expanded="!collapsed"
 			type="button"
-			title="Show or hide stack metadata"
+			:title="t('metadata.toggleTitle')"
 			@click="toggleMetadata"
 		>
-			Metadata
+			{{ t("metadata.title") }}
 		</button>
 		<div id="metadataSummary" class="metadata-summary">{{ summary }}</div>
 	</div>
 	<div id="settings" v-show="!collapsed" class="settings">
 		<div class="field">
-			<label>Stack ID</label>
-			<input id="stackId" :value="stack.id" readonly title="Stack IDs are immutable; use Fork to create a new ID.">
+			<label>{{ t("metadata.stackId") }}</label>
+			<input id="stackId" :value="stack.id" readonly :title="t('metadata.stackIdTitle')">
 		</div>
 		<div class="field">
-			<label>Name</label>
+			<label>{{ t("metadata.name") }}</label>
 			<input id="stackName" :value="stack.name || ''" @input="setOptionalString('name', ($event.target as HTMLInputElement).value)">
 		</div>
 		<div class="field">
-			<label>Mode</label>
+			<label>{{ t("metadata.mode") }}</label>
 			<select id="stackMode" :value="stack.mode || 'replace'" @change="setMode(($event.target as HTMLSelectElement).value)">
 				<option value="replace">replace</option>
 				<option value="append">append</option>
@@ -76,7 +77,7 @@ function toggleMetadata(): void {
 			</select>
 		</div>
 		<div class="field">
-			<label>Auto activate</label>
+			<label>{{ t("metadata.autoActivate") }}</label>
 			<label class="checkline">
 				<input
 					id="stackAuto"
@@ -84,11 +85,11 @@ function toggleMetadata(): void {
 					:checked="stack.autoActivate === true"
 					@change="setAutoActivate(($event.target as HTMLInputElement).checked)"
 				>
-				enabled
+				{{ t("metadata.enabled") }}
 			</label>
 		</div>
 		<div class="field wide">
-			<label>Description</label>
+			<label>{{ t("metadata.description") }}</label>
 			<textarea
 				id="stackDescription"
 				class="wide"
@@ -97,7 +98,7 @@ function toggleMetadata(): void {
 			></textarea>
 		</div>
 		<div class="field wide">
-			<label>File</label>
+			<label>{{ t("metadata.file") }}</label>
 			<input :value="filePath" disabled>
 		</div>
 	</div>

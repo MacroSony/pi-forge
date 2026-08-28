@@ -10,6 +10,8 @@ This file contains forward-looking product work only. Completed capability belon
 
 The authoritative scope, accepted decisions, implementation lanes, and release gates are in the [lean 0.5 architecture plan](../design/architecture-0.5.md). The original six-phase architecture target remains the long-term goal and is archived in the [full proposal](../design/archive/0.5-full-proposal/README.md).
 
+Current stabilization includes the accepted 0.5.1 generic-settings amendment and the accepted 0.5.2 message-merge, localization, regex-frequency, and finalize-role amendment recorded in that plan.
+
 Implementation order:
 
 0. Documentation convergence: archive the full proposal and make the lean plan active.
@@ -44,6 +46,18 @@ The 0.4.1 release adds scoped global profiles and prompt stacks with project-ove
 Stable 0.4 does not imply that the subagent adapter or runtime has become stable. Prompt stacks and ordinary profile use remain independent of delegation.
 
 ## Deferred candidates
+
+### Naming convergence (preset/stack)
+
+Target model: **stack** names the composition section (ordered blocks/slots), **preset** names the file that bundles composition with tool/skill/regex policy, **profile** remains the model/thinking/preset bundle. The `/preset` command family already matches the target; the stored resource does not.
+
+When scheduled (bundle with other breaking cleanup, never as a standalone release):
+
+- Migrate `.pi/forge/prompt-stacks/` to `.pi/forge/presets/` byte-preserving, reusing the legacy stack-migration path; read-compat for the `"pi-forge.prompt-stack"` type, write `"pi-forge.preset"`.
+- Profile field `promptStack` becomes `preset` with read-compat for the old field.
+- Do **not** change the `/subagent` wire contract: keep `promptStackId` / `ForgeWirePromptStack` names as aliases; no port version bump, no coordinated pi-forge-subagents release, fingerprints unchanged.
+- Do **not** split composition and policy into separate files (referential-integrity and activation-matrix complexity); fork covers "same layout, different policy".
+- User-visible layer first: storage dirs, JSON type, web-editor labels, EN/zh-CN docs. Internal type names converge gradually via aliases.
 
 ### Sandbox and staged writes
 

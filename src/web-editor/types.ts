@@ -19,8 +19,12 @@ export interface WebEditorStackSummary {
 	diagnostics: PromptStackDiagnostic[];
 }
 
+export type WebEditorLocale = "en" | "zh-CN" | "auto";
+
 export interface WebEditorHost {
 	cwd: string;
+	getEditorConfig(): { locale: WebEditorLocale };
+	setEditorLocale(locale: WebEditorLocale): WebEditorOperationResult<{ locale: WebEditorLocale }>;
 	listStacks(): WebEditorStackSummary[];
 	listProfiles(): WebEditorProfileCollection;
 	reloadProfiles(): Promise<WebEditorOperationResult<WebEditorProfileCollection>>;

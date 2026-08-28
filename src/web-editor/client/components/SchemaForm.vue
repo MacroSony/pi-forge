@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 
+import { t } from "../i18n.ts";
 import type { FormSchema, FormValues, SchemaField } from "../../schema-form.ts";
 import {
 	defaultValueForField,
@@ -122,7 +123,7 @@ function placeholder(field: SchemaField): string {
 // --- record (per-profile table) controls -------------------------------------
 
 function recordKeyLabel(field: SchemaField): string {
-	return field.keyLabel ?? "Key";
+	return field.keyLabel ?? t("schema.key");
 }
 
 function recordKeyOptions(field: SchemaField, row?: RecordRow): Array<{ value: string; label: string }> {
@@ -132,7 +133,7 @@ function recordKeyOptions(field: SchemaField, row?: RecordRow): Array<{ value: s
 		? { value: option, label: option }
 		: { value: option.value, label: option.label ?? option.value });
 	if (row?.key && !options.some((option) => option.value === row.key)) {
-		options.push({ value: row.key, label: `${row.key} · configured profile unavailable` });
+		options.push({ value: row.key, label: t("schema.keyUnavailable", { key: row.key }) });
 	}
 	return options.filter((option) => !used.has(option.value));
 }
@@ -148,7 +149,7 @@ function addRecordRow(field: SchemaField): void {
 	if (field.keyOptions !== undefined) {
 		const option = recordKeyOptions(field)[0];
 		if (!option) {
-			emit("status", `Every available ${recordKeyLabel(field).toLowerCase()} already has an entry.`, "error");
+			emit("status", t("schema.allHaveEntries", { key: recordKeyLabel(field).toLowerCase() }), "error");
 			return;
 		}
 		key = option.value;
@@ -188,11 +189,11 @@ function syncRecord(field: SchemaField): void {
 	for (const row of rows) {
 		const key = row.key.trim();
 		if (!key) {
-			collision ||= "Every entry needs a key.";
+			collision ||= t("schema.needKey");
 			continue;
 		}
 		if (seen.has(key)) {
-			collision ||= "Entry keys must be unique.";
+			collision ||= t("schema.uniqueKeys");
 			continue;
 		}
 		seen.add(key);
@@ -333,14 +334,14 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						type="button"
 						data-icon="+"
 						:data-add-record="field.key"
-						:title="`Add a ${recordKeyLabel(field).toLowerCase()} entry`"
+						:title="t('schema.addEntryTitle', { key: recordKeyLabel(field).toLowerCase() })"
 						:disabled="!canAddRecordRow(field)"
 						@click="addRecordRow(field)"
 					>
-						Add entry
+						{{ t("schema.addEntry") }}
 					</button>
 					<span class="modal-spacer"></span>
-					<span class="modal-meta">One entry per {{ recordKeyLabel(field).toLowerCase() }}.</span>
+					<span class="modal-meta">{{ t("schema.oneEntryPer", { key: recordKeyLabel(field).toLowerCase() }) }}</span>
 				</div>
 				<div v-if="errors[field.key]" class="schema-field-error" data-field-error>{{ errors[field.key] }}</div>
 				<div class="data-table" :data-record-table="field.key">
@@ -436,15 +437,15 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 								class="danger"
 								data-icon="×"
 								:data-delete-record="field.key"
-								:title="`Delete this entry`"
+								:title="t('schema.deleteEntryTitle')"
 								@click="removeRecordRow(field, index)"
 							>
-								Delete
+								{{ t("common.delete") }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!(recordRows[field.key] ?? []).length" class="record-empty">
-						No entries yet.
+						{{ t("schema.noEntries") }}
 					</div>
 				</div>
 			</div>

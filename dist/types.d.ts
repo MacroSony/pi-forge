@@ -7,12 +7,20 @@ export type PromptStackSlotFormat = "xml" | "json" | "plain";
 export type PromptRegexStage = "history" | "compiled";
 export type PromptRegexEffect = "outgoing" | "finalize";
 export type PromptRegexTarget = "system" | "messages";
+/**
+ * `"turn"` (default): the rule runs during the full compilation on the first
+ * provider request of a user turn. `"request"`: an outgoing message rule also
+ * runs on tool-result follow-up requests, applied to Pi's full natural
+ * context. Meaningless for finalize rules and system-only targets.
+ */
+export type PromptRegexFrequency = "turn" | "request";
 export interface PromptRegexRule {
     id: string;
     name?: string;
     enabled?: boolean;
     stage: PromptRegexStage;
     effect?: PromptRegexEffect;
+    frequency?: PromptRegexFrequency;
     pattern: string;
     flags?: string;
     replace?: string;
@@ -42,6 +50,10 @@ export interface PromptStackDefaults {
 }
 export interface PromptStackContextOptions {
     allowDuplicateChatHistory?: boolean;
+    /** Merge runs of consecutive stack-item messages that share the same declared role into one message. Default: false. */
+    mergeConsecutiveRoles?: boolean;
+    /** Separator inserted between merged message texts. Default: "\n\n". */
+    mergeSeparator?: string;
 }
 export interface PromptStackBaseItem {
     kind: "block" | "slot";
@@ -179,6 +191,11 @@ export interface CompileMessageSource {
     historyIndex?: number;
     historyCount?: number;
     role?: string;
+    /** Present when consecutive-role merging combined several stack items into this message. */
+    mergedItems?: {
+        itemId?: string;
+        itemName?: string;
+    }[];
 }
 export interface CompileMessagesResult {
     messages: AgentMessage[];

@@ -1,9 +1,9 @@
 import { EDITOR_CLIENT_SCRIPT } from "./client-script.js";
 import { EDITOR_CLIENT_STYLES } from "./client-styles.js";
 import { EDITOR_STYLES } from "./styles.js";
-export function renderEditorHtml() {
+export function renderEditorHtml(lang = "en") {
     return String.raw `<!doctype html>
-<html lang="en">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

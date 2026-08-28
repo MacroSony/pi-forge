@@ -158,7 +158,105 @@ function compileMessagesWithRenderer(
 	}
 
 	messages = applyRegexRulesToMessages(stack, messages, "compiled", diagnostics);
+	if (stack.context?.mergeConsecutiveRoles) {
+		const merged = mergeConsecutiveStackItemMessages(
+			messages,
+			messageSources,
+			stack.context.mergeSeparator ?? "\n\n",
+			diagnostics,
+		);
+		messages = merged.messages;
+		messageSources = merged.sources;
+	}
 	return { messages, messageSources, diagnostics };
+}
+
+const MERGEABLE_MESSAGE_ROLES = new Set(["user", "assistant"]);
+
+/**
+ * Merge runs of consecutive stack-item messages that share the same declared
+ * role. Runs only combine stack-authored synthetic messages: chat-history
+ * output (including the implicit history tail) and custom-role items are hard
+ * boundaries. Runs execute after compiled-stage regex so rule semantics are
+ * unchanged, and only text-only messages participate.
+ */
+function mergeConsecutiveStackItemMessages(
+	messages: AgentMessage[],
+	sources: CompileMessageSource[],
+	separator: string,
+	diagnostics: PromptStackDiagnostic[],
+): { messages: AgentMessage[]; sources: CompileMessageSource[] } {
+	const mergedMessages: AgentMessage[] = [];
+	const mergedSources: CompileMessageSource[] = [];
+
+	for (let index = 0; index < messages.length; index++) {
+		const message = messages[index]!;
+		const source = sources[index];
+		const role = messageRole(message);
+		const last = mergedMessages.length - 1;
+		const lastMessage = last >= 0 ? mergedMessages[last]! : undefined;
+		const lastSource = last >= 0 ? mergedSources[last]! : undefined;
+
+		// A merge run requires both neighbours to be mergeable stack items of the
+		// same role. History and custom-role messages are hard boundaries.
+		const canMerge = lastMessage !== undefined
+			&& lastSource?.kind === "stack-item"
+			&& MERGEABLE_MESSAGE_ROLES.has(messageRole(lastMessage))
+			&& source?.kind === "stack-item"
+			&& MERGEABLE_MESSAGE_ROLES.has(role)
+			&& role === messageRole(lastMessage)
+			&& isTextOnlyMessage(lastMessage)
+			&& isTextOnlyMessage(message);
+
+		if (!canMerge) {
+			mergedMessages.push(message);
+			// sources always parallel messages; the fallback stays a merge boundary.
+			mergedSources.push(source ?? { kind: "implicit-history", role });
+			continue;
+		}
+
+		const priorItems = lastSource.mergedItems ?? [{ itemId: lastSource.itemId, itemName: lastSource.itemName }];
+		const mergedItems = [...priorItems, { itemId: source.itemId, itemName: source.itemName }];
+		if (priorItems.length === 1) {
+			diagnostics.push({
+				level: "info",
+				message: `Merged consecutive ${role} stack items into one message.`,
+				itemId: lastSource.itemId,
+			});
+		}
+		mergedMessages[last] = appendMessageText(lastMessage, message, separator);
+		mergedSources[last] = {
+			kind: "stack-item",
+			itemId: lastSource.itemId,
+			itemName: mergedItems.map((item) => item.itemName?.trim() || item.itemId || "item").join(" + "),
+			role,
+			mergedItems,
+		};
+	}
+
+	return { messages: mergedMessages, sources: mergedSources };
+}
+
+function isTextOnlyMessage(message: AgentMessage): boolean {
+	const content = (message as { content?: unknown }).content;
+	if (typeof content === "string") return true;
+	if (!Array.isArray(content)) return false;
+	return content.every((part) => isPlainObject(part) && part.type === "text" && typeof part.text === "string");
+}
+
+function appendMessageText(base: AgentMessage, addition: AgentMessage, separator: string): AgentMessage {
+	const baseContent = (base as { content?: unknown }).content;
+	const additionContent = (addition as { content?: unknown }).content;
+	const baseText = typeof baseContent === "string" ? baseContent : textPartsToText(baseContent);
+	const additionText = typeof additionContent === "string" ? additionContent : textPartsToText(additionContent);
+	return { ...base, content: [{ type: "text", text: baseText + separator + additionText }] } as AgentMessage;
+}
+
+function textPartsToText(content: unknown): string {
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((part) => (isPlainObject(part) && part.type === "text" && typeof part.text === "string" ? part.text : ""))
+		.join("");
 }
 
 

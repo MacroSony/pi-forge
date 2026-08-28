@@ -7,6 +7,7 @@ import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import { activateEditorView, currentEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
+import { t } from "./i18n.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
@@ -120,7 +121,7 @@ function setStatus(text: string, tone: any = "") {
 function markDirty() {
   dirty = true;
   renderDirtyState();
-  setStatus("Unsaved changes");
+  setStatus(t("status.unsavedChanges"));
   notifyDraftChanged();
 }
 
@@ -180,7 +181,7 @@ function handleProfileApplied() {
 }
 
 async function selectStack(id: any, options: any = {}) {
-  if (dirty && !options.keepDirty && !confirm("Discard unsaved changes?")) return;
+  if (dirty && !options.keepDirty && !confirm(t("confirm.discardChanges"))) return;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
   if (!editorStarted) return;
   selectedId = id;
@@ -193,7 +194,7 @@ async function selectStack(id: any, options: any = {}) {
   vueItemHost.reset();
   renderDirtyState();
   renderAll(data.diagnostics || []);
-  setStatus("Loaded " + loadedStack.id);
+  setStatus(t("status.loaded", { id: loadedStack.id }));
   notifyDraftChanged();
 }
 
@@ -238,17 +239,17 @@ function renderStackList() {
   const list = el("stackList");
   list.innerHTML = "";
   if (!stacks.length) {
-    list.innerHTML = '<div class="side-empty">No prompt stacks in this project.</div>';
+    list.innerHTML = '<div class="side-empty">' + escapeHtml(t("stackList.empty")) + '</div>';
     return;
   }
   for (const stack of stacks) {
     const row = document.createElement("button");
     row.className = "stack-row" + (stack.active ? " active" : "") + ((stack.selector || stack.id) === selectedId ? " selected" : "");
-    const diag = stack.errors ? '<span class="badge error">' + stack.errors + ' error</span>' : stack.warnings ? '<span class="badge warning">' + stack.warnings + ' warning</span>' : "";
-    const scopeBadge = stack.scope === "global" ? '<span class="badge">global</span>' : '';
-    row.innerHTML = '<div class="stack-name">' + escapeHtml(stack.id) + (stack.active ? '<span class="badge">active</span>' : '') + scopeBadge + diag + '</div>' +
-      '<div class="stack-meta">' + escapeHtml(stack.name || "(unnamed)") + '</div>' +
-      '<div class="stack-meta">' + stack.itemCount + ' items | ' + escapeHtml(stack.mode || "replace") + '</div>';
+    const diag = stack.errors ? '<span class="badge error">' + escapeHtml(t("stackList.errorCount", { count: stack.errors })) + '</span>' : stack.warnings ? '<span class="badge warning">' + escapeHtml(t("stackList.warningCount", { count: stack.warnings })) + '</span>' : "";
+    const scopeBadge = stack.scope === "global" ? '<span class="badge">' + escapeHtml(t("stackList.global")) + '</span>' : '';
+    row.innerHTML = '<div class="stack-name">' + escapeHtml(stack.id) + (stack.active ? '<span class="badge">' + escapeHtml(t("stackList.active")) + '</span>' : '') + scopeBadge + diag + '</div>' +
+      '<div class="stack-meta">' + escapeHtml(stack.name || t("stackList.unnamed")) + '</div>' +
+      '<div class="stack-meta">' + escapeHtml(t("stackList.itemCount", { count: stack.itemCount })) + ' | ' + escapeHtml(stack.mode || "replace") + '</div>';
     row.onclick = () => selectStack(stack.selector || stack.id);
     list.appendChild(row);
   }
@@ -288,7 +289,7 @@ function renderItemList() {
   list.innerHTML = "";
   list.classList.toggle("drag-active", dragIndex !== -1);
   if (!currentStack) return;
-  el("itemCount").textContent = currentStack.items.length + " total";
+  el("itemCount").textContent = t("itemList.total", { count: currentStack.items.length });
   list.ondragover = handleItemListDragOver;
   list.ondrop = handleItemListDrop;
   const diagnosticsByItem = diagnosticsForItems();
@@ -306,10 +307,10 @@ function renderItemList() {
       : warnings
         ? '<span class="item-badge warning" title="' + attr(diagnosticTitle(itemDiagnostics)) + '">' + warnings + 'W</span>'
         : "";
-    row.innerHTML = '<div class="drag-handle" title="Drag to reorder">≡</div>' +
+    row.innerHTML = '<div class="drag-handle" title="' + attr(t("itemList.dragToReorder")) + '">≡</div>' +
       '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + diagBadge + '</div>' +
       '<div class="item-meta">' + escapeHtml(item.kind) + ' | id: ' + escapeHtml(item.id) + (item.role ? " | " + escapeHtml(item.role) : "") + (item.kind === "slot" ? " | " + escapeHtml(item.slot || "") : "") + '</div></div>' +
-      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="Toggle item">' + (enabled ? "On" : "Off") + '</button>';
+      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>';
     row.onclick = (event: any) => {
       if (event.target?.classList?.contains("item-toggle")) return;
       selectedItemIndex = index;
@@ -480,7 +481,7 @@ function diagnosticTitle(diagnostics: any) {
 function renderItemEditor() {
   const editor = el("itemEditor");
   if (!vueItemHost.mount(editor)) {
-    editor.innerHTML = '<div class="empty">No item selected.</div>';
+    editor.innerHTML = '<div class="empty">' + escapeHtml(t("itemEditor.none")) + '</div>';
     el("deleteItemBtn").disabled = true;
     return;
   }
@@ -491,7 +492,7 @@ function showStackModal(title: any, meta: any, body: any, options: any = {}) {
   const pane = el("stackModal");
   pane.innerHTML = '<div class="modal-dialog" role="dialog" aria-modal="true" aria-label="' + attr(title) + '">' +
     '<div class="modal-head"><div><div class="modal-title">' + escapeHtml(title) + '</div><div class="modal-meta">' + escapeHtml(meta || "") + '</div></div>' +
-    '<div class="modal-actions"><button data-modal-close="true" data-icon="×" title="Close this dialog">Close</button></div></div>' +
+    '<div class="modal-actions"><button data-modal-close="true" data-icon="×" title="' + attr(t("modal.closeTitle")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
     '<div class="modal-body ' + attr(options.bodyClass || "") + '">' + body + '</div></div>';
   pane.classList.add("open");
 }
@@ -511,7 +512,7 @@ function applyStackFromVue(stack: EditorPromptStack) {
   vueTabHost.resetErrors();
   markDirty();
   renderAll(latestDiagnostics);
-  setStatus("Applied stack JSON to editor", "success");
+  setStatus(t("status.appliedStack"), "success");
 }
 
 function addItem(kind: any) {
@@ -539,7 +540,7 @@ function nextNumericItemId() {
 function deleteSelectedItem() {
   if (!currentStack || selectedItemIndex < 0) return;
   const item = currentStack.items[selectedItemIndex];
-  if (!confirm("Delete item " + item.id + "?")) return;
+  if (!confirm(t("confirm.deleteItem", { id: item.id }))) return;
   currentStack.items.splice(selectedItemIndex, 1);
   selectedItemIndex = Math.min(selectedItemIndex, currentStack.items.length - 1);
   markDirty();
@@ -556,7 +557,7 @@ async function saveStack() {
   dirty = false;
   renderDirtyState();
   renderAll(data.stack?.diagnostics || []);
-  setStatus("Saved " + selectedId, "success");
+  setStatus(t("status.saved", { id: selectedId }), "success");
   await selectStack(selectedId, { keepDirty: true });
 }
 
@@ -564,7 +565,7 @@ async function createStackRemote(stack: any, options: any = {}) {
   try {
     return await api("/api/stacks", { method: "POST", body: { stack, ...options } });
   } catch (error) {
-    if (error instanceof EditorApiError && error.status === 409 && !options.overwrite && confirm((error.message || "Stack already exists.") + "\n\nOverwrite it?")) {
+    if (error instanceof EditorApiError && error.status === 409 && !options.overwrite && confirm(t("confirm.overwriteStack", { message: error.message || "Stack already exists." }))) {
       return await api("/api/stacks", { method: "POST", body: { stack, ...options, overwrite: true } });
     }
     throw error;
@@ -584,22 +585,22 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
   renderDirtyState();
   await selectStack(selectedId, { keepDirty: true });
   const displayId = data.stack?.id || stack.id;
-  setStatus(actionLabel + " " + displayId, "success");
+  setStatus(t(actionLabel, { id: displayId }), "success");
 }
 
 async function createNewStack() {
-  if (dirty && !confirm("Discard unsaved changes?")) return;
-  const promptedId = prompt("New stack id", uniqueStackId("new-stack"));
+  if (dirty && !confirm(t("confirm.discardChanges"))) return;
+  const promptedId = prompt(t("prompt.newStackId"), uniqueStackId("new-stack"));
   if (promptedId === null) return;
   const id = sanitizeStackId(promptedId);
-  if (!id) throw new Error("Stack id must not be empty.");
-  if (id !== promptedId.trim() && !confirm("Use stack id '" + id + "'?")) return;
-  const promptedName = prompt("Stack display name", "Default Pi Prompt Mirror");
+  if (!id) throw new Error(t("error.stackIdEmpty"));
+  if (id !== promptedId.trim() && !confirm(t("confirm.useStackId", { id }))) return;
+  const promptedName = prompt(t("prompt.stackDisplayName"), "Default Pi Prompt Mirror");
   if (promptedName === null) return;
   const stack = defaultNewStack(id, promptedName.trim() || id);
   const scope = chooseCreateScope();
-  const activate = stacks.length === 0 || confirm("Activate new stack now?");
-  await createAndOpenStack(stack, activate, "Created", { scope });
+  const activate = stacks.length === 0 || confirm(t("confirm.activateNewStack"));
+  await createAndOpenStack(stack, activate, "status.created", { scope });
 }
 
 function defaultNewStack(id: any, name: any) {
@@ -735,33 +736,33 @@ async function handleImportFile(event: any) {
   if (!file) return;
   const text = await file.text();
   const imported = JSON.parse(text);
-  if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error("Imported JSON must be an object.");
+  if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error(t("error.importNotObject"));
   const stack = imported;
   if (!stack.id || typeof stack.id !== "string") {
-    const promptedId = prompt("Stack id", sanitizeStackId(file.name.replace(/\.json$/i, "")));
+    const promptedId = prompt(t("prompt.stackId"), sanitizeStackId(file.name.replace(/\.json$/i, "")));
     if (!promptedId) return;
     stack.id = promptedId.trim();
   }
-  if (!Array.isArray(stack.items)) throw new Error("Imported stack must contain an items array.");
+  if (!Array.isArray(stack.items)) throw new Error(t("error.importNoItems"));
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   const scope = chooseCreateScope();
-  const activate = confirm("Activate imported stack now?");
-  await createAndOpenStack(stack, activate, "Imported", { scope });
+  const activate = confirm(t("confirm.activateImportedStack"));
+  await createAndOpenStack(stack, activate, "status.imported", { scope });
 }
 
 async function forkStack() {
   const source = stackForSubmit();
-  const forkId = prompt("New fork stack id", uniqueForkId(source.id || "stack"));
+  const forkId = prompt(t("prompt.forkStackId"), uniqueForkId(source.id || "stack"));
   if (!forkId) return;
-  const forkName = prompt("Fork display name", ((source.name || source.id || "Prompt stack") + " fork"));
+  const forkName = prompt(t("prompt.forkDisplayName"), ((source.name || source.id || "Prompt stack") + " fork"));
   const fork = structuredClone(source);
   fork.id = forkId.trim();
   if (forkName && forkName.trim()) fork.name = forkName;
   fork.autoActivate = false;
   const scope = chooseCreateScope();
-  const activate = confirm("Activate fork now?");
-  await createAndOpenStack(fork, activate, "Forked", { scope });
+  const activate = confirm(t("confirm.activateFork"));
+  await createAndOpenStack(fork, activate, "status.forked", { scope });
 }
 
 async function exportStackJson() {
@@ -769,11 +770,11 @@ async function exportStackJson() {
   const json = JSON.stringify(stack, null, 2) + "\n";
   const downloaded = downloadTextFile(sanitizeStackId(stack.id || "prompt-stack") + ".json", json, "application/json");
   if (downloaded) {
-    setStatus("Exported " + (stack.id || "prompt stack"), "success");
+    setStatus(t("status.exported", { id: stack.id || "prompt stack" }), "success");
     return;
   }
   await copyTextToClipboard(json);
-  setStatus("Copied " + (stack.id || "prompt stack") + " JSON", "success");
+  setStatus(t("status.copiedJson", { id: stack.id || "prompt stack" }), "success");
 }
 
 function downloadTextFile(filename: any, text: any, type: any) {
@@ -826,21 +827,21 @@ async function activateStack() {
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/activate", { method: "POST" });
   stacks = data.stacks || stacks;
   renderStackList();
-  setStatus("Activated " + selectedId, "success");
+  setStatus(t("status.activated", { id: selectedId }), "success");
 }
 
 async function disableStacks() {
   const data = await api("/api/disable", { method: "POST" });
   stacks = data.stacks || stacks;
   renderStackList();
-  setStatus("Prompt stack disabled", "success");
+  setStatus(t("status.stackDisabled"), "success");
 }
 
 async function deleteCurrentStack() {
   if (!currentStack) return;
   const routeId = selectedId;
   const displayId = currentStack.id;
-  const message = "Delete prompt stack '" + displayId + "'?\n\nThis removes its JSON file from prompt-stack storage.";
+  const message = t("confirm.deleteStack", { id: displayId });
   if (!confirm(message)) return;
   const data = await api("/api/stacks/" + encodeURIComponent(routeId), { method: "DELETE" });
   stacks = data.stacks || [];
@@ -849,27 +850,27 @@ async function deleteCurrentStack() {
   const next = stacks.find((stack: any) => stack.active) || stacks[0];
   if (next) {
     await selectStack(next.selector || next.id, { keepDirty: true });
-    setStatus("Deleted " + displayId, "success");
+    setStatus(t("status.deleted", { id: displayId }), "success");
   } else {
     renderStackList();
     renderEmpty();
-    setStatus("Deleted " + displayId + "; no stacks remain", "success");
+    setStatus(t("status.deletedNoneRemain", { id: displayId }), "success");
   }
 }
 
 async function reloadFromDisk() {
-  if (dirty && !confirm("Discard unsaved changes?")) return;
+  if (dirty && !confirm(t("confirm.discardChanges"))) return;
   const data = await api("/api/reload", { method: "POST" });
   stacks = data.stacks || [];
   renderStackList();
   await loadStacks(selectedId);
-  setStatus("Reloaded from disk", "success");
+  setStatus(t("status.reloaded"), "success");
 }
 
 function stackForSubmit() {
-  if (!currentStack) throw new Error("No stack selected.");
+  if (!currentStack) throw new Error(t("error.noStackSelected"));
   const itemOptionsError = vueItemHost.getError();
-  if (itemOptionsError) throw new Error("Invalid item options JSON: " + itemOptionsError);
+  if (itemOptionsError) throw new Error(t("error.invalidItemOptions", { message: itemOptionsError }));
   const stackError = vueTabHost.getError("stack");
   if (stackError) throw new Error(stackError);
   const regexError = vueTabHost.getError("regex");
@@ -887,14 +888,15 @@ function renderDiagnostics(diagnostics: any) {
   const errors = latestDiagnostics.filter((diag: any) => (diag.level || "info") === "error").length;
   const warnings = latestDiagnostics.filter((diag: any) => diag.level === "warning").length;
   const collapsed = diagnosticsCollapsed ?? (errors === 0 && warnings === 0);
+  const countText = (one: any, many: any, count: any) => count === 1 ? t(one, { count }) : t(many, { count });
   const summary = !latestDiagnostics.length
-    ? "none"
+    ? t("diag.none")
     : [
-      errors ? errors + " error" + (errors === 1 ? "" : "s") : "",
-      warnings ? warnings + " warning" + (warnings === 1 ? "" : "s") : "",
-    ].filter(Boolean).join(" · ") || latestDiagnostics.length + " note" + (latestDiagnostics.length === 1 ? "" : "s");
+      errors ? countText("diag.errorOne", "diag.errorMany", errors) : "",
+      warnings ? countText("diag.warningOne", "diag.warningMany", warnings) : "",
+    ].filter(Boolean).join(" · ") || countText("diag.noteOne", "diag.noteMany", latestDiagnostics.length);
   const body = !latestDiagnostics.length
-    ? '<div class="diagnostic info">No diagnostics.</div>'
+    ? '<div class="diagnostic info">' + escapeHtml(t("diag.noDiagnostics")) + '</div>'
     : latestDiagnostics.map((diag: any) => {
       const level = diag.level || "info";
       const item = diag.itemId ? " [" + escapeHtml(diag.itemId) + "]" : "";
@@ -903,8 +905,8 @@ function renderDiagnostics(diagnostics: any) {
   const pane = el("diagnostics");
   pane.classList.toggle("collapsed", collapsed);
   pane.innerHTML =
-    '<button type="button" id="diagnosticsToggleBtn" class="diagnostics-head" aria-expanded="' + String(!collapsed) + '" title="Toggle the diagnostics panel">' +
-    '<span class="diagnostics-title">Diagnostics · ' + escapeHtml(summary) + '</span>' +
+    '<button type="button" id="diagnosticsToggleBtn" class="diagnostics-head" aria-expanded="' + String(!collapsed) + '" title="' + attr(t("diag.toggle")) + '">' +
+    '<span class="diagnostics-title">' + escapeHtml(t("diag.title", { summary })) + '</span>' +
     '<span class="diagnostics-chevron">▾</span>' +
     '</button>' +
     '<div class="diagnostics-body">' + body + '</div>';
@@ -933,11 +935,11 @@ function renderEmpty() {
   el("itemList").innerHTML = "";
   el("itemEditor").innerHTML =
     '<div class="empty">' +
-    '<div class="empty-title">No prompt stacks found.</div>' +
-    '<div>Create a stack in this project, or import an existing pi-forge JSON file.</div>' +
+    '<div class="empty-title">' + escapeHtml(t("empty.title")) + '</div>' +
+    '<div>' + escapeHtml(t("empty.body")) + '</div>' +
     '<div class="empty-actions">' +
-    '<button id="emptyNewStackBtn" class="primary" data-icon="+" title="Create a new prompt stack">New stack</button>' +
-    '<button id="emptyImportBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>' +
+    '<button id="emptyNewStackBtn" class="primary" data-icon="+" title="' + attr(t("chrome.newStackTitle")) + '">' + escapeHtml(t("chrome.newStack")) + '</button>' +
+    '<button id="emptyImportBtn" data-icon="⇪" title="' + attr(t("chrome.importTitle")) + '">' + escapeHtml(t("chrome.import")) + '</button>' +
     '</div>' +
     '</div>';
   el("tabPanel").classList.remove("open");
@@ -945,7 +947,7 @@ function renderEmpty() {
   renderDiagnostics([]);
   el("emptyNewStackBtn").onclick = () => run(createNewStack);
   el("emptyImportBtn").onclick = () => run(importStackJson);
-  setStatus("No prompt stacks found");
+  setStatus(t("status.noStacks"));
   updateActionState();
 }
 
@@ -957,7 +959,7 @@ function displayItemName(item: any) {
     const firstLine = item.content.trim().split(/\n/)[0]?.trim();
     if (firstLine) return firstLine.length > 46 ? firstLine.slice(0, 43) + "..." : firstLine;
   }
-  return item.id || "(unnamed)";
+  return item.id || t("stackList.unnamed");
 }
 
 async function run(action: any) {
@@ -971,8 +973,8 @@ async function run(action: any) {
 function toggleSidebar() {
   sidebarCollapsed = !sidebarCollapsed;
   el("shell").classList.toggle("sidebar-collapsed", sidebarCollapsed);
-  el("sidebarToggleBtn").title = sidebarCollapsed ? "Show prompt stacks sidebar" : "Hide prompt stacks sidebar";
-  setStatus(sidebarCollapsed ? "Prompt stacks sidebar hidden" : "Prompt stacks sidebar shown");
+  el("sidebarToggleBtn").title = sidebarCollapsed ? t("chrome.showSidebar") : t("chrome.hideSidebar");
+  setStatus(sidebarCollapsed ? t("status.sidebarHidden") : t("status.sidebarShown"));
 }
 
 function handleStackModalClick(event: any) {
@@ -1039,6 +1041,22 @@ function handleEditorShortcut(event: any) {
   }
 }
 
+/**
+ * Re-render all legacy surfaces after a locale switch. State is already in
+ * memory; this simply regenerates the imperative DOM with the new strings.
+ */
+export function refreshLegacyEditorLocale(): void {
+  if (!editorStarted) return;
+  el("sidebarToggleBtn").title = sidebarCollapsed ? t("chrome.showSidebar") : t("chrome.hideSidebar");
+  if (currentStack) {
+    renderAll(latestDiagnostics);
+  } else if (!stacks.length) {
+    renderEmpty();
+  } else {
+    renderStackList();
+  }
+}
+
 export function startLegacyEditor(options: { isActive?: () => boolean } = {}): () => void {
   resetEditorState();
   editorIsActive = options.isActive ?? (() => true);
@@ -1090,7 +1108,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
     vueTabHost.unmount();
   });
   const previousBeforeUnload = window.onbeforeunload;
-  const beforeUnload = () => dirty ? "Unsaved changes" : undefined;
+  const beforeUnload = () => dirty ? t("status.unsavedChanges") : undefined;
   window.onbeforeunload = beforeUnload;
   let payloadPoll: number | undefined;
 

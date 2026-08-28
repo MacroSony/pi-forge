@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
+import { t, tp } from "../i18n.ts";
 import type {
 	WebEditorProfileCollection,
 	WebEditorProfileEntry,
@@ -88,7 +89,7 @@ function handleProfileSaved(mutation: WebEditorProfileMutation): void {
 	collection.value = mutation.collection;
 	selectedPath.value = mutation.selectedPath;
 	const saved = mutation.collection.profiles.find((entry) => entry.filePath === mutation.selectedPath);
-	profileActionStatus.value = `${editorMode.value === "create" ? "Created" : "Saved"} ${profileSelectorLabel(saved)}`;
+	profileActionStatus.value = t(editorMode.value === "create" ? "profiles.created" : "profiles.saved", { id: profileSelectorLabel(saved) });
 	profileActionError.value = "";
 	editorMode.value = undefined;
 }
@@ -111,7 +112,7 @@ async function applySelectedProfile(): Promise<void> {
 		);
 		collection.value = result.collection;
 		selectedPath.value = result.selectedPath;
-		profileActionStatus.value = `Applied ${target.profile.id} once`;
+		profileActionStatus.value = t("profiles.appliedOnce", { id: target.profile.id });
 		window.dispatchEvent(new Event("pi-forge:profile-applied"));
 	} catch (error) {
 		profileActionError.value = error instanceof Error ? error.message : String(error);
@@ -123,7 +124,7 @@ async function applySelectedProfile(): Promise<void> {
 			}
 		} catch (refreshError) {
 			const detail = refreshError instanceof Error ? refreshError.message : String(refreshError);
-			profileActionError.value += ` Runtime refresh failed: ${detail}`;
+			profileActionError.value += t("profiles.refreshFailed", { detail });
 		}
 		window.dispatchEvent(new Event("pi-forge:profile-applied"));
 	} finally {
@@ -134,7 +135,7 @@ async function applySelectedProfile(): Promise<void> {
 async function deleteSelectedProfile(): Promise<void> {
 	const target = selected.value;
 	if (!target) return;
-	if (!window.confirm(`Delete agent profile ${target.profile.id}?\n\n${target.filePath}\n\nDelegation settings in subagents.json are managed by the optional pi-forge-subagents package and are not removed.`)) return;
+	if (!window.confirm(t("profiles.confirmDelete", { id: target.profile.id, path: target.filePath }))) return;
 	profileActionBusy.value = true;
 	profileActionStatus.value = "";
 	profileActionError.value = "";
@@ -145,7 +146,7 @@ async function deleteSelectedProfile(): Promise<void> {
 		);
 		collection.value = result.collection;
 		selectedPath.value = result.selectedPath;
-		profileActionStatus.value = `Deleted ${target.profile.id}`;
+		profileActionStatus.value = t("profiles.deleted", { id: target.profile.id });
 	} catch (error) {
 		profileActionError.value = error instanceof Error ? error.message : String(error);
 	} finally {
@@ -154,27 +155,27 @@ async function deleteSelectedProfile(): Promise<void> {
 }
 
 function modelLabel(model: { provider: string; id: string } | null): string {
-	return model ? `${model.provider}/${model.id}` : "(none)";
+	return model ? `${model.provider}/${model.id}` : t("common.none");
 }
 
 function promptStackLabel(value: string | null): string {
-	return value ?? "(none)";
+	return value ?? t("common.none");
 }
 
 function profileState(entry: WebEditorProfileEntry): string {
-	if (entry.errors > 0) return `${entry.errors} error${entry.errors === 1 ? "" : "s"}`;
-	if (entry.warnings > 0) return `${entry.warnings} warning${entry.warnings === 1 ? "" : "s"}`;
-	return "ready";
+	if (entry.errors > 0) return tp("diag.errorOne", "diag.errorMany", entry.errors);
+	if (entry.warnings > 0) return tp("diag.warningOne", "diag.warningMany", entry.warnings);
+	return t("profiles.ready");
 }
 
 function driftLabel(changed: boolean): string {
-	return changed ? "drifted" : "unchanged";
+	return changed ? t("profiles.drifted") : t("profiles.unchanged");
 }
 
 function shadowRelationship(entry: WebEditorProfileEntry): string {
 	const other = collection.value?.profiles.find((candidate) => candidate.profile.id === entry.profile.id && candidate.scope !== entry.scope);
 	if (!other) return "";
-	return entry.scope === "project" ? `shadows ${other.selector}` : `shadowed by ${other.selector}`;
+	return entry.scope === "project" ? t("profiles.shadows", { selector: other.selector }) : t("profiles.shadowedBy", { selector: other.selector });
 }
 </script>
 
@@ -182,18 +183,18 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	<section class="profile-surface">
 		<header class="profile-toolbar">
 			<div>
-				<div class="profile-heading">Agent profiles</div>
+				<div class="profile-heading">{{ t("nav.profiles") }}</div>
 				<div class="profile-subheading">
-					One-shot model, thinking, and prompt-stack presets. Applying a profile does not continuously own runtime state.
+					{{ t("profiles.subheading") }}
 				</div>
 			</div>
 			<span class="action-spacer"></span>
 			<span id="profilesStatus" class="status">
-				{{ loading || profileActionBusy ? "Working" : loadError || profileActionError || profileActionStatus || `${collection?.profiles.length || 0} profile(s)` }}
+				{{ loading || profileActionBusy ? t("profiles.working") : loadError || profileActionError || profileActionStatus || t("profiles.count", { count: collection?.profiles.length || 0 }) }}
 			</span>
-			<select id="profileCreateScope" v-model="createScope" title="Scope for new profiles" :disabled="loading || profileActionBusy || !!editorMode">
-				<option value="project">project</option>
-				<option value="global">global</option>
+			<select id="profileCreateScope" v-model="createScope" :title="t('profiles.scopeTitle')" :disabled="loading || profileActionBusy || !!editorMode">
+				<option value="project">{{ t("profiles.scopeProject") }}</option>
+				<option value="global">{{ t("profiles.scopeGlobal") }}</option>
 			</select>
 			<button
 				id="profileNewBtn"
@@ -202,21 +203,21 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 				:disabled="loading || profileActionBusy || !!editorMode || !collection?.trusted"
 				@click="startEditor('create')"
 			>
-				New profile
+				{{ t("profiles.newProfile") }}
 			</button>
 			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="refreshProfiles">
-				Refresh
+				{{ t("profiles.refresh") }}
 			</button>
 		</header>
 
 		<div v-if="loadError" class="profile-message error">{{ loadError }}</div>
 		<div v-else-if="collection && !collection.trusted" class="profile-message warning">
-			This project is not trusted; only user-global agent profiles are shown and applying profiles is disabled.
+			{{ t("profiles.untrustedWarning") }}
 		</div>
 		<div v-if="collection" class="profile-layout">
 			<aside class="profile-sidebar">
 				<div class="side-head">
-					<div class="side-title">Agent profiles</div>
+					<div class="side-title">{{ t("nav.profiles") }}</div>
 					<div class="cwd">{{ collection.profileDirectory }}</div>
 				</div>
 				<div class="profile-list">
@@ -234,12 +235,12 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					>
 						<span class="profile-row-title">
 							{{ profileSelectorLabel(entry) }}
-							<span class="badge scope" :class="entry.scope">{{ entry.scope }}</span>
+							<span class="badge scope" :class="entry.scope">{{ entry.scope === "global" ? t("chrome.scopeGlobal") : t("chrome.scopeProject") }}</span>
 							<span v-if="shadowRelationship(entry)" class="badge shadow">{{ shadowRelationship(entry) }}</span>
-							<span v-if="entry.profile.autoActivate" class="badge">auto</span>
-							<span v-if="entry.lastApplied" class="badge">last applied</span>
+							<span v-if="entry.profile.autoActivate" class="badge">{{ t("profiles.autoBadge") }}</span>
+							<span v-if="entry.lastApplied" class="badge">{{ t("profiles.lastAppliedBadge") }}</span>
 						</span>
-						<span class="profile-row-name">{{ entry.profile.name || "(unnamed)" }}</span>
+						<span class="profile-row-name">{{ entry.profile.name || t("stackList.unnamed") }}</span>
 						<span class="profile-row-meta">
 							{{ modelLabel(entry.profile.model) }} · {{ entry.profile.thinkingLevel }}
 						</span>
@@ -251,7 +252,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 						</span>
 					</button>
 					<div v-if="!collection.profiles.length" class="profile-empty">
-						No agent profiles found.
+						{{ t("profiles.empty") }}
 					</div>
 				</div>
 			</aside>
@@ -280,10 +281,10 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 								class="profile-applicability"
 								:class="{ ready: selected.preview.applicable, error: !selected.preview.applicable }"
 							>
-								{{ selected.preview.applicable ? "Ready to apply" : "Preflight failed" }}
+								{{ selected.preview.applicable ? t("profiles.readyToApply") : t("profiles.preflightFailed") }}
 							</span>
 							<button id="profileEditBtn" data-icon="✎" type="button" @click="startEditor('edit')">
-								Edit
+								{{ t("profiles.edit") }}
 							</button>
 							<button
 								id="profileApplyBtn"
@@ -291,10 +292,10 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 								data-icon="▶"
 								type="button"
 								:disabled="profileActionBusy || !selected.preview.applicable"
-								:title="selected.preview.applicable ? 'Apply this profile once' : 'Resolve preflight errors before applying'"
+								:title="selected.preview.applicable ? t('profiles.applyOnceTitle') : t('profiles.applyBlockedTitle')"
 								@click="applySelectedProfile"
 							>
-								Apply once
+								{{ t("profiles.applyOnce") }}
 							</button>
 							<button
 								id="profileDeleteBtn"
@@ -304,7 +305,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 								:disabled="profileActionBusy"
 								@click="deleteSelectedProfile"
 							>
-								Delete
+								{{ t("common.delete") }}
 							</button>
 						</div>
 						<p v-if="selected.profile.description" class="profile-description">
@@ -313,32 +314,32 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					</section>
 
 					<section class="profile-card">
-						<div class="profile-card-title">One-shot transition</div>
+						<div class="profile-card-title">{{ t("profiles.transition") }}</div>
 						<div class="profile-transition-grid">
 							<div class="profile-transition-head"></div>
-							<div class="profile-transition-head">Current runtime</div>
-							<div class="profile-transition-head">Profile target</div>
-							<div>Model</div>
+							<div class="profile-transition-head">{{ t("profiles.currentRuntime") }}</div>
+							<div class="profile-transition-head">{{ t("profiles.profileTarget") }}</div>
+							<div>{{ t("profiles.model") }}</div>
 							<div>{{ modelLabel(selected.preview.current.model) }}</div>
 							<div>{{ modelLabel(selected.preview.target.model) }}</div>
-							<div>Thinking</div>
+							<div>{{ t("profiles.thinking") }}</div>
 							<div>{{ selected.preview.current.thinkingLevel }}</div>
 							<div>{{ selected.preview.target.thinkingLevel }}</div>
-							<div>Prompt stack</div>
+							<div>{{ t("profiles.promptStack") }}</div>
 							<div>{{ promptStackLabel(selected.preview.current.promptStack) }}</div>
 							<div>{{ promptStackLabel(selected.preview.target.promptStack) }}</div>
 						</div>
 						<div class="profile-detail-row">
-							<span>Effective tools after stack policy</span>
-							<code>{{ selected.preview.target.effectiveTools.join(", ") || "(none)" }}</code>
+							<span>{{ t("profiles.effectiveTools") }}</span>
+							<code>{{ selected.preview.target.effectiveTools.join(", ") || t("common.none") }}</code>
 						</div>
 					</section>
 
 					<section class="profile-card">
-						<div class="profile-card-title">Resolution diagnostics</div>
+						<div class="profile-card-title">{{ t("profiles.resolutionDiagnostics") }}</div>
 						<div class="profile-diagnostics">
 							<div v-if="!selected.preview.diagnostics.length" class="diagnostic info">
-								No diagnostics.
+								{{ t("diag.noDiagnostics") }}
 							</div>
 							<div
 								v-for="(diagnostic, index) in selected.preview.diagnostics"
@@ -354,13 +355,13 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 				</template>
 
 				<section v-else-if="!editorMode" class="profile-card profile-empty">
-					Create a project profile here or capture the current runtime with <code>/profile save &lt;id&gt;</code>.
+					{{ t("profiles.emptyMainPre") }}<code>/profile save &lt;id&gt;</code>{{ t("profiles.emptyMainPost") }}
 				</section>
 
 				<section class="profile-card profile-runtime-card">
-					<div class="profile-card-title">Runtime and provenance</div>
+					<div class="profile-card-title">{{ t("profiles.runtimeProvenance") }}</div>
 					<div class="profile-detail-row">
-						<span>Current</span>
+						<span>{{ t("profiles.current") }}</span>
 						<code>
 							{{ modelLabel(collection.status.current.model) }} ·
 							{{ collection.status.current.thinkingLevel }} ·
@@ -369,20 +370,20 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					</div>
 					<template v-if="collection.status.lastApplied">
 						<div class="profile-detail-row">
-							<span>Last applied</span>
+							<span>{{ t("profiles.lastApplied") }}</span>
 							<code>{{ collection.status.lastApplied.provenance.profileId }}</code>
 						</div>
 						<div class="profile-detail-row">
-							<span>Source definition</span>
+							<span>{{ t("profiles.sourceDefinition") }}</span>
 							<code>{{ collection.status.lastApplied.sourceState }}</code>
 						</div>
 						<div class="profile-drift">
-							<span>Model: {{ driftLabel(collection.status.lastApplied.drift.model.changed) }}</span>
-							<span>Thinking: {{ driftLabel(collection.status.lastApplied.drift.thinkingLevel.changed) }}</span>
-							<span>Stack: {{ driftLabel(collection.status.lastApplied.drift.promptStack.changed) }}</span>
+							<span>{{ t("profiles.driftModel", { label: driftLabel(collection.status.lastApplied.drift.model.changed) }) }}</span>
+							<span>{{ t("profiles.driftThinking", { label: driftLabel(collection.status.lastApplied.drift.thinkingLevel.changed) }) }}</span>
+							<span>{{ t("profiles.driftStack", { label: driftLabel(collection.status.lastApplied.drift.promptStack.changed) }) }}</span>
 						</div>
 					</template>
-					<div v-else class="profile-note">No profile has been applied in this session.</div>
+					<div v-else class="profile-note">{{ t("profiles.noneApplied") }}</div>
 				</section>
 			</main>
 		</div>

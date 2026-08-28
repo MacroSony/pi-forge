@@ -496,6 +496,63 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 	assert.match(editors.at(-1)?.text ?? "", /Undefined forge-v1 path: \{\{missing\}\}/);
 });
 
+test("request-frequency rules run on tool-result follow-up requests over the natural context", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		autoActivate: true,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		items: [
+			{ kind: "block", id: "system", enabled: true, role: "system", content: "System." },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+		regex: {
+			rules: [
+				{ id: "turn-scoped", stage: "history", pattern: "turn-secret", replace: "X" },
+				{ id: "scrub-keys", stage: "history", frequency: "request", pattern: "sk-\\w+", flags: "g", replace: "[REDACTED]" },
+			],
+		},
+	});
+	const harness = createHarness();
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	await harness.events.before_agent_start({
+		type: "before_agent_start",
+		prompt: "latest",
+		systemPrompt: "base",
+		systemPromptOptions: ctx.getSystemPromptOptions(),
+	}, ctx);
+
+	// First request of the user turn: full compilation applies both rules.
+	const first = await harness.events.context({ type: "context", messages: [{ role: "user", content: "sk-first turn-secret", timestamp: 1 }] }, ctx);
+	assert.equal(first.messages.length, 1);
+	assert.match(first.messages[0].content, /\[REDACTED\]/);
+	assert.match(first.messages[0].content, /X/);
+
+	// Follow-up request: no layout rewrite, but the request-frequency rule still
+	// scrubs the natural context; the turn-scoped rule stays out of it.
+	const followUpMessages = [
+		{ role: "user", content: "sk-first turn-secret", timestamp: 1 },
+		{ role: "assistant", content: [{ type: "text", text: "calling a tool" }], timestamp: 2 },
+		{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "leaked sk-second" }], timestamp: 3 },
+	];
+	const second = await harness.events.context({ type: "context", messages: followUpMessages }, ctx);
+	assert.ok(second);
+	assert.equal(second.messages.length, 3);
+	// The request rule re-scrubs older transcript messages on the follow-up
+	// (wire-consistent with the first request), while the turn-scoped rule
+	// stays out of the follow-up entirely.
+	assert.equal(second.messages[0].content, "[REDACTED] turn-secret");
+	assert.equal(second.messages[1].content[0].text, "calling a tool");
+	assert.equal(second.messages[2].content[0].text, "leaked [REDACTED]");
+
+	// Follow-up with nothing to scrub returns the natural context untouched.
+	const third = await harness.events.context({ type: "context", messages: [{ role: "user", content: "clean", timestamp: 4 }] }, ctx);
+	assert.equal(third, undefined);
+});
+
 test("message_end applies destructive finalize regex to assistant messages", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
 	writeStack(cwd, "default.json", {
@@ -546,6 +603,48 @@ test("message_end applies destructive finalize regex to assistant messages", asy
 	assert.equal(result.message.model, "test-model");
 	assert.equal(result.message.usage, assistantMessage.usage);
 	assert.equal(statuses["pi-forge-diagnostics"], "forge:0e/1w");
+	assert.equal(userResult, undefined);
+});
+
+test("message_end applies finalize regex to tool results only when roles opt in", async () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-index-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 1,
+		autoActivate: true,
+		type: "pi-forge.prompt-stack",
+		id: "default",
+		regex: {
+			rules: [
+				{
+					id: "scrub-tool",
+					stage: "compiled",
+					effect: "finalize",
+					targets: ["messages"],
+					roles: ["assistant", "toolResult"],
+					pattern: "sk-\\w+",
+					flags: "g",
+					replace: "[REDACTED]",
+				},
+			],
+		},
+		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
+	});
+	const harness = createHarness();
+	const { ctx } = createContext(cwd);
+	await startSession(harness, ctx);
+
+	const toolResultMessage = {
+		role: "toolResult",
+		toolCallId: "c1",
+		toolName: "read",
+		content: [{ type: "text", text: "config contains sk-livekey" }],
+		timestamp: 1,
+	};
+	const scrubbed = await harness.events.message_end({ type: "message_end", message: toolResultMessage }, ctx);
+	assert.equal(scrubbed.message.content[0].text, "config contains [REDACTED]");
+
+	// User messages are never finalized.
+	const userResult = await harness.events.message_end({ type: "message_end", message: { role: "user", content: "sk-livekey", timestamp: 2 } }, ctx);
 	assert.equal(userResult, undefined);
 });
 

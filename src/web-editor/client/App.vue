@@ -1,17 +1,58 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 
+import { createEditorApi } from "./api.ts";
 import ProfileBrowser from "./components/ProfileBrowser.vue";
 import { startContributionTabs } from "./contrib-tab-host.ts";
 import { startContextDiffTabs } from "./context-diff-tab-host.ts";
+import { editorLocale, setEditorLocale, t, translateDom, type EditorLocale } from "./i18n.ts";
 import { editorTabButtonId, EDITOR_TABS } from "./tab-registry.ts";
 import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let stopContextDiffTabs: (() => void) | undefined;
+let refreshLegacyLocale: (() => void) | undefined;
 const activeSurface = ref<"stacks" | "profiles" | "settings">("stacks");
 const hasContributionSettings = ref(false);
+const api = createEditorApi(new URLSearchParams(location.search).get("token") || "");
+type LocaleSetting = EditorLocale | "auto";
+const localeSetting = ref<LocaleSetting>("auto");
+
+function resolveLocaleSetting(setting: LocaleSetting): EditorLocale {
+	if (setting === "auto") {
+		return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+	}
+	return setting;
+}
+
+async function loadLocaleSetting(): Promise<void> {
+	try {
+		const body = await api<{ locale?: string }>("/api/editor-config");
+		const locale = body?.locale;
+		if (locale === "en" || locale === "zh-CN" || locale === "auto") {
+			localeSetting.value = locale;
+			setEditorLocale(resolveLocaleSetting(locale));
+		}
+	} catch {
+		// Keep the server-rendered page language when the config read fails.
+	}
+}
+
+async function changeLocaleSetting(setting: LocaleSetting): Promise<void> {
+	localeSetting.value = setting;
+	setEditorLocale(resolveLocaleSetting(setting));
+	try {
+		await api("/api/editor-config", { method: "PUT", body: { locale: setting } });
+	} catch {
+		// The in-page switch still applies; only persistence failed.
+	}
+}
+
+watch(editorLocale, () => {
+	translateDom(document);
+	refreshLegacyLocale?.();
+});
 
 onMounted(async () => {
 	// Theme is global to the page; apply it before either surface renders.
@@ -19,12 +60,16 @@ onMounted(async () => {
 	try {
 		const {
 			getLegacyEditorDraft,
+			refreshLegacyEditorLocale,
 			startLegacyEditor,
 			subscribeLegacyEditorDraft,
 		} = await import("./legacy-editor.ts");
 		stopLegacyEditor = startLegacyEditor({
 			isActive: () => activeSurface.value === "stacks",
 		});
+		refreshLegacyLocale = refreshLegacyEditorLocale;
+		translateDom(document);
+		void loadLocaleSetting();
 		stopContributionTabs = startContributionTabs({
 			onAvailabilityChanged: (available) => {
 				hasContributionSettings.value = available;
@@ -54,7 +99,7 @@ onUnmounted(() => {
 
 <template>
 	<div class="app-root">
-		<nav class="surface-nav" aria-label="Pi Forge editor sections">
+		<nav class="surface-nav" :aria-label="t('nav.editorSectionsAria')">
 			<div class="surface-brand">Pi Forge</div>
 			<button
 				id="stacksSurfaceBtn"
@@ -63,7 +108,7 @@ onUnmounted(() => {
 				:aria-current="activeSurface === 'stacks' ? 'page' : undefined"
 				@click="activeSurface = 'stacks'"
 			>
-				Prompt stacks
+				{{ t("nav.stacks") }}
 			</button>
 			<button
 				id="profilesSurfaceBtn"
@@ -72,7 +117,7 @@ onUnmounted(() => {
 				:aria-current="activeSurface === 'profiles' ? 'page' : undefined"
 				@click="activeSurface = 'profiles'"
 			>
-				Agent profiles
+				{{ t("nav.profiles") }}
 			</button>
 			<button
 				v-show="hasContributionSettings"
@@ -82,7 +127,7 @@ onUnmounted(() => {
 				:aria-current="activeSurface === 'settings' ? 'page' : undefined"
 				@click="activeSurface = 'settings'"
 			>
-				Settings
+				{{ t("nav.settings") }}
 			</button>
 			<span class="surface-nav-spacer"></span>
 			<button
@@ -90,26 +135,37 @@ onUnmounted(() => {
 				class="theme-toggle"
 				type="button"
 				:data-icon="editorTheme === 'dark' ? '☀' : '◐'"
-				:title="editorTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+				:title="editorTheme === 'dark' ? t('nav.themeToLight') : t('nav.themeToDark')"
 				@click="toggleEditorTheme"
 			>
-				{{ editorTheme === 'dark' ? 'Light' : 'Dark' }}
+				{{ editorTheme === 'dark' ? t('nav.themeLight') : t('nav.themeDark') }}
 			</button>
+			<select
+				id="localeSelect"
+				class="locale-select"
+				:title="t('nav.locale')"
+				:value="localeSetting"
+				@change="changeLocaleSetting(($event.target as HTMLSelectElement).value as LocaleSetting)"
+			>
+				<option value="auto">Auto</option>
+				<option value="en">English</option>
+				<option value="zh-CN">中文</option>
+			</select>
 		</nav>
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 		<header class="topbar">
-			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle prompt stacks sidebar" aria-label="Toggle prompt stacks sidebar"></button>
-			<div class="brand">pi-forge stack editor</div>
-			<div id="status" class="status">Loading</div>
-			<span id="dirtyBadge" class="dirty-badge" title="The current stack has unsaved edits">Unsaved</span>
-			<button id="reloadBtn" data-icon="↻" title="Reload prompt stacks from disk">Reload</button>
-			<button id="disableBtn" data-icon="■" title="Disable the active prompt stack">Disable stack</button>
+			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle prompt stacks sidebar" aria-label="Toggle prompt stacks sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
+			<div class="brand" data-i18n="chrome.brand">pi-forge stack editor</div>
+			<div id="status" class="status" data-i18n="chrome.loading">Loading</div>
+			<span id="dirtyBadge" class="dirty-badge" title="The current stack has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span>
+			<button id="reloadBtn" data-icon="↻" title="Reload prompt stacks from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
+			<button id="disableBtn" data-icon="■" title="Disable the active prompt stack" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable stack</button>
 		</header>
 		<div id="shell" class="shell">
 			<aside class="sidebar">
 				<div class="side-head">
-					<div class="side-title">Prompt stacks</div>
+					<div class="side-title" data-i18n="nav.stacks">Prompt stacks</div>
 					<div id="cwd" class="cwd"></div>
 				</div>
 				<div id="stackList" class="stack-list"></div>
@@ -117,25 +173,25 @@ onUnmounted(() => {
 			<main class="main">
 				<div class="main-actions">
 					<div class="new-stack-control">
-						<select id="stackCreateScope" aria-label="Stack scope" title="Scope for new stacks, imports, and forks">
-							<option value="project">Project</option>
-							<option value="global">Global</option>
+						<select id="stackCreateScope" aria-label="Stack scope" title="Scope for new stacks, imports, and forks" data-i18n-title="chrome.scopeTitle" data-i18n-aria="chrome.scopeAria">
+							<option value="project" data-i18n="chrome.scopeProject">Project</option>
+							<option value="global" data-i18n="chrome.scopeGlobal">Global</option>
 						</select>
-						<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)">New stack</button>
+						<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New stack</button>
 					</div>
-					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session">Activate</button>
-					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)">Save</button>
-					<button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)">Validate</button>
-					<button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)">Preview</button>
+					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
+					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
+					<button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
+					<button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)" data-i18n="chrome.preview" data-i18n-title="chrome.previewTitle">Preview</button>
 					<span class="action-spacer"></span>
 					<details id="moreActions" class="action-menu">
-						<summary data-icon="⋯" title="Show less-used stack actions">More</summary>
+						<summary data-icon="⋯" title="Show less-used stack actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>
 						<div class="action-menu-popover">
-							<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser">Arm payload</button>
-							<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits">Fork</button>
-							<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON">Import JSON</button>
-							<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable">Export JSON</button>
-							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file">Delete stack</button>
+							<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser" data-i18n="chrome.armPayload" data-i18n-title="chrome.armPayloadTitle">Arm payload</button>
+							<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits" data-i18n="chrome.fork" data-i18n-title="chrome.forkTitle">Fork</button>
+							<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON" data-i18n="chrome.import" data-i18n-title="chrome.importTitle">Import JSON</button>
+							<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable" data-i18n="chrome.export" data-i18n-title="chrome.exportTitle">Export JSON</button>
+							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file" data-i18n="chrome.deleteStack" data-i18n-title="chrome.deleteStackTitle">Delete stack</button>
 						</div>
 					</details>
 					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
@@ -143,7 +199,7 @@ onUnmounted(() => {
 				<section id="metadataPanel" class="metadata-panel">
 					<div id="metadataHost"></div>
 				</section>
-				<nav class="view-tabs" aria-label="Stack editor sections">
+				<nav class="view-tabs" aria-label="Stack editor sections" data-i18n-aria="nav.stackSectionsAria">
 					<button
 						v-for="tab in EDITOR_TABS"
 						:key="tab.id"
@@ -152,21 +208,23 @@ onUnmounted(() => {
 						:data-dock-tab="tab.internalDock ? tab.id : undefined"
 						:class="{ active: tab.id === 'items' }"
 						:data-icon="tab.icon"
-						:title="tab.title"
-					>{{ tab.label }}</button>
+						:title="t(tab.titleKey)"
+						:data-i18n="tab.labelKey"
+						:data-i18n-title="tab.titleKey"
+					>{{ t(tab.labelKey) }}</button>
 				</nav>
 				<div id="editorDockArea" class="editor-dock-area">
 					<section id="workspace" class="workspace">
 						<div class="items-pane">
 							<div class="pane-head">
-								<span>Items</span>
+								<span data-i18n="chrome.items">Items</span>
 								<span id="itemCount" class="stack-meta"></span>
 							</div>
 							<div class="item-tools">
-								<button id="addItemBtn" data-icon="+" title="Add a prompt block item">Add block</button>
-								<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item">Add slot</button>
+								<button id="addItemBtn" data-icon="+" title="Add a prompt block item" data-i18n="chrome.addBlock" data-i18n-title="chrome.addBlockTitle">Add block</button>
+								<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item" data-i18n="chrome.addSlot" data-i18n-title="chrome.addSlotTitle">Add slot</button>
 								<span class="item-tools-spacer"></span>
-								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item">Delete item</button>
+								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
 							</div>
 							<div id="itemList" class="item-list"></div>
 						</div>
@@ -188,13 +246,13 @@ onUnmounted(() => {
 		<section v-show="activeSurface === 'settings'" id="settingsSurface" class="settings-surface">
 			<header class="settings-surface-head">
 				<div>
-					<h1>Plugin settings</h1>
-					<p>Configuration pages contributed by installed Pi Forge plugins.</p>
+					<h1>{{ t("settings.pluginSettings") }}</h1>
+					<p>{{ t("settings.pluginSettingsMeta") }}</p>
 				</div>
-				<div id="settingsStatus" class="settings-surface-status">Loading settings…</div>
+				<div id="settingsStatus" class="settings-surface-status" data-i18n="settings.loading">Loading settings…</div>
 			</header>
 			<div class="settings-surface-body">
-				<nav id="contribSettingsNav" class="settings-nav" aria-label="Plugin settings"></nav>
+				<nav id="contribSettingsNav" class="settings-nav" :aria-label="t('settings.navAria')"></nav>
 				<main id="contribSettingsPanel" class="settings-panel"></main>
 			</div>
 		</section>

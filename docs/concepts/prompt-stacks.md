@@ -4,6 +4,8 @@
 
 A prompt stack is an ordered, declarative description of the prompt and policy Pi should use. It combines static **blocks** with dynamic **slots**.
 
+> **Naming note.** Prompt stacks are managed by the `/preset` command family: a stack file bundles composition and policy together, behaving like a complete preset. The names will converge in a future release; this document keeps "prompt stack" for the resource.
+
 ## Blocks and slots
 
 A block inserts static text with a role:
@@ -48,6 +50,8 @@ For each new user turn, pi-forge:
 7. Optionally applies destructive finalize rules when an assistant message completes.
 
 The context rewrite happens only on the first provider request for a user-submitted turn. Pi can then continue its normal tool loop without repeatedly rebuilding the same context.
+
+Stacks can optionally merge runs of consecutive same-role stack items into a single message with `context.mergeConsecutiveRoles` (and an optional `context.mergeSeparator`); chat-history output and custom-role items are never merged. See the [stack schema](../reference/stack-schema.md#context-options).
 
 ## System modes
 

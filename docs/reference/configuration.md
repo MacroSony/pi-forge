@@ -9,12 +9,15 @@ Project configuration lives in `.pi/forge/config.json` and is loaded only for a 
 ```json
 {
   "webEditor": {
-    "port": 41738
+    "port": 41738,
+    "locale": "auto"
   }
 }
 ```
 
 The port is preferred, not guaranteed. The editor binds only to `127.0.0.1` and chooses another available port when necessary.
+
+`webEditor.locale` selects the editor's interface language: `"en"`, `"zh-CN"`, or `"auto"` (default). `"auto"` follows the browser language. The language selector in the editor's top bar writes this setting; `"auto"` removes the key.
 
 ## Experimental subagents
 

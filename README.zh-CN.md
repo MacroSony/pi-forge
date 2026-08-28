@@ -83,10 +83,13 @@ Stack 可以 `replace`、`append` 或 `prepend` Pi 的基础 system prompt。编
 
 Agent profile 是项目级或用户全局预设，引用精确 provider/model、思考等级和 prompt stack。它不会重复保存工具或 skill 策略；被引用的 stack 始终是唯一来源。项目 profile 和 stack 可以遮蔽同 ID 的全局资源；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
 
+> **命名说明。** `/preset` 命令族管理的是 prompt stack（提示词栈）。命令名反映 stack 文件的实际作用：一份文档同时携带上下文编排（blocks/slots）和随附的 tool/skill/regex 策略——更接近一份完整预设，而不是一段裸提示词。资源与命令命名将在未来版本统一（见 [roadmap](docs/development/roadmap.md)）；在那之前，"prompt stack／提示词栈"指文档本身，"preset／预设"指管理它的命令族。
+
 推荐从这些示例开始：
 
 - [默认 Pi mirror](examples/default-prompt-stack.json)：保留 Pi 默认行为，同时让所有区域都可移动。
-- [专注代码审查](examples/reviewer-prompt-stack.json)：只读工具策略、背景历史和明确的最新用户目标。
+- [最小 worker](examples/minimal-prompt-stack.json)：展示带有精简工具白名单的最小可用 stack。
+- [Regex hack pack](examples/hack-prompt-stack.json)：针对两种示例 token 形态展示 request 频率的出站脱敏和 transcript finalize 清理；它不是完整的密钥扫描器。
 - [自定义 system-status extension](examples/custom-system-status-extension/README.md)：注册可信 macro 和 slot。
 
 ## 常用命令

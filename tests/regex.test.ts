@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { applyFinalizeRegexRulesToMessage, applyRegexRulesToMessages, validateRegexConfig } from "../src/regex.ts";
+import { applyFinalizeRegexRulesToMessage, applyRegexRulesToMessages, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules, validateRegexConfig } from "../src/regex.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../src/types.ts";
 
 function user(content: string): AgentMessage {
@@ -41,6 +42,21 @@ function textOf(message: AgentMessage): string {
 		.filter(Boolean)
 		.join("\n");
 }
+
+test("Regex Hack redacts its documented token shapes without claiming exhaustive secret detection", () => {
+	const stack = JSON.parse(readFileSync("examples/hack-prompt-stack.json", "utf8")) as PromptStack;
+	const source = "sk-abcdefghijkl ghp_abcdefghijklmnopqrst github_pat_abcdefghijklmnopqrst AKIAABCDEFGHIJKLMNOP";
+	const [outgoing] = applyRequestFrequencyRulesToMessages(stack, [user(source)], []);
+
+	assert.equal(
+		textOf(outgoing!),
+		"[REDACTED] [REDACTED] github_pat_abcdefghijklmnopqrst AKIAABCDEFGHIJKLMNOP",
+	);
+	assert.equal(
+		applyRegexRulesToMessages(stack, [user(source)], "history", []).map(textOf)[0],
+		"[REDACTED] [REDACTED] github_pat_abcdefghijklmnopqrst AKIAABCDEFGHIJKLMNOP",
+	);
+});
 
 test("regex rules apply JavaScript string replacement syntax", () => {
 	const stack: PromptStack = {
@@ -191,7 +207,7 @@ test("finalize regex rewrites finalized assistant text and preserves non-text pa
 	assert.equal((replacement as { model?: string }).model, "test-model");
 	assert.equal((replacement as { usage?: unknown }).usage, (message as { usage?: unknown }).usage);
 	assert.ok(diagnostics.some((diagnostic) => /matched 1 time/.test(diagnostic.message)));
-	assert.ok(diagnostics.some((diagnostic) => /original model output is not preserved/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => /original content is not preserved/.test(diagnostic.message)));
 });
 
 test("finalize regex ignores non-finalize effects", () => {
@@ -226,7 +242,7 @@ test("finalize regex validation rejects unsupported stage and targets", () => {
 
 	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /requires stage "compiled"/.test(diagnostic.message)));
 	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "error" && /only supports target "messages"/.test(diagnostic.message)));
-	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "warning" && /roles does not include "assistant"/.test(diagnostic.message)));
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.level === "warning" && /roles includes neither/.test(diagnostic.message)));
 });
 
 test("regex roles, maxMessages, and maxChars limit eligible text", () => {
@@ -289,4 +305,155 @@ test("regex minDepth and maxDepth limit eligible history messages", () => {
 	assert.equal(textOf(messages[0]!), "old redacted");
 	assert.equal(textOf(messages[1]!), "assistant secret");
 	assert.equal(textOf(messages[2]!), "latest secret");
+});
+
+function toolResult(content: string): AgentMessage {
+	return {
+		role: "toolResult",
+		toolCallId: "call-1",
+		toolName: "read",
+		content: [{ type: "text", text: content }],
+		isError: false,
+		timestamp: Date.now(),
+	} as AgentMessage;
+}
+
+test("regex frequency validation: invalid values and meaningless combinations", () => {
+	const diagnostics = validateRegexConfig({
+		rules: [
+			{ id: "bad-frequency", stage: "compiled", pattern: "x", frequency: "always" },
+			{ id: "finalize-frequency", stage: "compiled", effect: "finalize", frequency: "request", pattern: "x" },
+			{ id: "system-only-request", stage: "compiled", targets: ["system"], frequency: "request", pattern: "x" },
+			{ id: "ok-turn", stage: "history", frequency: "turn", pattern: "x" },
+			{ id: "ok-request", stage: "history", frequency: "request", pattern: "x" },
+		],
+	});
+
+	assert.ok(diagnostics.some((d) => d.level === "error" && /bad-frequency.*frequency must be "turn" or "request"/.test(d.message)));
+	assert.ok(diagnostics.some((d) => d.level === "warning" && /finalize-frequency.*frequency has no effect for "finalize"/.test(d.message)));
+	assert.ok(diagnostics.some((d) => d.level === "warning" && /system-only-request.*frequency "request" has no effect: the rule does not target messages/.test(d.message)));
+	assert.ok(!diagnostics.some((d) => /ok-turn|ok-request/.test(d.message)));
+});
+
+test("request-frequency rules apply to the full natural context on follow-ups", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "request-rules",
+		regex: {
+			rules: [
+				{ id: "turn-only", stage: "history", pattern: "turn-secret", replace: "X" },
+				{ id: "system-only", stage: "compiled", targets: ["system"], frequency: "request", pattern: "sys-secret", replace: "X" },
+				{ id: "history-request", stage: "history", frequency: "request", pattern: "sk-[a-z]+", flags: "g", replace: "[REDACTED]" },
+				{ id: "compiled-request", stage: "compiled", targets: ["messages"], frequency: "request", pattern: "token-[a-z]+", flags: "g", replace: "[TOKEN]" },
+			],
+		},
+		items: [],
+	};
+	const messages = [
+		user("user keeps sk-abc and token-one"),
+		assistant("assistant mentions sk-def"),
+		toolResult("tool result leaks sk-ghi and token-two"),
+	];
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	const result = applyRequestFrequencyRulesToMessages(stack, messages, diagnostics);
+
+	// Both request rules apply across all transcript messages; the turn-scoped
+	// and system-only rules stay out of follow-up requests.
+	assert.deepEqual(result.map(textOf), [
+		"user keeps [REDACTED] and [TOKEN]",
+		"assistant mentions [REDACTED]",
+		"tool result leaks [REDACTED] and [TOKEN]",
+	]);
+	assert.ok(diagnostics.some((d) => /history-request/.test(d.message)));
+	assert.ok(diagnostics.some((d) => /compiled-request/.test(d.message)));
+	assert.ok(!diagnostics.some((d) => /turn-only|system-only/.test(d.message)));
+});
+
+test("request-frequency application is a no-op without matching rules or changes", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "request-noop",
+		regex: { rules: [{ id: "never", stage: "history", frequency: "request", pattern: "zzz", replace: "X" }] },
+		items: [],
+	};
+	const messages = [user("nothing to change")];
+	const result = applyRequestFrequencyRulesToMessages(stack, messages, []);
+	assert.equal(result, messages);
+
+	const noRules: PromptStack = { schemaVersion: 1, id: "empty", items: [] };
+	assert.equal(hasRequestFrequencyRules(noRules), false);
+	assert.equal(hasRequestFrequencyRules(stack), true);
+	const turnedOnly: PromptStack = {
+		schemaVersion: 1,
+		id: "turn-only",
+		items: [],
+		regex: { rules: [{ id: "t", stage: "history", pattern: "x", replace: "y" }] },
+	};
+	assert.equal(hasRequestFrequencyRules(turnedOnly), false);
+});
+
+test("finalize rewrites stored tool results only when roles opt in", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "finalize-tool-result",
+		regex: {
+			rules: [
+				{
+					id: "scrub-tool",
+					stage: "compiled",
+					effect: "finalize",
+					targets: ["messages"],
+					roles: ["assistant", "toolResult"],
+					pattern: "sk-[a-z]+",
+					flags: "g",
+					replace: "[REDACTED]",
+				},
+			],
+		},
+		items: [],
+	};
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	const scrubbedResult = applyFinalizeRegexRulesToMessage(stack, toolResult("read returned sk-secret"), diagnostics);
+	assert.ok(scrubbedResult);
+	assert.equal(textOf(scrubbedResult), "read returned [REDACTED]");
+	assert.ok(diagnostics.some((d) => /original content is not preserved/.test(d.message)));
+
+	const scrubbedAssistant = applyFinalizeRegexRulesToMessage(stack, assistant("I used sk-secret"), []);
+	assert.ok(scrubbedAssistant);
+	assert.equal(textOf(scrubbedAssistant), "I used [REDACTED]");
+
+	// Rules without roles keep their assistant-only behavior.
+	const legacyStack: PromptStack = {
+		schemaVersion: 1,
+		id: "finalize-legacy",
+		regex: {
+			rules: [{
+				id: "legacy-final",
+				stage: "compiled",
+				effect: "finalize",
+				targets: ["messages"],
+				pattern: "sk-[a-z]+",
+				flags: "g",
+				replace: "[REDACTED]",
+			}],
+		},
+		items: [],
+	};
+	assert.equal(applyFinalizeRegexRulesToMessage(legacyStack, toolResult("keeps sk-secret"), []), undefined);
+	assert.ok(applyFinalizeRegexRulesToMessage(legacyStack, assistant("drops sk-secret"), []));
+});
+
+test("finalize validation accepts toolResult and warns on unsupported roles", () => {
+	const diagnostics = validateRegexConfig({
+		rules: [
+			{ id: "ok", stage: "compiled", effect: "finalize", roles: ["assistant", "toolResult"], pattern: "x" },
+			{ id: "mixed", stage: "compiled", effect: "finalize", roles: ["assistant", "user"], pattern: "x" },
+			{ id: "empty", stage: "compiled", effect: "finalize", roles: [], pattern: "x" },
+		],
+	});
+	assert.ok(!diagnostics.some((d) => /\bok\b/.test(d.message) && /roles/.test(d.message)));
+	assert.ok(diagnostics.some((d) => d.level === "warning" && /mixed.*ignores unsupported roles: user/.test(d.message)));
+	assert.ok(diagnostics.some((d) => d.level === "warning" && /empty.*roles includes neither/.test(d.message)));
 });

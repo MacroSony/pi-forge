@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 
+import { t, type MessageKey } from "../i18n.ts";
 import type { EditorPromptStackItem } from "../types.ts";
 
 const props = defineProps<{
@@ -91,18 +92,9 @@ function setArrayOption(key: string, value: string): void {
 }
 
 function optionHelp(key: string): string {
-	const descriptions: Record<string, string> = {
-		includeLastUserMessage: "Keep the latest user message inside the inserted chat history.",
-		stripAssistantThinking: "Remove prior assistant thinking blocks from inserted chat history while keeping visible text, tool calls, and tool results.",
-		includeSummaries: "Keep Pi branch and compaction summary messages inside inserted chat history.",
-		toolMode: "Keep tool calls/results or drop prior tool history from inserted chat history.",
-		roles: "Optional comma-separated message roles to keep, such as user, assistant, toolResult, compactionSummary.",
-		maxMessages: "Keep only the most recent N chat-history messages after filtering.",
-		maxChars: "Keep only the most recent chat-history messages within an approximate character budget.",
-		includeTime: "Render the current time in HH:MM:SS after the current date.",
-		format: "Choose XML or compact plain text rendering.",
-	};
-	return descriptions[key] || "Advanced slot option.";
+	const known: MessageKey = `item.opt.${key}` as MessageKey;
+	const translated = t(known);
+	return translated === known ? t("item.opt.advanced") : translated;
 }
 </script>
 
@@ -110,28 +102,28 @@ function optionHelp(key: string): string {
 	<div class="item-form">
 		<div class="item-fields">
 			<div class="field">
-				<label>Kind</label>
+				<label>{{ t("item.kind") }}</label>
 				<select id="itemKind" :value="item.kind" @change="setKind(($event.target as HTMLSelectElement).value as 'block' | 'slot')">
 					<option value="block">block</option>
 					<option value="slot">slot</option>
 				</select>
 			</div>
 			<div class="field">
-				<label>ID</label>
+				<label>{{ t("item.id") }}</label>
 				<input id="itemId" :value="item.id" @input="setString('id', ($event.target as HTMLInputElement).value, false, true)">
 			</div>
 			<div class="field">
-				<label>Name</label>
+				<label>{{ t("item.name") }}</label>
 				<input id="itemName" :value="item.name || ''" @input="setString('name', ($event.target as HTMLInputElement).value, true, true)">
 			</div>
 			<div class="field">
-				<label>Role</label>
+				<label>{{ t("item.role") }}</label>
 				<select id="itemRole" :value="item.role || ''" @change="setString('role', ($event.target as HTMLSelectElement).value, true, true)">
-					<option v-for="role in roles" :key="role" :value="role">{{ role || "(none)" }}</option>
+					<option v-for="role in roles" :key="role" :value="role">{{ role || t("item.roleNone") }}</option>
 				</select>
 			</div>
 			<div v-if="item.kind === 'slot'" class="field">
-				<label>Slot</label>
+				<label>{{ t("item.slot") }}</label>
 				<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
 					<option v-for="slot in slotNames" :key="slot" :value="slot">{{ slot }}</option>
 				</select>
@@ -140,14 +132,14 @@ function optionHelp(key: string): string {
 
 		<div class="item-body">
 			<div v-if="item.kind === 'block'" class="field content-field">
-				<label>Content</label>
+				<label>{{ t("item.content") }}</label>
 				<textarea id="itemContent" :value="item.content || ''" @input="setString('content', ($event.target as HTMLTextAreaElement).value)"></textarea>
 			</div>
 
 			<div v-else class="field wide slot-options">
-				<label>Slot options</label>
+				<label>{{ t("item.slotOptions") }}</label>
 				<div class="segmented">
-					<button id="slotOptionsFormBtn" type="button" :class="{ active: mode === 'form' }" @click="switchMode('form')">Form</button>
+					<button id="slotOptionsFormBtn" type="button" :class="{ active: mode === 'form' }" @click="switchMode('form')">{{ t("item.form") }}</button>
 					<button id="slotOptionsJsonBtn" type="button" :class="{ active: mode === 'json' }" @click="switchMode('json')">JSON</button>
 				</div>
 
@@ -162,39 +154,39 @@ function optionHelp(key: string): string {
 					<template v-if="item.slot === 'chat-history'">
 						<label class="checkline" :title="optionHelp('includeLastUserMessage')">
 							<input type="checkbox" data-option="includeLastUserMessage" :checked="options.includeLastUserMessage !== false" @change="setOption('includeLastUserMessage', ($event.target as HTMLInputElement).checked, true)">
-							Include last user message
+							{{ t("item.includeLastUserMessage") }}
 						</label>
 						<label class="checkline" :title="optionHelp('stripAssistantThinking')">
 							<input type="checkbox" data-option="stripAssistantThinking" :checked="options.stripAssistantThinking === true" @change="setOption('stripAssistantThinking', ($event.target as HTMLInputElement).checked, false)">
-							Strip assistant thinking
+							{{ t("item.stripAssistantThinking") }}
 						</label>
 						<label class="checkline" :title="optionHelp('includeSummaries')">
 							<input type="checkbox" data-option="includeSummaries" :checked="options.includeSummaries !== false" @change="setOption('includeSummaries', ($event.target as HTMLInputElement).checked, true)">
-							Include summaries
+							{{ t("item.includeSummaries") }}
 						</label>
 						<div class="field" :title="optionHelp('toolMode')">
-							<label>Tool history</label>
+							<label>{{ t("item.toolHistory") }}</label>
 							<select data-option="toolMode" :value="options.toolMode || 'keep'" @change="setOption('toolMode', ($event.target as HTMLSelectElement).value, 'keep')">
 								<option value="keep">keep</option>
 								<option value="drop">drop</option>
 							</select>
 						</div>
 						<div class="field" :title="optionHelp('roles')">
-							<label>Roles</label>
+							<label>{{ t("item.roles") }}</label>
 							<input data-option="roles" data-array="true" :value="Array.isArray(options.roles) ? options.roles.join(', ') : ''" placeholder="comma,separated" @change="setArrayOption('roles', ($event.target as HTMLInputElement).value)">
 						</div>
 						<div class="field" :title="optionHelp('maxMessages')">
-							<label>Max messages</label>
+							<label>{{ t("item.maxMessages") }}</label>
 							<input type="number" min="1" data-option="maxMessages" :value="options.maxMessages ?? ''" @change="setNumberOption('maxMessages', ($event.target as HTMLInputElement).value)">
 						</div>
 						<div class="field" :title="optionHelp('maxChars')">
-							<label>Max chars</label>
+							<label>{{ t("item.maxChars") }}</label>
 							<input type="number" min="1" data-option="maxChars" :value="options.maxChars ?? ''" @change="setNumberOption('maxChars', ($event.target as HTMLInputElement).value)">
 						</div>
 					</template>
 
 					<div v-if="['tools', 'tool-guidelines', 'skills', 'project-context'].includes(item.slot || '')" class="field" :title="optionHelp('format')">
-						<label>Format</label>
+						<label>{{ t("item.format") }}</label>
 						<select data-option="format" :value="options.format || 'xml'" @change="setOption('format', ($event.target as HTMLSelectElement).value, 'xml')">
 							<option value="xml">xml</option>
 							<option value="plain">plain</option>
@@ -203,13 +195,13 @@ function optionHelp(key: string): string {
 
 					<label v-if="['date', 'date-cwd'].includes(item.slot || '')" class="checkline" :title="optionHelp('includeTime')">
 						<input type="checkbox" data-option="includeTime" :checked="options.includeTime === true" @change="setOption('includeTime', ($event.target as HTMLInputElement).checked, false)">
-						Include current time
+						{{ t("item.includeTime") }}
 					</label>
 
 					<div v-if="structuredOptionCount === 0" class="wide option-note">
-						This slot has no structured options yet. Use JSON mode for advanced settings.
+						{{ t("item.noStructuredOptions") }}
 					</div>
-					<div class="wide option-note">Unknown option keys are preserved. Use JSON mode for advanced settings.</div>
+					<div class="wide option-note">{{ t("item.unknownKeysPreserved") }}</div>
 				</div>
 			</div>
 		</div>

@@ -84,10 +84,13 @@ Stacks can `replace`, `append`, or `prepend` Pi's base system prompt. During com
 
 Agent profiles are project-local references to an exact provider/model, thinking level, and prompt stack. They intentionally do not duplicate tool or skill policy—the referenced stack remains the source of truth.
 
+> **Naming note.** The `/preset` command family manages prompt stacks. The name reflects what a stack file actually behaves like: one document carrying both the context composition (blocks and slots) and the tool/skill/regex policy that travels with it—a complete preset, not a bare prompt. Resource and command naming will converge in a future release (see the [roadmap](docs/development/roadmap.md)); until then, "prompt stack" names the document and "preset" names the commands that manage it.
+
 Start with these examples:
 
 - [Default Pi mirror](examples/default-prompt-stack.json) keeps normal Pi behavior while making its sections movable.
-- [Focused reviewer](examples/reviewer-prompt-stack.json) creates a read-only review layout with an explicit latest-user target.
+- [Minimal worker](examples/minimal-prompt-stack.json) shows the smallest usable stack with a narrow tool allow-list.
+- [Regex hack pack](examples/hack-prompt-stack.json) demonstrates request-frequency outgoing redaction plus transcript-finalize scrubbing for two illustrative token shapes; it is not an exhaustive secret scanner.
 - [Custom system-status extension](examples/custom-system-status-extension/README.md) registers a trusted macro and slot.
 
 ## Common commands

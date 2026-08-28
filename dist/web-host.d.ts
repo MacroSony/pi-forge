@@ -3,7 +3,7 @@ import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgen
 import { type AgentProfileApplicationResult, type AgentProfileCurrentRuntime } from "./profile-service.ts";
 import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
-import type { WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
+import type { WebEditorLocale, WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
 export interface WebHostRuntime {
     getStacks(): LoadedPromptStack[];
     getActive(): LoadedPromptStack | undefined;
@@ -33,11 +33,13 @@ export interface WebHostRuntime {
 export declare function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost;
 export declare function stackSummary(loaded: LoadedPromptStack, active: LoadedPromptStack | undefined): WebEditorStackSummary;
 export declare function stackSummaries(stacks: LoadedPromptStack[], active: LoadedPromptStack | undefined): WebEditorStackSummary[];
-export declare function loadWebEditorSettings(ctx: ExtensionContext): {
+export interface WebEditorSettings {
     preferredPort?: number;
+    locale?: WebEditorLocale;
     configPath: string;
     warnings: string[];
-};
+}
+export declare function loadWebEditorSettings(ctx: ExtensionContext): WebEditorSettings;
 export type StackMutationFailureReason = "invalid-path" | "exists" | "missing" | "io";
 /** HTTP status mapping for repository write/delete failures surfaced to the web editor. */
 export declare function stackMutationStatus(reason: StackMutationFailureReason): number;

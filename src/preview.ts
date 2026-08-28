@@ -34,13 +34,24 @@ export function buildPreview(
 	const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
 	const messages = compilation.compileMessages(sessionMessages);
 	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
+	let hasFinalize = false;
+	let hasRequestFrequency = false;
 	for (const rule of target.stack.regex?.rules ?? []) {
-		if (rule.effect === "finalize" && rule.enabled !== false) {
-			diagnostics.push({
-				level: "info",
-				message: "finalize regex rules are not represented in preview.",
-			});
-		}
+		if (rule.enabled === false) continue;
+		if (rule.effect === "finalize") hasFinalize = true;
+		if ((rule.effect ?? "outgoing") === "outgoing" && rule.frequency === "request") hasRequestFrequency = true;
+	}
+	if (hasFinalize) {
+		diagnostics.push({
+			level: "info",
+			message: "finalize regex rules are not represented in preview.",
+		});
+	}
+	if (hasRequestFrequency) {
+		diagnostics.push({
+			level: "info",
+			message: 'request-frequency regex rules also run on tool-result follow-up requests; only the first request of a turn is previewed.',
+		});
 	}
 	const diffKeyOccurrences = new Map<string, number>();
 	const messageSections = messages.messages.map((message, index) => {
@@ -196,6 +207,9 @@ function entryTimestamp(entry: SessionEntryLike): number {
 
 function previewMessageTitle(source: CompileMessageSource | undefined, index: number): string {
 	if (source?.kind === "stack-item") {
+		if (source.mergedItems?.length) {
+			return source.mergedItems.map((item) => item.itemName?.trim() || item.itemId || "item").join(" + ");
+		}
 		return source.itemName?.trim() || source.itemId || `Stack item ${index + 1}`;
 	}
 	if (source?.kind === "chat-history") {
@@ -221,6 +235,9 @@ function renderPreviewSectionText(sections: WebEditorPreviewSection[], maxChars 
 }
 
 function previewMessageDiffKey(source: CompileMessageSource | undefined, content: string, role: string): string {
+	if (source?.kind === "stack-item" && source.mergedItems?.length) {
+		return `stack-items:${source.mergedItems.map((item) => item.itemId ?? "").join("+")}`;
+	}
 	if (source?.kind === "stack-item" && source.itemId) return `stack-item:${source.itemId}`;
 	const sourceKey = source?.kind === "chat-history"
 		? `chat-history:${source.itemId ?? source.slot ?? "history"}`

@@ -2,9 +2,9 @@ import { EDITOR_CLIENT_SCRIPT } from "./client-script.ts";
 import { EDITOR_CLIENT_STYLES } from "./client-styles.ts";
 import { EDITOR_STYLES } from "./styles.ts";
 
-export function renderEditorHtml(): string {
+export function renderEditorHtml(lang: string = "en"): string {
 	return String.raw`<!doctype html>
-<html lang="en">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

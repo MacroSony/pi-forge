@@ -1,7 +1,7 @@
 /**
  * v5.3 素材录制 C：Reuse 章
- * preset 切换（default → reviewer 激活徽标移动）+ Agent profiles 页（模型+思考强度+预设组合）。
- * 运行：node scripts/record-v5-reuse.ts
+ * preset 切换（default → minimal 激活徽标移动）+ Agent profiles 页（模型+思考强度+预设组合）。
+ * 运行：PI_FORGE_PROMO_OUT_DIR=/path/to/output node scripts/record-v5-reuse.ts
  */
 import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,30 +17,31 @@ import {
 } from "../tests/helpers/index-command-harness.ts";
 import { promptStacksDir } from "../src/loader.ts";
 
-const OUT_DIR = "/home/bruhw/programming/AIGC/VIDEO_PRODUCTION/projects/pi_forge_promo_20260826";
+const OUT_DIR = process.env.PI_FORGE_PROMO_OUT_DIR
+	?? join(process.cwd(), ".pi", "forge", "recordings");
 const CHROME = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
 const HOLD = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const MODEL_REF = { provider: "anthropic", id: "claude-sonnet-4-5" }; // profile 引用只允许这两个字段
 const REGISTRY_MODEL = { ...MODEL_REF, name: "Claude Sonnet 4.5", reasoning: true }; // 注册表里的完整模型对象
 
+mkdirSync(OUT_DIR, { recursive: true });
 const cwd = mkdtempSync(join(tmpdir(), "pi-forge-v5re-"));
 mkdirSync(promptStacksDir(cwd), { recursive: true });
 for (const [src, name] of [
 	["examples/default-prompt-stack.json", "default.json"],
-	["examples/reviewer-prompt-stack.json", "reviewer.json"],
 	["examples/minimal-prompt-stack.json", "minimal.json"],
 ]) copyFileSync(src, join(promptStacksDir(cwd), name));
 
-writeProfile(cwd, "reviewer.json", {
+writeProfile(cwd, "focused.json", {
 	schemaVersion: 1,
 	type: "pi-forge.agent-profile",
-	id: "reviewer",
-	name: "Focused Reviewer",
-	description: "Sonnet + high thinking + reviewer preset",
+	id: "focused",
+	name: "Focused Agent",
+	description: "Sonnet + high thinking + default preset",
 	model: MODEL_REF,
 	thinkingLevel: "high",
-	promptStack: "reviewer",
+	promptStack: "default",
 });
 writeProfile(cwd, "worker.json", {
 	schemaVersion: 1,
@@ -83,9 +84,9 @@ try {
 	if (await darkBtn.count()) { await darkBtn.click(); await HOLD(500); }
 	await HOLD(1200); // 定场：default active
 
-	// --- preset 切换：reviewer ---
-	await page.locator(".stack-row").filter({ hasText: "reviewer" }).first().click();
-	await HOLD(1400); // 看清 reviewer 的 8 items
+	// --- preset 切换：minimal ---
+	await page.locator(".stack-row").filter({ hasText: "minimal" }).first().click();
+	await HOLD(1400); // 看清 minimal 的精简 items
 	await page.locator("button").filter({ hasText: /^Activate$/ }).first().click();
 	await HOLD(1800); // active 徽标移动
 
@@ -93,7 +94,7 @@ try {
 	const profilesTab = page.getByRole("button", { name: /Agent profiles/i }).first();
 	if (await profilesTab.count()) { await profilesTab.click(); await HOLD(2200); }
 
-	// 回 stacks 页收尾（reviewer active 状态）
+	// 回 stacks 页收尾（minimal active 状态）
 	const stacksTab = page.getByRole("button", { name: /Prompt stacks/i }).first();
 	if (await stacksTab.count()) { await stacksTab.click(); await HOLD(1600); }
 } finally {

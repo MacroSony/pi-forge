@@ -65,7 +65,7 @@ async function handleRequest(host, token, contributionService, req, res) {
             sendText(res, 403, "Invalid pi-forge editor token.");
             return;
         }
-        sendHtml(res, renderEditorHtml());
+        sendHtml(res, renderEditorHtml(resolvePageLang(host, req)));
         return;
     }
     if (!url.pathname.startsWith("/api/")) {
@@ -77,6 +77,25 @@ async function handleRequest(host, token, contributionService, req, res) {
         return;
     }
     const parts = url.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+    if (req.method === "GET" && parts[1] === "editor-config" && parts.length === 2) {
+        sendJson(res, 200, host.getEditorConfig());
+        return;
+    }
+    if (req.method === "PUT" && parts[1] === "editor-config" && parts.length === 2) {
+        const body = await readJsonBody(req);
+        const locale = isPlainObject(body) ? body.locale : undefined;
+        if (locale !== "en" && locale !== "zh-CN" && locale !== "auto") {
+            sendJson(res, 400, { error: 'locale must be "en", "zh-CN", or "auto".' });
+            return;
+        }
+        const result = host.setEditorLocale(locale);
+        if (!result.ok) {
+            sendJson(res, result.status ?? 500, { error: result.error });
+            return;
+        }
+        sendJson(res, 200, { locale: result.locale });
+        return;
+    }
     if (req.method === "GET" && parts[1] === "stacks" && parts.length === 2) {
         sendJson(res, 200, { stacks: host.listStacks(), cwd: host.cwd });
         return;
@@ -407,6 +426,40 @@ function sendText(res, status, text) {
         "connection": "close",
     });
     res.end(text);
+}
+/**
+ * Resolve the initial page language: an explicit configured locale wins;
+ * "auto" follows the browser's Accept-Language header. The client keeps
+ * document.documentElement.lang in sync when the user switches locale.
+ */
+function resolvePageLang(host, req) {
+    const configured = host.getEditorConfig().locale;
+    if (configured === "en" || configured === "zh-CN")
+        return configured;
+    const accepted = req.headers["accept-language"] ?? "";
+    const ranges = accepted
+        .split(",")
+        .map((entry, index) => {
+        const [rawRange = "", ...parameters] = entry.trim().split(";");
+        let quality = 1;
+        for (const parameter of parameters) {
+            if (!/^q\s*=/iu.test(parameter.trim()))
+                continue;
+            const match = parameter.trim().match(/^q\s*=\s*(0(?:\.\d{0,3})?|\.\d{1,3}|1(?:\.0{0,3})?)$/iu);
+            quality = match ? Number(match[1]) : 0;
+            break;
+        }
+        return { range: rawRange.toLowerCase(), quality, index };
+    })
+        .filter(({ range, quality }) => range.length > 0 && quality > 0)
+        .sort((a, b) => b.quality - a.quality || a.index - b.index);
+    for (const { range } of ranges) {
+        if (range === "zh" || range.startsWith("zh-"))
+            return "zh-CN";
+        if (range === "en" || range.startsWith("en-") || range === "*")
+            return "en";
+    }
+    return "en";
 }
 function sendJson(res, status, value) {
     res.writeHead(status, {
