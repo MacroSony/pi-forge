@@ -306,6 +306,20 @@ onUnmounted(() => {
 	background: var(--pane);
 }
 
+/* The global form rule gives every select width:100%; the locale picker in the
+   nav bar must hug the right edge instead of stretching across it. */
+.surface-nav .locale-select {
+	flex: none;
+	width: auto;
+	min-width: 0;
+	min-height: 32px;
+}
+
+/* Keep nav tab labels on one line (zh-CN labels wrapped in narrow headers). */
+.surface-nav button {
+	white-space: nowrap;
+}
+
 .editor-surface {
 	flex: 1;
 	min-height: 0;
