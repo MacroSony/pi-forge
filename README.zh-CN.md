@@ -88,7 +88,7 @@ Agent profile 是项目级或用户全局预设，引用精确 provider/model、
 推荐从这些示例开始：
 
 - [默认 Pi mirror](examples/default-prompt-stack.json)：保留 Pi 默认行为，同时让所有区域都可移动。
-- [最小 worker](examples/minimal-prompt-stack.json)：尽量接近 DeepSeek Harness Minimal 的模型可见表面——同一句 persona、聊天历史，以及仅 `bash` + `str_replace_editor`；配合可选的 [Pi 工具扩展](examples/deepseek-minimal-tools-extension/README.md) 可获得更接近的 shell/editor 语义。
+- [最小 worker](examples/minimal-prompt-stack.json)：用 Pi 自带工具借用 DeepSeek Harness Minimal 的结构——同一句 persona、聊天历史，以及仅 `bash` + `edit`；不复刻 DSH 的 shell/editor 语义。
 - [Regex hack pack](examples/hack-prompt-stack.json)：针对两种示例 token 形态展示 request 频率的出站脱敏和 transcript finalize 清理；它不是完整的密钥扫描器。
 - [自定义 system-status extension](examples/custom-system-status-extension/README.md)：注册可信 macro 和 slot。
 - [Fake assistant 直接输出实验](examples/fake-assistant-direct-output-prompt-stack.json)：在聊天历史后追加普通 assistant 文本，测试模型特定的思考捷径；是否有效取决于 model/provider/endpoint，使用前必须做同条件 A/B。

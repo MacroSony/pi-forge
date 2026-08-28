@@ -11,7 +11,7 @@ import type { PromptRuntime } from "../src/types.ts";
 const EXAMPLE_PATH = new URL("../examples/minimal-prompt-stack.json", import.meta.url);
 const PERSONA = "You are a helpful software engineer assistant.";
 
-test("minimal example approximates the DeepSeek Harness Minimal model-visible surface", async () => {
+test("minimal example approximates the DeepSeek Harness Minimal shape with stock Pi tools", async () => {
 	const source = await readFile(EXAMPLE_PATH, "utf8");
 	const loaded = parsePromptStack(source, EXAMPLE_PATH.pathname, "project");
 	assert.deepEqual(loaded.diagnostics.filter((diagnostic) => diagnostic.level === "error"), []);
@@ -19,7 +19,7 @@ test("minimal example approximates the DeepSeek Harness Minimal model-visible su
 	const runtime: PromptRuntime = {
 		options: {
 			cwd: "/work/project",
-			selectedTools: ["read", "bash", "edit", "write", "str_replace_editor"],
+			selectedTools: ["read", "bash", "edit", "write"],
 			toolSnippets: {},
 			promptGuidelines: [],
 			contextFiles: [],
@@ -33,6 +33,6 @@ test("minimal example approximates the DeepSeek Harness Minimal model-visible su
 	const user = { role: "user", content: runtime.latestUserMessage, timestamp: 2 } as AgentMessage;
 
 	assert.equal(compileSystemPrompt(loaded.stack, runtime, "Pi base prompt").systemPrompt, PERSONA);
-	assert.deepEqual(applyResourcePolicy([...(runtime.options.selectedTools ?? [])], loaded.stack.tools), ["bash", "str_replace_editor"]);
+	assert.deepEqual(applyResourcePolicy([...(runtime.options.selectedTools ?? [])], loaded.stack.tools), ["bash", "edit"]);
 	assert.deepEqual(compileMessages(loaded.stack, runtime, [summary, user]).messages, [user]);
 });

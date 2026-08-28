@@ -3,7 +3,7 @@
   "type": "pi-forge.prompt-stack",
   "id": "minimal",
   "name": "Minimal Worker",
-  "description": "DeepSeek Harness Minimal approximation: the exact persona, chat history, and only bash plus str_replace_editor when the optional Pi tool extension is installed. PTY, sandbox, and deployment guarantees still differ.",
+  "description": "Minimal Pi approximation of the DeepSeek Harness Minimal shape: the exact one-line persona, chat history, and only Pi's stock bash plus edit. It does not replicate DSH's persistent shell, editor tool, PTY, sandbox, or deployment semantics.",
   "autoActivate": false,
   "mode": "replace",
   "defaults": {
@@ -13,7 +13,7 @@
   "tools": {
     "allow": [
       "bash",
-      "str_replace_editor"
+      "edit"
     ]
   },
   "items": [
