@@ -228,6 +228,9 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator("#editorDockArea.dock-open").waitFor();
 		await page.locator("#contextDiffPanel.open").waitFor();
 		await page.locator(".context-diff-mode-tabs").filter({ hasText: "Draft diff" }).waitFor();
+		assert.equal(await page.locator("#previewBtn").count(), 0, "the legacy toolbar Preview entry should be removed");
+		await page.locator(".view-tabs").evaluate((nav) => nav.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+		await page.locator("#editorDockArea.dock-open").waitFor();
 		await firstContextSeen;
 		await firstPreviewSeen;
 		await page.locator("#itemContent").fill("Unsaved browser dock prompt.");
@@ -305,6 +308,11 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#workspace").waitFor({ state: "visible" });
 		assert.equal(await page.locator("#editorDockArea").getAttribute("class"), "editor-dock-area");
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor();
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor({ state: "detached" });
+		await page.locator("#workspace").waitFor({ state: "visible" });
 
 		assert.deepEqual(browserErrors, []);
 	} finally {

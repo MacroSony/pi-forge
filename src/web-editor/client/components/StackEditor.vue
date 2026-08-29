@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 
+import type { PromptVariableValue } from "../../../types.ts";
 import { t } from "../i18n.ts";
-import type { EditorPromptStack } from "../types.ts";
+import type { EditorPromptStack, WebEditorResources } from "../types.ts";
 
 interface VariableRow {
 	key: number;
 	name: string;
 	value: string;
+	format: "text" | "json";
 }
 
 const props = defineProps<{
 	stack: EditorPromptStack;
+	resources: WebEditorResources;
 	copyText: (text: string) => void | Promise<void>;
 }>();
 
@@ -54,7 +57,10 @@ function readVariableRows(): VariableRow[] {
 		.map(([name, value]) => ({
 			key: nextVariableKey++,
 			name,
-			value: String(value ?? ""),
+			value: props.stack.schemaVersion === 2 && typeof value !== "string"
+				? JSON.stringify(value)
+				: String(value ?? ""),
+			format: props.stack.schemaVersion === 2 && typeof value !== "string" ? "json" : "text",
 		}));
 }
 
@@ -117,6 +123,7 @@ function addVariable(): void {
 		key: nextVariableKey++,
 		name: uniqueVariableName(),
 		value: "",
+		format: "text",
 	});
 	syncVariables();
 }
@@ -139,25 +146,49 @@ function uniqueVariableName(): string {
 }
 
 function syncVariables(): void {
-	const variables: Record<string, string> = {};
+	const variables: Record<string, PromptVariableValue> = {};
 	const seen = new Set<string>();
 	let duplicate = false;
+	let jsonError = "";
 	for (const row of variableRows.value) {
 		const name = row.name.trim();
 		if (!name) continue;
 		if (seen.has(name)) duplicate = true;
 		seen.add(name);
-		variables[name] = row.value;
+		if (props.stack.schemaVersion === 2 && row.format === "json") {
+			try {
+				variables[name] = JSON.parse(row.value);
+			} catch {
+				jsonError ||= t("stackTab.invalidParameterJson", { name });
+			}
+		} else {
+			variables[name] = row.value;
+		}
 	}
-	if (props.stack.schemaVersion === 2) {
+	if (!jsonError && props.stack.schemaVersion === 2) {
 		if (Object.keys(variables).length > 0) props.stack.parameters = variables;
 		else delete props.stack.parameters;
-	} else {
-		if (Object.keys(variables).length > 0) props.stack.variables = variables;
+	} else if (props.stack.schemaVersion !== 2) {
+		if (Object.keys(variables).length > 0) props.stack.variables = variables as Record<string, string>;
 		else delete props.stack.variables;
 	}
-	stackError.value = duplicate ? t("stackTab.duplicateVarNames") : "";
+	stackError.value = duplicate ? t("stackTab.duplicateVarNames") : jsonError;
 	emit("change", stackError.value);
+}
+
+function setVariableFormat(row: VariableRow, format: "text" | "json"): void {
+	if (format === row.format) return;
+	if (format === "json") row.value = JSON.stringify(row.value);
+	else {
+		try {
+			const parsed = JSON.parse(row.value) as unknown;
+			row.value = typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+		} catch {
+			// Keep the current text; changing to text makes it a valid string value.
+		}
+	}
+	row.format = format;
+	syncVariables();
 }
 
 function displayStackJson(): string {
@@ -314,6 +345,29 @@ defineExpose({
 	</div>
 
 	<div class="tab-section">
+		<div class="tab-section-title">{{ t("stackTab.extensions") }}</div>
+		<div class="tab-section-meta">{{ t("stackTab.extensionsMeta") }}</div>
+		<div class="extension-catalog-grid">
+			<div id="macroCatalog" class="extension-catalog">
+				<strong>{{ t("stackTab.registeredMacros") }}</strong>
+				<div v-if="props.resources.macros.length === 0" class="option-note">{{ t("common.none") }}</div>
+				<div v-for="macro in props.resources.macros" :key="macro.name" class="extension-catalog-entry">
+					<code v-text="`{{ extensions.${macro.name} }}`"></code>
+					<span>{{ macro.description || macro.source || "" }}</span>
+				</div>
+			</div>
+			<div id="slotCatalog" class="extension-catalog">
+				<strong>{{ t("stackTab.availableSlots") }}</strong>
+				<div v-if="props.resources.slots.length === 0" class="option-note">{{ t("common.none") }}</div>
+				<div v-for="slot in props.resources.slots" :key="slot.name" class="extension-catalog-entry">
+					<code>{{ slot.name }}</code>
+					<span>{{ slot.description || slot.source || "" }}</span>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="tab-section">
 		<div class="tab-section-title">{{ t("stackTab.parameters") }}</div>
 		<div class="tab-section-meta">
 			{{ t("stackTab.parametersMetaPre") }}<code>parameters</code>{{ t("stackTab.parametersMetaMid") }}<code>variables</code>{{ t("stackTab.parametersMetaPost") }}
@@ -326,19 +380,29 @@ defineExpose({
 			<span class="modal-meta">{{ t("stackTab.variablesSavedNote") }}</span>
 		</div>
 		<div id="variablesRows" class="data-table">
-			<div class="data-row header variable-row">
+			<div :class="['data-row', 'header', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]">
 				<div>{{ t("item.name") }}</div>
 				<div>{{ t("stackTab.value") }}</div>
+				<div v-if="props.stack.schemaVersion === 2">{{ t("stackTab.valueType") }}</div>
 				<div></div>
 			</div>
 			<div
 				v-for="(row, index) in variableRows"
 				:key="row.key"
-				class="data-row variable-row"
+				:class="['data-row', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]"
 				data-var-row
 			>
 				<input v-model="row.name" data-var-name placeholder="char" @input="syncVariables">
 				<input v-model="row.value" data-var-value placeholder="泉此方" @input="syncVariables">
+				<select
+					v-if="props.stack.schemaVersion === 2"
+					data-var-format
+					:value="row.format"
+					@change="setVariableFormat(row, ($event.target as HTMLSelectElement).value as 'text' | 'json')"
+				>
+					<option value="text">{{ t("stackTab.textValue") }}</option>
+					<option value="json">JSON</option>
+				</select>
 				<button
 					type="button"
 					class="danger"

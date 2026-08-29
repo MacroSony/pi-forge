@@ -27,15 +27,6 @@ async function validateStack() {
   setStatus(t("inspector.validationComplete"), "success");
 }
 
-async function previewStack() {
-  const stack = stackForSubmit();
-  const data = await api("/api/stacks/" + encodeURIComponent(selectedId()) + "/preview", { method: "POST", body: { stack } });
-  renderDiagnostics(data.diagnostics || []);
-  renderItemList();
-  renderPreviewInspector(data);
-  setStatus(t("inspector.previewRendered"), "success");
-}
-
 async function refreshPayloadCapture(options: any = {}) {
   const previousCapturedAt = payloadSnapshot.status === "captured" ? payloadSnapshot.capture?.capturedAt : "";
   const data = await api("/api/payload");
@@ -96,40 +87,6 @@ function hidePreview() {
   pane.classList.remove("open");
   pane.innerHTML = "";
   previewCopyTexts = [];
-}
-
-function renderPreviewInspector(data: any) {
-  const pane = el("preview");
-  const preview = data.preview;
-  if (!preview) {
-    previewCopyTexts = [data.text || ""];
-    pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.previewAria")) + '">' +
-      '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("chrome.preview")) + '</div><div class="preview-meta">' + escapeHtml(t("inspector.plainTextFallback")) + '</div></div>' +
-      '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="' + attr(t("inspector.copyFullTitle")) + '">' + escapeHtml(t("inspector.copy")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePreview")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
-      '<div class="preview-body"><pre class="preview-text">' + escapeHtml(data.text || "") + '</pre></div></div>';
-    pane.classList.add("open");
-    return;
-  }
-
-  const sections = [preview.system, ...(preview.messages || [])];
-  previewCopyTexts = [data.text || "", ...sections.map((section: any) => section.content || "")];
-  const sectionHtml = sections.map((section: any, index: any) => {
-    const open = index === 0 ? " open" : "";
-    const label = section.role ? section.role + " · " : "";
-    return '<details class="preview-section"' + open + '>' +
-      '<summary><span class="preview-title">' + escapeHtml(section.title || section.id) + '</span>' +
-      '<span class="preview-meta">' + escapeHtml(label + t("inspector.sectionMeta", { chars: formatCount(section.chars), tokens: formatCount(section.approxTokens) })) + '</span>' +
-      '<button class="preview-copy" data-copy-index="' + attr(index + 1) + '" data-icon="□" title="' + attr(t("inspector.copySectionTitle")) + '" onclick="event.preventDefault()">' + escapeHtml(t("inspector.copy")) + '</button></summary>' +
-      '<pre class="preview-text">' + escapeHtml(section.content || "") + '</pre>' +
-      '</details>';
-  }).join("");
-
-  pane.innerHTML = '<div class="preview-dialog" role="dialog" aria-modal="true" aria-label="' + attr(t("inspector.previewAria")) + '">' +
-    '<div class="preview-head"><div><div class="preview-title">' + escapeHtml(t("inspector.previewTitleId", { id: preview.stackId || selectedId() })) + '</div>' +
-    '<div class="preview-meta">' + escapeHtml(t("inspector.previewMeta", { chars: formatCount(preview.totalChars), tokens: formatCount(preview.approxTokens), count: (preview.messages || []).length })) + '</div></div>' +
-    '<div class="preview-actions"><button class="preview-copy" data-copy-index="0" data-icon="□" title="' + attr(t("inspector.copyFullPromptTitle")) + '">' + escapeHtml(t("inspector.copyFull")) + '</button><button data-preview-close="true" data-icon="×" title="' + attr(t("inspector.closePreview")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
-    '<div class="preview-body">' + sectionHtml + '</div></div>';
-  pane.classList.add("open");
 }
 
 function renderPayloadInspector(snapshot: any) {
@@ -240,7 +197,6 @@ async function copyTextToClipboard(text: any) {
 
 	return {
 		validateStack,
-		previewStack,
 		refreshPayloadCapture,
 		armPayloadCapture,
 		clearPayloadCapture,

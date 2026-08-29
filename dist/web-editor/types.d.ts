@@ -34,7 +34,7 @@ export interface WebEditorHost {
     saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
     deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
-    listResources(): WebEditorPolicyResources;
+    listResources(): WebEditorResources;
     getStack(id: string): {
         stack: PromptStack;
         filePath: string;
@@ -169,6 +169,16 @@ export interface WebEditorPolicyResource {
 export interface WebEditorPolicyResources {
     tools: WebEditorPolicyResource[];
     skills: WebEditorPolicyResource[];
+}
+export interface WebEditorExtensionResource {
+    name: string;
+    description?: string;
+    source?: string;
+    dependencies: string[];
+}
+export interface WebEditorResources extends WebEditorPolicyResources {
+    macros: WebEditorExtensionResource[];
+    slots: WebEditorExtensionResource[];
 }
 export type WebEditorOperationResult<T> = ({
     ok: true;

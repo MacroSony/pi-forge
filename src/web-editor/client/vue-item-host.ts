@@ -7,7 +7,7 @@ import type { EditorPromptStack, EditorPromptStackItem } from "./types.ts";
 export interface VueItemHostDependencies {
 	getStack(): EditorPromptStack | null;
 	getSelectedIndex(): number;
-	slotNames: string[];
+	getSlotNames(): string[];
 	roles: string[];
 	markDirty(): void;
 	renderItemList(): void;
@@ -30,7 +30,7 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 		app = createApp(StackItemEditor, {
 			item,
 			mode,
-			slotNames: deps.slotNames,
+			slotNames: deps.getSlotNames(),
 			roles: deps.roles,
 			onChange: (refreshList: boolean) => {
 				error = "";

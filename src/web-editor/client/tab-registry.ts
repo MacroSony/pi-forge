@@ -73,7 +73,7 @@ export const EDITOR_TABS = [
 		icon: "{}",
 		titleKey: "tab.stackTitle",
 		mount: "vue",
-		stackFields: ["context", "variables"],
+		stackFields: ["context", "variables", "parameters"],
 		internalDock: false,
 	},
 	{

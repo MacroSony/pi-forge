@@ -55,7 +55,7 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 			items: { id: "items", labelKey: "tab.items", icon: "☰", titleKey: "tab.itemsTitle", mount: "legacy", stackFields: [], internalDock: false },
 			regex: { id: "regex", labelKey: "tab.regex", icon: ".*", titleKey: "tab.regexTitle", mount: "vue", stackFields: ["regex"], internalDock: false },
 			policy: { id: "policy", labelKey: "tab.policy", icon: "⊕", titleKey: "tab.policyTitle", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
-			stack: { id: "stack", labelKey: "tab.stack", icon: "{}", titleKey: "tab.stackTitle", mount: "vue", stackFields: ["context", "variables"], internalDock: false },
+			stack: { id: "stack", labelKey: "tab.stack", icon: "{}", titleKey: "tab.stackTitle", mount: "vue", stackFields: ["context", "variables", "parameters"], internalDock: false },
 		},
 	);
 });
@@ -105,7 +105,7 @@ test("copyStackFields matches the previous per-tab draft sync for the stack tab"
 		variables: { char: "updated" },
 	};
 
-	copyStackFields(target, source, ["context", "variables"]);
+	copyStackFields(target, source, ["context", "variables", "parameters"]);
 
 	assert.deepEqual(target, {
 		id: "t",

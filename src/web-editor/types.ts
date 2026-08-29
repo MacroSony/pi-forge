@@ -33,7 +33,7 @@ export interface WebEditorHost {
 	saveProfile(id: string, profile: AgentProfile): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
-	listResources(): WebEditorPolicyResources;
+	listResources(): WebEditorResources;
 	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[] } | undefined;
 	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
 	saveStack(id: string, stack: PromptStack): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
@@ -143,6 +143,18 @@ export interface WebEditorPolicyResource {
 export interface WebEditorPolicyResources {
 	tools: WebEditorPolicyResource[];
 	skills: WebEditorPolicyResource[];
+}
+
+export interface WebEditorExtensionResource {
+	name: string;
+	description?: string;
+	source?: string;
+	dependencies: string[];
+}
+
+export interface WebEditorResources extends WebEditorPolicyResources {
+	macros: WebEditorExtensionResource[];
+	slots: WebEditorExtensionResource[];
 }
 
 export type WebEditorOperationResult<T> = ({ ok: true } & T) | { ok: false; status?: number; error: string };

@@ -3,9 +3,11 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { basename, dirname, join } from "node:path";
 import { agentProfilePath, agentProfilesDir, isResolvedAgentProfileUsable, validateAgentProfile, validateAgentProfilePromptStackScope, } from "./agent-profile.js";
 import { isValidPromptStackId, validatePromptStack, } from "./loader.js";
+import { getRegisteredMacros } from "./macro-engine.js";
 import { deletePromptStackFile, promptStackTargetPath, writePromptStackFile, } from "./repositories/prompt-stack.js";
 import { globalAgentProfilePath } from "./storage.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
+import { getRegisteredSlots } from "./slot-renderers.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 export function createWebEditorHost(ctx, runtime) {
@@ -24,7 +26,7 @@ export function createWebEditorHost(ctx, runtime) {
         saveProfile: (selector, profile) => saveProfileFile(ctx, runtime, selector, profile),
         applyProfile: (selector) => applyProfileRuntime(ctx, runtime, selector),
         deleteProfile: (selector) => deleteProfileFile(ctx, runtime, selector),
-        listResources: () => runtime.getPolicyResources(),
+        listResources: () => editorResources(runtime.getPolicyResources()),
         getStack: (selector) => {
             const loaded = resolveStack(runtime, selector);
             return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;
@@ -58,6 +60,20 @@ export function createWebEditorHost(ctx, runtime) {
             await runtime.reloadStacks(runtime.getSelectedActiveId());
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
+    };
+}
+function editorResources(policy) {
+    const extensionResource = (definition) => ({
+        name: definition.name,
+        ...(definition.description ? { description: definition.description } : {}),
+        ...(definition.source ? { source: definition.source } : {}),
+        dependencies: [...(definition.dependencies ?? [])],
+    });
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    return {
+        ...policy,
+        macros: getRegisteredMacros().map(extensionResource).sort(byName),
+        slots: getRegisteredSlots().map(extensionResource).sort(byName),
     };
 }
 /** Unqualified selectors address project profiles only; global profiles require `global:<id>`. */

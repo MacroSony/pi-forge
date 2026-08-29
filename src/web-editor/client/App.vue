@@ -182,7 +182,6 @@ onUnmounted(() => {
 					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
 					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
 					<button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
-					<button id="previewBtn" data-icon="◱" title="Preview the compiled prompt without sending it (Ctrl/Cmd+Enter)" data-i18n="chrome.preview" data-i18n-title="chrome.previewTitle">Preview</button>
 					<span class="action-spacer"></span>
 					<details id="moreActions" class="action-menu">
 						<summary data-icon="⋯" title="Show less-used stack actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>

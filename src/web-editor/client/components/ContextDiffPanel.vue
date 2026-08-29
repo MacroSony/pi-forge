@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
-import type { EditorPromptStack } from "../types.ts";
+import type { EditorPromptStack, PromptStackDiagnostic } from "../types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "../../types.ts";
 import type { ContextDiffView } from "../../../context-diff-history.ts";
 import {
@@ -36,6 +36,8 @@ type DockMode = "compiled" | "draft" | "run";
 const mode = ref<DockMode>("compiled");
 const preview = ref<WebEditorPreview | null>(null);
 const savedPreview = ref<WebEditorPreview | null>(null);
+const previewText = ref("");
+const previewDiagnostics = ref<PromptStackDiagnostic[]>([]);
 const draftDiff = ref<TurnDiff | null>(null);
 const previewError = ref("");
 const previewLoading = ref(false);
@@ -108,6 +110,8 @@ function schedulePreviewRefresh(): void {
 	invalidatePreviewRequest();
 	preview.value = null;
 	savedPreview.value = null;
+	previewText.value = "";
+	previewDiagnostics.value = [];
 	draftDiff.value = null;
 	previewLoading.value = true;
 	previewStatus.value = t("diff.draftChangedRefreshing");
@@ -140,6 +144,8 @@ async function refreshPreview(): Promise<void> {
 	if (!draft) {
 		preview.value = null;
 		savedPreview.value = null;
+		previewText.value = "";
+		previewDiagnostics.value = [];
 		draftDiff.value = null;
 		previewError.value = "";
 		previewStatus.value = t("diff.selectStackToPreview");
@@ -156,12 +162,12 @@ async function refreshPreview(): Promise<void> {
 		});
 		const previewPath = `/api/stacks/${encodeURIComponent(draft.selector)}/preview`;
 		const [draftData, savedData] = await Promise.all([
-			api<{ preview?: WebEditorPreview }>(previewPath, {
+			api<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>(previewPath, {
 				method: "POST",
 				body: { stack: draft.stack },
 				signal: controller.signal,
 			}),
-			api<{ preview?: WebEditorPreview }>(previewPath, {
+			api<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>(previewPath, {
 				method: "POST",
 				body: { stack: loaded.stack },
 				signal: controller.signal,
@@ -170,6 +176,8 @@ async function refreshPreview(): Promise<void> {
 		if (sequence !== previewSequence) return;
 		preview.value = draftData.preview ?? null;
 		savedPreview.value = savedData.preview ?? null;
+		previewText.value = draftData.text ?? "";
+		previewDiagnostics.value = draftData.diagnostics ?? [];
 		draftDiff.value = preview.value && savedPreview.value
 			? diffTurns(previewToTurnSnapshot(savedPreview.value, "saved"), previewToTurnSnapshot(preview.value, "draft"))
 			: null;
@@ -277,6 +285,23 @@ function sectionMeta(section: WebEditorPreviewSection): string {
 	return t("diff.sectionMeta", { rolePrefix, chars: section.chars, tokens: section.approxTokens });
 }
 
+async function copyPreviewText(text: string): Promise<void> {
+	if (!text) return;
+	if (navigator.clipboard && window.isSecureContext) {
+		await navigator.clipboard.writeText(text);
+	} else {
+		const area = document.createElement("textarea");
+		area.value = text;
+		area.style.position = "fixed";
+		area.style.left = "-9999px";
+		document.body.appendChild(area);
+		area.select();
+		document.execCommand("copy");
+		area.remove();
+	}
+	props.onStatus?.(t("inspector.copiedText"), "success");
+}
+
 function turnLabel(): string {
 	const turn = latestTurn.value;
 	if (!turn) return "—";
@@ -302,9 +327,17 @@ function turnLabel(): string {
 					<span v-else-if="previewError" class="error">{{ previewError }}</span>
 					<span v-else>{{ t("diff.noPreview") }}</span>
 				</div>
+				<button v-if="previewText" type="button" class="context-diff-copy-full" @click="copyPreviewText(previewText)">{{ t("inspector.copyFull") }}</button>
 				<button type="button" class="context-diff-refresh" @click="schedulePreviewRefresh">{{ t("profiles.refresh") }}</button>
 			</div>
+			<div v-if="previewDiagnostics.length" class="context-diff-diagnostics">
+				<strong>{{ t("diff.compilerDiagnostics", { count: previewDiagnostics.length }) }}</strong>
+				<div v-for="(diagnostic, index) in previewDiagnostics" :key="index" :class="['context-diff-diagnostic', diagnostic.level]">
+					{{ diagnostic.level.toUpperCase() }}<template v-if="diagnostic.itemId"> · {{ diagnostic.itemId }}</template>: {{ diagnostic.message }}
+				</div>
+			</div>
 			<div v-if="previewError" class="context-diff-error">{{ previewError }}</div>
+			<pre v-else-if="compiledSections.length === 0 && previewText" class="section-text">{{ previewText }}</pre>
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
 				{{ previewLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
@@ -313,6 +346,7 @@ function turnLabel(): string {
 					<summary>
 						<span class="section-title">{{ section.title || section.id }}</span>
 						<span class="section-meta">{{ sectionMeta(section) }}</span>
+						<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
 					</summary>
 					<pre class="section-text">{{ section.content }}</pre>
 				</details>
@@ -437,6 +471,12 @@ function turnLabel(): string {
 .context-diff-meta { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-diff-meta .error, .context-diff-error { color: var(--error); }
 .context-diff-refresh { margin-left: auto; min-height: 28px; font-size: 12px; padding: 2px 8px; }
+.context-diff-copy-full, .context-diff-copy-section { min-height: 28px; font-size: 12px; padding: 2px 8px; }
+.context-diff-copy-section { margin-left: auto; }
+.context-diff-diagnostics { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); font-size: 12px; }
+.context-diff-diagnostic.error { color: var(--error); }
+.context-diff-diagnostic.warning { color: var(--warning); }
+.context-diff-diagnostic.info { color: var(--muted); }
 .context-diff-compiled, .context-diff-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .context-diff-sections, .context-diff-blocks { display: flex; flex-direction: column; gap: 8px; }
 .context-diff-section { border: 1px solid var(--line); border-radius: 6px; background: var(--pane); overflow: hidden; }

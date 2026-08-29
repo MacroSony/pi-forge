@@ -6,15 +6,12 @@ import StackEditor from "./components/StackEditor.vue";
 import { copyStackFields, getEditorTab } from "./tab-registry.ts";
 import type {
 	EditorPromptStack,
-	WebEditorPolicyResource,
+	WebEditorResources,
 } from "./types.ts";
 
 export interface VueTabHostDependencies {
 	getStack(): EditorPromptStack | null;
-	getResources(): {
-		tools: WebEditorPolicyResource[];
-		skills: WebEditorPolicyResource[];
-	};
+	getResources(): WebEditorResources;
 	markDirty(): void;
 	setStatus(text: string, tone?: string): void;
 	validateStack(): void | Promise<void>;
@@ -25,10 +22,7 @@ export interface VueTabHostDependencies {
 /** Per-tab mount input shared by every Vue tab's props factory. */
 interface VueTabMountInput {
 	stack: EditorPromptStack;
-	resources: {
-		tools: WebEditorPolicyResource[];
-		skills: WebEditorPolicyResource[];
-	};
+	resources: WebEditorResources;
 	onChange(error: string): void;
 	onStatus(text: string, tone?: string): void;
 	copyText(text: string): void | Promise<void>;
@@ -65,6 +59,7 @@ const vueTabMounts: Record<string, VueTabMountFactory> = {
 		component: StackEditor,
 		props: {
 			stack: input.stack,
+			resources: input.resources,
 			copyText: input.copyText,
 			onApply: () => input.applyStack(cloneJson(input.stack)),
 			onChange: input.onChange,

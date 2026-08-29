@@ -8,6 +8,7 @@ import type {
 import type {
 	WebEditorPayloadSnapshot,
 	WebEditorPolicyResource,
+	WebEditorResources,
 	WebEditorProfileCollection,
 	WebEditorProfileEntry,
 	WebEditorProfileModelOption,
@@ -82,6 +83,7 @@ export type {
 	PromptStackDiagnostic,
 	WebEditorPayloadSnapshot,
 	WebEditorPolicyResource,
+	WebEditorResources,
 	WebEditorProfileCollection,
 	WebEditorProfileEntry,
 	WebEditorProfileModelOption,

@@ -29,6 +29,18 @@ const structuredOptionCount = computed(() => {
 	return 0;
 });
 
+// Keep the current slot visible and selectable even when it is missing from the
+// registry (e.g. the providing extension was removed), so the select never blanks.
+const slotOptions = computed(() => {
+	const names = [...props.slotNames];
+	if (item.slot && !names.includes(item.slot)) names.push(item.slot);
+	return names;
+});
+
+function slotLabel(name: string): string {
+	return props.slotNames.includes(name) ? name : t("item.slotUnregistered", { name });
+}
+
 function setKind(kind: "block" | "slot"): void {
 	if (kind === item.kind) return;
 	const base = {
@@ -125,7 +137,7 @@ function optionHelp(key: string): string {
 			<div v-if="item.kind === 'slot'" class="field">
 				<label>{{ t("item.slot") }}</label>
 				<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
-					<option v-for="slot in slotNames" :key="slot" :value="slot">{{ slot }}</option>
+					<option v-for="slot in slotOptions" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
 				</select>
 			</div>
 		</div>

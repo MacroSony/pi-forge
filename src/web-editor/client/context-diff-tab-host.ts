@@ -92,23 +92,18 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 	buttonElement.onclick = (event) => {
 		event.preventDefault();
 		event.stopPropagation();
+		if (active) {
+			document.querySelector<HTMLButtonElement>('[data-tab="items"]')?.click();
+			return;
+		}
 		activate();
 	};
-
-	const onNavClick = (event: MouseEvent): void => {
-		const target = event.target as HTMLElement;
-		if (target.closest("[data-dock-tab]")) return;
-		clearActiveState();
-	};
-
-	navElement.addEventListener("click", onNavClick);
 	const stopEditorView = subscribeEditorView((viewId) => {
 		if (viewId !== definitionId) clearActiveState();
 	});
 
 	return () => {
 		buttonElement.onclick = null;
-		navElement.removeEventListener("click", onNavClick);
 		stopEditorView();
 		clearActiveState();
 		dockAreaElement.classList.remove("dock-focus");

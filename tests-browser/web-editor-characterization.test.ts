@@ -10,6 +10,7 @@ import {
 	createHarness,
 	latestEditorUrl,
 	startSession,
+	writeForgeExtension,
 	writeProfile,
 	writeStack,
 } from "../tests/helpers/index-command-harness.ts";
@@ -147,6 +148,7 @@ test("web editor transitions between populated and empty stack states", { timeou
 		await page.locator("#deleteStackBtn").click();
 		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
 		assert.equal(await page.locator("#saveBtn").isDisabled(), true);
+		assert.equal(await page.locator("#previewTabBtn").isDisabled(), true);
 		assert.equal(await page.locator("#metadataPanel").isVisible(), false);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "only.json")), false);
 
@@ -162,6 +164,7 @@ test("web editor transitions between populated and empty stack states", { timeou
 		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "replacementactive");
 		assert.equal(await page.locator("#saveBtn").isEnabled(), true);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
+		assert.equal(JSON.parse(readFileSync(join(promptStacksDir(cwd), "replacement.json"), "utf8")).schemaVersion, 2);
 		assert.deepEqual(promptAnswers, []);
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator(".profile-empty").filter({ hasText: "No agent profiles found." }).waitFor();
@@ -736,6 +739,99 @@ test("Vue item editor preserves structured and advanced slot options", { timeout
 			includeLastUserMessage: false,
 			maxMessages: 3,
 		});
+	});
+});
+
+test("web editor exposes trusted registrations and preserves schema v2 parameters", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeForgeExtension(cwd, "web-ui-registrations.ts", `
+export default function register(api: any) {
+  api.registerMacro({ name: "webUiMacro", description: "Browser macro", render: () => "macro-value" });
+  api.registerSlot({ name: "web-ui-slot", description: "Browser slot", render: () => "slot-value" });
+}
+`);
+		writeStack(cwd, "default.json", {
+			schemaVersion: 2,
+			type: "pi-forge.prompt-stack",
+			id: "default",
+			name: "Schema v2 editor",
+			autoActivate: true,
+			parameters: {
+				text: "original",
+				count: 3,
+				config: { enabled: true },
+			},
+			items: [
+				{ kind: "slot", id: "custom", enabled: true, role: "system", slot: "web-ui-slot" },
+				{ kind: "block", id: "macro", enabled: true, role: "system", content: "{{ extensions.webUiMacro }}" },
+				{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+				{ kind: "slot", id: "ghost", enabled: true, slot: "ghost-slot" },
+			],
+		});
+	}, async ({ cwd, editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+
+		assert.equal(await page.locator("#itemSlot").inputValue(), "web-ui-slot");
+		assert.ok((await page.locator("#itemSlot option").allTextContents()).includes("web-ui-slot"));
+
+		await page.locator("#stackTabBtn").click();
+		await page.locator("#macroCatalog").filter({ hasText: "webUiMacro" }).waitFor();
+		await page.locator("#slotCatalog").filter({ hasText: "web-ui-slot" }).waitFor();
+		const rows = page.locator("[data-var-row]");
+		const parameterNames = await rows.locator("[data-var-name]").evaluateAll((inputs) =>
+			inputs.map((input) => (input as HTMLInputElement).value));
+		const textIndex = parameterNames.indexOf("text");
+		const countIndex = parameterNames.indexOf("count");
+		assert.notEqual(textIndex, -1);
+		assert.notEqual(countIndex, -1);
+		await rows.nth(textIndex).locator("[data-var-value]").fill("edited");
+		assert.equal(await rows.nth(countIndex).locator("[data-var-format]").inputValue(), "json");
+		await rows.nth(countIndex).locator("[data-var-value]").fill("4");
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
+			parameters?: Record<string, unknown>;
+		};
+		assert.deepEqual(saved.parameters, {
+			text: "edited",
+			count: 4,
+			config: { enabled: true },
+		});
+
+		// Slots missing from the registry stay visible and selectable.
+		await page.locator("#itemsTabBtn").click();
+		await page.locator('.item-row[data-item-index="3"]').click();
+		assert.equal(await page.locator("#itemSlot").inputValue(), "ghost-slot");
+		assert.ok(
+			(await page.locator("#itemSlot option").allTextContents()).includes("ghost-slot (unregistered)"),
+		);
+	});
+});
+
+test("preview dock surfaces compiler diagnostics and copy controls", { timeout: 20_000 }, async (t) => {
+	await withBrowserEditor(t, (cwd) => {
+		writeStack(cwd, "default.json", {
+			schemaVersion: 2,
+			type: "pi-forge.prompt-stack",
+			id: "default",
+			name: "Preview diagnostics",
+			autoActivate: true,
+			items: [{
+				kind: "block",
+				id: "missing-macro",
+				enabled: true,
+				role: "system",
+				content: "{{ extensions.notRegistered }}",
+			}],
+		});
+	}, async ({ editorUrl, page }) => {
+		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
+		await page.locator(".stack-row.selected").waitFor();
+		await page.locator("#previewTabBtn").click();
+		await page.locator(".context-diff-diagnostics").filter({ hasText: "Undefined forge-v1 path" }).waitFor();
+		assert.equal(await page.locator(".context-diff-copy-full").count(), 1);
+		assert.ok(await page.locator(".context-diff-copy-section").count() >= 1);
 	});
 });
 

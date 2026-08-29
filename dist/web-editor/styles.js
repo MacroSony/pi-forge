@@ -973,6 +973,31 @@ html, body {
 .variable-row {
   grid-template-columns: minmax(160px, 260px) minmax(220px, 1fr) 86px;
 }
+.variable-row.parameter-row {
+  grid-template-columns: minmax(160px, 260px) minmax(220px, 1fr) minmax(90px, 120px) 86px;
+}
+.extension-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.extension-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.extension-catalog-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.extension-catalog-entry span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 .definition-row {
   grid-template-columns: minmax(150px, 210px) minmax(100px, 140px) minmax(90px, 120px) minmax(180px, 1fr) minmax(190px, 260px) minmax(110px, 130px) minmax(110px, 130px) 86px;
 }
@@ -1196,7 +1221,7 @@ html, body {
   .item-list {
     max-height: 260px;
   }
-  .variable-row, .definition-row, .session-row, .policy-row, .regex-row {
+  .variable-row, .definition-row, .session-row, .policy-row, .regex-row, .extension-catalog-grid {
     grid-template-columns: 1fr;
   }
   .policy-row:not(.header) .field > label,

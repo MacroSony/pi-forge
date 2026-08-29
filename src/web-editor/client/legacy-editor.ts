@@ -11,7 +11,7 @@ import { t } from "./i18n.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
-  WebEditorPolicyResource,
+  WebEditorResources,
   WebEditorStackSummary,
 } from "./types.ts";
 
@@ -30,7 +30,7 @@ let dragScrollFrame = 0;
 let dragScrollSpeed = 0;
 let dragClientY = 0;
 let sidebarCollapsed = false;
-let policyResources: { tools: WebEditorPolicyResource[]; skills: WebEditorPolicyResource[] } = { tools: [], skills: [] };
+let editorResources: WebEditorResources = { tools: [], skills: [], macros: [], slots: [] };
 let latestDiagnostics: PromptStackDiagnostic[] = [];
 // null = automatic: expand when errors or warnings exist, collapse when clean.
 let diagnosticsCollapsed: boolean | null = null;
@@ -59,7 +59,7 @@ function notifyDraftChanged() {
   for (const listener of [...draftListeners]) listener();
 }
 
-const slotNames = [
+const builtInSlotNames = [
   "chat-history", "tools", "tool-guidelines", "skills", "project-context",
   "append-system-prompt", "date", "cwd", "date-cwd",
   "active-model", "pi-docs"
@@ -68,7 +68,6 @@ const roles = ["", "system", "user", "assistant", "custom"];
 
 const {
   validateStack,
-  previewStack,
   refreshPayloadCapture,
   armPayloadCapture,
   clearPayloadCapture,
@@ -86,7 +85,7 @@ const {
 });
 const vueTabHost = createVueTabHost({
   getStack: () => currentStack,
-  getResources: () => policyResources,
+  getResources: () => editorResources,
   markDirty,
   setStatus,
   validateStack: () => run(validateStack),
@@ -106,7 +105,9 @@ const vueMetadataHost = createVueMetadataHost({
 const vueItemHost = createVueItemHost({
   getStack: () => currentStack,
   getSelectedIndex: () => selectedItemIndex,
-  slotNames,
+  getSlotNames: () => editorResources.slots.length > 0
+    ? editorResources.slots.map((slot) => slot.name)
+    : builtInSlotNames,
   roles,
   markDirty,
   renderItemList,
@@ -134,13 +135,13 @@ function renderDirtyState() {
 
 function updateActionState() {
   const hasStack = !!currentStack;
-  for (const id of ["activateBtn", "saveBtn", "validateBtn", "previewBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
+  for (const id of ["activateBtn", "saveBtn", "validateBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
     const button = el(id);
     if (button) button.disabled = !hasStack;
   }
   const deleteItemButton = el("deleteItemBtn");
   if (deleteItemButton) deleteItemButton.disabled = !hasStack || selectedItemIndex < 0;
-  document.querySelectorAll("[data-tab]").forEach((button: any) => {
+  document.querySelectorAll("[data-tab], [data-dock-tab]").forEach((button: any) => {
     button.disabled = !hasStack;
   });
 }
@@ -152,7 +153,7 @@ async function loadStacks(preferId: any = selectedId) {
   ]);
   if (!editorStarted) return;
   stacks = data.stacks || [];
-  policyResources = normalizePolicyResources(resources);
+  editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
@@ -168,7 +169,7 @@ async function refreshStackRuntimeState() {
   ]);
   if (!editorStarted) return;
   stacks = data.stacks || [];
-  policyResources = normalizePolicyResources(resources);
+  editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
@@ -255,11 +256,27 @@ function renderStackList() {
   }
 }
 
-function normalizePolicyResources(value: any) {
+function normalizeEditorResources(value: any): WebEditorResources {
   return {
     tools: normalizeResourceList(value?.tools),
     skills: normalizeResourceList(value?.skills),
+    macros: normalizeExtensionResourceList(value?.macros),
+    slots: normalizeExtensionResourceList(value?.slots),
   };
+}
+
+function normalizeExtensionResourceList(value: any) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((resource: any) => resource && typeof resource === "object" && typeof resource.name === "string" && resource.name.trim())
+    .map((resource: any) => ({
+      name: resource.name.trim(),
+      description: typeof resource.description === "string" ? resource.description : "",
+      source: typeof resource.source === "string" ? resource.source : "",
+      dependencies: Array.isArray(resource.dependencies)
+        ? resource.dependencies.filter((dependency: unknown): dependency is string => typeof dependency === "string")
+        : [],
+    }));
 }
 
 function normalizeResourceList(value: any) {
@@ -605,7 +622,7 @@ async function createNewStack() {
 
 function defaultNewStack(id: any, name: any) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     type: "pi-forge.prompt-stack",
     id,
     name,
@@ -1037,7 +1054,7 @@ function handleEditorShortcut(event: any) {
   }
   if (key === "enter") {
     event.preventDefault();
-    if (currentStack) run(previewStack);
+    if (currentStack) el("previewTabBtn").click();
   }
 }
 
@@ -1070,7 +1087,6 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("activateBtn").onclick = () => run(activateStack);
   el("saveBtn").onclick = () => run(saveStack);
   el("validateBtn").onclick = () => run(validateStack);
-  el("previewBtn").onclick = () => run(previewStack);
   el("payloadBtn").onclick = () => run(openPayloadCapture);
   const moreActions = el("moreActions") as HTMLDetailsElement;
   moreActions.onclick = (event) => {
@@ -1157,7 +1173,7 @@ function resetEditorState(): void {
   dragClientY = 0;
   sidebarCollapsed = false;
   vueItemHost.reset();
-  policyResources = { tools: [], skills: [] };
+  editorResources = { tools: [], skills: [], macros: [], slots: [] };
   latestDiagnostics = [];
   activeTab = "items";
   metadataCollapsed = true;
