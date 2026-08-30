@@ -201,7 +201,7 @@ test("resolveAgentProfile blocks missing auth, unsupported thinking, and bad sta
 	assert.equal(resolved.effectiveThinkingLevel, "off");
 	assert.match(messages, /has no configured authentication/);
 	assert.match(messages, /would clamp it to off/);
-	assert.match(messages, /Prompt stack bad-stack: No enabled chat-history slot found/);
+	assert.match(messages, /Preset bad-stack: No enabled chat-history slot found/);
 });
 
 test("resolveAgentProfile reports unknown models and prompt stacks", () => {
@@ -219,7 +219,7 @@ test("resolveAgentProfile reports unknown models and prompt stacks", () => {
 	const messages = resolved.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
 
 	assert.match(messages, /Unknown model: missing-provider\/missing-model/);
-	assert.match(messages, /Unknown prompt stack: missing-stack/);
+	assert.match(messages, /Unknown preset: missing-stack/);
 });
 
 test("resolveAgentProfile warns when allowed tool patterns match no registered tools", () => {
@@ -295,7 +295,7 @@ test("resolveAgentProfile resolves promptStack relative to profile scope", () =>
 	assert.equal(missing.promptStack, undefined);
 	assert.match(
 		missing.diagnostics.find((diagnostic) => diagnostic.field === "promptStack")?.message ?? "",
-		/Unknown prompt stack: missing/,
+		/Unknown preset: missing/,
 	);
 
 	// Global profile referencing a project stack is rejected.
@@ -303,7 +303,7 @@ test("resolveAgentProfile resolves promptStack relative to profile scope", () =>
 	assert.equal(globalToProject.promptStack, undefined);
 	assert.match(
 		globalToProject.diagnostics.find((diagnostic) => diagnostic.field === "promptStack")?.message ?? "",
-		/cannot reference project prompt stack/,
+		/cannot reference project preset/,
 	);
 
 	// Global profile with a bare id resolves its own global stack.
@@ -326,7 +326,7 @@ test("validateAgentProfilePromptStackScope rejects global-to-project references"
 	assert.deepEqual(validateAgentProfilePromptStackScope({ ...base, promptStack: "global:shared" }, "project"), []);
 	const rejected = validateAgentProfilePromptStackScope({ ...base, promptStack: "project:shared" }, "global");
 	assert.equal(rejected.length, 1);
-	assert.match(rejected[0]?.message ?? "", /cannot reference project prompt stack/);
+	assert.match(rejected[0]?.message ?? "", /cannot reference project preset/);
 });
 
 test("chooseAutoActivateAgentProfile honors project-over-global shadowing", () => {

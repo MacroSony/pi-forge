@@ -95,7 +95,7 @@ try {
 	if (await profilesTab.count()) { await profilesTab.click(); await HOLD(2200); }
 
 	// 回 stacks 页收尾（minimal active 状态）
-	const stacksTab = page.getByRole("button", { name: /Prompt stacks/i }).first();
+	const stacksTab = page.getByRole("button", { name: /Presets/i }).first();
 	if (await stacksTab.count()) { await stacksTab.click(); await HOLD(1600); }
 } finally {
 	const video = page.video();

@@ -4,16 +4,16 @@
 
 ## 从这里开始
 
-- [快速上手](getting-started.md)：安装、创建 stack、打开编辑器并保存 profile。
-- [Prompt stack](concepts/prompt-stacks.md)：prompt 组合、历史布局和策略模型。
-- [Agent profile](concepts/agent-profiles.md)：一次性模型/思考等级/stack 预设。
+- [快速上手](getting-started.md)：安装、创建预设、打开编辑器并保存 Profile。
+- [预设与堆栈](concepts/prompt-stacks.md)：完整预设及其有序 Block/Slot 编排。
+- [Agent Profile](concepts/agent-profiles.md)：一次性模型/思考等级/预设组合。
 
 ## 指南
 
 - [Web 编辑器](guides/web-editor.md)
 - [迁移到 0.5](guides/migrating-to-0.5.md)
 - [实验性前台 delegation](guides/delegation.md)：启用前请先阅读安全边界。
-- [Prompt stack 使用场景（英文）](../guides/use-cases.md)
+- [预设使用场景（英文）](../guides/use-cases.md)
 
 自定义 macros/slots 和调试的完整说明目前以英文版为准：
 

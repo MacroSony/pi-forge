@@ -228,7 +228,7 @@ test("captureAgentProfile serializes promptStack relative to target scope", () =
 	});
 	assert.equal(globalToProject.ok, false);
 	if (!globalToProject.ok) {
-		assert.match(globalToProject.diagnostics[0]?.message ?? "", /Cannot capture a global profile referencing a project prompt stack/);
+		assert.match(globalToProject.diagnostics[0]?.message ?? "", /Cannot capture a global profile referencing a project preset/);
 	}
 
 	// Global profile with its own global stack -> bare ID.

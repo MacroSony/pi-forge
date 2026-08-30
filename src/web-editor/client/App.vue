@@ -155,17 +155,17 @@ onUnmounted(() => {
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 		<header class="topbar">
-			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle prompt stacks sidebar" aria-label="Toggle prompt stacks sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
-			<div class="brand" data-i18n="chrome.brand">pi-forge stack editor</div>
+			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle presets sidebar" aria-label="Toggle presets sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
+			<div class="brand" data-i18n="chrome.brand">pi-forge preset editor</div>
 			<div id="status" class="status" data-i18n="chrome.loading">Loading</div>
-			<span id="dirtyBadge" class="dirty-badge" title="The current stack has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span>
-			<button id="reloadBtn" data-icon="↻" title="Reload prompt stacks from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
-			<button id="disableBtn" data-icon="■" title="Disable the active prompt stack" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable stack</button>
+			<span id="dirtyBadge" class="dirty-badge" title="The current preset has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span>
+			<button id="reloadBtn" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
+			<button id="disableBtn" data-icon="■" title="Disable the active preset" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable preset</button>
 		</header>
 		<div id="shell" class="shell">
 			<aside class="sidebar">
 				<div class="side-head">
-					<div class="side-title" data-i18n="nav.stacks">Prompt stacks</div>
+					<div class="side-title" data-i18n="nav.stacks">Presets</div>
 					<div id="cwd" class="cwd"></div>
 				</div>
 				<div id="stackList" class="stack-list"></div>
@@ -173,24 +173,24 @@ onUnmounted(() => {
 			<main class="main">
 				<div class="main-actions">
 					<div class="new-stack-control">
-						<select id="stackCreateScope" aria-label="Stack scope" title="Scope for new stacks, imports, and forks" data-i18n-title="chrome.scopeTitle" data-i18n-aria="chrome.scopeAria">
+						<select id="stackCreateScope" aria-label="Preset scope" title="Scope for new presets, imports, and forks" data-i18n-title="chrome.scopeTitle" data-i18n-aria="chrome.scopeAria">
 							<option value="project" data-i18n="chrome.scopeProject">Project</option>
 							<option value="global" data-i18n="chrome.scopeGlobal">Global</option>
 						</select>
-						<button id="newStackBtn" data-icon="+" title="Create a new prompt stack (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New stack</button>
+						<button id="newStackBtn" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
 					</div>
-					<button id="activateBtn" class="primary" data-icon="▶" title="Make this stack active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
-					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited stack JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
-					<button id="validateBtn" data-icon="!" title="Validate the edited stack without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
+					<button id="activateBtn" class="primary" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
+					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited preset JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
+					<button id="validateBtn" data-icon="!" title="Validate the edited preset without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
 					<span class="action-spacer"></span>
 					<details id="moreActions" class="action-menu">
-						<summary data-icon="⋯" title="Show less-used stack actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>
+						<summary data-icon="⋯" title="Show less-used preset actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>
 						<div class="action-menu-popover">
 							<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser" data-i18n="chrome.armPayload" data-i18n-title="chrome.armPayloadTitle">Arm payload</button>
-							<button id="forkBtn" data-icon="⑂" title="Create a new stack from the current edits" data-i18n="chrome.fork" data-i18n-title="chrome.forkTitle">Fork</button>
-							<button id="importBtn" data-icon="⇪" title="Import pi-forge stack JSON" data-i18n="chrome.import" data-i18n-title="chrome.importTitle">Import JSON</button>
-							<button id="exportBtn" data-icon="⇩" title="Download the current stack JSON, or copy it if download is unavailable" data-i18n="chrome.export" data-i18n-title="chrome.exportTitle">Export JSON</button>
-							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected stack JSON file" data-i18n="chrome.deleteStack" data-i18n-title="chrome.deleteStackTitle">Delete stack</button>
+							<button id="forkBtn" data-icon="⑂" title="Create a new preset from the current edits" data-i18n="chrome.fork" data-i18n-title="chrome.forkTitle">Fork</button>
+							<button id="importBtn" data-icon="⇪" title="Import Pi Forge preset JSON" data-i18n="chrome.import" data-i18n-title="chrome.importTitle">Import JSON</button>
+							<button id="exportBtn" data-icon="⇩" title="Download the current preset JSON, or copy it if download is unavailable" data-i18n="chrome.export" data-i18n-title="chrome.exportTitle">Export JSON</button>
+							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected preset JSON file" data-i18n="chrome.deleteStack" data-i18n-title="chrome.deleteStackTitle">Delete preset</button>
 						</div>
 					</details>
 					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
@@ -198,7 +198,7 @@ onUnmounted(() => {
 				<section id="metadataPanel" class="metadata-panel">
 					<div id="metadataHost"></div>
 				</section>
-				<nav class="view-tabs" aria-label="Stack editor sections" data-i18n-aria="nav.stackSectionsAria">
+				<nav class="view-tabs" aria-label="Preset editor sections" data-i18n-aria="nav.stackSectionsAria">
 					<button
 						v-for="tab in EDITOR_TABS"
 						:key="tab.id"
@@ -216,14 +216,14 @@ onUnmounted(() => {
 					<section id="workspace" class="workspace">
 						<div class="items-pane">
 							<div class="pane-head">
-								<span data-i18n="chrome.items">Items</span>
+								<span data-i18n="chrome.items">Stack items</span>
 								<span id="itemCount" class="stack-meta"></span>
 							</div>
 							<div class="item-tools">
 								<button id="addItemBtn" data-icon="+" title="Add a prompt block item" data-i18n="chrome.addBlock" data-i18n-title="chrome.addBlockTitle">Add block</button>
 								<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item" data-i18n="chrome.addSlot" data-i18n-title="chrome.addSlotTitle">Add slot</button>
 								<span class="item-tools-spacer"></span>
-								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
+								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected Stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
 							</div>
 							<div id="itemList" class="item-list"></div>
 						</div>

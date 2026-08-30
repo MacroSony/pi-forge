@@ -80,7 +80,7 @@ export function buildPreview(
 	};
 
 	const text = [
-		`# Prompt stack preview: ${target.stack.id}`,
+		`# Preset preview: ${target.stack.id}`,
 		"",
 		"## System prompt",
 		"",

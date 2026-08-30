@@ -582,7 +582,7 @@ async function createStackRemote(stack: any, options: any = {}) {
   try {
     return await api("/api/stacks", { method: "POST", body: { stack, ...options } });
   } catch (error) {
-    if (error instanceof EditorApiError && error.status === 409 && !options.overwrite && confirm(t("confirm.overwriteStack", { message: error.message || "Stack already exists." }))) {
+    if (error instanceof EditorApiError && error.status === 409 && !options.overwrite && confirm(t("confirm.overwriteStack", { message: error.message || "Preset already exists." }))) {
       return await api("/api/stacks", { method: "POST", body: { stack, ...options, overwrite: true } });
     }
     throw error;
@@ -607,7 +607,7 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
 
 async function createNewStack() {
   if (dirty && !confirm(t("confirm.discardChanges"))) return;
-  const promptedId = prompt(t("prompt.newStackId"), uniqueStackId("new-stack"));
+  const promptedId = prompt(t("prompt.newStackId"), uniqueStackId("new-preset"));
   if (promptedId === null) return;
   const id = sanitizeStackId(promptedId);
   if (!id) throw new Error(t("error.stackIdEmpty"));
@@ -770,9 +770,9 @@ async function handleImportFile(event: any) {
 
 async function forkStack() {
   const source = stackForSubmit();
-  const forkId = prompt(t("prompt.forkStackId"), uniqueForkId(source.id || "stack"));
+  const forkId = prompt(t("prompt.forkStackId"), uniqueForkId(source.id || "preset"));
   if (!forkId) return;
-  const forkName = prompt(t("prompt.forkDisplayName"), ((source.name || source.id || "Prompt stack") + " fork"));
+  const forkName = prompt(t("prompt.forkDisplayName"), ((source.name || source.id || "Preset") + " fork"));
   const fork = structuredClone(source);
   fork.id = forkId.trim();
   if (forkName && forkName.trim()) fork.name = forkName;
@@ -785,13 +785,13 @@ async function forkStack() {
 async function exportStackJson() {
   const stack = stackForSubmit();
   const json = JSON.stringify(stack, null, 2) + "\n";
-  const downloaded = downloadTextFile(sanitizeStackId(stack.id || "prompt-stack") + ".json", json, "application/json");
+  const downloaded = downloadTextFile(sanitizeStackId(stack.id || "preset") + ".json", json, "application/json");
   if (downloaded) {
-    setStatus(t("status.exported", { id: stack.id || "prompt stack" }), "success");
+    setStatus(t("status.exported", { id: stack.id || "preset" }), "success");
     return;
   }
   await copyTextToClipboard(json);
-  setStatus(t("status.copiedJson", { id: stack.id || "prompt stack" }), "success");
+  setStatus(t("status.copiedJson", { id: stack.id || "preset" }), "success");
 }
 
 function downloadTextFile(filename: any, text: any, type: any) {

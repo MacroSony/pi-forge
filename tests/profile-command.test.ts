@@ -77,7 +77,7 @@ test("/profile use applies once, previews effective tools, and reports runtime d
 	await startSession(harness, context.ctx);
 
 	await harness.commands.profile.handler("preview reviewer", context.ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /Effective tools after stack policy: read/);
+	assert.match(context.editors.at(-1)?.text ?? "", /Effective tools after preset policy: read/);
 	assert.match(context.editors.at(-1)?.text ?? "", /Applicable: yes/);
 
 	await harness.commands.profile.handler("use reviewer", context.ctx);
@@ -93,7 +93,7 @@ test("/profile use applies once, previews effective tools, and reports runtime d
 	assert.match(status, /Last applied profile: reviewer/);
 	assert.match(status, /model: unchanged/);
 	assert.match(status, /thinking level: unchanged/);
-	assert.match(status, /prompt stack: unchanged/);
+	assert.match(status, /preset: unchanged/);
 
 	await harness.setModel(currentModel);
 	harness.setThinkingLevel("low");
@@ -232,7 +232,7 @@ test("ambiguous profile autoload fails closed instead of selecting a fallback st
 
 	assert.equal(context.statuses["pi-forge"], undefined);
 	assert.equal(harness.appended.some((entry) => entry.type === PROFILE_ENTRY_TYPE), false);
-	assert.match(context.notifications.find((entry) => /multiple agent profiles/.test(entry.message))?.message ?? "", /no profile or fallback prompt stack/);
+	assert.match(context.notifications.find((entry) => /multiple agent profiles/.test(entry.message))?.message ?? "", /no profile or fallback preset/);
 });
 
 test("/profile use fails preflight without mutating runtime", async () => {

@@ -10,7 +10,7 @@
 
 `/preset ui restart` 会替换 server，`/preset ui stop` 会关闭它。
 
-编辑器绑定在带 session token 的可用 `127.0.0.1` 端口；多个项目可以同时运行。读取、预览和 payload 检查在合适范围内可用；写入要求 Pi 信任项目，并且文件被限制在 pi-forge 的 stack/profile 存储内。可以在 `.pi/forge/config.json` 中设置偏好端口：
+编辑器绑定在带 session token 的可用 `127.0.0.1` 端口；多个项目可以同时运行。读取、预览和 payload 检查在合适范围内可用；写入要求 Pi 信任项目，并且文件被限制在 Pi Forge 的预设/Profile 存储内。可以在 `.pi/forge/config.json` 中设置偏好端口：
 
 ```json
 {
@@ -22,13 +22,14 @@
 
 ## 界面语言
 
-编辑器界面提供英文和中文。使用顶栏的语言选择器（Auto / English / 中文）；选择会写入项目配置中的 `webEditor.locale`。默认为 `Auto`，跟随浏览器语言，首次页面渲染也会参考浏览器的 `Accept-Language` 请求头。界面框架、内置 stack/profile 界面以及预览/差异停靠栏均已本地化；编译器诊断信息、插件提供的设置页面以及堆栈内容（条目名称、块文本）保持其原始语言。
+编辑器界面提供英文和中文。使用顶栏的语言选择器（Auto / English / 中文）；选择会写入项目配置中的 `webEditor.locale`。默认为 `Auto`，跟随浏览器语言，首次页面渲染也会参考浏览器的 `Accept-Language` 请求头。界面框架、内置预设/Profile 界面以及预览/差异停靠栏均已本地化；编译器诊断信息、插件提供的设置页面以及预设中自行编写的内容保持其原始语言。
 
-## Prompt stack 工作区
+## 预设工作区
 
 支持：
 
-- 从默认 Pi mirror 新建 stack；
+- 从默认 Pi mirror 新建预设；
+- 在 **堆栈** tab 中编排有序的 Block/Slot；
 - 结构化和原始 JSON 编辑；
 - 拖拽排序、启用/禁用、校验和完整编译预览；
 - 工具/skill 搜索、精确名称 chips 和通配符策略；
@@ -36,13 +37,13 @@
 - 原生 pi-forge JSON 导入；
 - 导出、fork、删除和 payload 捕获。
 
-已有 ID 在编辑时不可修改；需要新 ID 时使用 **Fork**，避免破坏 profile 引用和当前选择。工具栏的 scope 下拉（默认 `project`）决定新建、导入和 fork 的写入位置：选择 `global` 写入用户全局 `~/.pi/forge/prompt-stacks`，选择 `project` 写入项目 `.pi/forge/prompt-stacks`。列表会为全局 stack 显示 `global` badge；保存和删除通过 `global:<id>` 路由精确作用于全局文件。保存、导入、fork 和删除后会重新加载当前 Pi session。
+已有 ID 在编辑时不可修改；需要新 ID 时使用 **Fork**，避免破坏 Profile 引用和当前选择。工具栏的 scope 下拉（默认 `project`）决定新建、导入和 fork 的写入位置：选择 `global` 写入用户全局 `~/.pi/forge/prompt-stacks`，选择 `project` 写入项目 `.pi/forge/prompt-stacks`；这些目录名在 0.5.3 中为兼容性暂时保留。列表会为全局预设显示 `global` badge；保存和删除通过 `global:<id>` 路由精确作用于全局文件。保存、导入、fork 和删除后会重新加载当前 Pi session。
 
 ## Agent profile 工作区
 
-列表显示 profile ID、名称、模型、思考等级、stack、校验状态、auto-activation 和 last-applied provenance。每个 profile 都带 `project` / `global` scope badge；同 ID 的 shadow 对会显示 `shadows global:<id>` 或 `shadowed by project:<id>`。
+列表显示 Profile ID、名称、模型、思考等级、预设、校验状态、auto-activation 和 last-applied provenance。每个 Profile 都带 `project` / `global` scope badge；同 ID 的 shadow 对会显示 `shadows global:<id>` 或 `shadowed by project:<id>`。
 
-可信项目通过 **New profile** 旁的 scope 下拉（默认 `project`）选择目标 scope：选择 `global` 写入用户全局 `~/.pi/forge/agent-profiles`，选择 `project` 写入项目 `.pi/forge/agent-profiles`。全局 profile 可通过显式 `global:<id>` 路由编辑、校验、保存、一次性应用和删除；未限定路由始终只作用于项目资源。编辑全局 profile 时，stack 下拉只显示全局 stack。Model 选项来自 Pi registry，thinking 选项反映模型支持，stack 选项来自同一个 repository。编辑器会拒绝同 scope 内第二个 auto-activation profile。
+可信项目通过 **New profile** 旁的 scope 下拉（默认 `project`）选择目标 scope：选择 `global` 写入用户全局 `~/.pi/forge/agent-profiles`，选择 `project` 写入项目 `.pi/forge/agent-profiles`。全局 Profile 可通过显式 `global:<id>` 路由编辑、校验、保存、一次性应用和删除；未限定路由始终只作用于项目资源。编辑全局 Profile 时，预设下拉只显示全局预设。Model 选项来自 Pi registry，thinking 选项反映模型支持，预设选项来自同一个 repository。编辑器会拒绝同 scope 内第二个 auto-activation Profile。
 
 ## Delegation
 

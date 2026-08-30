@@ -48,7 +48,7 @@ test("prompt-stack repository write/overwrite/delete replacement semantics", () 
 		assert.equal(readFileSync(target, "utf8"), `${JSON.stringify(stack("alpha"), null, 2)}\n`);
 
 		const collision = writePromptStackFile(cwd, "project", target, stack("alpha-v2"), { overwrite: false });
-		assert.deepEqual(collision, { ok: false, reason: "exists", error: `Prompt stack already exists: ${target}` });
+		assert.deepEqual(collision, { ok: false, reason: "exists", error: `Preset already exists: ${target}` });
 
 		const replaced = writePromptStackFile(cwd, "project", target, stack("alpha-v2"), { overwrite: true });
 		assert.equal(replaced.ok, true);
@@ -59,7 +59,7 @@ test("prompt-stack repository write/overwrite/delete replacement semantics", () 
 		assert.equal(existsSync(target), false);
 
 		const missing = deletePromptStackFile(cwd, "project", target);
-		assert.deepEqual(missing, { ok: false, reason: "missing", error: `Prompt stack does not exist: ${target}` });
+		assert.deepEqual(missing, { ok: false, reason: "missing", error: `Preset does not exist: ${target}` });
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}

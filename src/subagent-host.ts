@@ -151,7 +151,7 @@ export function resolveSubagentHostProfile(
 				level: "error",
 				code: "profile.stack-reference",
 				path: "profile.promptStack",
-				message: `Global profile ${loaded.profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
+				message: `Global profile ${loaded.profile.id} cannot reference project preset ${parsed.selector.id}.`,
 			});
 		} else {
 			const scope = parsed.selector.scope ?? loaded.scope;
@@ -162,8 +162,8 @@ export function resolveSubagentHostProfile(
 					code: matches.length === 0 ? "profile.stack-missing" : "profile.stack-ambiguous",
 					path: "profile.promptStack",
 					message: matches.length === 0
-						? `Unknown prompt stack: ${reference}`
-						: `Prompt stack id is ambiguous: ${reference}`,
+						? `Unknown preset: ${reference}`
+						: `Preset id is ambiguous: ${reference}`,
 				});
 			} else {
 				promptStack = matches[0];
@@ -177,7 +177,7 @@ export function resolveSubagentHostProfile(
 					});
 				}
 				if (!promptStack.stack.mode || !["replace", "append", "prepend"].includes(promptStack.stack.mode)) {
-					if (promptStack.stack.mode !== undefined) diagnostics.push({ level: "error", code: "profile.stack-mode", path: "promptStack.mode", message: `Unsupported prompt stack mode: ${String(promptStack.stack.mode)}` });
+					if (promptStack.stack.mode !== undefined) diagnostics.push({ level: "error", code: "profile.stack-mode", path: "promptStack.mode", message: `Unsupported preset mode: ${String(promptStack.stack.mode)}` });
 				}
 			}
 		}

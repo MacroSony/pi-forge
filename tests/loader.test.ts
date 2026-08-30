@@ -156,7 +156,7 @@ test("loadPromptStacks flags duplicate stack ids as errors", () => {
 	assert.equal(stacks.length, 2);
 	for (const loaded of stacks) {
 		assert.equal(isUsablePromptStack(loaded), false);
-		assert.match(loaded.diagnostics.find((d) => d.level === "error")?.message ?? "", /Duplicate project stack id: same/);
+		assert.match(loaded.diagnostics.find((d) => d.level === "error")?.message ?? "", /Duplicate project preset id: same/);
 	}
 	assert.equal(chooseDefaultStack(stacks), undefined);
 });
@@ -287,7 +287,7 @@ test("loadPromptStacks preserves strict errors for malformed fields before norma
 	assert.match(messages, /syntheticMessagesVisible must be a boolean/);
 	assert.match(messages, /unresolvedMacroPolicy must be/);
 	assert.match(messages, /allowDuplicateChatHistory must be a boolean/);
-	assert.match(messages, /Stack variable invalid must be a string/);
+	assert.match(messages, /Preset variable invalid must be a string/);
 	assert.match(messages, /kind must be "block" or "slot"/);
 	assert.match(messages, /enabled must be a boolean/);
 	assert.match(messages, /Invalid role: sysstem/);
@@ -365,7 +365,7 @@ test("duplicate stack IDs within one scope remain errors", () => {
 	const project = stacks.filter((loaded) => loaded.scope === "project");
 	assert.equal(project.length, 2);
 	for (const loaded of project) {
-		assert.match(loaded.diagnostics.map((d) => d.message).join("\\n"), /Duplicate project stack id: same/);
+		assert.match(loaded.diagnostics.map((d) => d.message).join("\\n"), /Duplicate project preset id: same/);
 	}
 });
 

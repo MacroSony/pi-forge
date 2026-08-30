@@ -261,7 +261,7 @@ async function handleRequest(host: WebEditorHost, token: string, contributionSer
 	if (req.method === "GET" && parts[1] === "stacks" && parts.length === 3) {
 		const loaded = host.getStack(parts[2]!);
 		if (!loaded) {
-			sendJson(res, 404, { error: `Unknown prompt stack: ${parts[2]}` });
+			sendJson(res, 404, { error: `Unknown preset: ${parts[2]}` });
 			return;
 		}
 		sendJson(res, 200, loaded);
@@ -374,10 +374,10 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 
 function readStackPayload(body: unknown): { ok: true; stack: PromptStack } | { ok: false; error: string } {
 	const rawStack = isPlainObject(body) && "stack" in body ? body.stack : body;
-	if (!isPlainObject(rawStack)) return { ok: false, error: "Stack payload must be a JSON object." };
+	if (!isPlainObject(rawStack)) return { ok: false, error: "Preset payload must be a JSON object." };
 
-	if (typeof rawStack.id !== "string" || !rawStack.id.trim()) return { ok: false, error: "Stack id must be a non-empty string." };
-	if (!Array.isArray(rawStack.items)) return { ok: false, error: "Stack items must be an array." };
+	if (typeof rawStack.id !== "string" || !rawStack.id.trim()) return { ok: false, error: "Preset id must be a non-empty string." };
+	if (!Array.isArray(rawStack.items)) return { ok: false, error: "Preset must contain a Stack items array." };
 
 	for (const [index, item] of rawStack.items.entries()) {
 		if (!isPlainObject(item)) return { ok: false, error: `Item ${index + 1} must be an object.` };

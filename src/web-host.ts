@@ -106,7 +106,7 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		validateStack: (stack) => validatePromptStack(stack),
 		previewStack: (id, stack) => {
 			const target = resolveStack(runtime, id);
-			if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+			if (!target) return { ok: false, status: 404, error: `Unknown preset: ${id}` };
 			const diagnostics = validatePromptStack(stack);
 			const preview = runtime.buildPreview({ stack, filePath: target.filePath, scope: target.scope, key: target.key, diagnostics });
 			return { ok: true, text: preview.text, preview: preview.preview, diagnostics: preview.diagnostics };
@@ -116,7 +116,7 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		clearPayload: () => runtime.clearPayload(),
 		getContextDiff: () => runtime.getContextDiff(),
 		activateStack: (selector) => {
-			if (!runtime.setActive(selector)) return { ok: false, status: 404, error: `Unknown prompt stack: ${selector}` };
+			if (!runtime.setActive(selector)) return { ok: false, status: 404, error: `Unknown preset: ${selector}` };
 			return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 		},
 		disableStacks: () => {
@@ -567,15 +567,15 @@ async function saveStackFile(
 	stack: PromptStack,
 ): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
-		return { ok: false, status: 403, error: "Project is not trusted; refusing to save prompt stacks." };
+		return { ok: false, status: 403, error: "Project is not trusted; refusing to save presets." };
 	}
 
 	const target = resolveStack(runtime, id);
-	if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+	if (!target) return { ok: false, status: 404, error: `Unknown preset: ${id}` };
 	const idError = validateWebStackId(stack.id);
 	if (idError) return { ok: false, status: 400, error: idError };
 	if (stack.id !== target.stack.id) {
-		return { ok: false, status: 400, error: "Stack id is immutable during save; fork the stack to create a new id." };
+		return { ok: false, status: 400, error: "Preset id is immutable during save; fork the preset to create a new id." };
 	}
 	const write = writePromptStackFile(ctx.cwd, target.scope, target.filePath, stack, { overwrite: true });
 	if (!write.ok) {
@@ -587,7 +587,7 @@ async function saveStackFile(
 	await runtime.reloadStacks(preferredId);
 	const saved = runtime.getStacks().find((candidate) => candidate.scope === target.scope && candidate.stack.id === target.stack.id)
 		?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
-	if (!saved) return { ok: false, status: 500, error: "Saved stack could not be reloaded." };
+	if (!saved) return { ok: false, status: 500, error: "Saved preset could not be reloaded." };
 	return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
 
@@ -598,7 +598,7 @@ async function createStackFile(
 	options: WebEditorCreateStackOptions,
 ): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
-		return { ok: false, status: 403, error: "Project is not trusted; refusing to create prompt stacks." };
+		return { ok: false, status: 403, error: "Project is not trusted; refusing to create presets." };
 	}
 
 	const idError = validateWebStackId(stack.id);
@@ -607,7 +607,7 @@ async function createStackFile(
 	const scope = options.scope ?? "project";
 	const existingById = runtime.getStacks().find((candidate) => candidate.scope === scope && candidate.stack.id === stack.id);
 	if (existingById && !options.overwrite) {
-		return { ok: false, status: 409, error: `Prompt stack already exists: ${stack.id}` };
+		return { ok: false, status: 409, error: `Preset already exists: ${stack.id}` };
 	}
 
 	const targetPath = existingById && options.overwrite
@@ -625,7 +625,7 @@ async function createStackFile(
 	if (options.activate) runtime.setActive(createdSelector);
 
 	const created = runtime.getStacks().find((candidate) => candidate.scope === scope && candidate.filePath === targetPath);
-	if (!created) return { ok: false, status: 500, error: "Created stack could not be reloaded." };
+	if (!created) return { ok: false, status: 500, error: "Created preset could not be reloaded." };
 	return { ok: true, stack: stackSummary(created, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
 }
 
@@ -635,11 +635,11 @@ async function deleteStackFile(
 	id: string,
 ): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
-		return { ok: false, status: 403, error: "Project is not trusted; refusing to delete prompt stacks." };
+		return { ok: false, status: 403, error: "Project is not trusted; refusing to delete presets." };
 	}
 
 	const target = resolveStack(runtime, id);
-	if (!target) return { ok: false, status: 404, error: `Unknown prompt stack: ${id}` };
+	if (!target) return { ok: false, status: 404, error: `Unknown preset: ${id}` };
 	const deleted = deletePromptStackFile(ctx.cwd, target.scope, target.filePath);
 	if (!deleted.ok) {
 		const status = stackMutationStatus(deleted.reason);
@@ -673,9 +673,9 @@ export function stackMutationStatus(reason: StackMutationFailureReason): number 
 }
 
 function validateWebStackId(id: string): string | undefined {
-	if (!id.trim()) return "Stack id must not be empty.";
+	if (!id.trim()) return "Preset id must not be empty.";
 	if (!isValidPromptStackId(id)) {
-		return "Stack id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.";
+		return "Preset id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.";
 	}
 	return undefined;
 }

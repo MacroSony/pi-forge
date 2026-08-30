@@ -108,7 +108,7 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 
 		page.once("dialog", async (dialog) => {
 			assert.equal(dialog.type(), "confirm");
-			assert.match(dialog.message(), /Activate imported stack now/);
+			assert.match(dialog.message(), /Activate imported preset now/);
 			await dialog.dismiss();
 		});
 		await page.locator("#importFileInput").setInputFiles({
@@ -371,16 +371,16 @@ test("web editor switches between English and Chinese", { timeout: 20_000 }, asy
 		// English baseline.
 		assert.equal(await page.locator("html").getAttribute("lang"), "en");
 		await page.locator("#localeSelect").waitFor();
-		assert.match(await page.locator("#stacksSurfaceBtn").textContent() ?? "", /Prompt stacks/);
+		assert.match(await page.locator("#stacksSurfaceBtn").textContent() ?? "", /Presets/);
 		assert.match(await page.locator("#saveBtn").textContent() ?? "", /Save/);
 
 		// Switch to Chinese: chrome, Vue surfaces, and the legacy workspace switch live.
 		await page.locator("#localeSelect").selectOption("zh-CN");
 		assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
-		await page.locator("#stacksSurfaceBtn").filter({ hasText: "提示词堆栈" }).waitFor();
+		await page.locator("#stacksSurfaceBtn").filter({ hasText: "预设" }).waitFor();
 		await page.locator("#saveBtn").filter({ hasText: "保存" }).waitFor();
-		await page.locator("#itemsTabBtn").filter({ hasText: "条目" }).waitFor();
-		await page.locator(".sidebar .side-title").filter({ hasText: "提示词堆栈" }).waitFor();
+		await page.locator("#itemsTabBtn").filter({ hasText: "堆栈" }).waitFor();
+		await page.locator(".sidebar .side-title").filter({ hasText: "预设" }).waitFor();
 		await page.locator("#addItemBtn").filter({ hasText: "添加块" }).waitFor();
 		await page.locator("#diagnostics").filter({ hasText: "诊断" }).waitFor();
 		await page.locator("#profilesSurfaceBtn").click();
@@ -395,7 +395,7 @@ test("web editor switches between English and Chinese", { timeout: 20_000 }, asy
 		assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
 		await page.locator("#saveBtn").filter({ hasText: "保存" }).waitFor();
 		assert.equal(await page.locator(".surface-nav").getAttribute("aria-label"), "Pi Forge 编辑器区域");
-		assert.equal(await page.locator(".view-tabs").getAttribute("aria-label"), "堆栈编辑器区域");
+		assert.equal(await page.locator(".view-tabs").getAttribute("aria-label"), "预设编辑器区域");
 		await page.locator("#regexTabBtn").click();
 		await page.locator("#addRegexRuleBtn").click();
 		await page.locator("[data-regex-row] label").filter({ hasText: /^规则 ID$/ }).waitFor();
@@ -405,7 +405,7 @@ test("web editor switches between English and Chinese", { timeout: 20_000 }, asy
 		// Switching back restores English.
 		await page.locator("#localeSelect").selectOption("en");
 		assert.equal(await page.locator("html").getAttribute("lang"), "en");
-		await page.locator("#stacksSurfaceBtn").filter({ hasText: "Prompt stacks" }).waitFor();
+		await page.locator("#stacksSurfaceBtn").filter({ hasText: "Presets" }).waitFor();
 		await page.locator("#saveBtn").filter({ hasText: "Save" }).waitFor();
 
 		assert.deepEqual(browserErrors, []);

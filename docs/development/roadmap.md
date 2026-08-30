@@ -49,9 +49,11 @@ Stable 0.4 does not imply that the subagent adapter or runtime has become stable
 
 ### Naming convergence (preset/stack)
 
-Target model: **stack** names the composition section (ordered blocks/slots), **preset** names the file that bundles composition with tool/skill/regex policy, **profile** remains the model/thinking/preset bundle. The `/preset` command family already matches the target; the stored resource does not.
+Target model: **stack** names the composition section (ordered blocks/slots), **preset** names the file that bundles composition with tool/skill/regex policy, **profile** remains the model/thinking/preset bundle. The `/preset` command family already matches the target.
 
-When scheduled (bundle with other breaking cleanup, never as a standalone release):
+0.5.3 starts with the non-breaking user-visible layer: the web editor calls the complete resource a **Preset**, calls its ordered Block/Slot composition the **Stack**, and labels the old whole-resource Stack tab **Advanced**. User-facing diagnostics follow the same terminology. Compatibility identifiers remain unchanged in this phase: `/api/stacks`, TypeScript `PromptStack` names, `.pi/forge/prompt-stacks/`, JSON type `pi-forge.prompt-stack`, profile field `promptStack`, and the subagent wire contract.
+
+The remaining storage/schema convergence must be bundled with breaking cleanup, never shipped as an implicit patch migration:
 
 - Migrate `.pi/forge/prompt-stacks/` to `.pi/forge/presets/` byte-preserving, reusing the legacy stack-migration path; read-compat for the `"pi-forge.prompt-stack"` type, write `"pi-forge.preset"`.
 - Profile field `promptStack` becomes `preset` with read-compat for the old field.

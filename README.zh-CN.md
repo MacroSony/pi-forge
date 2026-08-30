@@ -4,7 +4,7 @@
 
 ![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
 
-**pi-forge** 让你自定义 [Pi](https://github.com/badlogic/pi-mono) 的思考方式和行为。Prompt stack（提示栈）负责 prompt 组合和工具策略；agent profile（agent 配置预设）可以一次性应用模型、思考等级和提示栈。
+**pi-forge** 让你自定义 [Pi](https://github.com/badlogic/pi-mono) 的思考方式和行为。Preset（预设）把有序 prompt 堆栈与工具/skill 策略、Regex 和参数放在一起；Agent Profile 可以一次性应用模型、思考等级和预设。
 
 可以把它理解为 AI agent 的角色卡和工作台。
 
@@ -12,11 +12,11 @@
 
 - 把 system prompt、聊天历史、工具、skills、项目上下文和运行时数据组合成可排序的 block 和 slot。
 - 用一条命令切换编程、审查、写作、角色扮演和翻译模式。
-- 保存并应用完整的模型/思考等级/提示栈预设。
-- 按栈严格限制工具，并过滤模型可见的 skills。
+- 保存并应用完整的模型/思考等级/预设 Profile。
+- 按预设严格限制工具，并过滤模型可见的 skills。
 - 使用静态、轮次和会话变量，以及支持嵌套的模板宏。
 - 对发给模型的 prompt 或最终 assistant 消息执行确定性 regex 转换。
-- 在本地 Web 编辑器中管理 stack/profile，并检查实际 provider payload。
+- 在本地 Web 编辑器中管理 Preset/Profile，并检查实际 provider payload。
 - 用明确启用的 profile 运行实验性、需要审批的前台 subagent。
 
 ## 安装
@@ -31,16 +31,16 @@ pi install npm:@zihanw/pi-forge
 
 ## 五分钟上手
 
-### 1. 创建 prompt stack
+### 1. 创建预设
 
-从 [默认 Pi mirror](examples/default-prompt-stack.json) 创建 `.pi/forge/prompt-stacks/default.json`：
+从[默认 Pi mirror](examples/default-prompt-stack.json) 创建 `default` 预设。0.5.3 的兼容存储路径仍是 `.pi/forge/prompt-stacks/default.json`：
 
 ```bash
 mkdir -p .pi/forge/prompt-stacks
 cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 ```
 
-如果你通过 npm 安装而不是 clone 仓库，请直接打开 `/preset ui` 新建 stack；编辑器使用相同的 Pi mirror 布局。
+如果你通过 npm 安装而不是 clone 仓库，请直接打开 `/preset ui` 新建预设；编辑器使用相同的 Pi mirror 布局。
 
 重启 Pi，或执行：
 
@@ -49,7 +49,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset use default
 ```
 
-没有其他 stack 或已恢复 session 选择优先时，`default.json` 会自动启用。
+没有其他预设或已恢复 session 选择优先时，`default.json` 会自动启用。
 
 ### 2. 打开可视化编辑器
 
@@ -57,7 +57,7 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /preset ui
 ```
 
-本地编辑器可以新建、fork、校验、预览、导入、导出和删除 prompt stack，并可在新建/fork/导入时明确选择写入项目或用户全局存储。Preview dock 提供带旧/新行号和行内高亮的 unified/split diff，可只看变化行或保留三行/全部上下文；Run diff 会把 chars/4 估算与 Pi 返回的真实 prompt/cache usage、cache hit rate 明确分开。切换到 **Agent profiles** 可以浏览项目与全局 profile、编辑和删除全局 profile（通过显式 `global:<id>` 路由）。写入操作要求项目已被信任。Delegation 配置由可选包 `@zihanw/pi-forge-subagents` 的 `subagents.json` 文件管理，不在编辑器中。
+本地编辑器可以新建、fork、校验、预览、导入、导出和删除预设，并可在新建/fork/导入时明确选择写入项目或用户全局存储。Preview dock 提供带旧/新行号和行内高亮的 unified/split diff，可只看变化行或保留三行/全部上下文；Run diff 会把 chars/4 估算与 Pi 返回的真实 prompt/cache usage、cache hit rate 明确分开。切换到 **Agent profiles** 可以浏览项目与全局 Profile、编辑和删除全局 Profile（通过显式 `global:<id>` 路由）。写入操作要求项目已被信任。Delegation 配置由可选包 `@zihanw/pi-forge-subagents` 的 `subagents.json` 文件管理，不在编辑器中。
 
 ### 3. 保存 profile
 
@@ -68,22 +68,22 @@ cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 /profile use reviewer
 ```
 
-Profile 只应用一次。之后手动修改模型或思考等级会被保留，直到再次应用 profile；当前 prompt stack 的工具策略则会在启用期间持续执行。
+Profile 只应用一次。之后手动修改模型或思考等级会被保留，直到再次应用 Profile；当前预设的工具策略则会在启用期间持续执行。
 
 ## 基本概念
 
-Prompt stack 是一个有序 JSON 文档，包含：
+一份 **Preset（预设）**对应一个 JSON 文档，其中有序的上下文编排部分叫 **Stack（堆栈）**：
 
-| 类型 | 用途 |
+| 堆栈条目 | 用途 |
 |---|---|
 | **Block** | 固定的 `system`、`user`、`assistant` 或隐藏 `custom` 文本 |
-| **Slot** | 工具、skills、项目上下文、变量、日期/cwd、聊天历史等运行时内容 |
+| **Slot** | 工具、skills、项目上下文、参数、日期/cwd、聊天历史等运行时内容 |
 
-Stack 可以 `replace`、`append` 或 `prepend` Pi 的基础 system prompt。编译时，pi-forge 会展开宏、插入对话、执行工具策略、过滤自己渲染的 skill 列表，并应用已启用的 regex 规则。
+预设还会携带 system mode（`replace`、`append` 或 `prepend`）、工具/skill 策略、Regex、参数和扩展引用。编译时，pi-forge 会展开堆栈、插入对话、执行工具策略、过滤自己渲染的 skill 列表，并应用已启用的 Regex 规则。
 
-Agent profile 是项目级或用户全局预设，引用精确 provider/model、思考等级和 prompt stack。它不会重复保存工具或 skill 策略；被引用的 stack 始终是唯一来源。项目 profile 和 stack 可以遮蔽同 ID 的全局资源；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
+Agent Profile 引用精确 provider/model、思考等级和预设。它不会重复保存工具或 skill 策略；被引用的预设始终是唯一来源。项目 Profile 和预设可以遮蔽同 ID 的全局资源；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
 
-> **命名说明。** `/preset` 命令族管理的是 prompt stack（提示词栈）。命令名反映 stack 文件的实际作用：一份文档同时携带上下文编排（blocks/slots）和随附的 tool/skill/regex 策略——更接近一份完整预设，而不是一段裸提示词。资源与命令命名将在未来版本统一（见 [roadmap](docs/development/roadmap.md)）；在那之前，"prompt stack／提示词栈"指文档本身，"preset／预设"指管理它的命令族。
+> **0.5.3 兼容说明。** 用户界面已经统一为“预设 → 堆栈”，但这个补丁版本不会偷偷迁移存储和 schema：`.pi/forge/prompt-stacks/`、`"pi-forge.prompt-stack"`、Profile 字段 `promptStack`、`/api/stacks` 和内部 `PromptStack` 类型名暂时保持不变。后续存储/schema 迁移见 [roadmap](docs/development/roadmap.md)。
 
 推荐从这些示例开始：
 
@@ -98,10 +98,10 @@ Agent profile 是项目级或用户全局预设，引用精确 provider/model、
 | 命令 | 用途 |
 |---|---|
 | `/preset ui [stop\|restart]` | 打开或管理 Web 编辑器 |
-| `/preset list` | 列出 prompt stack |
-| `/preset use <id\|none>` | 选择或禁用 stack |
-| `/preset preview [id]` | 编译 stack，但不发送请求 |
-| `/preset validate [id]` | 校验一个或全部 stack |
+| `/preset list` | 列出预设 |
+| `/preset use <id\|none>` | 选择或禁用预设 |
+| `/preset preview [id]` | 编译预设，但不发送请求 |
+| `/preset validate [id]` | 校验一个或全部预设 |
 | `/preset diagnostics` | 查看运行时和 extension 诊断 |
 | `/profile list` | 列出并 preflight profile |
 | `/profile save <id> [--overwrite]` | 把当前运行时保存为 profile |

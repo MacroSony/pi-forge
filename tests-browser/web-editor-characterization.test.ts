@@ -33,7 +33,7 @@ test("web editor preserves its shell and guarded editing state", { timeout: 30_0
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
 		assert.equal(await page.title(), "pi-forge editor");
-		assert.equal(await page.locator(".brand").textContent(), "pi-forge stack editor");
+		assert.equal(await page.locator(".brand").textContent(), "pi-forge preset editor");
 		assert.equal(await page.locator(".stack-row").count(), 2);
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
 		assert.equal(await page.locator("#itemContent").inputValue(), "Content for default.");
@@ -90,7 +90,7 @@ test("web editor preserves its shell and guarded editing state", { timeout: 30_0
 
 		await page.locator("#sidebarToggleBtn").click();
 		assert.equal(await page.locator("#shell").getAttribute("class"), "shell sidebar-collapsed");
-		assert.equal(await page.locator("#status").textContent(), "Prompt stacks sidebar hidden");
+		assert.equal(await page.locator("#status").textContent(), "Presets sidebar hidden");
 		await page.locator("#sidebarToggleBtn").click();
 		assert.equal(await page.locator("#shell").getAttribute("class"), "shell");
 
@@ -118,13 +118,13 @@ test("web editor preserves its shell and guarded editing state", { timeout: 30_0
 		const rawStack = JSON.parse(await page.locator("#stackJsonText").inputValue()) as Record<string, unknown>;
 		await page.locator("#stackJsonText").fill(JSON.stringify({ id: "alternate" }));
 		await page.locator("#applyStackJsonBtn").click();
-		assert.equal(await page.locator("#status").textContent(), "Stack JSON needs an items array.");
+		assert.equal(await page.locator("#status").textContent(), "Preset JSON needs an items array.");
 
 		rawStack.name = "Raw JSON edit";
 		rawStack.items = [{ kind: "block", id: "raw", role: "system", content: "Raw content." }];
 		await page.locator("#stackJsonText").fill(JSON.stringify(rawStack));
 		await page.locator("#applyStackJsonBtn").click();
-		await page.locator("#status").filter({ hasText: "Applied stack JSON to editor" }).waitFor();
+		await page.locator("#status").filter({ hasText: "Applied preset JSON to editor" }).waitFor();
 		await page.locator("#dirtyBadge.visible").waitFor();
 		await page.locator("#itemsTabBtn").click();
 		assert.equal(await page.locator("#itemContent").inputValue(), "Raw content.");
@@ -141,12 +141,12 @@ test("web editor transitions between populated and empty stack states", { timeou
 		await page.locator("#addRegexRuleBtn").waitFor();
 
 		page.once("dialog", async (dialog) => {
-			assert.match(dialog.message(), /Delete prompt stack 'only'/);
+			assert.match(dialog.message(), /Delete preset 'only'/);
 			await dialog.accept();
 		});
 		await page.locator("#moreActions > summary").click();
 		await page.locator("#deleteStackBtn").click();
-		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
+		await page.locator(".empty-title").filter({ hasText: "No presets found." }).waitFor();
 		assert.equal(await page.locator("#saveBtn").isDisabled(), true);
 		assert.equal(await page.locator("#previewTabBtn").isDisabled(), true);
 		assert.equal(await page.locator("#metadataPanel").isVisible(), false);
@@ -202,16 +202,16 @@ test("profile preflight refreshes after prompt-stack deletion", { timeout: 20_00
 
 		await page.locator("#stacksSurfaceBtn").click();
 		page.once("dialog", async (dialog) => {
-			assert.match(dialog.message(), /Delete prompt stack 'default'/);
+			assert.match(dialog.message(), /Delete preset 'default'/);
 			await dialog.accept();
 		});
 		await page.locator("#moreActions > summary").click();
 		await page.locator("#deleteStackBtn").click();
-		await page.locator(".empty-title").filter({ hasText: "No prompt stacks found." }).waitFor();
+		await page.locator(".empty-title").filter({ hasText: "No presets found." }).waitFor();
 
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
-		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown prompt stack: default/);
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown preset: default/);
 	}, {
 		currentModel,
 		models: [currentModel, targetModel],
@@ -448,7 +448,7 @@ test("web editor navigates project profile resolution without losing stack state
 		await page.locator(".profile-applicability").filter({ hasText: "Preflight failed" }).waitFor();
 		assert.equal(await page.locator("#profileApplyBtn").isDisabled(), true);
 		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown model: missing\/model/);
-		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown prompt stack: missing-stack/);
+		assert.match(await page.locator(".profile-diagnostics").textContent() ?? "", /Unknown preset: missing-stack/);
 		const invalidApply = await page.request.post(new URL("/api/profiles/broken/apply", editorUrl).href, {
 			headers: { "x-pi-forge-token": editorUrl.searchParams.get("token")! },
 		});
@@ -605,7 +605,7 @@ test("web editor reports profile runtime drift after external changes", { timeou
 		const drift = page.locator(".profile-drift");
 		assert.match(await drift.textContent() ?? "", /Model: unchanged/);
 		assert.match(await drift.textContent() ?? "", /Thinking: unchanged/);
-		assert.match(await drift.textContent() ?? "", /Stack: unchanged/);
+		assert.match(await drift.textContent() ?? "", /Preset: unchanged/);
 
 		await harness.setModel(currentModel);
 		harness.setThinkingLevel("low");
@@ -615,7 +615,7 @@ test("web editor reports profile runtime drift after external changes", { timeou
 		await page.locator(".profile-runtime-card").filter({ hasText: /test\/current ·\s*low ·\s*project:default/ }).waitFor();
 		assert.match(await drift.textContent() ?? "", /Model: drifted/);
 		assert.match(await drift.textContent() ?? "", /Thinking: drifted/);
-		assert.match(await drift.textContent() ?? "", /Stack: drifted/);
+		assert.match(await drift.textContent() ?? "", /Preset: drifted/);
 		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Last applied\s*reviewer/);
 		assert.match(await page.locator(".profile-runtime-card").textContent() ?? "", /Source definition\s*unchanged/);
 	}, {
@@ -871,12 +871,12 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 		await variableRows.nth(0).locator("[data-var-value]").fill("first");
 		await variableRows.nth(1).locator("[data-var-name]").fill("var1");
 		await variableRows.nth(1).locator("[data-var-value]").fill("second");
-		assert.equal(await page.locator("#status").textContent(), "Duplicate stack variable names.");
+		assert.equal(await page.locator("#status").textContent(), "Duplicate preset parameter names.");
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#stackTabBtn").click();
 		await page.locator("#saveBtn").click();
 		await page.locator("#status")
-			.filter({ hasText: "Duplicate stack variable names." })
+			.filter({ hasText: "Duplicate preset parameter names." })
 			.waitFor();
 		assert.equal(await page.locator("[data-var-row]").count(), 1);
 		await page.locator("[data-var-row] [data-var-value]").fill("resolved");
@@ -892,7 +892,7 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 		rawStack.tools.futurePolicyField = { preserve: true };
 		await page.locator("#stackJsonText").fill(JSON.stringify(rawStack));
 		await page.locator("#applyStackJsonBtn").click();
-		await page.locator("#status").filter({ hasText: "Applied stack JSON to editor" }).waitFor();
+		await page.locator("#status").filter({ hasText: "Applied preset JSON to editor" }).waitFor();
 
 		await page.locator("#regexTabBtn").click();
 		const regexRow = page.locator("[data-regex-row]").first();

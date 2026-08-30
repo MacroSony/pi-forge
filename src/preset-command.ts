@@ -24,7 +24,7 @@ export function registerPresetCommand(
 	deps: PresetCommandDeps,
 ): void {
 	pi.registerCommand("preset", {
-		description: "Manage pi-forge prompt stacks: list, use, preview, validate, reload, ui",
+		description: "Manage pi-forge presets: list, use, preview, validate, reload, ui",
 		getArgumentCompletions: (prefix) => {
 			const parts = prefix.trimStart().split(/\s+/);
 			if (parts.length <= 1 && !prefix.endsWith(" ")) {
@@ -68,12 +68,12 @@ async function handlePresetCommand(
 	switch (command) {
 		case "list":
 		case "status":
-			await showText(ctx, "pi-forge prompt stacks", renderStackList(workspace, ctx));
+			await showText(ctx, "pi-forge presets", renderStackList(workspace, ctx));
 			return;
 
 		case "reload":
 			await deps.reloadStacks(ctx, deps.selectedActiveId());
-			ctx.ui.notify(`pi-forge: reloaded ${workspace.snapshot().stacks.length} prompt stack(s).`, "info");
+			ctx.ui.notify(`pi-forge: reloaded ${workspace.snapshot().stacks.length} preset(s).`, "info");
 			return;
 
 		case "ui": {
@@ -93,22 +93,22 @@ async function handlePresetCommand(
 				return;
 			}
 			if (!ctx.isProjectTrusted()) {
-				ctx.ui.notify("pi-forge: project is not trusted; refusing to activate a prompt stack.", "warning");
+				ctx.ui.notify("pi-forge: project is not trusted; refusing to activate a preset.", "warning");
 				return;
 			}
 			if (!deps.setActive(id, ctx)) {
-				ctx.ui.notify(`Unknown prompt stack: ${id}`, "error");
+				ctx.ui.notify(`Unknown preset: ${id}`, "error");
 				return;
 			}
 			const active = workspace.snapshot().active;
-			ctx.ui.notify(active ? `pi-forge: active prompt stack ${active.stack.id}` : "pi-forge: prompt stack disabled", "info");
+			ctx.ui.notify(active ? `pi-forge: active preset ${active.stack.id}` : "pi-forge: preset disabled", "info");
 			return;
 		}
 
 		case "preview": {
 			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
-				ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
+				ctx.ui.notify(rest[0] ? `Unknown preset: ${rest[0]}` : "No active preset.", "warning");
 				return;
 			}
 			await showText(ctx, `pi-forge preview: ${target.stack.id}`, renderPreview(ctx, target));
@@ -118,7 +118,7 @@ async function handlePresetCommand(
 		case "validate": {
 			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
-				ctx.ui.notify(rest[0] ? `Unknown prompt stack: ${rest[0]}` : "No active prompt stack.", "warning");
+				ctx.ui.notify(rest[0] ? `Unknown preset: ${rest[0]}` : "No active preset.", "warning");
 				return;
 			}
 			await showText(ctx, `pi-forge validation: ${target.stack.id}`, renderDiagnostics(target.diagnostics));
@@ -134,7 +134,7 @@ async function handlePresetCommand(
 			const flags = new Set(rest);
 			const dryRun = flags.has("--dry-run");
 			if (!ctx.isProjectTrusted() && !dryRun) {
-				ctx.ui.notify("pi-forge: project is not trusted; refusing to migrate prompt stacks.", "warning");
+				ctx.ui.notify("pi-forge: project is not trusted; refusing to migrate presets.", "warning");
 				return;
 			}
 			const report = migrateLegacyPromptStacks(ctx.cwd, {
@@ -161,7 +161,7 @@ async function handlePresetCommand(
 function renderStackList(workspace: ForgeWorkspace, ctx: ExtensionCommandContext): string {
 	const snapshot = workspace.snapshot();
 	const lines = [
-		"Prompt stack directories:",
+		"Preset directories:",
 		...promptStackReadDirs(ctx.cwd).map((dir, index) => `  ${index === 0 ? "primary" : "legacy"}: ${dir}`),
 		"Forge extension directories:",
 		`  global: ${globalForgeExtensionsDir()}`,
@@ -172,7 +172,7 @@ function renderStackList(workspace: ForgeWorkspace, ctx: ExtensionCommandContext
 	];
 
 	if (snapshot.stacks.length === 0) {
-		lines.push("No prompt stacks found.", 'Create .pi/forge/prompt-stacks/<id>.json with "autoActivate": true to auto-activate a stack.');
+		lines.push("No presets found.", 'Create .pi/forge/prompt-stacks/<id>.json with "autoActivate": true to auto-activate a preset.');
 		return lines.join("\n");
 	}
 
@@ -192,8 +192,8 @@ function renderStackList(workspace: ForgeWorkspace, ctx: ExtensionCommandContext
 function renderCurrentDiagnostics(workspace: ForgeWorkspace, compileCycle: CompileCycleState): string {
 	const snapshot = workspace.snapshot();
 	const lines = ["# pi-forge diagnostics", ""];
-	lines.push("## Active stack load/validation diagnostics", "");
-	lines.push(snapshot.active ? renderDiagnostics(snapshot.active.diagnostics) : "No active prompt stack.");
+	lines.push("## Active preset load/validation diagnostics", "");
+	lines.push(snapshot.active ? renderDiagnostics(snapshot.active.diagnostics) : "No active preset.");
 	lines.push("", "## pi-forge extension diagnostics", "");
 	lines.push(renderDiagnostics([...snapshot.extensionDiagnostics]));
 	lines.push("", "## Loaded pi-forge extensions", "");

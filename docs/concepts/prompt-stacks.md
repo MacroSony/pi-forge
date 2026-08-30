@@ -1,10 +1,10 @@
-# Prompt stacks
+# Presets and Stacks
 
 [Documentation](../README.md) · [中文](../zh-CN/concepts/prompt-stacks.md)
 
-A prompt stack is an ordered, declarative description of the prompt and policy Pi should use. It combines static **blocks** with dynamic **slots**.
+A **Preset** is the complete declarative resource Pi Forge applies. Its **Stack** is the ordered prompt composition made from static **Blocks** and dynamic **Slots**; the same Preset also carries policy, Regex, parameters, and extension references.
 
-> **Naming note.** Prompt stacks are managed by the `/preset` command family: a stack file bundles composition and policy together, behaving like a complete preset. The names will converge in a future release; this document keeps "prompt stack" for the resource.
+> **0.5.3 compatibility note.** The UI uses Preset → Stack terminology. The file path, JSON type, profile field, API route, and internal type names retain their existing `prompt-stack` / `promptStack` spellings in this patch.
 
 ## Blocks and slots
 
@@ -42,22 +42,22 @@ Slots cover conversation history, tools, tool guidance, skills, project context,
 For each new user turn, pi-forge:
 
 1. Orders enabled blocks and slots exactly as written.
-2. Builds `system` content and applies the stack's `replace`, `append`, or `prepend` mode.
+2. Builds `system` content and applies the Preset's `replace`, `append`, or `prepend` mode.
 3. Inserts synthetic user/assistant messages around the movable `chat-history` slot.
 4. Compiles forge-v1 templates over `runtime.*`, `parameters.*`, and `extensions.*`.
-5. Applies the stack's tool policy to Pi and filters skills rendered by pi-forge.
+5. Applies the Preset's tool policy to Pi and filters skills rendered by pi-forge.
 6. Applies outgoing history/compiled regex rules.
 7. Optionally applies destructive finalize rules when an assistant message completes.
 
 The context rewrite happens only on the first provider request for a user-submitted turn. Pi can then continue its normal tool loop without repeatedly rebuilding the same context.
 
-Stacks can optionally merge runs of consecutive same-role stack items into a single message with `context.mergeConsecutiveRoles` (and an optional `context.mergeSeparator`); chat-history output and custom-role items are never merged. See the [stack schema](../reference/stack-schema.md#context-options).
+A Stack can optionally merge runs of consecutive same-role items into a single message with `context.mergeConsecutiveRoles` (and an optional `context.mergeSeparator`); chat-history output and custom-role items are never merged. See the [Preset schema](../reference/stack-schema.md#context-options).
 
 ## System modes
 
-- `replace` is the default and gives the stack complete control. An empty replacement falls back to Pi's base prompt.
-- `append` adds stack system content after Pi's base prompt.
-- `prepend` adds stack system content before Pi's base prompt.
+- `replace` is the default and gives the Preset complete control. An empty replacement falls back to Pi's base prompt.
+- `append` adds the Stack's system content after Pi's base prompt.
+- `prepend` adds the Stack's system content before Pi's base prompt.
 
 Use `replace` when the model-visible skill list must be controlled. With `append` or `prepend`, Pi's base prompt may already contain an unfiltered skill listing.
 
@@ -74,26 +74,26 @@ This preserves prior context while presenting the current request once, in an ex
 
 ## Tool and skill policy
 
-Stacks may use either `allow` or `deny` patterns for each resource. Tool policy changes Pi's active tools and is guarded at tool-call time; it remains enforced while the stack is selected. Skill policy only filters skills rendered by pi-forge—it does not prevent explicit skill invocation and is not a security boundary.
+Presets may use either `allow` or `deny` patterns for each resource. Tool policy changes Pi's active tools and is guarded at tool-call time; it remains enforced while the Preset is selected. Skill policy only filters skills rendered by pi-forge—it does not prevent explicit skill invocation and is not a security boundary.
 
-External tool additions are preserved in the baseline restored when a restrictive stack is disabled. See the exact behavior in [stack policy reference](../reference/stack-schema.md#tool-and-skill-policy).
+External tool additions are preserved in the baseline restored when a restrictive Preset is disabled. See the exact behavior in the [Preset policy reference](../reference/stack-schema.md#tool-and-skill-policy).
 
 ## Scopes and shadowing
 
-Stacks may live in the user-global `~/.pi/forge/prompt-stacks/` or the project `.pi/forge/prompt-stacks/`. A project stack shadows a same-ID global stack for unqualified commands. Selectors are `reviewer`, `project:reviewer`, or `global:reviewer`. Duplicate IDs are errors only within one scope.
+Presets currently live in the compatibility paths `~/.pi/forge/prompt-stacks/` or `.pi/forge/prompt-stacks/`. A project Preset shadows a same-ID global Preset for unqualified commands. Selectors are `reviewer`, `project:reviewer`, or `global:reviewer`. Duplicate IDs are errors only within one scope.
 
 ## Activation and session behavior
 
-- A stack may set `autoActivate: true`; conflicting auto-activation in one scope is invalid and fails closed.
+- A Preset may set `autoActivate: true`; conflicting auto-activation in one scope is invalid and fails closed.
 - `default.json` has no special filename role anymore; missing `autoActivate` yields a migration warning.
 - `/preset use none` records an explicit session opt-out.
-- Active stack selection follows Pi's session-tree branch.
+- Active Preset selection follows Pi's session-tree branch.
 - Restored branch state takes precedence over fresh-session auto-activation.
-- Project auto-activation candidates take precedence over global ones; an invalid or ambiguous project candidate never falls back to a global stack.
-- An auto-activated agent profile takes precedence over standalone stack autoload.
+- Project auto-activation candidates take precedence over global ones; an invalid or ambiguous project candidate never falls back to a global Preset.
+- An auto-activated Agent Profile takes precedence over standalone Preset autoload.
 
 ## Extensions and transforms
 
-Immutable `parameters` support forge-v1 interpolation and pure filters; tool/slot conditionals use `runtime.tool.*` / `runtime.slot.*` booleans. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in stack JSON. Deterministic regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
+Immutable `parameters` support forge-v1 interpolation and pure filters; tool/slot conditionals use `runtime.tool.*` / `runtime.slot.*` booleans. Trusted JavaScript/TypeScript registration modules can add macros and slots without putting executable code in Preset JSON. Deterministic Regex rules can transform model-bound prompt text or, with an explicit warning, replace finalized assistant transcript text.
 
 See [custom macros and slots](../guides/custom-macros-and-slots.md), [macro reference](../reference/macros-and-slots.md), and [regex schema](../reference/stack-schema.md#regex-transforms).

@@ -4,7 +4,7 @@
 
 ![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
 
-**pi-forge** lets you customize how [Pi](https://github.com/badlogic/pi-mono) thinks and behaves. Prompt stacks control prompt composition and tool policy; agent profiles apply a model, thinking level, and stack as a reusable one-shot preset.
+**pi-forge** lets you customize how [Pi](https://github.com/badlogic/pi-mono) thinks and behaves. Presets bundle an ordered prompt Stack with tool/skill policy, Regex, and parameters; agent profiles apply a model, thinking level, and Preset as a reusable one-shot configuration.
 
 Think of it as a character sheet and workbench for your AI agent.
 
@@ -12,11 +12,11 @@ Think of it as a character sheet and workbench for your AI agent.
 
 - Compose Pi's system prompt, conversation history, tools, skills, project context, and runtime data as ordered blocks and slots.
 - Switch between coding, reviewing, writing, roleplay, and translation modes with one command.
-- Save and apply complete model/thinking/stack profiles.
-- Enforce per-stack tool policy and filter model-visible skills.
-- Use immutable stack `parameters` with the deterministic forge-v1 template engine.
+- Save and apply complete model/thinking/Preset profiles.
+- Enforce per-Preset tool policy and filter model-visible skills.
+- Use immutable Preset `parameters` with the deterministic forge-v1 template engine.
 - Apply deterministic regex transforms to outgoing prompts or finalized assistant messages.
-- Edit stacks and profiles in a local browser UI and inspect the exact provider payload.
+- Edit Presets and profiles in a local browser UI and inspect the exact provider payload.
 - Inspect prompt changes in the Preview dock: **Preview** compiles the live draft, **Draft diff** compares unsaved edits with disk, and **Run diff** compares recent provider turns. Git-style unified/split views include old/new line numbers, inline highlights, and changes-only/three-line/all-line context. Run metadata keeps chars/4 estimates separate from Pi's provider-reported prompt/cache usage and real cache-hit rate.
 - Run an explicitly enabled profile as an experimental, approval-gated foreground subagent.
 
@@ -32,16 +32,16 @@ Restart Pi after installing or updating the extension. Pi supplies its SDK packa
 
 ## Five-minute start
 
-### 1. Create a prompt stack
+### 1. Create a Preset
 
-Create `.pi/forge/prompt-stacks/default.json` from [the default Pi mirror](examples/default-prompt-stack.json):
+Create the `default` Preset from [the default Pi mirror](examples/default-prompt-stack.json). The compatibility storage path remains `.pi/forge/prompt-stacks/default.json` in 0.5.3:
 
 ```bash
 mkdir -p .pi/forge/prompt-stacks
 cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 ```
 
-If you installed from npm rather than cloning this repository, open `/preset ui` and create a new stack; the editor starts with the same Pi-mirror layout.
+If you installed from npm rather than cloning this repository, open `/preset ui` and create a new Preset; the editor starts with the same Pi-mirror layout.
 
 Restart Pi or run:
 
@@ -50,7 +50,7 @@ Restart Pi or run:
 /preset use default
 ```
 
-`default.json` auto-activates when no stack or restored session selection takes precedence.
+`default.json` auto-activates when no Preset or restored session selection takes precedence.
 
 ### 2. Open the visual editor
 
@@ -58,7 +58,7 @@ Restart Pi or run:
 /preset ui
 ```
 
-The local editor can create, fork, validate, preview, import, export, and delete prompt stacks. Its **Agent profiles** view manages one-shot model/thinking/stack presets. Writes require a trusted project. When `@zihanw/pi-forge-subagents` is installed, its schema-driven editor appears on the separate top-level **Settings** surface and persists to the optional package's `subagents.json` files.
+The local editor can create, fork, validate, preview, import, export, and delete Presets. Its **Agent profiles** view manages one-shot model/thinking/Preset bundles. Writes require a trusted project. When `@zihanw/pi-forge-subagents` is installed, its schema-driven editor appears on the separate top-level **Settings** surface and persists to the optional package's `subagents.json` files.
 
 ### 3. Save a profile
 
@@ -69,22 +69,22 @@ Configure Pi normally, then capture and reuse the current settings:
 /profile use reviewer
 ```
 
-A profile applies once. Later manual changes to the model or thinking level remain in effect until the profile is applied again; an active prompt stack continues enforcing its tool policy.
+A profile applies once. Later manual changes to the model or thinking level remain in effect until the profile is applied again; an active Preset continues enforcing its tool policy.
 
 ## The basic model
 
-A prompt stack is an ordered JSON document containing:
+A **Preset** is one JSON document. Its ordered composition section is the **Stack**:
 
-| Item | Purpose |
+| Stack item | Purpose |
 |---|---|
 | **Block** | Static `system`, `user`, `assistant`, or hidden `custom` text |
 | **Slot** | Runtime content such as tools, skills, project context, date/cwd, or chat history |
 
-Stacks can `replace`, `append`, or `prepend` Pi's base system prompt. During compilation, pi-forge compiles forge-v1 templates over `runtime.*` / `parameters.*` / `extensions.*`, inserts conversation content, enforces tool policy, filters its skill listing, and applies enabled regex rules.
+The Preset also carries system mode (`replace`, `append`, or `prepend`), tool/skill policy, Regex, parameters, and extension references. During compilation, pi-forge expands the Stack, compiles forge-v1 templates over `runtime.*` / `parameters.*` / `extensions.*`, enforces tool policy, filters its skill listing, and applies enabled Regex rules.
 
-Agent profiles are project-local references to an exact provider/model, thinking level, and prompt stack. They intentionally do not duplicate tool or skill policy—the referenced stack remains the source of truth.
+Agent profiles reference an exact provider/model, thinking level, and Preset. They intentionally do not duplicate tool or skill policy—the referenced Preset remains the source of truth.
 
-> **Naming note.** The `/preset` command family manages prompt stacks. The name reflects what a stack file actually behaves like: one document carrying both the context composition (blocks and slots) and the tool/skill/regex policy that travels with it—a complete preset, not a bare prompt. Resource and command naming will converge in a future release (see the [roadmap](docs/development/roadmap.md)); until then, "prompt stack" names the document and "preset" names the commands that manage it.
+> **0.5.3 compatibility note.** User-facing terminology now follows Preset → Stack. Storage and schema identifiers remain backward-compatible in this patch: `.pi/forge/prompt-stacks/`, `"pi-forge.prompt-stack"`, profile field `promptStack`, `/api/stacks`, and internal `PromptStack` type names are unchanged. See the [roadmap](docs/development/roadmap.md) for the later storage/schema migration.
 
 Start with these examples:
 
@@ -99,10 +99,10 @@ Start with these examples:
 | Command | Purpose |
 |---|---|
 | `/preset ui [stop\|restart]` | Open or manage the web editor |
-| `/preset list` | List prompt stacks |
-| `/preset use <id\|none>` | Select or disable a stack |
-| `/preset preview [id]` | Compile a stack without sending a request |
-| `/preset validate [id]` | Validate one stack or all stacks |
+| `/preset list` | List Presets |
+| `/preset use <id\|none>` | Select or disable a Preset |
+| `/preset preview [id]` | Compile a Preset without sending a request |
+| `/preset validate [id]` | Validate one Preset or all Presets |
 | `/preset diagnostics` | Show runtime and extension diagnostics |
 | `/profile list` | List and preflight profiles |
 | `/profile save <id> [--overwrite]` | Capture the current runtime as a profile |

@@ -14,7 +14,7 @@ Use `/preset ui restart` to replace its server or `/preset ui stop` to close it.
 
 The editor binds to an available `127.0.0.1` port and uses a session token. Multiple Pi projects can run editors simultaneously. Lifecycle reinitialization reuses the existing editor URL for the same project when possible.
 
-Reads, preview, resources, and payload inspection remain available as appropriate, but writes require Pi to trust the project. Files are constrained to pi-forge's stack/profile storage. Never expose or proxy the editor URL to an untrusted network.
+Reads, preview, resources, and payload inspection remain available as appropriate, but writes require Pi to trust the project. Files are constrained to Pi Forge's Preset/Profile storage. Never expose or proxy the editor URL to an untrusted network.
 
 Choose a preferred port in `.pi/forge/config.json`:
 
@@ -30,14 +30,15 @@ If that port is unavailable, pi-forge selects another and shows the actual URL.
 
 ## Interface language
 
-The editor interface is available in English and Chinese. Use the language selector in the top bar (Auto / English / 中文); the choice is written to `webEditor.locale` in the project config. `Auto` (the default) follows the browser language, and the initial page render also honors the browser's `Accept-Language` header. Interface chrome, built-in stack/profile surfaces, and the preview/diff dock are localized; compiler diagnostics, provider-contributed settings pages, and stack content (item names, block text) stay in their authored language.
+The editor interface is available in English and Chinese. Use the language selector in the top bar (Auto / English / 中文); the choice is written to `webEditor.locale` in the project config. `Auto` (the default) follows the browser language, and the initial page render also honors the browser's `Accept-Language` header. Interface chrome, built-in Preset/Profile surfaces, and the preview/diff dock are localized; compiler diagnostics, provider-contributed settings pages, and authored Preset content stay in their authored language.
 
-## Prompt-stack workspace
+## Preset workspace
 
-The stack workspace provides:
+The Preset workspace provides:
 
 - creation from the default Pi-mirror layout;
-- structured metadata, item, policy, variables, context, and regex editing;
+- an ordered **Stack** tab for Block/Slot composition;
+- structured metadata, policy, parameters, context, and Regex editing;
 - drag-and-drop item order and enable/disable controls;
 - validation and a full compiled preview;
 - registered-tool and loaded-skill search with exact-name chips and wildcard patterns;
@@ -47,15 +48,15 @@ The stack workspace provides:
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.
 
-Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking profile references or the active selection. The compact selector attached to **New stack** (default `Project`) chooses where new stacks, imports, and forks are written: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Less-used capture, fork, import, export, and delete actions live under **More** so the stack and Preview/Diff panes keep the available viewport. Stack rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy stacks remain editable in place.
+Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking Profile references or the active selection. The compact selector attached to **New preset** (default `Project`) chooses where new Presets, imports, and forks are written: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Those paths keep their pre-0.5.3 names for compatibility. Less-used capture, fork, import, export, and delete actions live under **More** so the Stack and Preview/Diff panes keep the available viewport. Preset rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy resources remain editable in place.
 
-Saves, imports, forks, and deletes reload stack state into the current Pi session. When another surface changes a referenced stack, returning to profiles refreshes profile resolution.
+Saves, imports, forks, and deletes reload Preset state into the current Pi session. When another surface changes a referenced Preset, returning to Profiles refreshes Profile resolution.
 
 ## Agent-profile workspace
 
-The profile list shows each profile's ID, display metadata, model, thinking level, stack, resolution state, auto-activation, last-applied provenance, and a `project`/`global` scope badge. Same-ID shadow pairs are marked `shadows global:<id>` or `shadowed by project:<id>`.
+The Profile list shows each Profile's ID, display metadata, model, thinking level, Preset, resolution state, auto-activation, last-applied provenance, and a `project`/`global` scope badge. Same-ID shadow pairs are marked `shadows global:<id>` or `shadowed by project:<id>`.
 
-Trusted projects can create profiles in either scope: the scope selector beside **New profile** (default `project`) chooses whether to write the user-global `~/.pi/forge/agent-profiles` or the project `.pi/forge/agent-profiles`. Global profiles can be edited, validated, saved, applied once, and deleted through explicit `global:<id>` routes; unqualified routes stay project-only. When editing a global profile, the prompt-stack dropdown offers only global stacks. Model choices come from Pi's model registry, thinking choices reflect model support, and stack choices come from the shared repository. The editor rejects a second auto-activation profile within the same scope.
+Trusted projects can create Profiles in either scope: the scope selector beside **New profile** (default `project`) chooses whether to write the user-global `~/.pi/forge/agent-profiles` or the project `.pi/forge/agent-profiles`. Global Profiles can be edited, validated, saved, applied once, and deleted through explicit `global:<id>` routes; unqualified routes stay project-only. When editing a global Profile, the Preset dropdown offers only global Presets. Model choices come from Pi's model registry, thinking choices reflect model support, and Preset choices come from the shared repository. The editor rejects a second auto-activation Profile within the same scope.
 
 The runtime/provenance card separates current runtime state, last-applied snapshot, source-definition changes, and field-level runtime drift.
 

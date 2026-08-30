@@ -81,7 +81,7 @@ export function createPromptStackRuntime(
 			workspace.disposeExtensions();
 			workspace.reload(ctx.cwd, { trusted: false, activeStackId: undefined, suppressAutoActivate: true });
 			deps.syncToolPolicy(ctx);
-			ctx.ui.notify("pi-forge: project is not trusted; project prompt stacks are disabled (global stacks remain browsable).", "warning");
+			ctx.ui.notify("pi-forge: project is not trusted; project presets are disabled (global presets remain browsable).", "warning");
 			updateStatus(ctx);
 			return;
 		}

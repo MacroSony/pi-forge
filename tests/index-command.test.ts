@@ -1446,7 +1446,7 @@ test("/preset ui validates new global profiles against global scope", async () =
 			assert.equal(validateResponse.status, 200);
 			const validation = await validateResponse.json() as { diagnostics: Array<{ message: string }> };
 			assert.equal(validation.diagnostics.some((diagnostic) => /Profile file already exists/.test(diagnostic.message)), false);
-			assert.equal(validation.diagnostics.some((diagnostic) => /Unknown prompt stack/.test(diagnostic.message)), false);
+			assert.equal(validation.diagnostics.some((diagnostic) => /Unknown preset/.test(diagnostic.message)), false);
 
 			const createResponse = await fetch(new URL("/api/profiles", editorUrl), {
 				method: "POST",
@@ -1467,7 +1467,7 @@ test("/preset ui validates new global profiles against global scope", async () =
 			const createdGlobal = created.collection.profiles.find((entry) => entry.selector === "global:worker");
 			assert.equal(createdGlobal?.scope, "global");
 			assert.equal(createdGlobal?.profile.promptStack, "shared");
-			assert.equal(createdGlobal?.preview.diagnostics.some((diagnostic) => /Unknown prompt stack/.test(diagnostic.message)), false);
+			assert.equal(createdGlobal?.preview.diagnostics.some((diagnostic) => /Unknown preset/.test(diagnostic.message)), false);
 			assert.equal(existsSync(join(globalDir, "agent-profiles", "worker.json")), true);
 		} finally {
 			await harness.commands.preset.handler("ui stop", context.ctx);

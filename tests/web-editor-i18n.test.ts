@@ -5,11 +5,11 @@ import { editorLocale, setEditorLocale, t, tp } from "../src/web-editor/client/i
 
 test("t resolves English and zh-CN strings and interpolates params", () => {
 	setEditorLocale("en");
-	assert.equal(t("nav.stacks"), "Prompt stacks");
+	assert.equal(t("nav.stacks"), "Presets");
 	assert.equal(t("status.saved", { id: "demo" }), "Saved demo");
 
 	setEditorLocale("zh-CN");
-	assert.equal(t("nav.stacks"), "提示词堆栈");
+	assert.equal(t("nav.stacks"), "预设");
 	assert.equal(t("status.saved", { id: "demo" }), "已保存 demo");
 	assert.equal(t("nav.editorSectionsAria"), "Pi Forge 编辑器区域");
 	assert.equal(t("regex.id"), "规则 ID");
