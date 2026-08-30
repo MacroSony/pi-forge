@@ -88,40 +88,40 @@ export function createWebEditorRuntime(createRuntime, getContributionTransport) 
                     catch (fallbackError) {
                         const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
                         ctx.ui.setStatus("pi-forge-editor", undefined);
-                        ctx.ui.notify(`pi-forge: failed to start stack editor on an available localhost port: ${fallbackDetail}.`, "error");
+                        ctx.ui.notify(`pi-forge: failed to start preset editor on an available localhost port: ${fallbackDetail}.`, "error");
                         return;
                     }
                 }
                 else {
                     const detail = error instanceof Error ? error.message : String(error);
                     ctx.ui.setStatus("pi-forge-editor", undefined);
-                    ctx.ui.notify(`pi-forge: failed to start stack editor on an available localhost port: ${detail}.`, "error");
+                    ctx.ui.notify(`pi-forge: failed to start preset editor on an available localhost port: ${detail}.`, "error");
                     return;
                 }
             }
             remember(webEditor, ctx.cwd, settings.preferredPort, promptOptions);
             ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
-            ctx.ui.notify(`pi-forge: stack editor running at ${webEditor.url}`, "info");
+            ctx.ui.notify(`pi-forge: preset editor running at ${webEditor.url}`, "info");
         }
         else {
             webEditor.updateHost(createHost(ctx, promptOptions));
             remember(webEditor, ctx.cwd, settings.preferredPort, promptOptions);
             ctx.ui.setStatus("pi-forge-editor", ctx.ui.theme.fg("accent", `editor:${webEditor.port}`));
-            ctx.ui.notify(`pi-forge: stack editor already running at ${webEditor.url}`, "info");
+            ctx.ui.notify(`pi-forge: preset editor already running at ${webEditor.url}`, "info");
         }
-        await showText(ctx, "pi-forge stack editor", `Open the local stack editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1:${webEditor.port}\nOptional config: ${settings.configPath}\nProject: ${webEditorCwd}`);
+        await showText(ctx, "pi-forge preset editor", `Open the local preset editor:\n\n${webEditor.url}\n\nServer bound to 127.0.0.1:${webEditor.port}\nOptional config: ${settings.configPath}\nProject: ${webEditorCwd}`);
     }
     async function stop(ctx) {
         syncFromShared(ctx.cwd);
         if (!webEditor) {
-            ctx.ui.notify("pi-forge: stack editor is not running.", "info");
+            ctx.ui.notify("pi-forge: preset editor is not running.", "info");
             return;
         }
         const server = webEditor;
         await server.close();
         clear(server);
         ctx.ui.setStatus("pi-forge-editor", undefined);
-        ctx.ui.notify("pi-forge: stack editor stopped.", "info");
+        ctx.ui.notify("pi-forge: preset editor stopped.", "info");
     }
     return { refreshHost, open, stop };
 }

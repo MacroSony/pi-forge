@@ -93,7 +93,7 @@ export function resolveAgentProfile(loaded, resources) {
                 diagnostics.push({
                     level: diagnostic.level,
                     field: "promptStack",
-                    message: `Prompt stack ${promptStack.stack.id}: ${diagnostic.message}`,
+                    message: `Preset ${promptStack.stack.id}: ${diagnostic.message}`,
                 });
             }
             const allowedPatterns = promptStack.stack.tools?.allow?.filter((pattern) => pattern !== "*") ?? [];
@@ -104,7 +104,7 @@ export function resolveAgentProfile(loaded, resources) {
                     diagnostics.push({
                         level: "warning",
                         field: "promptStack",
-                        message: `Prompt stack ${promptStack.stack.id} allows tool pattern "${pattern}", but it matches no registered tools.`,
+                        message: `Preset ${promptStack.stack.id} allows tool pattern "${pattern}", but it matches no registered tools.`,
                     });
                 }
             }
@@ -158,7 +158,7 @@ function resolveProfilePromptStack(loaded, promptStacks) {
         diagnostics.push({
             level: "error",
             field: "promptStack",
-            message: `Global profile ${loaded.profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
+            message: `Global profile ${loaded.profile.id} cannot reference project preset ${parsed.selector.id}.`,
         });
         return { stack: undefined, diagnostics };
     }
@@ -174,14 +174,14 @@ function resolveProfilePromptStack(loaded, promptStacks) {
         diagnostics.push({
             level: "error",
             field: "promptStack",
-            message: `Unknown prompt stack: ${reference}.${suggestion}`,
+            message: `Unknown preset: ${reference}.${suggestion}`,
         });
         return { stack: undefined, diagnostics };
     }
     diagnostics.push({
         level: "error",
         field: "promptStack",
-        message: `Prompt stack id is ambiguous: ${reference}`,
+        message: `Preset id is ambiguous: ${reference}`,
     });
     return { stack: undefined, diagnostics };
 }

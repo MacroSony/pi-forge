@@ -55,7 +55,7 @@ export function buildPreview(ctx, target, options) {
         approxTokens: estimatePayloadTokens(`${system.systemPrompt}\n${messageSections.map((section) => section.content).join("\n")}`),
     };
     const text = [
-        `# Prompt stack preview: ${target.stack.id}`,
+        `# Preset preview: ${target.stack.id}`,
         "",
         "## System prompt",
         "",

@@ -48,7 +48,7 @@ function serializePromptStackReference(targetScope, key) {
     if (targetScope === "project" && key.scope === "global")
         return { reference: formatResourceKey(key) };
     return {
-        error: `Cannot capture a ${targetScope} profile referencing a ${key.scope} prompt stack ${key.id}.`,
+        error: `Cannot capture a ${targetScope} profile referencing a ${key.scope} preset ${key.id}.`,
     };
 }
 export function writeAgentProfile(cwd, profile, options = {}) {
@@ -110,7 +110,7 @@ export async function applyResolvedAgentProfile(pi, state, deps, resolved, ctx) 
         }
         const resolvedStackSelector = resolved.promptStack ? formatResourceKey(resolved.promptStack.key) : "none";
         if (!deps.setActive(resolvedStackSelector, ctx)) {
-            throw new Error(`Prompt stack ${resolvedStackSelector} disappeared after preflight.`);
+            throw new Error(`Preset ${resolvedStackSelector} disappeared after preflight.`);
         }
     }
     catch (error) {
@@ -192,10 +192,10 @@ async function rollbackAgentProfileApplication(pi, deps, ctx, previous) {
     const errors = [];
     try {
         if (!deps.setActive(previous.promptStack ?? "none", ctx))
-            errors.push(`could not restore prompt stack ${String(previous.promptStack)}`);
+            errors.push(`could not restore preset ${String(previous.promptStack)}`);
     }
     catch (error) {
-        errors.push(`prompt stack restore failed: ${error instanceof Error ? error.message : String(error)}`);
+        errors.push(`preset restore failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (previous.modelChanged) {
         if (!previous.model) {

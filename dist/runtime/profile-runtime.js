@@ -17,7 +17,7 @@ export function createProfileRuntime(pi, workspace, deps) {
     async function activateFreshSessionDefaults(ctx) {
         // D3: auto-activation is an application action. Untrusted projects may
         // browse global definitions, but they must not apply global profiles or
-        // activate global prompt stacks during a fresh session.
+        // activate global presets during a fresh session.
         if (!ctx.isProjectTrusted())
             return;
         const snapshot = workspace.snapshot();
@@ -26,7 +26,7 @@ export function createProfileRuntime(pi, workspace, deps) {
             if (hasAutoActivateAgentProfile(snapshot.profiles)) {
                 workspace.setActiveStack(undefined);
                 deps.updateStatus(ctx);
-                ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback prompt stack was applied.", "error");
+                ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback preset was applied.", "error");
                 return;
             }
             const fallback = chooseDefaultStack([...snapshot.stacks]);
@@ -38,7 +38,7 @@ export function createProfileRuntime(pi, workspace, deps) {
         if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
             workspace.setActiveStack(undefined);
             deps.updateStatus(ctx);
-            ctx.ui.notify(`pi-forge: auto-activation profile ${target.profile.id} failed preflight; no profile or fallback prompt stack was applied. ${renderAgentProfileDiagnostics(resolved.diagnostics)}`, "error");
+            ctx.ui.notify(`pi-forge: auto-activation profile ${target.profile.id} failed preflight; no profile or fallback preset was applied. ${renderAgentProfileDiagnostics(resolved.diagnostics)}`, "error");
             return;
         }
         const result = await applyResolvedAgentProfile(pi, workspace, { setActive: deps.setActive }, resolved, ctx);

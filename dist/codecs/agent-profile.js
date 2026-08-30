@@ -105,7 +105,7 @@ function normalizeThinkingLevel(raw, diagnostics) {
 }
 function normalizePromptStackReference(raw, diagnostics) {
     if (!Object.prototype.hasOwnProperty.call(raw, "promptStack")) {
-        diagnostics.push({ level: "error", field: "promptStack", message: "promptStack is required and must be a stack id or null." });
+        diagnostics.push({ level: "error", field: "promptStack", message: "Profile field promptStack is required and must be a preset id or null." });
         return null;
     }
     if (raw.promptStack === null)
@@ -113,7 +113,7 @@ function normalizePromptStackReference(raw, diagnostics) {
     const id = nonEmptyString(raw.promptStack);
     if (id)
         return id;
-    diagnostics.push({ level: "error", field: "promptStack", message: "promptStack must be a non-empty stack id or null." });
+    diagnostics.push({ level: "error", field: "promptStack", message: "Profile field promptStack must be a non-empty preset id or null." });
     return null;
 }
 function fallbackProfile(filePath) {
@@ -153,7 +153,7 @@ export function validateAgentProfile(profile) {
         diagnostics.push({ level: "error", field: "thinkingLevel", message: `Unsupported thinkingLevel: ${String(profile.thinkingLevel)}` });
     }
     if (profile.promptStack !== null && !profile.promptStack.trim()) {
-        diagnostics.push({ level: "error", field: "promptStack", message: "promptStack must be a non-empty stack id or null." });
+        diagnostics.push({ level: "error", field: "promptStack", message: "Profile field promptStack must be a non-empty preset id or null." });
     }
     return diagnostics;
 }
@@ -168,7 +168,7 @@ export function validateAgentProfilePromptStackScope(profile, scope) {
         return [{
                 level: "error",
                 field: "promptStack",
-                message: `Global profile ${profile.id} cannot reference project prompt stack ${parsed.selector.id}.`,
+                message: `Global profile ${profile.id} cannot reference project preset ${parsed.selector.id}.`,
             }];
     }
     return [];

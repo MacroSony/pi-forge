@@ -51,7 +51,7 @@ function loadPromptStackFile(filePath, scope) {
         source = readFileSync(filePath, "utf8");
     }
     catch (error) {
-        return createPromptStackFault(filePath, scope, `Failed to read prompt stack: ${error instanceof Error ? error.message : String(error)}`);
+        return createPromptStackFault(filePath, scope, `Failed to read preset: ${error instanceof Error ? error.message : String(error)}`);
     }
     return parsePromptStack(source, filePath, scope);
 }
@@ -72,7 +72,7 @@ function annotateDuplicateStackIds(stacks) {
         for (const loaded of matches) {
             loaded.diagnostics.push({
                 level: "error",
-                message: `Duplicate ${scope} stack id: ${id} appears in multiple files (${files}).`,
+                message: `Duplicate ${scope} preset id: ${id} appears in multiple files (${files}).`,
             });
         }
     }
@@ -89,14 +89,14 @@ function isSafeTarget(cwd, scope, filePath) {
         : isSafeGlobalPromptStackMutationPath(filePath);
 }
 function targetError(scope, filePath) {
-    return `Prompt stack path is outside ${scope} prompt-stack storage or traverses a symbolic link: ${filePath}`;
+    return `Preset path is outside ${scope} prompt-stack storage or traverses a symbolic link: ${filePath}`;
 }
 export function writePromptStackFile(cwd, scope, filePath, stack, options) {
     if (!isSafeTarget(cwd, scope, filePath)) {
         return { ok: false, reason: "invalid-path", error: targetError(scope, filePath) };
     }
     if (!options.overwrite && existsSync(filePath)) {
-        return { ok: false, reason: "exists", error: `Prompt stack already exists: ${filePath}` };
+        return { ok: false, reason: "exists", error: `Preset already exists: ${filePath}` };
     }
     try {
         mkdirSync(dirname(filePath), { recursive: true });
@@ -106,8 +106,8 @@ export function writePromptStackFile(cwd, scope, filePath, stack, options) {
     catch (error) {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
         if (code === "EEXIST")
-            return { ok: false, reason: "exists", error: `Prompt stack already exists: ${filePath}` };
-        return { ok: false, reason: "io", error: `Failed to write prompt stack ${filePath}: ${error instanceof Error ? error.message : String(error)}` };
+            return { ok: false, reason: "exists", error: `Preset already exists: ${filePath}` };
+        return { ok: false, reason: "io", error: `Failed to write preset ${filePath}: ${error instanceof Error ? error.message : String(error)}` };
     }
 }
 export function deletePromptStackFile(cwd, scope, filePath) {
@@ -115,13 +115,13 @@ export function deletePromptStackFile(cwd, scope, filePath) {
         return { ok: false, reason: "invalid-path", error: targetError(scope, filePath) };
     }
     if (!existsSync(filePath))
-        return { ok: false, reason: "missing", error: `Prompt stack does not exist: ${filePath}` };
+        return { ok: false, reason: "missing", error: `Preset does not exist: ${filePath}` };
     try {
         unlinkSync(filePath);
         return { ok: true, filePath };
     }
     catch (error) {
-        return { ok: false, reason: "io", error: `Failed to delete prompt stack ${filePath}: ${error instanceof Error ? error.message : String(error)}` };
+        return { ok: false, reason: "io", error: `Failed to delete preset ${filePath}: ${error instanceof Error ? error.message : String(error)}` };
     }
 }
 export function readLegacyPromptStackSources(cwd) {

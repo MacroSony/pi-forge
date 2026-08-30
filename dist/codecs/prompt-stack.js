@@ -6,7 +6,7 @@ import { SUPPORTED_SLOTS } from "../types.js";
 const VALID_ROLES = new Set(["system", "user", "assistant", "custom"]);
 const VALID_CHAT_HISTORY_TOOL_MODES = new Set(["keep", "drop"]);
 /**
- * Parse, normalize, and validate a prompt stack from its serialized source.
+ * Parse, normalize, and validate a preset from its serialized source.
  * This is the single entry point for turning stack JSON text into a
  * LoadedPromptStack; loaders only add file-system concerns on top.
  */
@@ -59,7 +59,7 @@ export function createPromptStackFault(filePath, scope, message) {
     };
 }
 /**
- * Single canonical serializer for prompt stacks. Every writer (web host,
+ * Single canonical serializer for presets. Every writer (web host,
  * repository, migration tooling) must go through this function so serialized
  * output stays identical across all write paths.
  */
@@ -77,7 +77,7 @@ function fallbackStack(filePath) {
 }
 function normalizeStack(raw, filePath, diagnostics) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        diagnostics.push({ level: "error", message: "Prompt stack root must be a JSON object." });
+        diagnostics.push({ level: "error", message: "Preset root must be a JSON object." });
         return fallbackStack(filePath);
     }
     const obj = raw;
@@ -86,7 +86,7 @@ function normalizeStack(raw, filePath, diagnostics) {
     if (rawId && !isValidResourceId(rawId)) {
         diagnostics.push({
             level: "error",
-            message: `Stack id ${rawId} must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens; falling back to ${id}.`,
+            message: `Preset id ${rawId} must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens; falling back to ${id}.`,
         });
     }
     let schemaVersion = 1;
@@ -98,7 +98,7 @@ function normalizeStack(raw, filePath, diagnostics) {
     }
     const items = Array.isArray(obj.items) ? obj.items.map((item, index) => normalizeItem(item, index, diagnostics)) : [];
     if (!Array.isArray(obj.items)) {
-        diagnostics.push({ level: "error", message: "Prompt stack must contain an items array." });
+        diagnostics.push({ level: "error", message: "Preset must contain an items array." });
     }
     if (isPlainObject(obj.state) && Object.keys(obj.state).length > 0) {
         diagnostics.push({
@@ -162,7 +162,7 @@ export function validatePromptStack(stack) {
     const ids = new Set();
     let chatHistoryCount = 0;
     if (!stack.id.trim())
-        diagnostics.push({ level: "error", message: "Stack id must not be empty." });
+        diagnostics.push({ level: "error", message: "Preset id must not be empty." });
     let seenNonSystemItem = false;
     for (const item of stack.items) {
         if (ids.has(item.id))
@@ -233,16 +233,16 @@ function validateRawPromptStackShape(raw) {
     if (!isPlainObject(raw))
         return diagnostics;
     if (typeof raw.id !== "string" || !raw.id.trim()) {
-        diagnostics.push({ level: "error", message: "Stack id must be a non-empty string." });
+        diagnostics.push({ level: "error", message: "Preset id must be a non-empty string." });
     }
     if (raw.type !== undefined && raw.type !== "pi-forge.prompt-stack") {
-        diagnostics.push({ level: "error", message: 'Stack type must be "pi-forge.prompt-stack" when provided.' });
+        diagnostics.push({ level: "error", message: 'Preset type must be "pi-forge.prompt-stack" when provided by the legacy schema.' });
     }
-    validateOptionalString(raw, "name", "Stack name", diagnostics);
-    validateOptionalString(raw, "description", "Stack description", diagnostics);
-    validateOptionalBoolean(raw, "autoActivate", "Stack autoActivate", diagnostics);
+    validateOptionalString(raw, "name", "Preset name", diagnostics);
+    validateOptionalString(raw, "description", "Preset description", diagnostics);
+    validateOptionalBoolean(raw, "autoActivate", "Preset autoActivate", diagnostics);
     if (raw.mode !== undefined && raw.mode !== "append" && raw.mode !== "prepend" && raw.mode !== "replace") {
-        diagnostics.push({ level: "error", message: 'Stack mode must be "append", "prepend", or "replace" when provided.' });
+        diagnostics.push({ level: "error", message: 'Preset mode must be "append", "prepend", or "replace" when provided.' });
     }
     validateRawDefaults(raw.defaults, diagnostics);
     validateRawContext(raw.context, diagnostics);
@@ -294,7 +294,7 @@ function validateRawDefaults(value, diagnostics) {
     if (value === undefined)
         return;
     if (!isPlainObject(value)) {
-        diagnostics.push({ level: "error", message: "Stack defaults must be an object when provided." });
+        diagnostics.push({ level: "error", message: "Preset defaults must be an object when provided." });
         return;
     }
     validateOptionalBoolean(value, "syntheticMessagesVisible", "defaults.syntheticMessagesVisible", diagnostics);
@@ -306,7 +306,7 @@ function validateRawContext(value, diagnostics) {
     if (value === undefined)
         return;
     if (!isPlainObject(value)) {
-        diagnostics.push({ level: "error", message: "Stack context must be an object when provided." });
+        diagnostics.push({ level: "error", message: "Preset context must be an object when provided." });
         return;
     }
     validateOptionalBoolean(value, "allowDuplicateChatHistory", "context.allowDuplicateChatHistory", diagnostics);
@@ -317,32 +317,32 @@ function validateRawVariables(value, diagnostics) {
     if (value === undefined)
         return;
     if (!isPlainObject(value)) {
-        diagnostics.push({ level: "error", message: "Stack variables must be an object when provided." });
+        diagnostics.push({ level: "error", message: "Preset variables must be an object when provided." });
         return;
     }
     for (const [name, variable] of Object.entries(value)) {
         if (typeof variable !== "string") {
-            diagnostics.push({ level: "error", message: `Stack variable ${name} must be a string.` });
+            diagnostics.push({ level: "error", message: `Preset variable ${name} must be a string.` });
         }
     }
 }
 function validateRawParameters(raw, diagnostics) {
     const schemaVersion = raw.schemaVersion === 2 ? 2 : 1;
     if (schemaVersion === 2 && raw.variables !== undefined) {
-        diagnostics.push({ level: "warning", message: "schemaVersion 2 stacks use parameters; variables is ignored." });
+        diagnostics.push({ level: "warning", message: "schemaVersion 2 presets use parameters; variables is ignored." });
     }
     if (schemaVersion === 1 && raw.parameters !== undefined) {
-        diagnostics.push({ level: "warning", message: "schemaVersion 1 stacks use variables; parameters is ignored." });
+        diagnostics.push({ level: "warning", message: "schemaVersion 1 presets use variables; parameters is ignored." });
     }
     if (raw.parameters === undefined)
         return;
     if (!isPlainObject(raw.parameters)) {
-        diagnostics.push({ level: "error", message: "Stack parameters must be an object when provided." });
+        diagnostics.push({ level: "error", message: "Preset parameters must be an object when provided." });
         return;
     }
     for (const [name, value] of Object.entries(raw.parameters)) {
         if (!isPromptVariableValue(value)) {
-            diagnostics.push({ level: "error", message: `Stack parameter ${name} must be a JSON-compatible value.` });
+            diagnostics.push({ level: "error", message: `Preset parameter ${name} must be a JSON-compatible value.` });
         }
     }
 }

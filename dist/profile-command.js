@@ -141,7 +141,7 @@ async function saveProfile(pi, state, deps, rest, ctx) {
             ctx.ui.notify(`pi-forge: profile ${id} already exists; re-run with --overwrite.`, "error");
             return;
         }
-        overwrite = await ctx.ui.confirm("Overwrite agent profile?", `Replace ${filePath} with the current model, thinking level, and prompt-stack selection?`);
+        overwrite = await ctx.ui.confirm("Overwrite agent profile?", `Replace ${filePath} with the current model, thinking level, and preset selection?`);
         if (!overwrite) {
             ctx.ui.notify("pi-forge: profile save cancelled; the existing file was left unchanged.", "info");
             return;
@@ -208,7 +208,7 @@ function forgetProfileProvenance(pi, state, ctx) {
         ctx.ui.notify("pi-forge: there is no last-applied profile provenance to forget.", "info");
         return;
     }
-    ctx.ui.notify("pi-forge: forgot last-applied profile provenance; model, thinking level, and prompt stack were not changed.", "info");
+    ctx.ui.notify("pi-forge: forgot last-applied profile provenance; model, thinking level, and preset were not changed.", "info");
 }
 function renderProfileList(state, deps, ctx) {
     const lines = [
@@ -244,9 +244,9 @@ function renderProfilePreview(preview) {
         "",
         `Model: ${modelReferenceLabel(preview.current.model)} → ${modelReferenceLabel(preview.target.model)}`,
         `Thinking level: ${preview.current.thinkingLevel} → ${preview.target.thinkingLevel}`,
-        `Prompt stack: ${preview.current.promptStack ?? "(none)"} → ${preview.target.promptStack ?? "(none)"}`,
+        `Preset: ${preview.current.promptStack ?? "(none)"} → ${preview.target.promptStack ?? "(none)"}`,
         `Tool policy: ${formatToolPolicy(preview.target.toolPolicy)}`,
-        `Effective tools after stack policy: ${preview.target.effectiveTools.length > 0 ? preview.target.effectiveTools.join(", ") : "(none)"}`,
+        `Effective tools after preset policy: ${preview.target.effectiveTools.length > 0 ? preview.target.effectiveTools.join(", ") : "(none)"}`,
         `Applicable: ${preview.applicable ? "yes" : "no"}`,
         "",
         "Diagnostics:",
@@ -258,7 +258,7 @@ function renderProfileStatus(pi, state, ctx) {
     const lines = [
         `Current model: ${modelReferenceLabel(status.current.model)}`,
         `Current thinking level: ${status.current.thinkingLevel}`,
-        `Current prompt stack: ${status.current.promptStack ?? "(none)"}`,
+        `Current preset: ${status.current.promptStack ?? "(none)"}`,
         `Current effective tools: ${status.current.effectiveTools.join(", ") || "(none)"}`,
         "",
     ];
@@ -268,7 +268,7 @@ function renderProfileStatus(pi, state, ctx) {
     }
     const { provenance, drift } = status.lastApplied;
     const sourceState = status.lastApplied.sourceState === "changed" ? "changed since application" : status.lastApplied.sourceState;
-    lines.push(`Last applied profile: ${provenance.profileId}`, `Applied at: ${provenance.appliedAt}`, `Source: ${provenance.sourcePath}`, `Profile source: ${sourceState}`, "", "Runtime drift:", `  model: ${formatDrift(drift.model, modelReferenceLabel)}`, `  thinking level: ${formatDrift(drift.thinkingLevel, String)}`, `  prompt stack: ${formatDrift(drift.promptStack, (value) => value ?? "(none)")}`);
+    lines.push(`Last applied profile: ${provenance.profileId}`, `Applied at: ${provenance.appliedAt}`, `Source: ${provenance.sourcePath}`, `Profile source: ${sourceState}`, "", "Runtime drift:", `  model: ${formatDrift(drift.model, modelReferenceLabel)}`, `  thinking level: ${formatDrift(drift.thinkingLevel, String)}`, `  preset: ${formatDrift(drift.promptStack, (value) => value ?? "(none)")}`);
     return lines.join("\n");
 }
 function profileSelectorCandidates(state) {
