@@ -48,6 +48,48 @@ test("tool policy runtime owns filtering, preview, and restoration state", () =>
 	assert.deepEqual(activeTools, ["read", "bash", "paint", "late-tool"]);
 });
 
+test("preview recovers baseline tool metadata after the active policy filtered captured options", () => {
+	let activeTools = ["read", "bash"];
+	const allTools = [
+		{ name: "read", description: "Read files", promptGuidelines: ["Read before editing."] },
+		{ name: "bash", description: "Run commands", promptGuidelines: ["Use shell commands deliberately."] },
+	];
+	const pi = {
+		getActiveTools: () => [...activeTools],
+		getAllTools: () => allTools,
+		setActiveTools: (names: string[]) => { activeTools = [...names]; },
+	} as any;
+	const active = {
+		filePath: "/tmp/read-only.json",
+		scope: "project" as const,
+		key: { scope: "project" as const, id: "read-only" },
+		diagnostics: [],
+		stack: { schemaVersion: 1 as const, id: "read-only", tools: { allow: ["read"] }, items: [] },
+	};
+	const runtime = createToolPolicyRuntime(pi, () => active);
+
+	runtime.sync();
+	assert.deepEqual(activeTools, ["read"]);
+
+	const preview = runtime.previewOptions({
+		cwd: "/tmp",
+		selectedTools: ["read"],
+		toolSnippets: { read: "Read files" },
+		promptGuidelines: ["Read before editing."],
+		contextFiles: [],
+		skills: [],
+	}, {
+		schemaVersion: 1,
+		id: "shell-preview",
+		tools: { allow: ["bash"] },
+		items: [],
+	});
+
+	assert.deepEqual(preview.selectedTools, ["bash"]);
+	assert.deepEqual(preview.toolSnippets, { bash: "Run commands" });
+	assert.deepEqual(preview.promptGuidelines, ["Use shell commands deliberately."]);
+});
+
 test("selective tool allow activates registered inactive tools and restores the original baseline", () => {
 	let activeTools = ["read", "bash", "edit", "write"];
 	const allTools = ["read", "bash", "edit", "write", "grep", "find", "ls"].map((name) => ({ name }));

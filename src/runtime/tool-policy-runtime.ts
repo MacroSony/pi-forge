@@ -79,7 +79,16 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 	}
 
 	function previewOptions(base: BuildSystemPromptOptions, stack: PromptStack): BuildSystemPromptOptions {
-		const baseSelectedTools = Array.isArray(base.selectedTools) ? base.selectedTools : pi.getActiveTools();
+		// The captured options may come from a request whose tools were already
+		// filtered by the active policy (sync() mutates pi's active tools), so
+		// prefer the pre-policy baseline; without it, fall back from a possibly
+		// empty snapshot to the session's current tools.
+		const sessionTools = filterKnownTools(baseline ?? pi.getActiveTools());
+		const baseSelectedTools = baseline
+			? sessionTools
+			: base.selectedTools?.length
+				? [...base.selectedTools]
+				: sessionTools;
 		const policyActive = hasResourcePolicy(stack.tools);
 		const baselineTools = policyActive ? (baseline ?? pi.getActiveTools()) : baseSelectedTools;
 		const selectedTools = policyActive
@@ -91,7 +100,10 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		for (const tool of toolInfos) {
 			const name = stringValue(tool.name);
 			if (!name || !selectedToolSet.has(name) || toolSnippets[name]) continue;
-			const snippet = stringValue((tool as { promptSnippet?: unknown }).promptSnippet);
+			// ToolInfo does not carry promptSnippet; fall back to the tool
+			// description so the preview never shows placeholder text.
+			const snippet = stringValue((tool as { promptSnippet?: unknown }).promptSnippet)
+				?? stringValue((tool as { description?: unknown }).description);
 			if (snippet) toolSnippets[name] = snippet;
 		}
 
@@ -101,9 +113,9 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 				return !!name && selectedToolSet.has(name);
 			})
 			.flatMap((tool) => stringArrayValue(tool.promptGuidelines));
-		const promptGuidelines = policyActive && !sameStringSet(baseSelectedTools, selectedTools)
+		const promptGuidelines = baseline || (policyActive && !sameStringSet(baseSelectedTools, selectedTools))
 			? mappedGuidelines
-			: (base.promptGuidelines ?? mappedGuidelines);
+			: (base.promptGuidelines?.length ? [...base.promptGuidelines] : mappedGuidelines);
 
 		return { ...base, selectedTools, toolSnippets, promptGuidelines };
 	}
