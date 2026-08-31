@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.3] - 2026-09-01
+
+### Changed
+
+- **Preset and Stack terminology.** The complete user-facing resource is now a **Preset**, while **Stack** means its ordered Block/Slot composition. The former whole-resource Stack settings tab is now **Advanced**. English and Chinese editor labels, commands, diagnostics, profiles, documentation, and examples use the same hierarchy.
+- This patch intentionally keeps compatibility identifiers unchanged: `.pi/forge/prompt-stacks/`, `"pi-forge.prompt-stack"`, profile field `promptStack`, `/api/stacks`, wire contracts, and internal `PromptStack` type names do not migrate.
+
+### Fixed
+
+- Preview now recovers the pre-policy session tool baseline when captured prompt options were already filtered by the active Preset. Previewing another draft therefore restores its selected tool names, fills missing tool text from registered descriptions, and rebuilds the matching tool guidelines instead of showing empty or stale tool context.
+
 ## [0.5.2] - 2026-08-28
 
 ### Added

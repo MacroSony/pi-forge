@@ -1,7 +1,7 @@
 {
 	"name": "@zihanw/pi-forge",
-	"version": "0.5.2",
-	"description": "Pi extension for prompt stacks, one-shot agent profiles, policy, import, and debugging.",
+	"version": "0.5.3",
+	"description": "Pi extension for editable context presets, one-shot agent profiles, tool policy, and request debugging.",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/MacroSony/pi-forge.git"
