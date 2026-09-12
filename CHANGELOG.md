@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.4] - 2026-09-12
+
+### Added
+
+- **Prompt-cache impact warning on preset/profile switch.** `/preset use` and `/profile use` now estimate the cache cost before switching: when the next preset's compiled system prompt differs from the current one, a non-blocking notice reports the shared prefix (`~X tokens (N%)`), the history that will be re-processed, and the previous request's `cacheRead` when known. Identical prompts, model-only switches, and sessions without a compiled request yet stay quiet.
+- **Cache-sensitive compile diagnostics.** Compilation now warns when an enabled item uses `{{time}}`/`{{runtime.time}}` (changes every turn, invalidating the prompt-prefix cache from that item onward) or when a `date`/`date-cwd` slot enables `options.includeTime`; `{{date}}`/`{{runtime.date}}` produces an informational note (daily rebuild, stable within the day). Disabled items stay silent; duplicate emissions across compile paths are deduplicated.
+- **Preview readability.** Preview groups chat-history messages by source with collapsible sections, and colors messages by role (system/user/assistant/toolResult).
+- **Item list kind colors.** Blocks and slots get distinct badge colors, with per-semantics colors for built-in slots (chat-history, tools, tool-guidelines, skills, project-context, date, date-cwd) in both light and dark themes.
+
+### Fixed
+
+- **Item options JSON save desync.** A JSON parse error while editing item options left a sticky error state that kept blocking saves after the text was reset to valid JSON (the "type a space to save" workaround). Mode switches now clear the error state in both directions; non-object JSON (arrays, scalars, `null`) is rejected explicitly; the `roles`/`maxMessages`/`maxChars` inputs sync on input instead of on blur, so Ctrl+S right after typing no longer loses the value; and saving no longer resets the selected item and editor mode.
+
 ## [0.5.3] - 2026-09-01
 
 ### Changed
