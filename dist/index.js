@@ -11,7 +11,7 @@ import { ForgeWorkspace } from "./workspace.js";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.js";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.js";
 import { createCompileCycleState } from "./compile-cycle.js";
-import { getContextDiffView } from "./context-diff-history.js";
+import { getContextDiffView, getLatestContextDiffUsage } from "./context-diff-history.js";
 import { createPayloadState } from "./payload-state.js";
 /**
  * Intentional public surface (0.5.0): the default Pi extension factory plus
@@ -97,12 +97,14 @@ export default function piForge(pi) {
         reloadStacks: stackRuntime.reloadStacks,
         openWebEditor: webEditorRuntime.open,
         stopWebEditor: webEditorRuntime.stop,
+        latestContextDiffUsage: () => getLatestContextDiffUsage(payloadState.contextDiffHistory),
     });
-    registerProfileCommand(pi, workspace, {
+    registerProfileCommand(pi, workspace, compileCycle, {
         reloadProfiles: profileRuntime.reloadProfiles,
         resolveProfile: profileRuntime.resolveProfile,
         setActive: stackRuntime.setActive,
         previewToolNames: toolPolicy.previewToolNames,
+        latestContextDiffUsage: () => getLatestContextDiffUsage(payloadState.contextDiffHistory),
     });
 }
 //# sourceMappingURL=index.js.map

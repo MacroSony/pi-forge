@@ -54,6 +54,8 @@ export interface ContextDiffView {
 export declare function createContextDiffHistory(): ContextDiffHistory;
 /** Append a captured payload, evict old turns past the limit, and compute the latest diff. */
 export declare function appendContextDiffCapture(history: ContextDiffHistory, capture: ContextDiffCapture): TurnDiff | undefined;
+/** Return usage attached to the most recent captured turn that has usage data. */
+export declare function getLatestContextDiffUsage(history: ContextDiffHistory): ContextDiffProviderUsage | undefined;
 /** Attach the authoritative usage returned on the assistant message for one captured provider request. */
 export declare function attachContextDiffUsage(history: ContextDiffHistory, turnId: string, usage: ContextDiffProviderUsageInput): boolean;
 /** Build the response-shaped view: compact summaries for recent turns + latest full diff. */

@@ -1,7 +1,8 @@
 import { compileMessages, getLatestUserMessage, } from "./compiler.js";
-import { PromptCompilationContext } from "./compiler.js";
+import { PromptCompilationContext, dedupeDiagnostics } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules } from "./regex.js";
 import { promptRuntimeFromPi } from "./prompt-runtime.js";
+import { formatResourceKey } from "./resource-identity.js";
 import { resetCompileCycle } from "./compile-cycle.js";
 import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.js";
 export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
@@ -71,8 +72,12 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         if (!active)
             return;
         const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
+        compileCycle.currentCompilationRuntime = compilationRuntime;
+        compileCycle.currentBaseSystemPrompt = event.systemPrompt;
         compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, compilationRuntime);
         const result = compileCycle.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
+        compileCycle.currentCompiledSystemPrompt = result.systemPrompt;
+        compileCycle.currentCompiledStackKey = formatResourceKey(active.key);
         deps.recordCompileDiagnostics(ctx, result.diagnostics);
         return { systemPrompt: result.systemPrompt };
     });
@@ -105,7 +110,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         const result = compileCycle.currentCompilationContext
             ? compileCycle.currentCompilationContext.compileMessages(event.messages)
             : compileMessages(active.stack, promptRuntimeFromPi(compileCycle.currentSystemPromptOptions, ctx, latestUserMessage), event.messages);
-        deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...result.diagnostics]);
+        deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, result.diagnostics]));
         return { messages: result.messages };
     });
     pi.on("message_end", async (event, ctx) => {
@@ -117,7 +122,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         const diagnostics = [];
         const message = applyFinalizeRegexRulesToMessage(active.stack, event.message, diagnostics);
         if (diagnostics.length > 0)
-            deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...diagnostics]);
+            deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, diagnostics]));
         if (!message)
             return;
         return { message };
@@ -129,6 +134,10 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
 async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, options) {
     const restoredProfile = getRestoredProfileProvenance(ctx);
     compileCycle.currentCompilationContext = undefined;
+    compileCycle.currentCompilationRuntime = undefined;
+    compileCycle.currentBaseSystemPrompt = undefined;
+    compileCycle.currentCompiledSystemPrompt = undefined;
+    compileCycle.currentCompiledStackKey = undefined;
     compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
     const restoredActiveId = getRestoredActiveId(ctx);
     deps.restorePersistedActiveId(restoredActiveId);

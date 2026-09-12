@@ -5,12 +5,13 @@ import { formatResourceKey, parseResourceSelector } from "./resource-identity.js
 import { globalAgentProfilePath } from "./storage.js";
 import { applyResolvedAgentProfile, captureAgentProfile, createAgentProfilePreview, forgetAgentProfileProvenance, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
 import { showText } from "./preview.js";
-export function registerProfileCommand(pi, state, deps) {
+import { promptCacheWarningForStackSwitch } from "./prompt-cache-warning.js";
+export function registerProfileCommand(pi, state, compileCycle, deps) {
     pi.registerCommand("profile", {
         description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget",
         getArgumentCompletions: (prefix) => profileArgumentCompletions(state, prefix),
         handler: async (args, ctx) => {
-            await handleProfileCommand(pi, state, deps, args, ctx);
+            await handleProfileCommand(pi, state, compileCycle, deps, args, ctx);
         },
     });
 }
@@ -33,7 +34,7 @@ function profileArgumentCompletions(state, prefix) {
     }
     return null;
 }
-async function handleProfileCommand(pi, state, deps, args, ctx) {
+async function handleProfileCommand(pi, state, compileCycle, deps, args, ctx) {
     const trimmed = args.trim();
     const [command = "list", ...rest] = trimmed ? trimmed.split(/\s+/) : ["list"];
     switch (command) {
@@ -41,7 +42,7 @@ async function handleProfileCommand(pi, state, deps, args, ctx) {
             await showText(ctx, "pi-forge agent profiles", renderProfileList(state, deps, ctx));
             return;
         case "use":
-            await useProfile(pi, state, deps, rest[0], ctx);
+            await useProfile(pi, state, compileCycle, deps, rest[0], ctx);
             return;
         case "save":
             await saveProfile(pi, state, deps, rest, ctx);
@@ -68,7 +69,7 @@ async function handleProfileCommand(pi, state, deps, args, ctx) {
             ctx.ui.notify(`Unknown /profile subcommand: ${command}`, "warning");
     }
 }
-async function useProfile(pi, state, deps, id, ctx) {
+async function useProfile(pi, state, compileCycle, deps, id, ctx) {
     if (!id) {
         ctx.ui.notify("Usage: /profile use <id>", "warning");
         return;
@@ -92,6 +93,7 @@ async function useProfile(pi, state, deps, id, ctx) {
         await showText(ctx, `pi-forge profile validation: ${id}`, renderAgentProfileDiagnostics(resolved.diagnostics));
         return;
     }
+    const cacheWarning = promptCacheWarningForStackSwitch(state.snapshot().active, resolved.promptStack, compileCycle, deps.latestContextDiffUsage());
     const result = await applyResolvedAgentProfile(pi, state, deps, resolved, ctx);
     if (!result.ok) {
         const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
@@ -101,6 +103,8 @@ async function useProfile(pi, state, deps, id, ctx) {
     }
     const warningCount = result.warningCount;
     ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+    if (cacheWarning)
+        ctx.ui.notify(`pi-forge: ${cacheWarning}`, "warning");
 }
 async function saveProfile(pi, state, deps, rest, ctx) {
     const selectorText = rest[0];

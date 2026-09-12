@@ -1,6 +1,6 @@
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import type { PromptCompilationContext } from "./compiler.ts";
-import type { PromptStackDiagnostic } from "./types.ts";
+import type { PromptRuntimeSnapshot, PromptStackDiagnostic } from "./types.ts";
 /**
  * Per-request compilation state. This is intentionally separate from
  * ForgeWorkspace's long-lived resource graph; it is reset on agent end and
@@ -10,6 +10,11 @@ export interface CompileCycleState {
     currentSystemPromptOptions?: BuildSystemPromptOptions;
     currentLatestUserMessage?: string;
     currentCompilationContext?: PromptCompilationContext;
+    /** Inputs/results from the most recent compiled system prompt, for cache-impact previews. These survive agent_end. */
+    currentCompilationRuntime?: PromptRuntimeSnapshot;
+    currentBaseSystemPrompt?: string;
+    currentCompiledSystemPrompt?: string;
+    currentCompiledStackKey?: string;
     contextRewritePending: boolean;
     latestCompileDiagnostics: PromptStackDiagnostic[];
 }

@@ -1,3 +1,4 @@
+import { forgeV1 } from "./forge-v1/index.js";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.js";
 import { ForgeTemplateRenderer } from "./template-render.js";
 import { getRegisteredSlot, renderSlotText } from "./slot-renderers.js";
@@ -31,7 +32,7 @@ export class PromptCompilationContext {
     }
 }
 function compileSystemPromptWithRenderer(stack, runtime, baseSystemPrompt, templateRenderer) {
-    const diagnostics = [];
+    const diagnostics = cacheSensitiveContentDiagnostics(stack);
     const parts = [];
     for (const item of enabledItems(stack)) {
         if (item.role !== "system")
@@ -79,7 +80,7 @@ export function compileSystemPrompt(stack, runtime, baseSystemPrompt) {
     return compileSystemPromptWithRenderer(stack, runtime, baseSystemPrompt, new ForgeTemplateRenderer(stack, runtime));
 }
 function compileMessagesWithRenderer(stack, runtime, originalMessages, templateRenderer) {
-    const diagnostics = [];
+    const diagnostics = cacheSensitiveContentDiagnostics(stack);
     let messages = [];
     let messageSources = [];
     let insertedHistory = false;
@@ -543,6 +544,73 @@ function stripAssistantThinkingFromMessage(message) {
 }
 function isThinkingContent(value) {
     return !!value && typeof value === "object" && !Array.isArray(value) && value.type === "thinking";
+}
+/**
+ * Merge diagnostic lists, dropping exact duplicates. compileSystemPrompt and
+ * compileMessages each emit stack-level diagnostics for the same stack, so
+ * callers combining their results would otherwise show every issue twice.
+ */
+export function dedupeDiagnostics(lists) {
+    const seen = new Set();
+    const merged = [];
+    for (const list of lists) {
+        for (const diagnostic of list) {
+            const key = `${diagnostic.level}${diagnostic.itemId ?? ""}${diagnostic.message}`;
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            merged.push(diagnostic);
+        }
+    }
+    return merged;
+}
+function cacheSensitiveContentDiagnostics(stack) {
+    const diagnostics = [];
+    for (const item of stack.items) {
+        if (item.enabled === false)
+            continue;
+        if (item.kind === "block") {
+            const usesTime = templateUsesRuntimeField(item.content, "time");
+            const usesDate = templateUsesRuntimeField(item.content, "date");
+            if (usesTime) {
+                diagnostics.push({
+                    level: "warning",
+                    message: "{{time}} changes every turn, invalidating prompt-prefix cache from this item onward. Use {{date}} instead, or accept the cache cost.",
+                    itemId: item.id,
+                });
+            }
+            if (usesDate) {
+                diagnostics.push({
+                    level: "info",
+                    message: "{{date}} changes daily; the prompt-prefix cache rebuilds once per day and stays stable within the day. Usually fine.",
+                    itemId: item.id,
+                });
+            }
+            continue;
+        }
+        if ((item.slot === "date" || item.slot === "date-cwd") && item.options?.includeTime === true) {
+            diagnostics.push({
+                level: "warning",
+                message: `Slot "${item.slot}" has includeTime enabled: the value changes every turn, invalidating prompt-prefix cache from this item onward. Remove includeTime, or accept the cache cost.`,
+                itemId: item.id,
+            });
+        }
+    }
+    return diagnostics;
+}
+function templateUsesRuntimeField(content, field) {
+    const parsed = forgeV1.parse(content);
+    if (!parsed.ok)
+        return false;
+    const analyzed = forgeV1.analyze(parsed.ast);
+    return analyzed.dependencies.some((dependency) => dependencyUsesRuntimeField(dependency, field));
+}
+function dependencyUsesRuntimeField(dependency, field) {
+    const path = dependency.path;
+    if (!path)
+        return false;
+    return (dependency.kind === "legacy" && path.length === 1 && path[0] === field)
+        || (dependency.kind === "runtime" && path.length === 2 && path[0] === "runtime" && path[1] === field);
 }
 function enabledItems(stack) {
     return stack.items.filter((item) => item.enabled !== false);

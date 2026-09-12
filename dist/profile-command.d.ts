@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
+import type { CompileCycleState } from "./compile-cycle.ts";
+import type { ContextDiffProviderUsage } from "./context-diff-history.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
 import type { PromptStack } from "./types.ts";
 export interface ProfileCommandDeps {
@@ -7,6 +9,7 @@ export interface ProfileCommandDeps {
     resolveProfile(target: LoadedAgentProfile, ctx: ExtensionContext): ResolvedAgentProfile;
     setActive(id: string | undefined, ctx?: ExtensionContext): boolean;
     previewToolNames(stack: PromptStack | undefined): string[];
+    latestContextDiffUsage(): ContextDiffProviderUsage | undefined;
 }
-export declare function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, deps: ProfileCommandDeps): void;
+export declare function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, compileCycle: CompileCycleState, deps: ProfileCommandDeps): void;
 //# sourceMappingURL=profile-command.d.ts.map

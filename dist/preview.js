@@ -1,4 +1,4 @@
-import { agentMessageToPreviewText, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
+import { agentMessageToPreviewText, dedupeDiagnostics, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
 import { hashText } from "./context-diff.js";
 import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
@@ -12,7 +12,7 @@ export function buildPreview(ctx, target, options) {
     const compilation = new PromptCompilationContext(target.stack, runtime);
     const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
     const messages = compilation.compileMessages(sessionMessages);
-    const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
+    const diagnostics = dedupeDiagnostics([target.diagnostics, system.diagnostics, messages.diagnostics]);
     let hasFinalize = false;
     let hasRequestFrequency = false;
     for (const rule of target.stack.regex?.rules ?? []) {
