@@ -61,8 +61,8 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 		app = undefined;
 	}
 
-	function reset(): void {
-		mode = "form";
+	function reset(nextMode: "form" | "json" = "form"): void {
+		mode = nextMode;
 		error = "";
 	}
 
@@ -70,6 +70,7 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 		mount,
 		unmount,
 		reset,
+		getMode: () => mode,
 		getError: () => error,
 	};
 }

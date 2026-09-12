@@ -64,10 +64,8 @@ function setString(key: string, value: string, optional = false, refreshList = f
 
 function switchMode(next: "form" | "json"): void {
 	mode.value = next;
-	if (next === "form" && optionsError.value) {
-		optionsError.value = false;
-		emit("error", "");
-	}
+	optionsError.value = false;
+	emit("error", "");
 	optionsText.value = JSON.stringify(item.options || {}, null, 2);
 	emit("mode", next);
 }
@@ -76,6 +74,9 @@ function setJsonOptions(value: string): void {
 	optionsText.value = value;
 	try {
 		const parsed = value.trim() ? JSON.parse(value) : {};
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			throw new Error("Item options must be a JSON object");
+		}
 		item.options = Object.keys(parsed).length ? parsed : undefined;
 		optionsError.value = false;
 		emit("error", "");
@@ -185,15 +186,15 @@ function optionHelp(key: string): string {
 						</div>
 						<div class="field" :title="optionHelp('roles')">
 							<label>{{ t("item.roles") }}</label>
-							<input data-option="roles" data-array="true" :value="Array.isArray(options.roles) ? options.roles.join(', ') : ''" placeholder="comma,separated" @change="setArrayOption('roles', ($event.target as HTMLInputElement).value)">
+							<input data-option="roles" data-array="true" :value="Array.isArray(options.roles) ? options.roles.join(', ') : ''" placeholder="comma,separated" @input="setArrayOption('roles', ($event.target as HTMLInputElement).value)">
 						</div>
 						<div class="field" :title="optionHelp('maxMessages')">
 							<label>{{ t("item.maxMessages") }}</label>
-							<input type="number" min="1" data-option="maxMessages" :value="options.maxMessages ?? ''" @change="setNumberOption('maxMessages', ($event.target as HTMLInputElement).value)">
+							<input type="number" min="1" data-option="maxMessages" :value="options.maxMessages ?? ''" @input="setNumberOption('maxMessages', ($event.target as HTMLInputElement).value)">
 						</div>
 						<div class="field" :title="optionHelp('maxChars')">
 							<label>{{ t("item.maxChars") }}</label>
-							<input type="number" min="1" data-option="maxChars" :value="options.maxChars ?? ''" @change="setNumberOption('maxChars', ($event.target as HTMLInputElement).value)">
+							<input type="number" min="1" data-option="maxChars" :value="options.maxChars ?? ''" @input="setNumberOption('maxChars', ($event.target as HTMLInputElement).value)">
 						</div>
 					</template>
 

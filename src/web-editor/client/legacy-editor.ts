@@ -189,10 +189,14 @@ async function selectStack(id: any, options: any = {}) {
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
   currentFilePath = data.filePath || "";
-  selectedItemIndex = loadedStack.items.length ? 0 : -1;
+  selectedItemIndex = loadedStack.items.length
+    ? typeof options.selectedItemIndex === "number"
+      ? Math.min(Math.max(options.selectedItemIndex, 0), loadedStack.items.length - 1)
+      : 0
+    : -1;
   dirty = false;
   vueTabHost.resetErrors();
-  vueItemHost.reset();
+  vueItemHost.reset(options.itemMode);
   renderDirtyState();
   renderAll(data.diagnostics || []);
   setStatus(t("status.loaded", { id: loadedStack.id }));
@@ -566,6 +570,8 @@ function deleteSelectedItem() {
 }
 
 async function saveStack() {
+  const savedItemIndex = selectedItemIndex;
+  const savedItemMode = vueItemHost.getMode();
   const stack = stackForSubmit();
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId), { method: "PUT", body: { stack } });
   stacks = data.stacks || stacks;
@@ -575,7 +581,11 @@ async function saveStack() {
   renderDirtyState();
   renderAll(data.stack?.diagnostics || []);
   setStatus(t("status.saved", { id: selectedId }), "success");
-  await selectStack(selectedId, { keepDirty: true });
+  await selectStack(selectedId, {
+    keepDirty: true,
+    selectedItemIndex: savedItemIndex,
+    itemMode: savedItemMode,
+  });
 }
 
 async function createStackRemote(stack: any, options: any = {}) {
