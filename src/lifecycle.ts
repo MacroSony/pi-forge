@@ -153,7 +153,7 @@ export function registerLifecycleHandlers(
 				promptRuntimeFromPi(compileCycle.currentSystemPromptOptions, ctx, latestUserMessage),
 				event.messages,
 			);
-		deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...result.diagnostics]);
+		deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, result.diagnostics]));
 		return { messages: result.messages };
 	});
 
@@ -163,7 +163,7 @@ export function registerLifecycleHandlers(
 		if (!active) return;
 		const diagnostics: PromptStackDiagnostic[] = [];
 		const message = applyFinalizeRegexRulesToMessage(active.stack, event.message, diagnostics);
-		if (diagnostics.length > 0) deps.recordCompileDiagnostics(ctx, [...compileCycle.latestCompileDiagnostics, ...diagnostics]);
+		if (diagnostics.length > 0) deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, diagnostics]));
 		if (!message) return;
 		return { message };
 	});

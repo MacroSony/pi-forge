@@ -1,4 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { forgeV1 } from "./forge-v1/index.ts";
+import type { TemplateDependency } from "./forge-v1/types.ts";
 import type {
 	CompileMessageSource,
 	CompileMessagesResult,
@@ -57,7 +59,7 @@ function compileSystemPromptWithRenderer(
 	baseSystemPrompt: string,
 	templateRenderer: ForgeTemplateRenderer,
 ): CompileSystemPromptResult {
-	const diagnostics: PromptStackDiagnostic[] = [];
+	const diagnostics = cacheSensitiveContentDiagnostics(stack);
 	const parts: string[] = [];
 
 	for (const item of enabledItems(stack)) {
@@ -117,7 +119,7 @@ function compileMessagesWithRenderer(
 	originalMessages: AgentMessage[],
 	templateRenderer: ForgeTemplateRenderer,
 ): CompileMessagesResult {
-	const diagnostics: PromptStackDiagnostic[] = [];
+	const diagnostics = cacheSensitiveContentDiagnostics(stack);
 	let messages: AgentMessage[] = [];
 	let messageSources: CompileMessageSource[] = [];
 	let insertedHistory = false;
@@ -669,6 +671,77 @@ function stripAssistantThinkingFromMessage(message: AgentMessage): { message?: A
 
 function isThinkingContent(value: unknown): boolean {
 	return !!value && typeof value === "object" && !Array.isArray(value) && (value as { type?: unknown }).type === "thinking";
+}
+
+/**
+ * Merge diagnostic lists, dropping exact duplicates. compileSystemPrompt and
+ * compileMessages each emit stack-level diagnostics for the same stack, so
+ * callers combining their results would otherwise show every issue twice.
+ */
+export function dedupeDiagnostics(lists: readonly (readonly PromptStackDiagnostic[])[]): PromptStackDiagnostic[] {
+	const seen = new Set<string>();
+	const merged: PromptStackDiagnostic[] = [];
+	for (const list of lists) {
+		for (const diagnostic of list) {
+			const key = `${diagnostic.level}${diagnostic.itemId ?? ""}${diagnostic.message}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			merged.push(diagnostic);
+		}
+	}
+	return merged;
+}
+
+function cacheSensitiveContentDiagnostics(stack: PromptStack): PromptStackDiagnostic[] {
+	const diagnostics: PromptStackDiagnostic[] = [];
+
+	for (const item of stack.items) {
+		if (item.enabled === false) continue;
+
+		if (item.kind === "block") {
+			const usesTime = templateUsesRuntimeField(item.content, "time");
+			const usesDate = templateUsesRuntimeField(item.content, "date");
+			if (usesTime) {
+				diagnostics.push({
+					level: "warning",
+					message: "{{time}} changes every turn, invalidating prompt-prefix cache from this item onward. Use {{date}} instead, or accept the cache cost.",
+					itemId: item.id,
+				});
+			}
+			if (usesDate) {
+				diagnostics.push({
+					level: "info",
+					message: "{{date}} changes daily; the prompt-prefix cache rebuilds once per day and stays stable within the day. Usually fine.",
+					itemId: item.id,
+				});
+			}
+			continue;
+		}
+
+		if ((item.slot === "date" || item.slot === "date-cwd") && item.options?.includeTime === true) {
+			diagnostics.push({
+				level: "warning",
+				message: `Slot "${item.slot}" has includeTime enabled: the value changes every turn, invalidating prompt-prefix cache from this item onward. Remove includeTime, or accept the cache cost.`,
+				itemId: item.id,
+			});
+		}
+	}
+
+	return diagnostics;
+}
+
+function templateUsesRuntimeField(content: string, field: "date" | "time"): boolean {
+	const parsed = forgeV1.parse(content);
+	if (!parsed.ok) return false;
+	const analyzed = forgeV1.analyze(parsed.ast);
+	return analyzed.dependencies.some((dependency) => dependencyUsesRuntimeField(dependency, field));
+}
+
+function dependencyUsesRuntimeField(dependency: TemplateDependency, field: "date" | "time"): boolean {
+	const path = dependency.path;
+	if (!path) return false;
+	return (dependency.kind === "legacy" && path.length === 1 && path[0] === field)
+		|| (dependency.kind === "runtime" && path.length === 2 && path[0] === "runtime" && path[1] === field);
 }
 
 function enabledItems(stack: PromptStack): PromptStackItem[] {

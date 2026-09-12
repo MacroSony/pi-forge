@@ -2,6 +2,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	agentMessageToPreviewText,
+	dedupeDiagnostics,
 	getLatestUserMessage,
 	PromptCompilationContext,
 } from "./compiler.ts";
@@ -33,7 +34,7 @@ export function buildPreview(
 	const compilation = new PromptCompilationContext(target.stack, runtime);
 	const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
 	const messages = compilation.compileMessages(sessionMessages);
-	const diagnostics = [...target.diagnostics, ...system.diagnostics, ...messages.diagnostics];
+	const diagnostics = dedupeDiagnostics([target.diagnostics, system.diagnostics, messages.diagnostics]);
 	let hasFinalize = false;
 	let hasRequestFrequency = false;
 	for (const rule of target.stack.regex?.rules ?? []) {

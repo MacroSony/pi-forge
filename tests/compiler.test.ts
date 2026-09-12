@@ -123,7 +123,10 @@ test("date slots can include the current time", () => {
 		"Current time: 09:08:07",
 		"Current working directory: /work/project",
 	].join("\n"));
-	assert.deepEqual(result.diagnostics, []);
+	assert.deepEqual(result.diagnostics.map(({ level, itemId }) => ({ level, itemId })), [
+		{ level: "warning", itemId: "date" },
+		{ level: "warning", itemId: "date-cwd" },
+	]);
 });
 
 test("empty replacement system prompt preserves the base prompt", () => {
@@ -533,7 +536,10 @@ test("time macro renders from the runtime clock", () => {
 	const result = compileSystemPrompt(stack, runtime({ now: new Date(2026, 5, 13, 9, 8, 7) }), "base");
 
 	assert.equal(result.systemPrompt, "2026-06-13 09:08:07");
-	assert.deepEqual(result.diagnostics, []);
+	assert.deepEqual(result.diagnostics.map(({ level, itemId }) => ({ level, itemId })), [
+		{ level: "warning", itemId: "clock" },
+		{ level: "info", itemId: "clock" },
+	]);
 });
 
 test("undefined forge-v1 paths are strict errors", () => {
