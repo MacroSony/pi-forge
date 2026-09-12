@@ -14,6 +14,21 @@ export const EDITOR_STYLES = String.raw`
   --error: #b42318;
   --error-bg: #fde8e7;
   --success: #1f7a3a;
+  --role-system: #7564a8;
+  --role-user: #2f7d68;
+  --role-assistant: #3e76ad;
+  --role-tool-result: #b16b2e;
+  --item-block: #4f6f9f;
+  --item-slot: #8b5fa8;
+  --slot-chat-history: #2f8a78;
+  --slot-tools: #a36a2c;
+  --slot-tool-guidelines: #ad7a32;
+  --slot-skills: #4e7fa3;
+  --slot-project-context: #6977a8;
+  --slot-date: #8b6aa8;
+  --slot-date-cwd: #7b6095;
+  --slot-built-in: #5f7185;
+  --slot-custom: #8a667d;
   --control: #ffffff;
   --control-muted: #f3f5f8;
   --pane-soft: #fbfcfe;
@@ -37,6 +52,21 @@ body[data-theme="dark"] {
   --error: #f06f64;
   --error-bg: #3c1d1a;
   --success: #69c98c;
+  --role-system: #b8a8ec;
+  --role-user: #65c6a9;
+  --role-assistant: #82b9ef;
+  --role-tool-result: #e5ad70;
+  --item-block: #88a9dc;
+  --item-slot: #c59be0;
+  --slot-chat-history: #70d0ba;
+  --slot-tools: #e5aa68;
+  --slot-tool-guidelines: #e7bd74;
+  --slot-skills: #8fc5e8;
+  --slot-project-context: #a7b4eb;
+  --slot-date: #c6a8e9;
+  --slot-date-cwd: #b697dc;
+  --slot-built-in: #a9bacb;
+  --slot-custom: #d0a5c3;
   --control: #202327;
   --control-muted: #25292e;
   --pane-soft: #151719;
@@ -529,6 +559,7 @@ html, body {
   width: 100%;
   text-align: left;
   border: 1px solid var(--line);
+  border-left-width: 3px;
   background: var(--row);
   border-radius: 6px;
   padding: 8px;
@@ -543,9 +574,23 @@ html, body {
 .item-row:active {
   cursor: grabbing;
 }
+.item-row.kind-block {
+  border-left-color: var(--item-block);
+}
+.item-row.kind-slot {
+  border-left-color: var(--item-slot);
+}
 .item-row.selected {
-  border-color: var(--accent);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: var(--accent);
   background: var(--accent-bg);
+}
+.item-row.selected.kind-block {
+  border-left-color: var(--item-block);
+}
+.item-row.selected.kind-slot {
+  border-left-color: var(--item-slot);
 }
 .item-row.disabled {
   opacity: .62;
@@ -617,6 +662,39 @@ html, body {
   background: var(--warning-bg);
   border-color: var(--warning);
 }
+.item-kind-badge,
+.item-slot-badge {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 17px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.item-kind-badge {
+  margin-right: 4px;
+}
+.item-kind-badge.block {
+  color: var(--item-block);
+  background: color-mix(in srgb, var(--item-block) 12%, var(--row));
+}
+.item-kind-badge.slot {
+  color: var(--item-slot);
+  background: color-mix(in srgb, var(--item-slot) 12%, var(--row));
+}
+.item-slot-badge {
+  margin-left: 2px;
+}
+.item-slot-badge.slot-chat-history { color: var(--slot-chat-history); background: color-mix(in srgb, var(--slot-chat-history) 12%, var(--row)); }
+.item-slot-badge.slot-tools { color: var(--slot-tools); background: color-mix(in srgb, var(--slot-tools) 12%, var(--row)); }
+.item-slot-badge.slot-tool-guidelines { color: var(--slot-tool-guidelines); background: color-mix(in srgb, var(--slot-tool-guidelines) 12%, var(--row)); }
+.item-slot-badge.slot-skills { color: var(--slot-skills); background: color-mix(in srgb, var(--slot-skills) 12%, var(--row)); }
+.item-slot-badge.slot-project-context { color: var(--slot-project-context); background: color-mix(in srgb, var(--slot-project-context) 12%, var(--row)); }
+.item-slot-badge.slot-date { color: var(--slot-date); background: color-mix(in srgb, var(--slot-date) 12%, var(--row)); }
+.item-slot-badge.slot-date-cwd { color: var(--slot-date-cwd); background: color-mix(in srgb, var(--slot-date-cwd) 12%, var(--row)); }
+.item-slot-badge.slot-built-in { color: var(--slot-built-in); background: color-mix(in srgb, var(--slot-built-in) 12%, var(--row)); }
+.item-slot-badge.slot-custom { color: var(--slot-custom); background: color-mix(in srgb, var(--slot-custom) 12%, var(--row)); }
 .item-title {
   font-weight: 650;
   overflow-wrap: anywhere;

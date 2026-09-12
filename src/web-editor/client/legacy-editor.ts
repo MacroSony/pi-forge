@@ -64,7 +64,16 @@ const builtInSlotNames = [
   "append-system-prompt", "date", "cwd", "date-cwd",
   "active-model", "pi-docs"
 ];
+const semanticSlotNames = new Set([
+  "chat-history", "tools", "tool-guidelines", "skills", "project-context", "date", "date-cwd",
+]);
 const roles = ["", "system", "user", "assistant", "custom"];
+
+function slotToneClass(slot: unknown): string {
+  if (typeof slot !== "string") return "slot-custom";
+  if (semanticSlotNames.has(slot)) return `slot-${slot}`;
+  return builtInSlotNames.includes(slot) ? "slot-built-in" : "slot-custom";
+}
 
 const {
   validateStack,
@@ -316,7 +325,7 @@ function renderItemList() {
   const diagnosticsByItem = diagnosticsForItems();
   currentStack.items.forEach((item: any, index: any) => {
     const row = document.createElement("div");
-    row.className = "item-row" + (index === selectedItemIndex ? " selected" : "") + (item.enabled === false ? " disabled" : "");
+    row.className = "item-row kind-" + (item.kind === "slot" ? "slot" : "block") + (index === selectedItemIndex ? " selected" : "") + (item.enabled === false ? " disabled" : "");
     row.dataset.itemIndex = String(index);
     row.draggable = true;
     const enabled = item.enabled !== false;
@@ -328,9 +337,13 @@ function renderItemList() {
       : warnings
         ? '<span class="item-badge warning" title="' + attr(diagnosticTitle(itemDiagnostics)) + '">' + warnings + 'W</span>'
         : "";
+    const kindBadge = '<span class="item-kind-badge ' + (item.kind === "slot" ? "slot" : "block") + '">' + escapeHtml(item.kind) + '</span>';
+    const slotBadge = item.kind === "slot"
+      ? '<span class="item-slot-badge ' + slotToneClass(item.slot) + '">' + escapeHtml(item.slot || "custom") + '</span>'
+      : "";
     row.innerHTML = '<div class="drag-handle" title="' + attr(t("itemList.dragToReorder")) + '">≡</div>' +
       '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + diagBadge + '</div>' +
-      '<div class="item-meta">' + escapeHtml(item.kind) + ' | id: ' + escapeHtml(item.id) + (item.role ? " | " + escapeHtml(item.role) : "") + (item.kind === "slot" ? " | " + escapeHtml(item.slot || "") : "") + '</div></div>' +
+      '<div class="item-meta">' + kindBadge + slotBadge + ' <span>id: ' + escapeHtml(item.id) + (item.role ? " · " + escapeHtml(item.role) : "") + '</span></div></div>' +
       '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>';
     row.onclick = (event: any) => {
       if (event.target?.classList?.contains("item-toggle")) return;

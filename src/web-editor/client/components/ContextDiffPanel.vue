@@ -59,6 +59,39 @@ let contextDiffSequence = 0;
 let contextDiffAbort: AbortController | undefined;
 
 const compiledSections = computed<WebEditorPreviewSection[]>(() => previewSections(preview.value));
+
+type PreviewSectionGroup = {
+	key: string;
+	label: string;
+	history: boolean;
+	sections: WebEditorPreviewSection[];
+};
+
+const previewGroups = computed<PreviewSectionGroup[]>(() => {
+	const groups: PreviewSectionGroup[] = [];
+	const byKey = new Map<string, PreviewSectionGroup>();
+	for (const section of compiledSections.value) {
+		const key = historySourceKey(section);
+		if (!key) {
+			groups.push({ key: `section:${section.id}`, label: section.title || section.id, history: false, sections: [section] });
+			continue;
+		}
+		let group = byKey.get(key);
+		if (!group) {
+			group = {
+				key,
+				label: historySourceLabel(section),
+				history: true,
+				sections: [],
+			};
+			byKey.set(key, group);
+			groups.push(group);
+		}
+		group.sections.push(section);
+	}
+	return groups;
+});
+
 const latestDiff = computed(() => contextDiff.value?.latestDiff ?? null);
 const latestTurn = computed(() => contextDiff.value?.latest?.turn ?? null);
 const activeDiff = computed<TurnDiff | null>(() => mode.value === "draft" ? draftDiff.value : latestDiff.value);
@@ -280,8 +313,33 @@ function cacheHitText(): string {
 	return `${(usage.cacheHitRatio * 100).toFixed(1)}%`;
 }
 
+function sectionRole(section: WebEditorPreviewSection): string {
+	return section.role?.trim() || (section.id === "system" ? "system" : "message");
+}
+
+function roleClass(section: WebEditorPreviewSection): string {
+	return `role-${sectionRole(section).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function historySourceKey(section: WebEditorPreviewSection): string | undefined {
+	const diffKey = section.diffKey || "";
+	if (diffKey.startsWith("implicit-history:")) return "implicit-history";
+	const match = diffKey.match(/^(chat-history:.+):[^:]+:\d+$/);
+	return match?.[1];
+}
+
+function historySourceLabel(section: WebEditorPreviewSection): string {
+	const title = section.title?.replace(/\s+#\d+$/, "").trim();
+	return title || "Chat history";
+}
+
+function groupTitle(group: PreviewSectionGroup): string {
+	const count = group.sections.length;
+	return `${group.label} (${t(count === 1 ? "diff.messageOne" : "diff.messageMany", { count })})`;
+}
+
 function sectionMeta(section: WebEditorPreviewSection): string {
-	const rolePrefix = section.role ? `${section.role} · ` : "";
+	const rolePrefix = `${sectionRole(section)} · `;
 	return t("diff.sectionMeta", { rolePrefix, chars: section.chars, tokens: section.approxTokens });
 }
 
@@ -342,14 +400,33 @@ function turnLabel(): string {
 				{{ previewLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
 			<div v-else class="context-diff-sections">
-				<details v-for="section in compiledSections" :key="section.id" class="context-diff-section" open>
-					<summary>
-						<span class="section-title">{{ section.title || section.id }}</span>
-						<span class="section-meta">{{ sectionMeta(section) }}</span>
-						<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
-					</summary>
-					<pre class="section-text">{{ section.content }}</pre>
-				</details>
+				<template v-for="group in previewGroups" :key="group.key">
+					<details v-if="group.history" class="context-diff-group" open>
+						<summary class="context-diff-group-summary">
+							<span class="group-title">{{ groupTitle(group) }}</span>
+						</summary>
+						<div class="context-diff-group-messages">
+							<details v-for="section in group.sections" :key="section.id" :class="['context-diff-section', roleClass(section)]" open>
+								<summary>
+									<span class="section-title">{{ section.title || section.id }}</span>
+									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
+									<span class="section-meta">{{ sectionMeta(section) }}</span>
+									<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
+								</summary>
+								<pre class="section-text">{{ section.content }}</pre>
+							</details>
+						</div>
+					</details>
+					<details v-else v-for="section in group.sections" :key="section.id" :class="['context-diff-section', roleClass(section)]" open>
+						<summary>
+							<span class="section-title">{{ section.title || section.id }}</span>
+							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
+							<span class="section-meta">{{ sectionMeta(section) }}</span>
+							<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
+						</summary>
+						<pre class="section-text">{{ section.content }}</pre>
+					</details>
+				</template>
 			</div>
 		</div>
 
@@ -479,11 +556,29 @@ function turnLabel(): string {
 .context-diff-diagnostic.info { color: var(--muted); }
 .context-diff-compiled, .context-diff-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .context-diff-sections, .context-diff-blocks { display: flex; flex-direction: column; gap: 8px; }
-.context-diff-section { border: 1px solid var(--line); border-radius: 6px; background: var(--pane); overflow: hidden; }
+.context-diff-group { border: 1px solid var(--line); border-radius: 6px; background: var(--pane-soft); overflow: hidden; }
+.context-diff-group-summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.context-diff-group-summary::-webkit-details-marker { display: none; }
+.context-diff-group-summary::before { content: "▶"; color: var(--muted); font-size: 10px; }
+.context-diff-group[open] > .context-diff-group-summary { border-bottom: 1px solid var(--line); }
+.context-diff-group[open] > .context-diff-group-summary::before { content: "▼"; }
+.group-title { font-weight: 700; }
+.context-diff-group-messages { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+.context-diff-section { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px; background: var(--pane); overflow: hidden; }
 .context-diff-section summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; border-bottom: 1px solid transparent; }
+.context-diff-section summary::-webkit-details-marker { display: none; }
 .context-diff-section[open] summary { border-bottom-color: var(--line); }
 .section-title { font-weight: 650; }
+.section-role { border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 16px; font-weight: 700; text-transform: lowercase; }
 .section-meta { color: var(--muted); font-size: 12px; }
+.context-diff-section.role-system { border-left-color: var(--role-system); }
+.context-diff-section.role-user { border-left-color: var(--role-user); }
+.context-diff-section.role-assistant { border-left-color: var(--role-assistant); }
+.context-diff-section.role-toolresult { border-left-color: var(--role-tool-result); }
+.section-role.role-system { color: var(--role-system); background: color-mix(in srgb, var(--role-system) 12%, var(--pane)); }
+.section-role.role-user { color: var(--role-user); background: color-mix(in srgb, var(--role-user) 12%, var(--pane)); }
+.section-role.role-assistant { color: var(--role-assistant); background: color-mix(in srgb, var(--role-assistant) 12%, var(--pane)); }
+.section-role.role-toolresult { color: var(--role-tool-result); background: color-mix(in srgb, var(--role-tool-result) 12%, var(--pane)); }
 .section-text, .block-text { margin: 0; padding: 10px; background: var(--code-bg); color: var(--code-text); white-space: pre-wrap; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .context-diff-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); font-weight: 650; }
 .summary-delta.positive { color: var(--success); }
