@@ -86,6 +86,15 @@ export function appendContextDiffCapture(
 	return diff;
 }
 
+/** Return usage attached to the most recent captured turn that has usage data. */
+export function getLatestContextDiffUsage(history: ContextDiffHistory): ContextDiffProviderUsage | undefined {
+	for (let index = history.turns.length - 1; index >= 0; index -= 1) {
+		const usage = history.usageByTurnId.get(history.turns[index]!.turnId);
+		if (usage) return usage;
+	}
+	return undefined;
+}
+
 /** Attach the authoritative usage returned on the assistant message for one captured provider request. */
 export function attachContextDiffUsage(
 	history: ContextDiffHistory,

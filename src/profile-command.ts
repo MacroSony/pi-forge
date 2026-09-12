@@ -24,6 +24,9 @@ import {
 	type AgentProfilePreview,
 } from "./profile-service.ts";
 import { showText } from "./preview.ts";
+import type { CompileCycleState } from "./compile-cycle.ts";
+import type { ContextDiffProviderUsage } from "./context-diff-history.ts";
+import { promptCacheWarningForStackSwitch } from "./prompt-cache-warning.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
 import type { PromptStack } from "./types.ts";
 
@@ -32,14 +35,15 @@ export interface ProfileCommandDeps {
 	resolveProfile(target: LoadedAgentProfile, ctx: ExtensionContext): ResolvedAgentProfile;
 	setActive(id: string | undefined, ctx?: ExtensionContext): boolean;
 	previewToolNames(stack: PromptStack | undefined): string[];
+	latestContextDiffUsage(): ContextDiffProviderUsage | undefined;
 }
 
-export function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, deps: ProfileCommandDeps): void {
+export function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, compileCycle: CompileCycleState, deps: ProfileCommandDeps): void {
 	pi.registerCommand("profile", {
 		description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget",
 		getArgumentCompletions: (prefix) => profileArgumentCompletions(state, prefix),
 		handler: async (args, ctx) => {
-			await handleProfileCommand(pi, state, deps, args, ctx);
+			await handleProfileCommand(pi, state, compileCycle, deps, args, ctx);
 		},
 	});
 }
@@ -68,6 +72,7 @@ function profileArgumentCompletions(state: ForgeWorkspace, prefix: string) {
 async function handleProfileCommand(
 	pi: ExtensionAPI,
 	state: ForgeWorkspace,
+	compileCycle: CompileCycleState,
 	deps: ProfileCommandDeps,
 	args: string,
 	ctx: ExtensionCommandContext,
@@ -81,7 +86,7 @@ async function handleProfileCommand(
 			return;
 
 		case "use":
-			await useProfile(pi, state, deps, rest[0], ctx);
+			await useProfile(pi, state, compileCycle, deps, rest[0], ctx);
 			return;
 
 		case "save":
@@ -120,6 +125,7 @@ async function handleProfileCommand(
 async function useProfile(
 	pi: ExtensionAPI,
 	state: ForgeWorkspace,
+	compileCycle: CompileCycleState,
 	deps: ProfileCommandDeps,
 	id: string | undefined,
 	ctx: ExtensionCommandContext,
@@ -150,6 +156,12 @@ async function useProfile(
 		return;
 	}
 
+	const cacheWarning = promptCacheWarningForStackSwitch(
+		state.snapshot().active,
+		resolved.promptStack,
+		compileCycle,
+		deps.latestContextDiffUsage(),
+	);
 	const result = await applyResolvedAgentProfile(pi, state, deps, resolved, ctx);
 	if (!result.ok) {
 		const rollbackSuffix = result.rollbackErrors.length > 0 ? ` Rollback problems: ${result.rollbackErrors.join("; ")}` : " Previous runtime state was restored.";
@@ -160,6 +172,7 @@ async function useProfile(
 
 	const warningCount = result.warningCount;
 	ctx.ui.notify(`pi-forge: applied profile ${id} once${warningCount ? ` with ${warningCount} warning(s)` : ""}; later manual changes will be preserved.`, warningCount ? "warning" : "info");
+	if (cacheWarning) ctx.ui.notify(`pi-forge: ${cacheWarning}`, "warning");
 }
 
 async function saveProfile(

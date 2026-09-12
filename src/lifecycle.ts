@@ -4,9 +4,10 @@ import {
 	compileMessages,
 	getLatestUserMessage,
 } from "./compiler.ts";
-import { PromptCompilationContext } from "./compiler.ts";
+import { PromptCompilationContext, dedupeDiagnostics } from "./compiler.ts";
 import { applyFinalizeRegexRulesToMessage, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules } from "./regex.ts";
 import { promptRuntimeFromPi } from "./prompt-runtime.ts";
+import { formatResourceKey } from "./resource-identity.ts";
 import { resetCompileCycle, type CompileCycleState } from "./compile-cycle.ts";
 import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
@@ -108,8 +109,12 @@ export function registerLifecycleHandlers(
 		if (!active) return;
 
 		const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
+		compileCycle.currentCompilationRuntime = compilationRuntime;
+		compileCycle.currentBaseSystemPrompt = event.systemPrompt;
 		compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, compilationRuntime);
 		const result = compileCycle.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
+		compileCycle.currentCompiledSystemPrompt = result.systemPrompt;
+		compileCycle.currentCompiledStackKey = formatResourceKey(active.key);
 		deps.recordCompileDiagnostics(ctx, result.diagnostics);
 
 		return { systemPrompt: result.systemPrompt };
@@ -177,6 +182,10 @@ async function restoreBranchScopedRuntime(
 ): Promise<void> {
 	const restoredProfile = getRestoredProfileProvenance(ctx);
 	compileCycle.currentCompilationContext = undefined;
+	compileCycle.currentCompilationRuntime = undefined;
+	compileCycle.currentBaseSystemPrompt = undefined;
+	compileCycle.currentCompiledSystemPrompt = undefined;
+	compileCycle.currentCompiledStackKey = undefined;
 	compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
 	const restoredActiveId = getRestoredActiveId(ctx);
 	deps.restorePersistedActiveId(restoredActiveId);

@@ -7,6 +7,7 @@ import {
 	CONTEXT_DIFF_HISTORY_LIMIT,
 	createContextDiffHistory,
 	getContextDiffView,
+	getLatestContextDiffUsage,
 } from "../src/context-diff-history.ts";
 import { extractTurnSnapshot, type ContextDiffCapture } from "../src/context-diff-snapshot.ts";
 import { createProviderPayloadCaptureWithSerialization } from "../src/payload-capture.ts";
@@ -241,6 +242,25 @@ test("getContextDiffView summarizes recent turns and exposes the latest diff", (
 	assert.ok(view.latest);
 	assert.equal(view.latest.diff, history.latestDiff);
 	assert.equal(view.latest.turn, history.turns.at(-1));
+});
+
+test("latest usage lookup skips newer turns that have no response usage", () => {
+	const history = createContextDiffHistory();
+	appendContextDiffCapture(history, capture("2025-01-01T00:00:00.000Z", [{ role: "user", content: "first" }]));
+	const firstTurnId = history.turns.at(-1)!.turnId;
+	attachContextDiffUsage(history, firstTurnId, {
+		provider: "test",
+		model: "model",
+		stopReason: "stop",
+		input: 10,
+		output: 1,
+		cacheRead: 9,
+		cacheWrite: 0,
+		totalTokens: 20,
+	});
+	appendContextDiffCapture(history, capture("2025-01-01T00:01:00.000Z", [{ role: "user", content: "second" }]));
+
+	assert.equal(getLatestContextDiffUsage(history)?.cacheRead, 9);
 });
 
 test("provider usage exposes real prompt/cache counts without confusing estimates", () => {

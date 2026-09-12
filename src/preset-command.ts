@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { promptStackReadDirs } from "./loader.ts";
+import { isDisabledPromptStackId, promptStackReadDirs } from "./loader.ts";
 import { resolveResourceSelector } from "./catalog.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { renderDiagnostics, renderPreview, showText } from "./preview.ts";
@@ -7,6 +7,8 @@ import { migrateLegacyPromptStacks, renderMigrationReport } from "./stack-migrat
 import { forgeExtensionsDir, globalForgeExtensionsDir } from "./storage.ts";
 import type { CompileCycleState } from "./compile-cycle.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
+import type { ContextDiffProviderUsage } from "./context-diff-history.ts";
+import { promptCacheWarningForStackSwitch } from "./prompt-cache-warning.ts";
 import type { LoadedPromptStack } from "./types.ts";
 
 export interface PresetCommandDeps {
@@ -15,6 +17,7 @@ export interface PresetCommandDeps {
 	reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): Promise<void>;
 	openWebEditor(ctx: ExtensionCommandContext, mode?: "open" | "restart"): Promise<void>;
 	stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
+	latestContextDiffUsage(): ContextDiffProviderUsage | undefined;
 }
 
 export function registerPresetCommand(
@@ -96,12 +99,18 @@ async function handlePresetCommand(
 				ctx.ui.notify("pi-forge: project is not trusted; refusing to activate a preset.", "warning");
 				return;
 			}
+			const current = workspace.snapshot().active;
+			const next = isDisabledPromptStackId(id) ? undefined : findStack(workspace, id);
+			const cacheWarning = next || isDisabledPromptStackId(id)
+				? promptCacheWarningForStackSwitch(current, next, compileCycle, deps.latestContextDiffUsage())
+				: undefined;
 			if (!deps.setActive(id, ctx)) {
 				ctx.ui.notify(`Unknown preset: ${id}`, "error");
 				return;
 			}
 			const active = workspace.snapshot().active;
 			ctx.ui.notify(active ? `pi-forge: active preset ${active.stack.id}` : "pi-forge: preset disabled", "info");
+			if (cacheWarning) ctx.ui.notify(`pi-forge: ${cacheWarning}`, "warning");
 			return;
 		}
 

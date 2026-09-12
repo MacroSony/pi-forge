@@ -12,7 +12,7 @@ import { ForgeWorkspace } from "./workspace.ts";
 import { createToolPolicyRuntime } from "./runtime/tool-policy-runtime.ts";
 import { createWebEditorRuntime } from "./runtime/web-editor-runtime.ts";
 import { createCompileCycleState } from "./compile-cycle.ts";
-import { getContextDiffView } from "./context-diff-history.ts";
+import { getContextDiffView, getLatestContextDiffUsage } from "./context-diff-history.ts";
 import { createPayloadState } from "./payload-state.ts";
 
 /**
@@ -135,11 +135,13 @@ export default function piForge(pi: ExtensionAPI) {
 		reloadStacks: stackRuntime.reloadStacks,
 		openWebEditor: webEditorRuntime.open,
 		stopWebEditor: webEditorRuntime.stop,
+		latestContextDiffUsage: () => getLatestContextDiffUsage(payloadState.contextDiffHistory),
 	});
-	registerProfileCommand(pi, workspace, {
+	registerProfileCommand(pi, workspace, compileCycle, {
 		reloadProfiles: profileRuntime.reloadProfiles,
 		resolveProfile: profileRuntime.resolveProfile,
 		setActive: stackRuntime.setActive,
 		previewToolNames: toolPolicy.previewToolNames,
+		latestContextDiffUsage: () => getLatestContextDiffUsage(payloadState.contextDiffHistory),
 	});
 }
