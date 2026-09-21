@@ -1,5 +1,6 @@
 import { createInstructionRuntime } from "./runtime/instruction-runtime.ts";
 import { registerInstructionCommand } from "./instruction-command.ts";
+import { registerInstructionTool } from "./instruction-tool.ts";
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.ts";
@@ -169,6 +170,7 @@ export default function piForge(pi: ExtensionAPI) {
 	});
 	registerPayloadRequestHandler(pi, payloadState, () => currentActive());
 	registerInstructionCommand(pi, instructions);
+	registerInstructionTool(pi, instructions);
 	registerPayloadCommands(pi, payloadState);
 	registerPresetCommand(pi, workspace, compileCycle, {
 		selectedActiveId: stackRuntime.selectedActiveId,

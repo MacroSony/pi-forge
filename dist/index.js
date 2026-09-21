@@ -1,5 +1,6 @@
 import { createInstructionRuntime } from "./runtime/instruction-runtime.js";
 import { registerInstructionCommand } from "./instruction-command.js";
+import { registerInstructionTool } from "./instruction-tool.js";
 import { registerLifecycleHandlers } from "./lifecycle.js";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.js";
 import { buildPreview } from "./preview.js";
@@ -132,6 +133,7 @@ export default function piForge(pi) {
     });
     registerPayloadRequestHandler(pi, payloadState, () => currentActive());
     registerInstructionCommand(pi, instructions);
+    registerInstructionTool(pi, instructions);
     registerPayloadCommands(pi, payloadState);
     registerPresetCommand(pi, workspace, compileCycle, {
         selectedActiveId: stackRuntime.selectedActiveId,

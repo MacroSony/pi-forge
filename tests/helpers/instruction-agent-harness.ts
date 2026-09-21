@@ -102,6 +102,8 @@ export interface InstructionAgentHarnessOptions {
 	beforeForgeExtensionFactories?: ExtensionFactory[];
 	sessionManager?: SessionManager;
 	initialTools?: string[];
+	/** Registered tool names; defaults to the original fake-tool registry. */
+	allowedTools?: string[];
 	native?: boolean;
 	agentDir?: string;
 	onDriver?: (ctx: ExtensionContext) => unknown | Promise<unknown>;
@@ -430,7 +432,7 @@ export async function createInstructionAgentHarness(
 		noTools: "builtin",
 		// Allowed registry != initial active selection. Restore must be able to
 		// reactivate registered fake tools that a mode previously hid.
-		tools: DEFAULT_INITIAL_TOOLS,
+		tools: options.allowedTools ?? DEFAULT_INITIAL_TOOLS,
 		resourceLoader,
 		settingsManager,
 		sessionManager,

@@ -1,5 +1,12 @@
 # 指令模式 (system-update)
 
+## Preset 授权的 Agent 控制
+
+Preset 的 `instructionModes` 绑定已接入。只有显式 `modelCallable: true` 才允许 Agent 选择，默认不授权。`forge_system_update` 固定参数为 `{action: "list" | "status" | "use" | "off", id?: string}`（ID最多128字符）。每次调用重新检查信任、当前 Preset 绑定身份、授权及工具策略；use 传绑定 ID，off 传它自己的 Agent 活动项／绑定 ID。不能任意写规则、reset、停用人类规则，也不能选会禁用自身控制工具的模式。
+
+人类可用 `/system-update bindings`、`/system-update use-bound <id>`；直接 `use <[scope:]id>` 仍为非绑定活动项。保存模式／绑定不自动激活，同 Preset reload 不更新冻结快照；切换 Preset 停掉旧绑定项，保留手输／非绑定规则。撤销授权不回写旧快照，人类 CLI/Web 的 off/reset 仍是恢复通道。
+
+
 [中文文档](../README.md) · [English](../../reference/instruction-modes.md)
 
 Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。本文档涵盖模式配置、CLI 操作、投递模型、状态恢复边界与兼容性限制。

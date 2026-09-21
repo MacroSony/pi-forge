@@ -1,5 +1,12 @@
 # Instruction modes (system-update)
 
+## Preset-authorized Agent controls
+
+Preset `instructionModes` bindings are now live. Use `modelCallable: true` only for modes the Agent may select; it is false by default. `forge_system_update` accepts only `{action: "list" | "status" | "use" | "off", id?: string}` (ID ≤128 chars). It rechecks current trust, Preset binding identity, authorization and tool policy for every call. Use takes a binding ID; off takes its own Agent-owned activation/binding ID. It cannot write arbitrary rules, reset, stop human-owned rules or activate a mode that removes its control tool.
+
+Humans can run `/system-update bindings` and `/system-update use-bound <id>`. Direct `/system-update use <[scope:]id>` remains unbound. Saving modes/bindings does not activate them; same-Preset reload retains immutable active snapshots. Switching Presets retires old bound activations, retaining manual/unbound rules. Revoked authorization does not retroactively erase snapshots: the human CLI/Web off/reset remains the recovery path.
+
+
 [Documentation](../README.md) · [中文](../zh-CN/reference/instruction-modes.md)
 
 Pi-forge introduces instruction modes: session-scoped prompt directives paired with dynamic tool selection. This reference details configuration, CLI usage, delivery models, recovery boundaries, and compatibility limits.

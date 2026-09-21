@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { InstructionModeBinding } from "./codecs/instruction-mode.ts";
 import type { ResourceKey, ResourceScope } from "./resource-identity.ts";
 
 export type PromptStackMode = "replace" | "append" | "prepend";
@@ -149,6 +150,7 @@ export interface PromptStack {
 	variables?: Record<string, string>;
 	parameters?: Record<string, PromptVariableValue>;
 	regex?: PromptRegexConfig;
+	instructionModes?: InstructionModeBinding[];
 	items: PromptStackItem[];
 	import?: Record<string, unknown>;
 }

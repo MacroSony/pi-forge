@@ -1,7 +1,8 @@
+import { formatResourceKey } from "./resource-identity.js";
 import { showText } from "./preview.js";
 export function registerInstructionCommand(pi, runtime) {
     pi.registerCommand("system-update", {
-        description: "Manage session instruction modes: add/list/use/off/status/reset (no inference)",
+        description: "Manage session instruction modes: add/list/bindings/use/use-bound/off/status/reset (no inference)",
         handler: async (args, ctx) => {
             const match = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
             const operation = match?.[1] ?? "status";
@@ -11,8 +12,31 @@ export function registerInstructionCommand(pi, runtime) {
                     return await showText(ctx, "Instruction mode library", runtime.library(ctx));
                 if (operation === "status")
                     return await showText(ctx, "Session instructions", runtime.status(ctx));
+                if (operation === "bindings") {
+                    const res = runtime.readBindings(ctx);
+                    if (!res.ok)
+                        throw new Error(res.error);
+                    const content = res.bindings.length
+                        ? res.bindings
+                            .map((b) => `${b.id}${b.modelCallable ? " [modelCallable]" : ""}: ${formatResourceKey(b.ref)}${b.mode.name ? ` — ${b.mode.name}` : ""}`)
+                            .join("\n")
+                        : "No instruction mode bindings in active preset.";
+                    return await showText(ctx, "Preset instruction mode bindings", content);
+                }
+                if (operation === "use-bound") {
+                    if (!value.trim())
+                        throw new Error("Usage: /system-update use-bound <id>");
+                    const res = runtime.useBound(ctx, value.trim(), "user");
+                    if (!res.ok)
+                        throw new Error(res.error);
+                    if (ctx.hasUI)
+                        ctx.ui.notify(res.message, "info");
+                    else
+                        console.log(res.message);
+                    return;
+                }
                 if (operation !== "add" && operation !== "use" && operation !== "off" && operation !== "reset") {
-                    throw new Error("Usage: /system-update add <text> | list | use <[scope:]id> | off <activation-or-mode-id> | status | reset");
+                    throw new Error("Usage: /system-update add <text> | list | bindings | use <[scope:]id> | use-bound <id> | off <activation-or-mode-id> | status | reset");
                 }
                 if (operation === "reset" && value)
                     throw new Error("Usage: /system-update reset");

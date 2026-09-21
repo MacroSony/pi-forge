@@ -14,5 +14,5 @@ export declare function createPromptStackFault(filePath: string, scope: PromptSt
  * output stays identical across all write paths.
  */
 export declare function serializePromptStack(stack: PromptStack): string;
-export declare function validatePromptStack(stack: PromptStack): PromptStackDiagnostic[];
+export declare function validatePromptStack(stack: PromptStack, scope?: PromptStackScope): PromptStackDiagnostic[];
 //# sourceMappingURL=prompt-stack.d.ts.map

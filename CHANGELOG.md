@@ -8,6 +8,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- **Live Preset instruction bindings and restricted Agent control.** `instructionModes` now validates/round-trips in Presets. `forge_system_update` has a fixed list/status/use/off schema, checks current trust/binding/modelCallable/tool policy per call, and cannot stop human-owned rules or disable its own control path. `/system-update bindings` and `use-bound <id>` expose human bound use; direct `use` remains unbound. Source edits do not mutate active snapshots; switching Presets retires old bound activations, not manual rules. No new package export or session migration. The library/binding editor follows in the next lane.
+
+
 ### Added
 
 - **Instruction modes and session update CLI.** Session-scoped dynamic instruction modes and manual directives via `/system-update` (`add`, `list`, `use`, `off`, `status`, `reset`). Modes are stored as JSON definitions (`schemaVersion: 1`, `type: "pi-forge.instruction-mode"`) under `.pi/forge/instruction-modes/` or `~/.pi/forge/instruction-modes/`.

@@ -4,11 +4,11 @@ import { isInstructionStateMutation, type InstructionStateResult, type Instructi
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createResourceCatalog } from "../catalog.ts";
-import { createInstructionSnapshot, reduceInstructionEvents, type ActiveInstruction, type InstructionEvent } from "../instruction-events.ts";
-import { resolveInstructionMode } from "../instruction-modes.ts";
+import { createInstructionSnapshot, reduceInstructionEvents, MAX_ID_LENGTH, type ActiveInstruction, type InstructionEvent } from "../instruction-events.ts";
+import { resolveInstructionMode, resolveInstructionModeBindings, type ResolvedInstructionModeBinding } from "../instruction-modes.ts";
 import { projectInstructionMessages } from "../instruction-projection.ts";
 import { isInstructionDelivery } from "../instruction-protocol.ts";
-import { formatResourceKey } from "../resource-identity.ts";
+import { formatResourceKey, type ResourceKey } from "../resource-identity.ts";
 import { hasResourcePolicy } from "../policy.ts";
 import {
 	buildContextEntries,
@@ -29,6 +29,26 @@ import {
 } from "../session-adapter.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
 import type { ToolPolicyRuntime, ToolPolicySnapshot } from "./tool-policy-runtime.ts";
+
+export type ReadBindingsResult =
+	| { ok: true; preset: ResourceKey | null; bindings: readonly ResolvedInstructionModeBinding[] }
+	| { ok: false; error: string };
+
+export type UseBoundResult =
+	| { ok: true; activationId: string; idempotent?: boolean; message: string }
+	| { ok: false; error: string };
+
+export type DeactivateBoundResult =
+	| { ok: true; activationId: string; message: string }
+	| { ok: false; error: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return false;
+	}
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
+}
 
 /** Branch entries are authoritative. This service only coordinates the existing tool owner and delivery. */
 export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorkspace, tools: ToolPolicyRuntime) {
@@ -285,10 +305,10 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		].join("\n");
 	}
 
-	function change(ctx: ExtensionContext, command: "add" | "use" | "off" | "reset", value: string): string {
+	function change(ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string): string {
 		context = ctx;
 		const { state } = view(ctx);
-		if ((command === "add" || command === "use") && !ctx.isProjectTrusted()) throw new Error("Project is not trusted; refusing to activate an instruction mode.");
+		if ((command === "add" || command === "use" || command === "use-bound") && !ctx.isProjectTrusted()) throw new Error("Project is not trusted; refusing to activate an instruction mode.");
 		const common = { schemaVersion: 1 as const, eventId: randomUUID(), actor: "user" as const, createdAt: Date.now() };
 		if (command === "reset") {
 			if (!state.active.length) return "No active instructions to reset.";
@@ -296,9 +316,15 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			return "Instructions stopped; tools recomputed. Historical messages and completed work are not undone.";
 		}
 		if (!value.trim()) throw new Error(`Usage: /system-update ${command} <${command === "add" ? "text" : "id"}>`);
+		if (command === "use-bound") {
+			const res = useBound(ctx, value.trim(), "user");
+			if (!res.ok) throw new Error(res.error);
+			return res.message;
+		}
 		if (command === "off") {
 			const matches = state.active.filter((item) => item.snapshot.activationId === value || sourceLabel(item) === value
-				|| (item.snapshot.source.kind === "mode" && item.snapshot.source.key.id === value));
+				|| (item.snapshot.source.kind === "mode" && item.snapshot.source.key.id === value)
+				|| (item.snapshot.source.kind === "mode" && item.snapshot.source.binding && item.snapshot.source.binding.id === value));
 			if (!matches.length) return "No matching active instruction (already off or unknown ID).";
 			if (matches.length !== 1) throw new Error("Ambiguous mode name; use the activation ID from /system-update status.");
 			commit(ctx, { ...common, op: "deactivate", activationId: matches[0]!.snapshot.activationId });
@@ -323,6 +349,372 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		return `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`;
 	}
 
+	function readBindings(ctx: ExtensionContext): ReadBindingsResult {
+		if (!ctx.isProjectTrusted()) {
+			return { ok: false, error: "Project is not trusted; cannot read instruction mode bindings." };
+		}
+		const activePreset = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!activePreset) {
+			return { ok: true, preset: null, bindings: [] };
+		}
+		const declaredBindings = activePreset.stack.instructionModes ?? [];
+		if (declaredBindings.length === 0) {
+			return { ok: true, preset: activePreset.key, bindings: [] };
+		}
+		const modes = workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes;
+		const catalog = createResourceCatalog([...modes]);
+		const res = resolveInstructionModeBindings(catalog, activePreset.key, declaredBindings);
+		if (!res.ok) {
+			return { ok: false, error: res.error };
+		}
+		return { ok: true, preset: activePreset.key, bindings: res.bindings };
+	}
+
+	function useBound(ctx: ExtensionContext, id: string, actor: "user" | "agent" = "user"): UseBoundResult {
+		context = ctx;
+		if (!ctx.isProjectTrusted()) {
+			return { ok: false, error: "Project is not trusted; refusing to activate an instruction mode." };
+		}
+		if (typeof id !== "string" || !id.trim()) {
+			return { ok: false, error: "Binding ID must be a non-empty string." };
+		}
+		const targetId = id.trim();
+		if (targetId.length > MAX_ID_LENGTH) {
+			return { ok: false, error: `Binding ID must be at most ${MAX_ID_LENGTH} characters.` };
+		}
+		const activePreset = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!activePreset) {
+			return { ok: false, error: "No active preset; cannot activate a bound instruction mode." };
+		}
+		const bindingsRes = readBindings(ctx);
+		if (!bindingsRes.ok) {
+			return { ok: false, error: bindingsRes.error };
+		}
+		const binding = bindingsRes.bindings.find((b) => b.id === targetId);
+		if (!binding) {
+			return {
+				ok: false,
+				error: `Instruction mode "${targetId}" is not bound to active preset "${formatResourceKey(activePreset.key)}".`,
+			};
+		}
+
+		if (actor === "agent") {
+			if (!binding.modelCallable) {
+				return {
+					ok: false,
+					error: `Instruction mode "${targetId}" is not authorized for agent use (modelCallable is not true).`,
+				};
+			}
+			if (binding.mode.tools.remove.includes("forge_system_update")) {
+				return {
+					ok: false,
+					error: `Cannot activate instruction mode "${targetId}": agent cannot remove control tool "forge_system_update".`,
+				};
+			}
+			const allTools = pi.getAllTools();
+			const activeTools = pi.getActiveTools();
+			if (
+				!allTools.some((t) => t.name === "forge_system_update") ||
+				!activeTools.includes("forge_system_update") ||
+				tools.blockReason("forge_system_update") !== undefined
+			) {
+				return { ok: false, error: 'Control tool "forge_system_update" is not available or blocked by policy.' };
+			}
+		}
+
+		const policyErr = tools.validateInstructionModes([binding.mode.tools]);
+		if (policyErr) {
+			return { ok: false, error: `Cannot activate instruction mode "${targetId}": ${policyErr}` };
+		}
+
+		// Repeated use idempotent/no owner takeover
+		const { state } = view(ctx);
+		const existing = state.active.find(
+			(item) =>
+				item.snapshot.source.kind === "mode" &&
+				item.snapshot.source.binding &&
+				formatResourceKey(item.snapshot.source.binding.preset) === formatResourceKey(binding.preset) &&
+				item.snapshot.source.binding.id === binding.id &&
+				formatResourceKey(item.snapshot.source.key) === formatResourceKey(binding.ref),
+		);
+		const stale = state.active.find(
+			(item) =>
+				item.snapshot.source.kind === "mode" &&
+				item.snapshot.source.binding &&
+				formatResourceKey(item.snapshot.source.binding.preset) === formatResourceKey(binding.preset) &&
+				item.snapshot.source.binding.id === binding.id,
+		);
+		if (stale && !existing) {
+			return {
+				ok: false,
+				error: `Instruction mode "${targetId}" has a stale binding identity; turn off the old activation before reusing it.`,
+			};
+		}
+		if (existing) {
+			return {
+				ok: true,
+				activationId: existing.snapshot.activationId,
+				idempotent: true,
+				message: `Instruction mode "${targetId}" is already active as ${existing.snapshot.activationId}. Repeated use is idempotent and does not change ownership.`,
+			};
+		}
+
+		const snapshot = createInstructionSnapshot({
+			activationId: randomUUID(),
+			source: {
+				kind: "mode",
+				key: binding.ref,
+				binding: {
+					preset: binding.preset,
+					id: binding.id,
+				},
+			},
+			content: binding.mode.content,
+			tools: binding.mode.tools,
+			...(binding.mode.name !== undefined ? { name: binding.mode.name } : {}),
+		});
+
+		try {
+			commit(ctx, {
+				schemaVersion: 1,
+				eventId: randomUUID(),
+				op: "activate",
+				actor,
+				createdAt: Date.now(),
+				snapshot,
+			});
+		} catch (err) {
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		}
+
+		return {
+			ok: true,
+			activationId: snapshot.activationId,
+			message: `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`,
+		};
+	}
+
+	function deactivateBound(ctx: ExtensionContext, id: string, actor: "user" | "agent" = "user"): DeactivateBoundResult {
+		context = ctx;
+		if (!ctx.isProjectTrusted()) {
+			return { ok: false, error: "Project is not trusted; refusing to deactivate an instruction mode." };
+		}
+		if (typeof id !== "string" || !id.trim()) {
+			return { ok: false, error: "Invalid instruction mode id." };
+		}
+		const targetId = id.trim();
+		if (targetId.length > MAX_ID_LENGTH) {
+			return { ok: false, error: `Instruction mode ID must be at most ${MAX_ID_LENGTH} characters.` };
+		}
+		const activePreset = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+
+		if (actor === "agent") {
+			const allTools = pi.getAllTools();
+			const activeTools = pi.getActiveTools();
+			if (
+				!allTools.some((t) => t.name === "forge_system_update") ||
+				!activeTools.includes("forge_system_update") ||
+				tools.blockReason("forge_system_update") !== undefined
+			) {
+				return { ok: false, error: 'Control tool "forge_system_update" is not available or blocked by policy.' };
+			}
+			if (!activePreset) {
+				return { ok: false, error: "forge_system_update off requires an active preset with bound instruction modes." };
+			}
+		}
+
+		const { state } = view(ctx);
+		const matches = state.active.filter(
+			(item) =>
+				item.snapshot.activationId === targetId ||
+				sourceLabel(item) === targetId ||
+				(item.snapshot.source.kind === "mode" && item.snapshot.source.key.id === targetId) ||
+				(item.snapshot.source.kind === "mode" &&
+					item.snapshot.source.binding &&
+					item.snapshot.source.binding.id === targetId),
+		);
+
+		if (!matches.length) {
+			return { ok: false, error: `No matching active instruction mode: ${targetId}` };
+		}
+		if (matches.length > 1) {
+			return { ok: false, error: `Ambiguous active instruction mode "${targetId}"; use its activation ID.` };
+		}
+		const target = matches[0]!;
+
+		if (actor === "agent") {
+			if (target.actor !== "agent") {
+				return { ok: false, error: `Agent cannot deactivate user-owned activation: ${target.snapshot.activationId}` };
+			}
+			const source = target.snapshot.source;
+			if (source.kind !== "mode" || !source.binding) {
+				return { ok: false, error: `Agent cannot deactivate unbound or manual instruction: ${target.snapshot.activationId}` };
+			}
+			// Current authorization required
+			const bindingsRes = readBindings(ctx);
+			if (!bindingsRes.ok) {
+				return { ok: false, error: `Failed to resolve active preset bindings: ${bindingsRes.error}` };
+			}
+			const currentBinding = bindingsRes.bindings.find((b) => b.id === source.binding!.id);
+			const samePreset = formatResourceKey(source.binding.preset) === formatResourceKey(activePreset!.key);
+			const sameMode = currentBinding && formatResourceKey(source.key) === formatResourceKey(currentBinding.ref);
+			if (!currentBinding || !samePreset || !sameMode || !currentBinding.modelCallable) {
+				return {
+					ok: false,
+					error: `Cannot deactivate mode "${targetId}": current authorization requires the exact active-preset binding identity (including its mode source) and modelCallable authorization.`,
+				};
+			}
+		}
+
+		try {
+			commit(ctx, {
+				schemaVersion: 1,
+				eventId: randomUUID(),
+				op: "deactivate",
+				actor,
+				createdAt: Date.now(),
+				activationId: target.snapshot.activationId,
+			});
+		} catch (err) {
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		}
+
+		return {
+			ok: true,
+			activationId: target.snapshot.activationId,
+			message: `Stopped ${target.snapshot.activationId}; tools recomputed, stop notice pending next request.`,
+		};
+	}
+
+	async function executeAgentTool(
+		ctx: ExtensionContext,
+		params: unknown,
+	): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown }> {
+		context = ctx;
+		if (!isPlainObject(params)) {
+			throw new Error("forge_system_update parameters must be a plain object.");
+		}
+		const allowedKeys = new Set(["action", "id"]);
+		for (const key of Object.keys(params)) {
+			if (!allowedKeys.has(key)) {
+				throw new Error(`forge_system_update: unknown argument "${key}". Only "action" and "id" are permitted.`);
+			}
+		}
+		const action = params.action;
+		if (action !== "list" && action !== "status" && action !== "use" && action !== "off") {
+			throw new Error(`forge_system_update: invalid action "${String(action)}". Expected "list", "status", "use", or "off".`);
+		}
+		if (action === "list" || action === "status") {
+			if (params.id !== undefined) {
+				throw new Error(`forge_system_update: argument "id" is irrelevant for action "${action}".`);
+			}
+		}
+		if (action === "use" || action === "off") {
+			if (typeof params.id !== "string" || !params.id.trim()) {
+				throw new Error(`forge_system_update: argument "id" is required for action "${action}".`);
+			}
+			if (params.id.trim().length > MAX_ID_LENGTH) {
+				throw new Error(`forge_system_update: argument "id" must be at most ${MAX_ID_LENGTH} characters.`);
+			}
+		}
+
+		// EACH call checks: current trust, control-tool availability, active preset
+		if (!ctx.isProjectTrusted()) {
+			throw new Error("forge_system_update requires a trusted project.");
+		}
+		const allTools = pi.getAllTools();
+		const activeTools = pi.getActiveTools();
+		if (
+			!allTools.some((t) => t.name === "forge_system_update") ||
+			!activeTools.includes("forge_system_update") ||
+			tools.blockReason("forge_system_update") !== undefined
+		) {
+			throw new Error('Control tool "forge_system_update" is not available or blocked by policy.');
+		}
+		const activePreset = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+		if (!activePreset) {
+			throw new Error("forge_system_update requires an active preset with bound instruction modes.");
+		}
+
+		if (action === "list") {
+			const bindingsRes = readBindings(ctx);
+			if (!bindingsRes.ok) throw new Error(bindingsRes.error);
+			const eligible = bindingsRes.bindings.filter((b) => {
+				if (!b.modelCallable) return false;
+				if (b.mode.tools.remove.includes("forge_system_update")) return false;
+				if (tools.validateInstructionModes([b.mode.tools]) !== undefined) return false;
+				return true;
+			});
+			const text = eligible.length
+				? eligible
+					.map((b) =>
+						[
+							`id: ${b.id}${b.mode.name ? ` (${b.mode.name})` : ""}`,
+							b.mode.description ? `  description: ${b.mode.description}` : undefined,
+							`  tools: +${b.mode.tools.add.join(", ") || "(none)"}; -${b.mode.tools.remove.join(", ") || "(none)"}`,
+							`  content: ${b.mode.content}`,
+						]
+							.filter(Boolean)
+							.join("\n"),
+					)
+					.join("\n\n")
+				: "No authorized instruction modes available for agent.";
+			return {
+				content: [{ type: "text", text }],
+				details: {
+					action: "list",
+					modes: eligible.map((b) => ({ id: b.id, name: b.mode.name, tools: b.mode.tools })),
+				},
+			};
+		}
+
+		if (action === "status") {
+			const { state } = view(ctx);
+			const text = status(ctx);
+			return {
+				content: [{ type: "text", text }],
+				details: {
+					action: "status",
+					activeCount: state.active.length,
+					active: state.active.map((item) => ({
+						activationId: item.snapshot.activationId,
+						actor: item.actor,
+						source: sourceLabel(item),
+						bindingId:
+							item.snapshot.source.kind === "mode" && item.snapshot.source.binding
+								? item.snapshot.source.binding.id
+								: undefined,
+						tools: item.snapshot.tools,
+					})),
+				},
+			};
+		}
+
+		if (action === "use") {
+			const res = useBound(ctx, params.id as string, "agent");
+			if (!res.ok) {
+				throw new Error(res.error);
+			}
+			return {
+				content: [{ type: "text", text: res.message }],
+				details: { action: "use", activationId: res.activationId, idempotent: res.idempotent === true },
+			};
+		}
+
+		if (action === "off") {
+			const res = deactivateBound(ctx, params.id as string, "agent");
+			if (!res.ok) {
+				throw new Error(res.error);
+			}
+			return {
+				content: [{ type: "text", text: res.message }],
+				details: { action: "off", activationId: res.activationId },
+			};
+		}
+
+		throw new Error(`Unhandled action: ${action}`);
+	}
+
 	function commitEndAnchors(ctx: ExtensionContext): void {
 		context = ctx;
 		if (restoring) return;
@@ -342,7 +734,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		agentBusy = false;
 	}
 
-	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readState, mutateState, dispose };
+	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, dispose };
 }
 
 function sourceLabel(item: ActiveInstruction): string {

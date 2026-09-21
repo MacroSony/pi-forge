@@ -1,8 +1,10 @@
 import { basename } from "node:path";
+import { MAX_INSTRUCTION_MODE_BINDINGS } from "../instruction-modes.js";
 import { hasResourcePolicy } from "../policy.js";
 import { validateRegexConfig } from "../regex.js";
-import { isValidResourceId } from "../resource-identity.js";
+import { isValidResourceId, parseResourceSelector } from "../resource-identity.js";
 import { SUPPORTED_SLOTS } from "../types.js";
+import { validateInstructionModeBinding } from "./instruction-mode.js";
 const VALID_ROLES = new Set(["system", "user", "assistant", "custom"]);
 const VALID_CHAT_HISTORY_TOOL_MODES = new Set(["keep", "drop"]);
 /**
@@ -19,9 +21,9 @@ export function parsePromptStack(source, filePath, scope) {
     catch (error) {
         return createPromptStackFault(filePath, scope, `Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
-    diagnostics.push(...validateRawPromptStackShape(raw));
+    diagnostics.push(...validateRawPromptStackShape(raw, scope));
     const stack = normalizeStack(raw, filePath, diagnostics);
-    diagnostics.push(...validatePromptStack(stack));
+    diagnostics.push(...validatePromptStack(stack, scope));
     if (basename(filePath) === "default.json"
         && isPlainObject(raw)
         && !Object.prototype.hasOwnProperty.call(raw, "autoActivate")) {
@@ -121,9 +123,34 @@ function normalizeStack(raw, filePath, diagnostics) {
         variables: schemaVersion === 1 ? normalizeStringRecord(obj.variables) : undefined,
         parameters: schemaVersion === 2 ? normalizeParameterRecord(obj.parameters, diagnostics) : undefined,
         regex: normalizeRegexConfig(obj.regex, diagnostics),
+        instructionModes: normalizeInstructionModes(obj.instructionModes),
         items,
         import: isPlainObject(obj.import) ? obj.import : undefined,
     };
+}
+function normalizeInstructionModes(value) {
+    if (value === undefined)
+        return undefined;
+    if (!Array.isArray(value))
+        return undefined;
+    return value.map((binding) => {
+        if (!isPlainObject(binding))
+            return binding;
+        const normalized = { ...binding };
+        if (isPlainObject(binding.overrides)) {
+            const overrides = { ...binding.overrides };
+            if (isPlainObject(binding.overrides.tools)) {
+                const tools = { ...binding.overrides.tools };
+                if (Array.isArray(binding.overrides.tools.add))
+                    tools.add = [...binding.overrides.tools.add];
+                if (Array.isArray(binding.overrides.tools.remove))
+                    tools.remove = [...binding.overrides.tools.remove];
+                overrides.tools = tools;
+            }
+            normalized.overrides = overrides;
+        }
+        return normalized;
+    });
 }
 function normalizeItem(raw, index, diagnostics) {
     const fallbackId = `item-${index + 1}`;
@@ -157,8 +184,8 @@ function normalizeItem(raw, index, diagnostics) {
         content: typeof obj.content === "string" ? obj.content : "",
     };
 }
-export function validatePromptStack(stack) {
-    const diagnostics = validateRawPromptStackShape(stack);
+export function validatePromptStack(stack, scope) {
+    const diagnostics = validateRawPromptStackShape(stack, scope);
     const ids = new Set();
     let chatHistoryCount = 0;
     if (!stack.id.trim())
@@ -228,7 +255,7 @@ export function validatePromptStack(stack) {
     diagnostics.push(...validateRegexConfig(stack.regex));
     return diagnostics;
 }
-function validateRawPromptStackShape(raw) {
+function validateRawPromptStackShape(raw, scope) {
     const diagnostics = [];
     if (!isPlainObject(raw))
         return diagnostics;
@@ -248,6 +275,7 @@ function validateRawPromptStackShape(raw) {
     validateRawContext(raw.context, diagnostics);
     validateRawVariables(raw.variables, diagnostics);
     validateRawParameters(raw, diagnostics);
+    validateRawInstructionModes(raw.instructionModes, diagnostics, scope);
     if (!Array.isArray(raw.items))
         return diagnostics;
     for (const [index, item] of raw.items.entries()) {
@@ -289,6 +317,47 @@ function validateRawPromptStackShape(raw) {
         }
     }
     return diagnostics;
+}
+function validateRawInstructionModes(value, diagnostics, scope) {
+    if (value === undefined)
+        return;
+    if (!Array.isArray(value)) {
+        diagnostics.push({ level: "error", message: "Preset instructionModes must be an array when provided." });
+        return;
+    }
+    if (value.length > MAX_INSTRUCTION_MODE_BINDINGS) {
+        diagnostics.push({
+            level: "error",
+            message: `Preset instructionModes cannot exceed ${MAX_INSTRUCTION_MODE_BINDINGS} bindings (got ${value.length}).`,
+        });
+    }
+    const ownerScope = scope ?? "project";
+    for (const item of value) {
+        const itemDiags = validateInstructionModeBinding(item, ownerScope);
+        for (const diag of itemDiags) {
+            diagnostics.push({ level: diag.level, message: diag.message });
+        }
+    }
+    const seenIds = new Set();
+    for (const item of value) {
+        if (!isPlainObject(item))
+            continue;
+        if (typeof item.ref !== "string" || !item.ref.trim())
+            continue;
+        const parsed = parseResourceSelector(item.ref);
+        const effectiveId = typeof item.id === "string" && item.id.trim()
+            ? item.id.trim()
+            : (parsed.ok ? parsed.selector.id : "");
+        if (!effectiveId)
+            continue;
+        if (seenIds.has(effectiveId)) {
+            diagnostics.push({
+                level: "error",
+                message: `Duplicate instruction mode binding id: ${effectiveId}`,
+            });
+        }
+        seenIds.add(effectiveId);
+    }
 }
 function validateRawDefaults(value, diagnostics) {
     if (value === undefined)

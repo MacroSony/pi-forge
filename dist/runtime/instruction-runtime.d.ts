@@ -1,8 +1,35 @@
 import { type InstructionStateResult } from "../instruction-state.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ResolvedInstructionModeBinding } from "../instruction-modes.ts";
+import { type ResourceKey } from "../resource-identity.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
 import type { ToolPolicyRuntime } from "./tool-policy-runtime.ts";
+export type ReadBindingsResult = {
+    ok: true;
+    preset: ResourceKey | null;
+    bindings: readonly ResolvedInstructionModeBinding[];
+} | {
+    ok: false;
+    error: string;
+};
+export type UseBoundResult = {
+    ok: true;
+    activationId: string;
+    idempotent?: boolean;
+    message: string;
+} | {
+    ok: false;
+    error: string;
+};
+export type DeactivateBoundResult = {
+    ok: true;
+    activationId: string;
+    message: string;
+} | {
+    ok: false;
+    error: string;
+};
 /** Branch entries are authoritative. This service only coordinates the existing tool owner and delivery. */
 export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorkspace, tools: ToolPolicyRuntime): {
     prepareRestore: (ctx: ExtensionContext) => void;
@@ -16,7 +43,17 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
     setAgentBusy: (busy: boolean) => void;
     library: (ctx: ExtensionContext) => string;
     status: (ctx: ExtensionContext) => string;
-    change: (ctx: ExtensionContext, command: "add" | "use" | "off" | "reset", value: string) => string;
+    change: (ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string) => string;
+    readBindings: (ctx: ExtensionContext) => ReadBindingsResult;
+    useBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent") => UseBoundResult;
+    deactivateBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent") => DeactivateBoundResult;
+    executeAgentTool: (ctx: ExtensionContext, params: unknown) => Promise<{
+        content: Array<{
+            type: "text";
+            text: string;
+        }>;
+        details: unknown;
+    }>;
     readState: () => InstructionStateResult;
     mutateState: (input: unknown) => InstructionStateResult;
     dispose: () => void;
