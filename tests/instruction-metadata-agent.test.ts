@@ -418,7 +418,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			beforeForgeExtensionFactories: [(pi: any) => {
 				pi.on("context", async (event: any) => rewrite ? {
 					// This is a valid public context rewrite, not a malformed extension.
-					messages: [...event.messages, { role: "user", content: "LEGITIMATE_PRECEDING_REWRITE" }],
+					messages: [...event.messages, { role: "user", content: "LEGITIMATE_PRECEDING_REWRITE", timestamp: Date.now() }],
 				} : undefined);
 			}],
 		}, async (h) => {
@@ -461,7 +461,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			sessionManager: manager,
 			beforeForgeExtensionFactories: [(pi: any) => {
 				pi.on("context", async (event: any) => ({
-					messages: [...event.messages, { role: "user", content: "VALID_PRECEDING_REWRITE" }],
+					messages: [...event.messages, { role: "user", content: "VALID_PRECEDING_REWRITE", timestamp: Date.now() }],
 				}));
 			}],
 		}, async (h) => {
@@ -484,27 +484,23 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 		await suite.test(`same-batch driver/read toggles retain every update after all results (${native ? "native" : "fallback"})`, async () => {
 			const env = setupProject();
 			await withHarness(env, { native }, async (h) => {
-				let step = 0;
 				h.setOnDriver(async () => {
-					step++;
-					if (step === 1) await h.prompt("/system-update use review");
-					else if (step === 2) await h.prompt("/system-update off review");
-					else if (step === 3) await h.prompt("/system-update use review");
-					else if (step === 4) await h.prompt("/system-update off review");
-					return `toggle-${step}`;
+					await h.prompt("/system-update use review");
+					await h.prompt("/system-update off review");
+					await h.prompt("/system-update use review");
+					await h.prompt("/system-update off review");
+					assertPlainAnchors(h, 0); // All four intents remain pending during this one batch.
+					return "FOUR_PENDING_EVENTS";
 				});
 				h.setResponses([
 					{ toolCalls: [
 						{ name: "fake_driver", id: "same-batch-driver-1" },
 						{ name: "fake_read", id: "same-batch-read-1" },
 					] },
-					{ toolCalls: [{ name: "fake_driver", id: "same-batch-driver-2" }] },
-					{ toolCalls: [{ name: "fake_driver", id: "same-batch-driver-3" }] },
-					{ toolCalls: [{ name: "fake_driver", id: "same-batch-driver-4" }] },
 					"ALL_SAME_BATCH_RESULTS_COMPLETE",
 				]);
 				await h.prompt("RUN_SAME_BATCH_TOGGLES");
-				assert.equal(h.streamContexts.length, 5);
+				assert.equal(h.streamContexts.length, 2);
 				assert.ok(h.toolExecutions.some((execution: any) => execution.name === "fake_read"));
 
 				for (const context of h.streamContexts.slice(1)) {
@@ -515,7 +511,8 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 						.map((message: any, index: number) => isProjectedInstructionMessage(message) ? index : -1)
 						.filter((index: number) => index >= 0);
 					if (resultIndexes.length > 0) {
-						assert.ok(updateIndexes.at(-1)! > Math.max(...resultIndexes),
+						assert.equal(updateIndexes.length, 4);
+						assert.ok(updateIndexes.every((index: number) => index > Math.max(...resultIndexes)),
 							"each running update must follow every result in its assistant batch");
 					}
 				}
