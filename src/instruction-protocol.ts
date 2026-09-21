@@ -11,6 +11,14 @@ export interface InstructionHistory {
 	checkpointThrough?: string;
 }
 
+/**
+ * Persisted plain custom entry metadata for an instruction anchor.
+ */
+export interface InstructionAnchorData {
+	readonly schemaVersion: 1;
+	readonly throughEventId: string;
+}
+
 export function isInstructionDelivery(message: unknown): boolean {
 	if (!message || typeof message !== "object") return false;
 	const value = message as { role?: unknown; customType?: unknown };

@@ -8,6 +8,13 @@ export interface InstructionHistory {
     /** Last semantic event at/before the latest Pi compaction, if any. */
     checkpointThrough?: string;
 }
+/**
+ * Persisted plain custom entry metadata for an instruction anchor.
+ */
+export interface InstructionAnchorData {
+    readonly schemaVersion: 1;
+    readonly throughEventId: string;
+}
 export declare function isInstructionDelivery(message: unknown): boolean;
 /** Structural history is not ordinary dialogue for role, regex or budget filters. */
 export declare function isInstructionControlMessage(message: unknown): boolean;
