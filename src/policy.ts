@@ -1,4 +1,8 @@
-import type { PromptResourcePolicy } from "./types.ts";
+import type { PromptResourcePolicy, PromptToolPolicy } from "./types.ts";
+
+export function hasToolSelectionPolicy(policy: PromptToolPolicy | undefined): boolean {
+	return hasResourcePolicy(policy) || Array.isArray(policy?.initial);
+}
 
 export function hasResourcePolicy(policy: PromptResourcePolicy | undefined): boolean {
 	return !!policy && (hasEffectiveAllowPolicy(policy.allow) || hasPatterns(policy.deny));

@@ -1,6 +1,7 @@
+import { basename } from "node:path";
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isValidToolName, type InstructionToolPatch } from "../codecs/instruction-mode.ts";
-import { applyResourcePolicy, hasResourcePolicy } from "../policy.ts";
+import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy } from "../policy.ts";
 import type { LoadedPromptStack } from "../types.ts";
 import type { PromptStack } from "../types.ts";
 import type { WebEditorPolicyResource, WebEditorPolicyResources } from "../web-editor/index.ts";
@@ -45,11 +46,13 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 	function computeEffectiveTools(policy: PromptStack["tools"] | undefined, sourceBaseline: string[]): string[] {
 		const policyActive = hasResourcePolicy(policy);
 		const sourceTools = filterKnownTools(sourceBaseline);
-		const baseList = policyActive
-			? applyResourcePolicy(policySourceTools(policy, sourceTools), policy)
-			: sourceTools;
-
 		const registered = new Set(pi.getAllTools().map((tool) => tool.name));
+		const baseList = Array.isArray(policy?.initial)
+			? policy.initial.filter((name) => registered.has(name))
+			: policyActive
+				? applyResourcePolicy(policySourceTools(policy, sourceTools), policy)
+				: sourceTools;
+
 		const effective = [...baseList];
 		for (const patch of instructionPatches) {
 			for (const name of patch.add) {
@@ -76,10 +79,10 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 
 	function sync(ctx?: ExtensionContext): void {
 		const policy = getActiveStack()?.stack.tools;
-		const policyActive = hasResourcePolicy(policy);
+		const selectionActive = hasToolSelectionPolicy(policy);
 		const modesActive = instructionPatches.length > 0;
 
-		if (!policyActive && !modesActive) {
+		if (!selectionActive && !modesActive) {
 			restore(ctx);
 			return;
 		}
@@ -235,10 +238,15 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 	}
 
 	function policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources {
-		const activeTools = new Set(pi.getActiveTools());
+		const current = filterKnownTools(pi.getActiveTools());
+		const activeTools = new Set(current);
+		const sourceBaseline = baseline && lastApplied
+			? reconcileToolPolicyBaseline(baseline, lastApplied, current)
+			: baseline ?? current;
+		const baselineTools = new Set(sourceBaseline);
 		const snippets = options.toolSnippets ?? {};
 		const tools = pi.getAllTools()
-			.map((tool) => normalizeToolResource(tool, activeTools, snippets))
+			.map((tool) => normalizeToolResource(tool, activeTools, snippets, baselineTools))
 			.filter(hasPolicyResourceName)
 			.sort(comparePolicyResource);
 		const skills = (options.skills ?? [])
@@ -291,13 +299,16 @@ function normalizeToolResource(
 	tool: { name?: unknown; description?: unknown; promptSnippet?: unknown; sourceInfo?: unknown },
 	activeTools: Set<string>,
 	snippets: Record<string, string | undefined>,
+	baselineTools: Set<string>,
 ): WebEditorPolicyResource {
 	const name = String(tool.name ?? "");
 	return {
 		name,
 		description: stringValue(tool.description) ?? stringValue(tool.promptSnippet) ?? snippets[name],
 		source: sourceLabel(tool.sourceInfo),
+		group: sourceGroup(tool.sourceInfo),
 		active: activeTools.has(name),
+		baselineActive: baselineTools.has(name),
 	};
 }
 
@@ -324,6 +335,29 @@ function sourceLabel(value: unknown): string | undefined {
 	const path = stringValue((value as { path?: unknown }).path);
 	if (source && path) return `${source}: ${path}`;
 	return source ?? path;
+}
+
+function sourceGroup(value: unknown): { id: string; label: string } | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const info = value as { source?: unknown; path?: unknown; scope?: unknown; origin?: unknown; baseDir?: unknown };
+	const source = stringValue(info.source);
+	const path = stringValue(info.path);
+	const scope = stringValue(info.scope);
+	const origin = stringValue(info.origin);
+	const baseDir = stringValue(info.baseDir);
+
+	if (source === "builtin" || path?.startsWith("<builtin:")) {
+		return { id: "builtin", label: "Pi" };
+	}
+	if (origin === "package") {
+		if (scope && source && baseDir) return { id: JSON.stringify(["package", scope, source, baseDir]), label: source };
+		if (path) return { id: JSON.stringify(["package-path", scope, source, path]), label: source ?? path };
+		return undefined;
+	}
+	if (origin === "top-level" && path) {
+		return { id: JSON.stringify(["top-level", scope, source, path]), label: `${basename(path)}${scope ? ` (${scope})` : ""}` };
+	}
+	return undefined;
 }
 
 function comparePolicyResource(a: WebEditorPolicyResource, b: WebEditorPolicyResource): number {

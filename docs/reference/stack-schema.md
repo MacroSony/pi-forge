@@ -105,7 +105,8 @@ Patterns are exact by default and support `*` wildcards:
 ```json
 {
   "tools": {
-    "allow": ["read", "grep", "find", "ls"]
+    "allow": ["read", "grep", "find", "ls"],
+    "initial": ["read", "grep"]
   },
   "skills": {
     "deny": ["browser-danger"]
@@ -114,6 +115,19 @@ Patterns are exact by default and support `*` wildcards:
 ```
 
 Each resource may have a non-empty `allow` list or `deny` list, never both. A selective tool `allow` list chooses matching tools from Pi's complete registered tool catalog, so it can activate a registered tool that was inactive when the stack was selected. A tool `deny` list removes matching tools from the active baseline. `allow: ["*"]` remains unrestricted and does not activate every registered tool. Unmatched allow patterns are surfaced during validation/preflight.
+
+### Initial active tools (`tools.initial`)
+
+The `tools` policy optionally accepts an `initial` list:
+
+- **Concrete names only:** `tools.initial` must be an array of valid, concrete tool name strings (up to 128 characters each). Wildcards (`*`, `?`) are rejected; duplicate names produce a warning and are deduplicated on parsing.
+- **Omission vs. empty array:**
+  - When `initial` is omitted, pi-forge preserves legacy behavior: a selective allow chooses matching registered tools; unrestricted/deny policies retain or filter the restorable session baseline, not the entire catalog.
+  - When `initial: []` is set explicitly, zero tools are active initially.
+- **Ceiling enforcement:** The `allow`/`deny` ceiling remains authoritative and exclusive. Initial tools must fall within permitted bounds: listing a tool that is blocked by allow/deny produces a validation error.
+- **Extension and mod tools:** Dynamically registered extension tools are allowed by default if they satisfy the allow/deny policy, but when `initial` is specified, they remain registered and inactive until explicitly added by `initial`, by an active instruction mode, or through runtime tooling.
+- **Preset baseline behavior:** Configured initial tools serve as the active base for as long as the preset remains active—not a one-time reset per turn. Calling `/system-update off` or `/system-update reset` returns the session to the preset defaults (plus any remaining active modes). Disabling restores the reconciled session baseline; switching recomputes under the new Preset and remaining unbound modes.
+- **Compatibility:** Stacks declaring `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and activate all allowed tools, so the field is not downgrade-compatible. Development continues on the 0.5.4 tree with a release version bump decision pending (0.5.5 or maybe 0.6); host requirement remains Pi `>=0.87.0 <0.88.0`.
 
 Tool policy changes Pi's active tool list, is reasserted before input/turns, and has a tool-call guard. It preserves external additions in the restorable baseline and restores that baseline when policy no longer applies or the extension shuts down.
 

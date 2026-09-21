@@ -169,7 +169,19 @@ export function negotiateForgeDelegationTools(catalog, policy, access) {
         effects: [...(tool.effects ?? [])],
     }));
     const names = tools.map((tool) => tool.name);
-    const stackSelectedToolNames = applyResourcePolicy(names, policy);
+    const initial = policy?.initial;
+    if (Array.isArray(initial)) {
+        for (const name of initial) {
+            if (!names.includes(name)) {
+                diagnostics.push({ level: "warning", code: "tools.initial-missing", path: `tools.initial.${name}`, message: `Preset initial tool ${name} is not registered by this backend.` });
+            }
+            if (applyResourcePolicy([name], policy).length === 0) {
+                diagnostics.push({ level: "error", code: "tools.initial-blocked", path: `tools.initial.${name}`, message: `Preset initial tool ${name} is blocked by the allow/deny policy.` });
+            }
+        }
+    }
+    const sourceNames = Array.isArray(initial) ? names.filter((name) => initial.includes(name)) : names;
+    const stackSelectedToolNames = applyResourcePolicy(sourceNames, policy);
     const selected = new Set(stackSelectedToolNames);
     const effective = tools.filter((tool) => selected.has(tool.name) && toolAllowedByAccess(tool, access));
     const unmatchedAllowPatterns = policy && "allow" in policy

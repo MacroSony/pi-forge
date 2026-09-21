@@ -52,6 +52,8 @@ export interface WebEditorHost {
         filePath: string;
         diagnostics: PromptStackDiagnostic[];
         sourceRevision: string;
+        selector?: string;
+        scope?: "global" | "project";
     } | undefined;
     createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
@@ -213,6 +215,12 @@ export interface WebEditorPolicyResource {
     name: string;
     description?: string;
     source?: string;
+    group?: {
+        id: string;
+        label: string;
+    };
+    /** Restorable session baseline before Preset/mode selection, for default seeding. */
+    baselineActive?: boolean;
     active?: boolean;
     hidden?: boolean;
 }

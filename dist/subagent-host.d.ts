@@ -2,7 +2,7 @@ import type { LoadedAgentProfile } from "./agent-profile.ts";
 import type { AgentProfile } from "./codecs/agent-profile.ts";
 import { type SubagentFingerprint } from "./subagent/fingerprints.ts";
 import type { ForgeBackendFacts, ForgeBackendTool, ForgePromptAccessFacts } from "./subagent/host-port.ts";
-import type { LoadedPromptStack, PromptResourcePolicy, PromptStack } from "./types.ts";
+import type { LoadedPromptStack, PromptStack, PromptToolPolicy } from "./types.ts";
 /**
  * Host-owned diagnostic shape for delegation resolution and preparation.
  * Structurally compatible with the optional package's contract diagnostics.
@@ -112,7 +112,7 @@ interface ForgeToolNegotiation {
  * tool negotiation in the optional package, which recomputes them as the
  * plan-creation integrity check.
  */
-export declare function negotiateForgeDelegationTools(catalog: readonly ForgeBackendTool[], policy: PromptResourcePolicy | undefined, access: ForgePromptAccessFacts): ForgeToolNegotiation;
+export declare function negotiateForgeDelegationTools(catalog: readonly ForgeBackendTool[], policy: PromptToolPolicy | undefined, access: ForgePromptAccessFacts): ForgeToolNegotiation;
 export declare function collectSubagentPromptDependencies(stack: PromptStack, registrations?: SubagentPromptRegistrationCatalog): {
     dependencies: ForgePromptDependency[];
     missingDependencies: Array<{

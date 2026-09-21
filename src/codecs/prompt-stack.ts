@@ -1,7 +1,8 @@
 import { basename } from "node:path";
 import { MAX_INSTRUCTION_MODE_BINDINGS } from "../instruction-modes.ts";
-import { hasResourcePolicy } from "../policy.ts";
+import { applyResourcePolicy, hasResourcePolicy } from "../policy.ts";
 import { validateRegexConfig } from "../regex.ts";
+import { isValidToolName } from "./instruction-mode.ts";
 import { isValidResourceId, parseResourceSelector } from "../resource-identity.ts";
 import { SUPPORTED_SLOTS } from "../types.ts";
 import { validateInstructionModeBinding, type InstructionModeBinding } from "./instruction-mode.ts";
@@ -9,6 +10,7 @@ import type {
 	LoadedPromptStack,
 	PromptResourcePolicy,
 	PromptStack,
+	PromptToolPolicy,
 	PromptStackDiagnostic,
 	PromptStackItem,
 	PromptStackRole,
@@ -150,7 +152,7 @@ function normalizeStack(raw: unknown, filePath: string, diagnostics: PromptStack
 		mode: obj.mode === "append" || obj.mode === "prepend" || obj.mode === "replace" ? obj.mode : undefined,
 		defaults: isPlainObject(obj.defaults) ? (obj.defaults as PromptStack["defaults"]) : undefined,
 		context: isPlainObject(obj.context) ? (obj.context as PromptStack["context"]) : undefined,
-		tools: normalizeResourcePolicy(obj.tools, "tools", diagnostics),
+		tools: normalizeResourcePolicy(obj.tools, "tools", diagnostics, true),
 		skills: normalizeResourcePolicy(obj.skills, "skills", diagnostics),
 		variables: schemaVersion === 1 ? normalizeStringRecord(obj.variables) : undefined,
 		parameters: schemaVersion === 2 ? normalizeParameterRecord(obj.parameters, diagnostics) : undefined,
@@ -274,6 +276,7 @@ export function validatePromptStack(stack: PromptStack, scope?: PromptStackScope
 	}
 
 	diagnostics.push(...validateResourcePolicy(stack.tools, "tools"));
+	diagnostics.push(...validateToolInitialPolicy(stack.tools));
 	diagnostics.push(...validateResourcePolicy(stack.skills, "skills"));
 	const hasSkillPolicy = hasResourcePolicy(stack.skills);
 	if (hasSkillPolicy) {
@@ -557,7 +560,12 @@ function normalizeStringRecord(value: unknown): Record<string, string> | undefin
 	return result;
 }
 
-function normalizeResourcePolicy(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): PromptResourcePolicy | undefined {
+function normalizeResourcePolicy(
+	value: unknown,
+	label: string,
+	diagnostics: PromptStackDiagnostic[],
+	includeInitial = false,
+): PromptToolPolicy | undefined {
 	if (value === undefined) return undefined;
 	if (!isPlainObject(value)) {
 		diagnostics.push({ level: "error", message: `${label} policy must be an object when provided.` });
@@ -565,13 +573,39 @@ function normalizeResourcePolicy(value: unknown, label: string, diagnostics: Pro
 	}
 	const allow = normalizePolicyPatterns(value.allow, `${label}.allow`, diagnostics);
 	const deny = normalizePolicyPatterns(value.deny, `${label}.deny`, diagnostics);
+	const initial = includeInitial ? normalizeInitialToolNames(value.initial, `${label}.initial`, diagnostics) : undefined;
+	const normalizedInitial = initial === undefined ? {} : { initial };
 	if (allow && deny) {
 		diagnostics.push({ level: "error", message: `${label} policy must use either allow or deny, not both.` });
-		return { allow };
+		return { allow, ...normalizedInitial };
 	}
-	if (allow) return { allow };
-	if (deny) return { deny };
-	return {};
+	if (allow) return { allow, ...normalizedInitial };
+	if (deny) return { deny, ...normalizedInitial };
+	return normalizedInitial;
+}
+
+function normalizeInitialToolNames(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) {
+		diagnostics.push({ level: "error", message: `${label} must be an array of concrete tool names when provided.` });
+		return undefined;
+	}
+	const names: string[] = [];
+	const seen = new Set<string>();
+	for (const [index, item] of value.entries()) {
+		if (typeof item !== "string" || !isValidToolName(item.trim())) {
+			diagnostics.push({ level: "error", message: `${label}[${index}] must be a valid concrete tool name (wildcards are not allowed).` });
+			continue;
+		}
+		const name = item.trim();
+		if (seen.has(name)) {
+			diagnostics.push({ level: "warning", message: `Duplicate ${label} tool name: ${name}.` });
+			continue;
+		}
+		seen.add(name);
+		names.push(name);
+	}
+	return names;
 }
 
 function normalizePolicyPatterns(value: unknown, label: string, diagnostics: PromptStackDiagnostic[]): string[] | undefined {
@@ -606,6 +640,30 @@ function validateResourcePolicy(policy: PromptResourcePolicy | undefined, label:
 				diagnostics.push({ level: "warning", message: `Duplicate ${label}.${key} pattern: ${value}.` });
 			}
 			seen.add(value);
+		}
+	}
+	return diagnostics;
+}
+
+function validateToolInitialPolicy(policy: PromptResourcePolicy & { initial?: string[] } | undefined): PromptStackDiagnostic[] {
+	const diagnostics: PromptStackDiagnostic[] = [];
+	if (policy?.initial === undefined) return diagnostics;
+	if (!Array.isArray(policy.initial)) {
+		diagnostics.push({ level: "error", message: "tools.initial must be an array of concrete tool names when provided." });
+		return diagnostics;
+	}
+	const seen = new Set<string>();
+	for (const [index, name] of policy.initial.entries()) {
+		if (typeof name !== "string" || !isValidToolName(name)) {
+			diagnostics.push({ level: "error", message: `tools.initial[${index}] must be a valid concrete tool name (wildcards are not allowed).` });
+			continue;
+		}
+		if (seen.has(name)) {
+			diagnostics.push({ level: "warning", message: `Duplicate tools.initial tool name: ${name}.` });
+		}
+		seen.add(name);
+		if (hasResourcePolicy(policy) && applyResourcePolicy([name], policy).length === 0) {
+			diagnostics.push({ level: "error", message: `tools.initial tool "${name}" is blocked by the allow/deny policy.` });
 		}
 	}
 	return diagnostics;

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 import { t, tp } from "../i18n.ts";
+import { matchesAnyPattern, seedDefaultTools } from "../tool-picker-helpers.ts";
 import type { EditorPromptStack, WebEditorPolicyResource } from "../types.ts";
+import ToolPicker from "./ToolPicker.vue";
 
 type PolicyKind = "tools" | "skills";
 type PolicyMode = "none" | "allow" | "deny";
@@ -41,6 +43,21 @@ const rows = reactive<Record<PolicyKind, PolicyRowState>>({
 	skills: createRowState("skills"),
 });
 const policyError = ref("");
+const customDefaultsEnabled = ref(false);
+const customDefaultTools = ref<string[]>([]);
+
+function initCustomDefaults(): void {
+	const policy = stackPolicyObject("tools");
+	if (Array.isArray(policy.initial)) {
+		customDefaultsEnabled.value = true;
+		customDefaultTools.value = [...(policy.initial as string[])];
+	} else {
+		customDefaultsEnabled.value = false;
+		customDefaultTools.value = [];
+	}
+}
+
+initCustomDefaults();
 
 watch(
 	() => props.stack,
@@ -62,6 +79,7 @@ function reset(): void {
 	for (const { kind } of policyKinds) {
 		Object.assign(rows[kind], createRowState(kind));
 	}
+	initCustomDefaults();
 	policyError.value = "";
 }
 
@@ -161,6 +179,15 @@ function syncPolicies(): void {
 		delete policy.deny;
 		if (row.mode === "allow" && patterns.length) policy.allow = patterns;
 		if (row.mode === "deny" && patterns.length) policy.deny = patterns;
+
+		if (kind === "tools") {
+			if (customDefaultsEnabled.value) {
+				policy.initial = [...customDefaultTools.value];
+			} else {
+				delete policy.initial;
+			}
+		}
+
 		if (Object.keys(policy).length) props.stack[kind] = policy;
 		else delete props.stack[kind];
 	}
@@ -202,6 +229,51 @@ function availableResources(kind: PolicyKind, filter = rows[kind].filter): WebEd
 		.filter((resource) => !selected.has(resource.name))
 		.filter((resource) => !needle || policyResourceMatchesFilter(resource, needle));
 }
+
+function onToggleCustomDefaults(event: Event): void {
+	const checked = (event.target as HTMLInputElement).checked;
+	customDefaultsEnabled.value = checked;
+	if (checked) {
+		customDefaultTools.value = seedDefaultTools(
+			props.resources.tools || [],
+			rows.tools.mode,
+			parsePolicyPatterns(rows.tools.patternsText),
+		);
+	} else {
+		customDefaultTools.value = [];
+	}
+	syncPolicies();
+}
+
+function onCustomDefaultToolsChange(tools: string[]): void {
+	customDefaultTools.value = tools;
+	syncPolicies();
+}
+
+function removeDefaultTool(name: string): void {
+	customDefaultTools.value = customDefaultTools.value.filter((t) => t !== name);
+	syncPolicies();
+}
+
+function onPermittedToolsPickerChange(tools: string[]): void {
+	rows.tools.patternsText = tools.join("\n");
+	if (rows.tools.mode === "none" && tools.length > 0) {
+		rows.tools.mode = "allow";
+	}
+	syncPolicies();
+}
+
+const permittedToolsForDefaults = computed(() => {
+	const allTools = props.resources.tools || [];
+	const patterns = parsePolicyPatterns(rows.tools.patternsText);
+	if (rows.tools.mode === "allow" && patterns.length > 0) {
+		return allTools.filter((t) => matchesAnyPattern(t.name, patterns));
+	}
+	if (rows.tools.mode === "deny" && patterns.length > 0) {
+		return allTools.filter((t) => !matchesAnyPattern(t.name, patterns));
+	}
+	return allTools;
+});
 
 function resourceTitle(resource: WebEditorPolicyResource): string {
 	return [
@@ -297,46 +369,182 @@ defineExpose({
 				</div>
 				<div class="resource-picker">
 					<label>{{ t("policy.availableKind", { kind: kindLabel(kind) }) }}</label>
+					<div v-if="kind === 'tools'" class="resource-picker-picker-row">
+						<ToolPicker
+							data-permitted-tools-picker
+							:button-label="t('policy.choosePermittedTools')"
+							:resources="props.resources.tools || []"
+							:model-value="selectedPatterns('tools')"
+							@update:model-value="onPermittedToolsPickerChange"
+						/>
+					</div>
 					<div v-if="props.resources[kind]?.length">
-						<input
-							class="resource-filter"
-							data-resource-filter
-							:list="`resource-options-${kind}`"
-							:placeholder="t('policy.filterPlaceholder')"
-							:value="rows[kind].filter"
-							@input="onFilterInput(kind, $event)"
-							@keydown.enter.prevent="addAutocompletePattern(kind)"
-						>
-						<datalist :id="`resource-options-${kind}`" data-resource-options>
-							<option
-								v-for="resource in availableResources(kind, '')"
-								:key="resource.name"
-								:value="resource.name"
-							></option>
-						</datalist>
-						<div class="resource-list" data-resource-list>
-							<div v-if="!availableResources(kind).length" class="resource-empty">
-								{{ t("policy.noMatching", { kind: kindLabel(kind) }) }}
-							</div>
-							<button
-								v-for="resource in availableResources(kind)"
-								v-else
-								:key="resource.name"
-								type="button"
-								class="resource-chip"
-								:class="{ active: resource.active, hidden: resource.hidden }"
-								:data-resource-name="resource.name"
-								:title="resourceTitle(resource)"
-								@click="addPolicyPattern(kind, resource.name)"
+						<details class="resource-flat-list-details" :open="kind !== 'tools'">
+							<summary class="resource-flat-list-summary">{{ t("policy.allCatalogTools") }}</summary>
+							<input
+								class="resource-filter"
+								data-resource-filter
+								:list="`resource-options-${kind}`"
+								:placeholder="t('policy.filterPlaceholder')"
+								:value="rows[kind].filter"
+								@input="onFilterInput(kind, $event)"
+								@keydown.enter.prevent="addAutocompletePattern(kind)"
 							>
-								{{ resourceLabel(resource) }}
-							</button>
-						</div>
+							<datalist :id="`resource-options-${kind}`" data-resource-options>
+								<option
+									v-for="resource in availableResources(kind, '')"
+									:key="resource.name"
+									:value="resource.name"
+								></option>
+							</datalist>
+							<div class="resource-list" data-resource-list>
+								<div v-if="!availableResources(kind).length" class="resource-empty">
+									{{ t("policy.noMatching", { kind: kindLabel(kind) }) }}
+								</div>
+								<button
+									v-for="resource in availableResources(kind)"
+									v-else
+									:key="resource.name"
+									type="button"
+									class="resource-chip"
+									:class="{ active: resource.active, hidden: resource.hidden }"
+									:data-resource-name="resource.name"
+									:title="resourceTitle(resource)"
+									@click="addPolicyPattern(kind, resource.name)"
+								>
+									{{ resourceLabel(resource) }}
+								</button>
+							</div>
+						</details>
 					</div>
 					<div v-else class="resource-empty">{{ t("policy.noRegistered", { kind: kindLabel(kind) }) }}</div>
 				</div>
 				<div class="policy-summary" data-policy-summary>{{ policySummary(kind) }}</div>
 			</div>
 		</div>
+
+		<div class="custom-defaults-container" data-custom-defaults-section>
+			<div class="custom-defaults-header">
+				<label class="custom-defaults-toggle-label">
+					<input
+						type="checkbox"
+						data-custom-defaults-toggle
+						:checked="customDefaultsEnabled"
+						@change="onToggleCustomDefaults"
+					>
+					<span class="custom-defaults-title">{{ t("policy.customDefaultsLabel") }}</span>
+				</label>
+				<span class="custom-defaults-help" data-custom-defaults-help>{{ t("policy.customDefaultsHelp") }}</span>
+			</div>
+			<div v-if="customDefaultsEnabled" class="custom-defaults-body" data-custom-defaults-body>
+				<div class="custom-defaults-note" data-save-never-activates>
+					{{ t("policy.saveNeverActivates") }}
+				</div>
+				<div class="custom-defaults-controls">
+					<label class="compact-label">{{ t("policy.defaultTools") }}:</label>
+					<div class="selected-patterns" data-selected-default-tools>
+						<span v-if="!customDefaultTools.length" class="selected-pattern-empty" data-no-default-tools>
+							{{ t("policy.noDefaultTools") }}
+						</span>
+						<button
+							v-for="name in customDefaultTools"
+							:key="name"
+							type="button"
+							class="selected-pattern-chip"
+							:data-remove-default-tool="name"
+							:title="t('policy.removePatternTitle')"
+							@click="removeDefaultTool(name)"
+						>
+							{{ name }}<span aria-hidden="true">x</span>
+						</button>
+					</div>
+					<ToolPicker
+						data-default-tools-picker
+						:button-label="t('policy.chooseDefaultTools')"
+						:resources="permittedToolsForDefaults"
+						v-model="customDefaultTools"
+						@update:model-value="onCustomDefaultToolsChange"
+					/>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
+
+<style scoped>
+.resource-picker-picker-row {
+	margin-bottom: 6px;
+}
+
+.resource-flat-list-details {
+	margin-top: 6px;
+}
+
+.resource-flat-list-summary {
+	font-size: 11px;
+	color: var(--muted);
+	cursor: pointer;
+	margin-bottom: 4px;
+	user-select: none;
+}
+
+.resource-flat-list-summary:hover {
+	color: var(--text);
+}
+
+.custom-defaults-container {
+	margin-top: 16px;
+	padding: 12px 16px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--pane-soft);
+}
+
+.custom-defaults-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+}
+
+.custom-defaults-toggle-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.custom-defaults-help {
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.custom-defaults-body {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.custom-defaults-note {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.custom-defaults-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+
+.compact-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text);
+}
+</style>

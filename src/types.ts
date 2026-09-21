@@ -64,6 +64,8 @@ export type PromptResourcePolicy =
 	| { allow?: string[]; deny?: never }
 	| { allow?: never; deny?: string[] };
 
+export type PromptToolPolicy = PromptResourcePolicy & { initial?: string[] };
+
 export interface PromptStackDefaults {
 	syntheticMessagesVisible?: boolean;
 	unresolvedMacroPolicy?: "warn" | "keep" | "error";
@@ -145,7 +147,7 @@ export interface PromptStack {
 	mode?: PromptStackMode;
 	defaults?: PromptStackDefaults;
 	context?: PromptStackContextOptions;
-	tools?: PromptResourcePolicy;
+	tools?: PromptToolPolicy;
 	skills?: PromptResourcePolicy;
 	variables?: Record<string, string>;
 	parameters?: Record<string, PromptVariableValue>;

@@ -10,7 +10,10 @@ import type {
 	InstructionModeBinding,
 	InstructionModeCollection,
 	InstructionModeEntry,
+	WebEditorPolicyResource,
+	WebEditorResources,
 } from "../types.ts";
+import ToolPicker from "./ToolPicker.vue";
 
 const props = defineProps<{
 	stack: EditorPromptStack;
@@ -31,10 +34,69 @@ const modesError = ref("");
 const effectiveBindings = ref<EffectiveInstructionModeBinding[]>([]);
 const previewLoading = ref(false);
 const previewError = ref("");
+const catalogTools = ref<WebEditorPolicyResource[]>([]);
+const catalogLoading = ref(false);
+const catalogError = ref("");
+const expandedRows = ref<Record<number, boolean>>({});
+
+function toggleRowAdvanced(index: number): void {
+	expandedRows.value[index] = !expandedRows.value[index];
+}
+
+function isRowAdvancedOpen(index: number): boolean {
+	return !!expandedRows.value[index];
+}
+
+function modeForRef(ref: string): InstructionModeEntry | undefined {
+	return availableModes.value.find((m) => m.selector === ref || m.mode?.id === ref);
+}
+
+function modeName(ref: string): string {
+	const entry = modeForRef(ref);
+	return entry?.mode?.name || "";
+}
+
+function modeScope(ref: string): "project" | "global" | "" {
+	const entry = modeForRef(ref);
+	if (entry?.scope) return entry.scope;
+	if (ref.startsWith("global:")) return "global";
+	if (ref.startsWith("project:")) return "project";
+	return "";
+}
+
+function bindingProblem(binding: InstructionModeBinding): string {
+	if (!binding.ref) return t("binding.unresolvedRef");
+	if (props.presetScope === "global" && (binding.ref.startsWith("project:") || modeScope(binding.ref) === "project")) {
+		return t("binding.noGlobalModesHint");
+	}
+	if (availableModes.value.length > 0 && !modeForRef(binding.ref)) {
+		return t("binding.unresolvedRef");
+	}
+	return "";
+}
 
 let isUnmounted = false;
 let previewRequestId = 0;
 let modesRequestId = 0;
+let catalogRequestId = 0;
+
+async function loadCatalog(): Promise<void> {
+	const reqId = ++catalogRequestId;
+	catalogLoading.value = true;
+	catalogError.value = "";
+	try {
+		const res = await api<WebEditorResources>("/api/resources");
+		if (isUnmounted || reqId !== catalogRequestId) return;
+		catalogTools.value = res?.tools || [];
+	} catch (err) {
+		if (isUnmounted || reqId !== catalogRequestId) return;
+		catalogError.value = err instanceof Error ? err.message : String(err);
+	} finally {
+		if (reqId === catalogRequestId && !isUnmounted) {
+			catalogLoading.value = false;
+		}
+	}
+}
 
 onBeforeUnmount(() => {
 	isUnmounted = true;
@@ -141,6 +203,7 @@ async function fetchEffectivePreview(): Promise<void> {
 
 onMounted(() => {
 	void loadAvailableModes();
+	void loadCatalog();
 	void fetchEffectivePreview();
 });
 
@@ -324,6 +387,14 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 	emit("change");
 	void fetchEffectivePreview();
 }
+
+function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "remove", list: string[]): void {
+	binding.overrides = binding.overrides || {};
+	binding.overrides.tools = binding.overrides.tools || {};
+	binding.overrides.tools[kind] = [...list];
+	emit("change");
+	void fetchEffectivePreview();
+}
 </script>
 
 <template>
@@ -393,6 +464,9 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 			>
 				<div class="binding-card-head">
 					<span class="binding-card-idx">#{{ index + 1 }}</span>
+					<span v-if="modeName(binding.ref)" class="binding-mode-name" data-binding-name>
+						{{ modeName(binding.ref) }}
+					</span>
 					<div class="binding-ref-field">
 						<label class="compact-label">{{ t("binding.ref") }}</label>
 						<select
@@ -412,6 +486,10 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 							</option>
 						</select>
 					</div>
+
+					<span class="binding-scope-badge" data-binding-scope :data-scope="modeScope(binding.ref) || presetScope">
+						{{ modeScope(binding.ref) || presetScope }}
+					</span>
 
 					<div class="binding-id-field">
 						<label class="compact-label">{{ t("binding.id") }}</label>
@@ -434,7 +512,22 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 						<span :title="t('binding.modelCallableHint')">{{ t("binding.modelCallable") }}</span>
 					</label>
 
+					<span v-if="bindingProblem(binding)" class="binding-problem-badge" data-binding-problem :title="bindingProblem(binding)">
+						⚠️ {{ bindingProblem(binding) }}
+					</span>
+
 					<span class="action-spacer"></span>
+
+					<button
+						type="button"
+						class="binding-advanced-toggle-btn"
+						data-binding-advanced-toggle
+						:data-binding-index="index"
+						:aria-expanded="isRowAdvancedOpen(index)"
+						@click="toggleRowAdvanced(index)"
+					>
+						{{ isRowAdvancedOpen(index) ? t("binding.hideAdvanced") : t("binding.showAdvanced") }}
+					</button>
 
 					<button
 						type="button"
@@ -465,7 +558,7 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 					</button>
 				</div>
 
-				<div class="binding-card-body">
+				<div v-if="isRowAdvancedOpen(index)" class="binding-card-body" data-binding-advanced-body>
 					<!-- Overrides Section -->
 					<div class="overrides-section">
 						<span class="overrides-title">{{ t("binding.overrides") }}</span>
@@ -508,7 +601,19 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 						<!-- Tool Overrides: Add / Remove -->
 						<div class="override-tools-grid">
 							<div class="override-tool-col">
-								<label class="compact-label">{{ t("binding.toolsAddMode") }}</label>
+								<div class="override-tool-label-row">
+									<label class="compact-label">{{ t("binding.toolsAddMode") }}</label>
+									<ToolPicker
+										v-if="toolsOverrideMode(binding, 'add') === 'custom'"
+										data-binding-tools-add-picker
+										:button-label="t('tools.chooseTools')"
+										:resources="catalogTools"
+										:loading="catalogLoading"
+										:error="catalogError"
+										:model-value="binding.overrides?.tools?.add || []"
+										@update:model-value="(tools) => setToolsOverrideList(binding, 'add', tools)"
+									/>
+								</div>
 								<select
 									data-binding-tools-add-mode
 									:value="toolsOverrideMode(binding, 'add')"
@@ -529,7 +634,19 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 							</div>
 
 							<div class="override-tool-col">
-								<label class="compact-label">{{ t("binding.toolsRemoveMode") }}</label>
+								<div class="override-tool-label-row">
+									<label class="compact-label">{{ t("binding.toolsRemoveMode") }}</label>
+									<ToolPicker
+										v-if="toolsOverrideMode(binding, 'remove') === 'custom'"
+										data-binding-tools-remove-picker
+										:button-label="t('tools.chooseTools')"
+										:resources="catalogTools"
+										:loading="catalogLoading"
+										:error="catalogError"
+										:model-value="binding.overrides?.tools?.remove || []"
+										@update:model-value="(tools) => setToolsOverrideList(binding, 'remove', tools)"
+									/>
+								</div>
 								<select
 									data-binding-tools-remove-mode
 									:value="toolsOverrideMode(binding, 'remove')"
@@ -798,6 +915,13 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 	font-size: 12px;
 }
 
+.override-tool-label-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+
 .override-tools-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -899,5 +1023,54 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 .effective-remove {
 	color: #dc3545;
 	font-weight: 600;
+}
+
+.binding-mode-name {
+	font-weight: 600;
+	font-size: 12px;
+	color: var(--text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 140px;
+}
+
+.binding-scope-badge {
+	font-size: 10px;
+	padding: 1px 5px;
+	border-radius: 3px;
+	background: var(--pane);
+	border: 1px solid var(--line);
+	color: var(--muted);
+	text-transform: uppercase;
+	font-weight: 600;
+}
+
+.binding-problem-badge {
+	font-size: 11px;
+	color: var(--error, #ef4444);
+	background: color-mix(in srgb, var(--error, #ef4444) 10%, transparent);
+	padding: 1px 6px;
+	border-radius: 3px;
+	border: 1px solid color-mix(in srgb, var(--error, #ef4444) 30%, transparent);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 200px;
+}
+
+.binding-advanced-toggle-btn {
+	padding: 2px 8px;
+	font-size: 11px;
+	border-radius: 3px;
+	border: 1px solid var(--line);
+	background: var(--pane);
+	color: var(--text);
+	cursor: pointer;
+}
+
+.binding-advanced-toggle-btn:hover {
+	background: var(--pane-soft);
+	border-color: var(--accent);
 }
 </style>

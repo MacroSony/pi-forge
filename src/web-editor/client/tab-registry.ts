@@ -68,6 +68,15 @@ export const EDITOR_TABS = [
 		internalDock: false,
 	},
 	{
+		id: "bindings",
+		labelKey: "tab.bindings",
+		icon: "☍",
+		titleKey: "tab.bindingsTitle",
+		mount: "vue",
+		stackFields: ["instructionModes"],
+		internalDock: false,
+	},
+	{
 		id: "stack",
 		labelKey: "tab.stack",
 		icon: "{}",

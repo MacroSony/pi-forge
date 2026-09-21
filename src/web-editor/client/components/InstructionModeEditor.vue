@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 
 import { createEditorApi, EditorApiError } from "../api.ts";
 import { t } from "../i18n.ts";
-import type { InstructionMode, InstructionModeEntry } from "../types.ts";
+import type { InstructionMode, InstructionModeEntry, WebEditorPolicyResource, WebEditorResources } from "../types.ts";
+import ToolPicker from "./ToolPicker.vue";
 
 const props = defineProps<{
 	mode: "create" | "edit";
@@ -58,8 +59,30 @@ const newToolAdd = ref("");
 const newToolRemove = ref("");
 const error = ref("");
 const busy = ref(false);
+const catalogTools = ref<WebEditorPolicyResource[]>([]);
+const catalogLoading = ref(false);
+const catalogError = ref("");
 let isUnmounted = false;
 let requestId = 0;
+let catalogRequestId = 0;
+
+async function loadCatalog(): Promise<void> {
+	const reqId = ++catalogRequestId;
+	catalogLoading.value = true;
+	catalogError.value = "";
+	try {
+		const res = await api<WebEditorResources>("/api/resources");
+		if (isUnmounted || reqId !== catalogRequestId) return;
+		catalogTools.value = res?.tools || [];
+	} catch (err) {
+		if (isUnmounted || reqId !== catalogRequestId) return;
+		catalogError.value = err instanceof Error ? err.message : String(err);
+	} finally {
+		if (reqId === catalogRequestId && !isUnmounted) {
+			catalogLoading.value = false;
+		}
+	}
+}
 
 function snapshot(): string {
 	return JSON.stringify({
@@ -86,7 +109,10 @@ function handleBeforeUnload(event: BeforeUnloadEvent): void {
 	event.returnValue = "";
 }
 
-onMounted(() => window.addEventListener("beforeunload", handleBeforeUnload));
+onMounted(() => {
+	window.addEventListener("beforeunload", handleBeforeUnload);
+	loadCatalog();
+});
 onBeforeUnmount(() => {
 	isUnmounted = true;
 	window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -264,7 +290,17 @@ async function saveDraft(): Promise<void> {
 
 			<div class="mode-tools-grid">
 				<div class="mode-tools-col">
-					<span class="mode-tools-label">{{ t("modes.toolsAdd") }}</span>
+					<div class="mode-tools-header-row">
+						<span class="mode-tools-label">{{ t("modes.toolsAdd") }}</span>
+						<ToolPicker
+							data-mode-tools-add-picker
+							:button-label="t('modes.chooseAddTools')"
+							:resources="catalogTools"
+							:loading="catalogLoading"
+							:error="catalogError"
+							v-model="draft.toolsAdd"
+						/>
+					</div>
 					<div class="mode-tool-input-row">
 						<input
 							id="modeToolAddInput"
@@ -289,7 +325,17 @@ async function saveDraft(): Promise<void> {
 				</div>
 
 				<div class="mode-tools-col">
-					<span class="mode-tools-label">{{ t("modes.toolsRemove") }}</span>
+					<div class="mode-tools-header-row">
+						<span class="mode-tools-label">{{ t("modes.toolsRemove") }}</span>
+						<ToolPicker
+							data-mode-tools-remove-picker
+							:button-label="t('modes.chooseRemoveTools')"
+							:resources="catalogTools"
+							:loading="catalogLoading"
+							:error="catalogError"
+							v-model="draft.toolsRemove"
+						/>
+					</div>
 					<div class="mode-tool-input-row">
 						<input
 							id="modeToolRemoveInput"
@@ -423,6 +469,14 @@ async function saveDraft(): Promise<void> {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+}
+
+.mode-tools-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 6px;
 }
 
 .mode-tools-label {

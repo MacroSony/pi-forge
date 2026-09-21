@@ -1,6 +1,7 @@
 import { createApp, type App, type Component } from "vue";
 
 import PolicyEditor from "./components/PolicyEditor.vue";
+import PresetBindingEditor from "./components/PresetBindingEditor.vue";
 import RegexEditor from "./components/RegexEditor.vue";
 import StackEditor from "./components/StackEditor.vue";
 import { copyStackFields, getEditorTab } from "./tab-registry.ts";
@@ -12,6 +13,8 @@ import type {
 export interface VueTabHostDependencies {
 	getStack(): EditorPromptStack | null;
 	getResources(): WebEditorResources;
+	getPresetSelector?(): string;
+	getPresetScope?(): "project" | "global";
 	markDirty(): void;
 	setStatus(text: string, tone?: string): void;
 	validateStack(): void | Promise<void>;
@@ -23,6 +26,8 @@ export interface VueTabHostDependencies {
 interface VueTabMountInput {
 	stack: EditorPromptStack;
 	resources: WebEditorResources;
+	presetSelector?: string;
+	presetScope?: "project" | "global";
 	onChange(error: string): void;
 	onStatus(text: string, tone?: string): void;
 	copyText(text: string): void | Promise<void>;
@@ -66,11 +71,21 @@ const vueTabMounts: Record<string, VueTabMountFactory> = {
 			onStatus: input.onStatus,
 		},
 	}),
+	bindings: (input) => ({
+		component: PresetBindingEditor,
+		props: {
+			stack: input.stack,
+			presetSelector: input.presetSelector ?? "",
+			presetScope: input.presetScope ?? "project",
+			onChange: () => input.onChange(""),
+		},
+	}),
 };
 
 export function createVueTabHost(deps: VueTabHostDependencies) {
 	let app: App<Element> | undefined;
 	let draft: EditorPromptStack | undefined;
+	let mountGeneration = 0;
 	const errors: Record<string, string> = {};
 
 	function mount(kind: string, root: Element): void {
@@ -79,11 +94,15 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 		const definition = getEditorTab(kind);
 		if (!stack || !definition || definition.mount === "legacy") return;
 		draft = cloneJson(stack);
+		const generation = mountGeneration;
 
 		const input: VueTabMountInput = {
 			stack: draft,
 			resources: deps.getResources(),
+			presetSelector: deps.getPresetSelector?.(),
+			presetScope: deps.getPresetScope?.(),
 			onChange: (error: string) => {
+				if (generation !== mountGeneration || deps.getStack() !== stack) return;
 				syncDraft(kind);
 				errors[kind] = error;
 				deps.markDirty();
@@ -103,6 +122,9 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 	}
 
 	function unmount(): void {
+		// Inputs synchronize on change. Never flush an old draft into whichever
+		// preset happens to be selected when its previous tab unmounts.
+		mountGeneration++;
 		app?.unmount();
 		app = undefined;
 		draft = undefined;
@@ -135,6 +157,7 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 		mountPolicy: (root: Element) => mount("policy", root),
 		mountRegex: (root: Element) => mount("regex", root),
 		mountStack: (root: Element) => mount("stack", root),
+		mountBindings: (root: Element) => mount("bindings", root),
 		unmount,
 		resetErrors,
 		getError,

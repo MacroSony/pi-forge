@@ -140,6 +140,17 @@ export function resolveAgentProfile(
 				});
 			}
 			const allowedPatterns = promptStack.stack.tools?.allow?.filter((pattern) => pattern !== "*") ?? [];
+			if (resources.toolNames && Array.isArray(promptStack.stack.tools?.initial)) {
+				for (const name of promptStack.stack.tools.initial) {
+					if (!resources.toolNames.includes(name)) {
+						diagnostics.push({
+							level: "warning",
+							field: "promptStack",
+							message: `Preset ${promptStack.stack.id} initial tool "${name}" is not registered; it will remain inactive.`,
+						});
+					}
+				}
+			}
 			if (resources.toolNames && !promptStack.stack.tools?.allow?.includes("*")) {
 				for (const pattern of allowedPatterns) {
 					if (resources.toolNames.some((name) => resourcePatternMatches(name, pattern))) continue;

@@ -38,7 +38,9 @@ The Preset workspace provides:
 
 - creation from the default Pi-mirror layout;
 - an ordered **Stack** tab for Block/Slot composition;
-- structured metadata, policy, parameters, context, and Regex editing;
+- a **Policy** tab for tool/skill allow/deny resource policy and custom default tools (`tools.initial`);
+- a peer **Mode bindings** tab for associating instruction modes (Preset metadata no longer contains bindings);
+- structured metadata, parameters, context, and **Regex** editing;
 - drag-and-drop item order and enable/disable controls;
 - validation and a full compiled preview;
 - registered-tool and loaded-skill search with exact-name chips and wildcard patterns;
@@ -48,9 +50,36 @@ The Preset workspace provides:
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.
 
+### Tool selection and default tools editor
+
+The **Policy** tab includes an opt-in default tools editor (`tools.initial?: string[]`):
+
+- **Default tools picker:** A searchable, collapsible grouped tool picker organizes tools by SDK `sourceInfo` (Pi built-in tools, packages, and top-level entry points).
+- **Exact names:** The picker saves concrete tool names. It does not persist package references or auto-install packages, and newly introduced package tools are not automatically added. Inactive registered tools are visible in the picker; unloaded tools are unavailable in the session, but manual saved references are preserved rather than discarded.
+- **Omission vs. zero defaults:** Omitting custom defaults preserves legacy behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline); setting an empty list (`[]`) sets zero active tools by default.
+- **Authoritative ceiling:** The advanced literal and wildcard allow/deny policy is retained and acts as an authoritative ceiling; tools blocked by allow/deny cannot be selected as defaults.
+- **Runtime behavior:** Configured defaults serve as the active base while the preset is active (not a one-time reset per turn). Deactivating modes returns to these defaults; disabling restores the reconciled session baseline, while switching recomputes under the new Preset and remaining unbound modes.
+
+### Mode bindings tab
+
+Instruction mode bindings are managed in the peer **Mode bindings** tab:
+
+- Each binding card displays the mode reference, scope badge (`project` / `global`), binding ID, and `modelCallable` authorization toggle.
+- Overrides (content replace/append, tool add/remove) and live source-effective preview are collapsed under an **Advanced** toggle to keep the primary binding list concise.
+- Custom tool overrides feature integrated tool pickers matching the policy picker.
+
+### Save behavior and execution impact
+
+- **Modes surface:** Saving an instruction mode updates its library definition only and never activates it into the current session.
+- **Presets:** Saving an **inactive** Preset updates its configuration file without selecting or activating it. Crucially, saving the **currently active** Preset reloads and synchronizes its live tool and mode policy immediately in the active session.
+
 Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking Profile references or the active selection. The compact selector attached to **New preset** (default `Project`) chooses where new Presets, imports, and forks are written: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Those paths keep their pre-0.5.3 names for compatibility. Less-used capture, fork, import, export, and delete actions live under **More** so the Stack and Preview/Diff panes keep the available viewport. Preset rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy resources remain editable in place.
 
 Saves, imports, forks, and deletes reload Preset state into the current Pi session. When another surface changes a referenced Preset, returning to Profiles refreshes Profile resolution.
+
+### Compatibility
+
+Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and activate all allowed tools (not downgrade-compatible). The codebase remains in the 0.5.4 tree with a release version bump decision pending (0.5.5 or maybe 0.6); host requirement remains Pi `>=0.87.0 <0.88.0`.
 
 ## Agent-profile workspace
 

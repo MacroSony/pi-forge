@@ -6,8 +6,9 @@ Pi-forge introduces instruction modes: session-scoped prompt directives paired w
 
 ## Requirements and installation
 
-- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; no dual 0.86 runtime support claim; development package version remains 0.5.4; 0.5.5 is not published).
+- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim; development package version remains 0.5.4; release version bump decision pending between 0.5.5 or 0.6).
 - **Project trust:** Activating instruction modes, preset bindings, or manual directives requires a trusted project (`isProjectTrusted()`).
+- **Compatibility:** Configurations utilizing `tools.initial` require a Forge version with this support; older Forge versions may ignore `initial`, so configurations are not downgrade-compatible.
 
 Instruction modes are JSON files stored in:
 
@@ -93,23 +94,26 @@ The top-level **Modes** navigation surface supports full project and global inst
 - **Browse and inspect:** View mode ID, display name, description, instruction text, and tool modifications (`+add`, `-remove`), with validation diagnostics.
 - **Create:** Author new modes in explicit project (`.pi/forge/instruction-modes/`) or global (`~/.pi/forge/instruction-modes/`) scope.
 - **Edit and Save:** Edit display name, description, instruction content, and tool additions/removals. Mode IDs are immutable on save.
+- **Grouped tool picker:** Mode tool selection (`+add` / `-remove`) includes a grouped picker organized by SDK `sourceInfo` (Pi built-in tools, packages, and top-level entry points). The picker saves exact concrete tool names: it does not persist package references or auto-install packages, and newly introduced tools from packages are not automatically added. Inactive registered tools remain visible in the picker; unloaded tools are unavailable in the session, but manually saved references are not discarded.
 - **Delete:** Delete mode JSON files with confirmation.
 - **Stale-save protection (`sourceRevision`):** Save and delete operations require the displayed `sourceRevision` (sha256 of raw source bytes). Stale requests fail with `409 Conflict`, preserving the user's draft in the editor.
-- **Resource safety:** Saving a mode updates its library definition only and never activates it into the active session. Invalid JSON fails closed locally with diagnostics. Symlink targets and directories cannot be mutated.
+- **Resource safety and save execution impact:** Saving an instruction mode updates its library definition only and never activates it into the active session. Invalid JSON fails closed locally with diagnostics. Symlink targets and directories cannot be mutated.
 
-### Preset metadata: instruction mode bindings
+### Preset Mode bindings tab
 
-In the Preset editor under **Preset metadata → Instruction mode bindings**, author bindings between the Preset and library modes:
+In the Preset editor, instruction mode bindings are configured under the dedicated peer **Mode bindings** tab (`bindings`); Preset metadata no longer contains bindings:
 
 - **Qualified mode reference:** Requires a qualified reference (`project:<id>` or `global:<id>`).
-- **Binding ID:** Unique binding identifier within the Preset; activation controls accept IDs up to 128 characters.
+- **Binding ID and metadata:** Unique binding identifier within the Preset; activation controls accept IDs up to 128 characters.
 - **Agent authorization:** Toggle `modelCallable` (defaults to `false`) to permit Agent selection via `forge_system_update`.
+- **Collapsed advanced section:** Overrides and source-effective preview are collapsed under an advanced section to keep the primary binding list clear.
 - **Finite overrides:**
   - **Content override:** Choose between *None (use base content)*, *Replace* (`content`), or *Append* (`appendContent`, separated by two newlines).
-  - **Tool overrides:** Independently set `tools.add` and `tools.remove` to *Omitted (keep base)*, *Explicit empty []* (clears base list), or *Custom tool list*.
+  - **Tool overrides:** Independently set `tools.add` and `tools.remove` to *Omitted (keep base)*, *Explicit empty []* (clears base list), or *Custom tool list* (with integrated tool picker).
   - Arbitrary fields, scripts, or inheritance chains cannot be authored.
 - **Source vs. effective preview:** Side-by-side comparison displays source content/tools alongside effective content/tools, resolved through the same server resolver (`resolveInstructionModeBindings`) as runtime activation.
 - **Stale-save guard:** Preset saves enforce a `sourceRevision` check against disk bytes whenever bindings are present or modified, rejecting stale overwrites (409 Conflict), including when external edits added bindings.
+- **Preset save execution impact:** Saving an inactive Preset updates its definition and does not select or activate it. Crucially, saving the currently active Preset immediately reloads and synchronizes its live tool and mode policy in the session.
 
 ## Web session instructions panel
 
@@ -212,7 +216,7 @@ Active state is derived deterministically from session events and delivery curso
 - **Preceding extension message rewrites:** Pi permits context hooks to rewrite messages. When visible metadata anchors or unanchored events need positioning, Forge requires a unique ordered alignment with the canonical session projection and fails closed if arbitrary preceding rewrites break alignment. Pi may persist queued custom messages absent from a tool follow-up: Forge permits only uniquely alignable custom-message omissions, ignores their regenerated envelope timestamps, and preserves incoming objects without restoring omitted dialogue. A preceding rewrite can therefore conflict with this locator; moving it later does not guarantee safe composition. Broad plugin, warming, and automatic-overflow compatibility remain unverified.
 - **Upstream defect status and protocol limits:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched and remain unfixed upstream. Compaction checkpoint placement is unchanged. Legacy sessions containing old `custom_message` carriers remain untouched without automatic disk migration; if compacted, old carriers may still contaminate summarizer input. Oh My Pi (OMP) is not supported or promised.
 - **System prompt getters:** `ctx.getSystemPrompt()` and SDK getters return Pi's raw base prompt, not Forge's compiled request. Inspect compiled requests via `/payload` or Run context diffs. Forge does not claim to synchronize SDK getters. Extensions returning a full `systemPrompt` in lifecycle hooks cause forced projection conflicts and are unsupported.
-- **Provider-managed tool transport and prompt caching:** Tool transport serialization and prompt prefix cache reuse are downstream provider-managed. Tool policy additions/removals, fallback formatting, and compaction alter prompt boundaries; pi-forge issues conservative provider-managed cache warnings and makes no guarantee of zero KV cache invalidation or exact cache hits.
+- **Provider-managed tool transport and prompt caching:** Tool transport serialization and prompt prefix cache reuse are downstream provider-managed. Tool policy additions/removals, fallback formatting, and compaction alter prompt boundaries. For compatible Codex transports, clean first-time tool additions can retain request prefixes; removals or same-name redeclarations anywhere in retained history switch to full-current-tool serialization. Provider cache hits are not guaranteed. Pi-forge issues conservative provider-managed cache warnings and makes no permission bypass or caching guarantees (zero KV cache invalidation is not guaranteed).
 - **Sandbox disclaimer:** Instruction modes provide no OS-level sandboxing or process isolation. The demo `review.json` removes `bash`, `powershell`, `write`, and `edit`, but does not block external MCP tools or subagents. Configure tool removals matching your specific execution tools.
 
 ## Implementation status (0.5.5-core)
@@ -223,13 +227,14 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Human CLI commands (`/system-update` add, list, bindings, use, use-bound, off, status, reset).
 - Formal plain metadata delivery anchor projection with pre-compilation ordinal materialization.
 - Web Session instructions activity panel and guarded human activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`).
-- Live Preset bindings (`instructionModes`) with finite overrides and opt-in `modelCallable: true`.
+- Live Preset bindings (`instructionModes`) in dedicated peer Mode bindings tab, with finite overrides, collapsed advanced view, and opt-in `modelCallable: true`.
 - Restricted model-callable `forge_system_update` agent tool (list, status, use, off, ID ≤ 128 chars).
-- Web Modes surface (CRUD) and Preset metadata binding editor with live source-effective preview and `sourceRevision` stale-save guards.
+- Web Modes surface (CRUD) with SDK-grouped tool picker and `sourceRevision` stale-save guards.
+- Preset policy custom default tools editor (`tools.initial?: string[]`) with concrete names, zero-default support (`[]`), and legacy fallback on omission.
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
-- Conservative provider-managed prompt cache warnings; no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Core parent build and full verification passed on Pi 0.87.0 (754 Node / 35 browser); package version remains 0.5.4, and release, git push, and host reload (`/reload`) are separate user-authorized actions.
+- Conservative provider-managed prompt cache warnings; native additional first time only, tool remove/readd still fallback; no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
+- Full parent verification is pending across Node and browser test suites; parent updates summary after acceptance. Package version remains 0.5.4 with release version bump pending (0.5.5 or maybe 0.6); min SDK 0.87 unchanged (`>=0.87.0 <0.88.0`); release, git push, and host reload (`/reload`) are separate user-authorized actions.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

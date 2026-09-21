@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- **On-demand tool loadouts:** Presets can opt into `tools.initial` (concrete tool names; `[]` means zero defaults). Omission preserves legacy behavior; existing allow/deny remains the hard ceiling. Authorized modes add permitted registered tools, and off/reset recomputes from defaults plus remaining modes. Live execution, Preview and subagent preparation agree; source edits never replace frozen mode snapshots. Older Forge readers do not understand this new selection field.
+- **Source-grouped tool selection and binding UX:** One searchable, collapsible picker batches the current extension/source tools into ordinary literal tool-name arrays; no permanent package bindings or automatic future-tool grants. Preset bindings move out of metadata to a peer **Mode bindings** tab, with overrides/source-effective details collapsed. Default-tool selection is opt-in. Cross-preset draft ownership, authoritative scoped identity, resource response ordering and baseline-vs-mode default seeding are guarded. Saving a mode never activates it; saving an active Preset refreshes that Preset's policy.
+
+
 ### Added
 
 - **Instruction modes and session update CLI.** Session-scoped dynamic instruction modes and manual directives via `/system-update` (`add`, `list`, `bindings`, `use`, `use-bound`, `off`, `status`, `reset`). Modes are stored as JSON definitions (`schemaVersion: 1`, `type: "pi-forge.instruction-mode"`) under `.pi/forge/instruction-modes/` or `~/.pi/forge/instruction-modes/`. Direct `use` activates an unbound mode; `use-bound` activates an authorized Preset binding.

@@ -1,3 +1,6 @@
+export function hasToolSelectionPolicy(policy) {
+    return hasResourcePolicy(policy) || Array.isArray(policy?.initial);
+}
 export function hasResourcePolicy(policy) {
     return !!policy && (hasEffectiveAllowPolicy(policy.allow) || hasPatterns(policy.deny));
 }

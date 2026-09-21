@@ -45,7 +45,7 @@ export interface WebEditorHost {
 	applyProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	deleteProfile(id: string): Promise<WebEditorOperationResult<WebEditorProfileMutation>>;
 	listResources(): WebEditorResources;
-	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[]; sourceRevision: string } | undefined;
+	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[]; sourceRevision: string; selector?: string; scope?: "global" | "project" } | undefined;
 	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
 	saveStack(id: string, stack: PromptStack, expectedSourceRevision?: string): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
 	deleteStack(id: string): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
@@ -184,6 +184,9 @@ export interface WebEditorPolicyResource {
 	name: string;
 	description?: string;
 	source?: string;
+	group?: { id: string; label: string };
+	/** Restorable session baseline before Preset/mode selection, for default seeding. */
+	baselineActive?: boolean;
 	active?: boolean;
 	hidden?: boolean;
 }

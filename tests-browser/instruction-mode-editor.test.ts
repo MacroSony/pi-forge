@@ -32,14 +32,14 @@ async function bundleFixture(root: string): Promise<{ js: string; css: string }>
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-forge-instruction-mode-fixture-"));
 	const entryPath = join(tempDir, "entry.ts");
 	const browserPath = resolve(root, "src/web-editor/client/components/InstructionModeBrowser.vue");
-	const metadataEditorPath = resolve(root, "src/web-editor/client/components/StackMetadataEditor.vue");
+	const bindingEditorPath = resolve(root, "src/web-editor/client/components/PresetBindingEditor.vue");
 	const i18nPath = resolve(root, "src/web-editor/client/i18n.ts");
 
 	writeFileSync(
 		entryPath,
 		`import { createApp, defineComponent, h, ref } from "vue";
 import InstructionModeBrowser from "${browserPath}";
-import StackMetadataEditor from "${metadataEditorPath}";
+import PresetBindingEditor from "${bindingEditorPath}";
 import { setEditorLocale } from "${i18nPath}";
 
 const TestHarness = defineComponent({
@@ -102,12 +102,10 @@ const TestHarness = defineComponent({
 			]),
 			activeTab.value === "modes"
 				? h(InstructionModeBrowser, { active: true })
-				: h(StackMetadataEditor, {
+				: h(PresetBindingEditor, {
 						stack: testStack.value,
-						filePath: "/test/" + presetScope.value + "/default.json",
 						presetSelector: presetScope.value + ":default",
 						presetScope: presetScope.value,
-						collapsed: false,
 						onChange: onStackChange,
 				  }),
 		]);
@@ -476,6 +474,7 @@ ${css}
 		// --- 6. Preset Binding Editor: Overrides & Effective Preview ---
 		await page.locator("#tabPresetBtn").click();
 		await page.locator("[data-binding-row]").first().waitFor();
+		await page.locator("[data-binding-advanced-toggle]").first().click();
 		await page.locator("[data-binding-preview]").first().waitFor();
 		assert.ok(effectiveRequests.length > 0);
 		assert.match(await page.locator("[data-binding-source-content]").first().textContent() ?? "", /Review all diffs carefully/);
@@ -783,6 +782,7 @@ ${css}
 		assert.equal(currentStack.instructionModes?.length, 1);
 		assert.equal(currentStack.instructionModes[0].ref, "global:audit");
 		assert.equal(currentStack.instructionModes[0].modelCallable, false, "modelCallable must be false by default");
+		await page.locator("[data-binding-advanced-toggle]").click();
 		// Effective preview must succeed
 		await page.locator("[data-binding-preview]").waitFor();
 		assert.equal(await page.locator(".preview-error-line").isVisible(), false);

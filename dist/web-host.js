@@ -84,6 +84,7 @@ export function createWebEditorHost(ctx, runtime) {
             const source = readFileSync(loaded.filePath);
             const fresh = parsePromptStack(source.toString("utf8"), loaded.filePath, loaded.scope);
             return { stack: fresh.stack, filePath: loaded.filePath, diagnostics: fresh.diagnostics,
+                selector: formatResourceKey(loaded.key), scope: loaded.scope,
                 sourceRevision: createHash("sha256").update(source).digest("hex") };
         },
         createStack: (stack, options) => createStackFile(ctx, runtime, stack, options),

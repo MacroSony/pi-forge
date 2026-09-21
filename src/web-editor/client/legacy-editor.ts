@@ -35,7 +35,11 @@ let editorResources: WebEditorResources = { tools: [], skills: [], macros: [], s
 let latestDiagnostics: PromptStackDiagnostic[] = [];
 // null = automatic: expand when errors or warnings exist, collapse when clean.
 let diagnosticsCollapsed: boolean | null = null;
-let activeTab: "items" | "regex" | "policy" | "stack" = "items";
+let activeTab: "items" | "regex" | "policy" | "bindings" | "stack" = "items";
+let currentPresetSelector = "";
+let stackLoadGeneration = 0;
+let resourceLoadGeneration = 0;
+let currentPresetScope: "project" | "global" = "project";
 let metadataCollapsed = true;
 let editorStarted = false;
 let editorIsActive = () => true;
@@ -96,6 +100,8 @@ const {
 const vueTabHost = createVueTabHost({
   getStack: () => currentStack,
   getResources: () => editorResources,
+  getPresetSelector: () => currentPresetSelector,
+  getPresetScope: () => currentPresetScope,
   markDirty,
   setStatus,
   validateStack: () => run(validateStack),
@@ -103,19 +109,11 @@ const vueTabHost = createVueTabHost({
   copyText: copyTextToClipboard,
 });
 function getCurrentPresetSelector(): string {
-  if (!currentStack) return "";
-  const summary = stacks.find((s: any) => (s.selector || s.id) === selectedId || s.id === currentStack?.id);
-  if (summary?.selector) return summary.selector;
-  const scope = getCurrentPresetScope();
-  return `${scope}:${currentStack.id}`;
+  return currentPresetSelector;
 }
 
 function getCurrentPresetScope(): "project" | "global" {
-  const summary = stacks.find((s: any) => (s.selector || s.id) === selectedId || s.id === currentStack?.id);
-  if (summary?.scope === "global" || summary?.scope === "project") return summary.scope;
-  if (selectedId.startsWith("global:")) return "global";
-  if (selectedId.startsWith("project:")) return "project";
-  return "project";
+  return currentPresetScope;
 }
 
 const vueMetadataHost = createVueMetadataHost({
@@ -175,34 +173,38 @@ function updateActionState() {
 }
 
 async function loadStacks(preferId: any = selectedId) {
+  const generation = ++resourceLoadGeneration;
+  const selectionGeneration = stackLoadGeneration;
   const [data, resources] = await Promise.all([
     api("/api/stacks"),
     api("/api/resources"),
   ]);
-  if (!editorStarted) return;
+  if (!editorStarted || generation !== resourceLoadGeneration) return;
   stacks = data.stacks || [];
   editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
   const next = stacks.find((stack: any) => (stack.selector || stack.id) === preferId) || stacks.find((stack: any) => stack.active) || stacks[0];
+  if (selectionGeneration !== stackLoadGeneration) return;
   if (next) await selectStack(next.selector || next.id, { keepDirty: false });
   else renderEmpty();
 }
 
 async function refreshStackRuntimeState() {
+  const generation = ++resourceLoadGeneration;
   const [data, resources] = await Promise.all([
     api("/api/stacks"),
     api("/api/resources"),
   ]);
-  if (!editorStarted) return;
+  if (!editorStarted || generation !== resourceLoadGeneration) return;
   stacks = data.stacks || [];
   editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
   updateActionState();
-  if (activeTab === "policy") renderActiveTab();
+  if (activeTab !== "items") renderActiveTab();
 }
 
 function handleProfileApplied() {
@@ -211,13 +213,26 @@ function handleProfileApplied() {
 
 async function selectStack(id: any, options: any = {}) {
   if (dirty && !options.keepDirty && !confirm(t("confirm.discardChanges"))) return;
+  const generation = ++stackLoadGeneration;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
-  if (!editorStarted) return;
+  if (!editorStarted || generation !== stackLoadGeneration) return;
   selectedId = id;
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
   currentFilePath = data.filePath || "";
   currentSourceRevision = typeof data.sourceRevision === "string" ? data.sourceRevision : "";
+
+  // Prefer the resolved resource identity returned by the host. The fallback
+  // supports existing host fixtures, never guesses scope from a filesystem path
+  // or picks a same-id resource before looking for the exact scoped selector.
+  const summary = stacks.find((s: any) => (s.selector || s.id) === id);
+  const qualified = typeof data.selector === "string" ? data.selector
+    : typeof id === "string" && /^(global|project):/.test(id) ? id
+    : summary?.selector;
+  currentPresetScope = data.scope === "global" || data.scope === "project" ? data.scope
+    : qualified?.startsWith("global:") ? "global"
+    : summary?.scope === "global" ? "global" : "project";
+  currentPresetSelector = qualified || `${currentPresetScope}:${loadedStack.id}`;
   selectedItemIndex = loadedStack.items.length
     ? typeof options.selectedItemIndex === "number"
       ? Math.min(Math.max(options.selectedItemIndex, 0), loadedStack.items.length - 1)
@@ -264,9 +279,7 @@ function renderActiveTab() {
   }
   workspace.style.display = "none";
   panel.classList.add("open");
-  if (activeTab === "regex") vueTabHost.mountRegex(panel);
-  else if (activeTab === "policy") vueTabHost.mountPolicy(panel);
-  else if (activeTab === "stack") vueTabHost.mountStack(panel);
+  vueTabHost.mount(activeTab, panel);
 }
 
 function renderStackList() {
@@ -320,6 +333,9 @@ function normalizeResourceList(value: any) {
       name: resource.name.trim(),
       description: typeof resource.description === "string" ? resource.description : "",
       source: typeof resource.source === "string" ? resource.source : "",
+      group: resource.group && typeof resource.group.id === "string" && typeof resource.group.label === "string"
+        ? { id: resource.group.id, label: resource.group.label } : undefined,
+      baselineActive: typeof resource.baselineActive === "boolean" ? resource.baselineActive : undefined,
       active: resource.active === true,
       hidden: resource.hidden === true,
     }));
@@ -890,6 +906,7 @@ async function activateStack() {
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/activate", { method: "POST" });
   stacks = data.stacks || stacks;
   renderStackList();
+  await refreshStackRuntimeState();
   setStatus(t("status.activated", { id: selectedId }), "success");
 }
 
@@ -897,6 +914,7 @@ async function disableStacks() {
   const data = await api("/api/disable", { method: "POST" });
   stacks = data.stacks || stacks;
   renderStackList();
+  await refreshStackRuntimeState();
   setStatus(t("status.stackDisabled"), "success");
 }
 
@@ -1167,7 +1185,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   window.addEventListener("keydown", handleEditorShortcut);
   window.addEventListener("pi-forge:profile-applied", handleProfileApplied);
   const stopEditorView = subscribeEditorView((viewId) => {
-    if (["items", "regex", "policy", "stack"].includes(viewId)) return;
+    if (["items", "regex", "policy", "bindings", "stack"].includes(viewId)) return;
     vueTabHost.unmount();
   });
   const previousBeforeUnload = window.onbeforeunload;
@@ -1205,6 +1223,8 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
 }
 
 function resetEditorState(): void {
+  stackLoadGeneration++;
+  resourceLoadGeneration++;
   if (dragScrollFrame) cancelAnimationFrame(dragScrollFrame);
   stacks = [];
   cwd = "";
@@ -1223,6 +1243,8 @@ function resetEditorState(): void {
   editorResources = { tools: [], skills: [], macros: [], slots: [] };
   latestDiagnostics = [];
   activeTab = "items";
+  currentPresetSelector = "";
+  currentPresetScope = "project";
   metadataCollapsed = true;
   vueTabHost.resetErrors();
 }

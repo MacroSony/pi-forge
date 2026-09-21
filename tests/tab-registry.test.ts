@@ -12,7 +12,7 @@ import {
 test("tab registry lists the existing editor tabs in their display order", () => {
 	assert.deepEqual(
 		EDITOR_TABS.map((tab) => tab.id),
-		["items", "regex", "policy", "stack", "preview"],
+		["items", "regex", "policy", "bindings", "stack", "preview"],
 	);
 });
 
@@ -32,13 +32,14 @@ test("tab registry ids are unique and every definition carries its button metada
 
 test("tab registry keeps the legacy items workspace and the three vue tabs", () => {
 	assert.equal(getEditorTab("items")?.mount, "legacy");
-	for (const id of ["regex", "policy", "stack"]) {
+	for (const id of ["regex", "policy", "bindings", "stack"]) {
 		assert.equal(getEditorTab(id)?.mount, "vue");
 		assert.ok(getEditorTab(id)!.stackFields.length > 0);
 	}
-	for (const id of ["regex", "policy", "stack"]) {
+	for (const id of ["regex", "policy", "bindings", "stack"]) {
 		assert.equal(isEditorVueTab(id), true);
 	}
+	assert.deepEqual(getEditorTab("bindings")?.stackFields, ["instructionModes"]);
 	assert.equal(isEditorVueTab("items"), false);
 	assert.equal(isEditorVueTab("unknown-tab"), false);
 });
@@ -49,12 +50,14 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 			items: getEditorTab("items"),
 			regex: getEditorTab("regex"),
 			policy: getEditorTab("policy"),
+			bindings: getEditorTab("bindings"),
 			stack: getEditorTab("stack"),
 		},
 		{
 			items: { id: "items", labelKey: "tab.items", icon: "☰", titleKey: "tab.itemsTitle", mount: "legacy", stackFields: [], internalDock: false },
 			regex: { id: "regex", labelKey: "tab.regex", icon: ".*", titleKey: "tab.regexTitle", mount: "vue", stackFields: ["regex"], internalDock: false },
 			policy: { id: "policy", labelKey: "tab.policy", icon: "⊕", titleKey: "tab.policyTitle", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
+			bindings: { id: "bindings", labelKey: "tab.bindings", icon: "☍", titleKey: "tab.bindingsTitle", mount: "vue", stackFields: ["instructionModes"], internalDock: false },
 			stack: { id: "stack", labelKey: "tab.stack", icon: "{}", titleKey: "tab.stackTitle", mount: "vue", stackFields: ["context", "variables", "parameters"], internalDock: false },
 		},
 	);
@@ -63,7 +66,7 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 test("editorTabButtonId derives the stable button ids used by the legacy editor and browser tests", () => {
 	assert.deepEqual(
 		EDITOR_TABS.map((tab) => editorTabButtonId(tab.id)),
-		["itemsTabBtn", "regexTabBtn", "policyTabBtn", "stackTabBtn", "previewTabBtn"],
+		["itemsTabBtn", "regexTabBtn", "policyTabBtn", "bindingsTabBtn", "stackTabBtn", "previewTabBtn"],
 	);
 });
 

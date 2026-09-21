@@ -75,6 +75,7 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		await page.locator("#tabPanel").filter({ hasText: "do not block explicit skill invocation" }).waitFor();
 		const toolPolicyRow = page.locator('[data-policy-row][data-policy-kind="tools"]');
 		await toolPolicyRow.locator('[data-policy-mode-option="allow"]').click();
+		await toolPolicyRow.locator(".resource-flat-list-summary").click();
 		await toolPolicyRow.locator('[data-resource-name="read"]').click();
 		await toolPolicyRow.locator('[data-remove-policy-pattern="read"]').waitFor();
 
