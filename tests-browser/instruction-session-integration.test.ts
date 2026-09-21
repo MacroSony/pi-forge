@@ -48,7 +48,7 @@ test(`built editor uses projected text and separate tools without management inf
 		// Public session record fixture: a Pi base-only refresh, like the user's empty card.
 		const seedMsg = {role: "system" as const, content: "", sections: {tools: "Base tool descriptions", rules: "Base rules"}, timestamp: Date.now()};
 		harness.manager.appendMessage(seedMsg);
-		harness.session.agent.state.messages = [...harness.session.agent.state.messages, seedMsg];
+		harness.session.refreshContext();
 		await quietPrompt("/system-update use project:review");
 		await quietPrompt("Ordinary user dialogue after mode activation.");
 		assert.equal(harness.streamContexts.length, 2);

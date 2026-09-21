@@ -7,7 +7,7 @@ import type {
 	AgentSessionEvent,
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
-	ContextEvent,
+	ContextWithSystemEvent,
 	ExtensionContext,
 	ExtensionFactory,
 	PromptOptions,
@@ -88,7 +88,7 @@ export interface FakeToolExecution {
 export interface InstructionAgentHarnessObserver {
 	beforeAgentStart?: (event: BeforeAgentStartEvent) => void;
 	beforeAgentStartResult?: (event: BeforeAgentStartEvent) => BeforeAgentStartEventResult | void | undefined;
-	context?: (event: ContextEvent) => void;
+	context?: (event: ContextWithSystemEvent) => void;
 	stream?: (context: TranscriptContext, details: unknown) => void;
 	tool?: (execution: FakeToolExecution) => void;
 	event?: (event: AgentSessionEvent) => void;
@@ -283,7 +283,7 @@ export async function createInstructionAgentHarness(
 			options.observer?.beforeAgentStart?.(event);
 			return options.observer?.beforeAgentStartResult?.(event) ?? undefined;
 		});
-		pi.on("context", async (event: ContextEvent) => {
+		pi.on("context_with_system", async (event: ContextWithSystemEvent) => {
 			contextEvents.push(event);
 			options.observer?.context?.(event);
 		});

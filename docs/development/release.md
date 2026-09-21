@@ -20,7 +20,7 @@ they test dependency drift rather than operating-system behavior.
 
 ## Dependency policy
 
-Pi-host-provided SDK packages remain optional peers, never private runtime dependencies. The 0.5.5 transcript bridge requires `>=0.86.0` for the four Pi SDK peers; `typebox` remains a wildcard peer. Exact tested versions belong in development dependencies and the lockfile. Do not impose an exact host version or an upper bound merely to match the development install.
+Pi-host-provided SDK packages remain optional peers, never private runtime dependencies. Development dependencies are pinned to `0.87.0`, and the peer dependency range is `>=0.87.0 <0.88.0` for the four Pi SDK peers; `typebox` remains a wildcard peer. Pi-forge makes no dual 0.86 support claim, and the development package version remains 0.5.4; 0.5.5 is not published; parent full verification has passed. Exact tested versions belong in development dependencies and the lockfile. Do not impose an exact host version merely to match the development install.
 
 `pi-subagent-runtime` remains a normal exact dependency until its compatibility policy says otherwise. Its own host-facing Pi dependencies must follow the same host-provided peer model.
 

@@ -6,7 +6,7 @@ Pi-forge introduces instruction modes: session-scoped prompt directives paired w
 
 ## Requirements and installation
 
-- **Host requirement:** Pi `>= 0.86.0`.
+- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; no dual 0.86 runtime support claim; development package version remains 0.5.4; 0.5.5 is not published).
 - **Project trust:** Activating instruction modes, preset bindings, or manual directives requires a trusted project (`isProjectTrusted()`).
 
 Instruction modes are JSON files stored in:
@@ -161,6 +161,10 @@ When testing in a local developer harness with local build wiring already config
 
 ## Lifecycle and tool synchronization
 
+- **Unified `context_with_system` pipeline:** In Pi 0.87, standard `context` lifecycle hooks intentionally exclude System messages. Forge moves the complete compiler, base prompt replacement, and instruction mode projection pipeline to `context_with_system` without an internal two-phase split.
+- **Canonical projection with `buildSessionProjection`:** Runtime, Preview, and anchor helpers build against Pi 0.87's canonical `buildSessionProjection` (handling `context_edit` omissions, replacements, and `sourceEntry`), ensuring ephemeral request assembly reflects turn edits while raw session history remains untouched on disk.
+- **Leading System preservation:** SDK incoming leading System prompts remain first; Forge's own prefix plain metadata anchors are inserted immediately after it.
+- **Continuation and settlement lifecycle:** `agent_end` remains an anchor opportunity after a low-level run, provided no Forge context failure or incomplete tool batch remains, but the compile cycle and busy fence reset only on `agent_settled`. This ensures `agent_before_settle` continuations preserve compiled Preset state without dropping active modes.
 - **Immediate tool sync vs. next-request prompt projection:**
   - Executable tool selection synchronizes *immediately* (`pi.setActiveTools()`). Disallowed tools are blocked at execution time.
   - Prompt text and native System sections or fallback user updates apply at the *next model request* boundary.
@@ -186,7 +190,7 @@ The **Preview** dock evaluates the selected Preset draft against current session
 
 Forge projects instruction deltas dynamically on each request through a two-stage assembly:
 
-1. **Materialize before compilation:** Session context entries are scanned for plain `custom` metadata anchors (`pi-forge-instruction-delivery`). At the request context boundary (`prepareInstructionMessages`), anchors are validated and materialized into ephemeral in-memory markers at their exact ordinal positions, matching the session transcript without modifying stored dialogue.
+1. **Materialize before compilation:** Session context entries are projected via `buildSessionProjection` and scanned for plain `custom` metadata anchors (`pi-forge-instruction-delivery`). At the request context boundary (`prepareInstructionMessages`), anchors are validated and materialized into ephemeral in-memory markers at their exact ordinal positions matching the canonical projection, without modifying stored dialogue or raw session history.
 2. **Rule projection:** `projectInstructionMessages` transforms materialized deltas into the appropriate model presentation:
    - **Native delivery:** When the provider supports mid-conversation system messages (`compat.supportsMidConvoSystemMessages === true`), updates are projected as request-only `SystemMessage.sections` keyed by activation identity (`forge-instruction-<id>`). Deactivations send null patches. Native delivery depends strictly on provider capability flags and is not universally guaranteed.
    - **Fallback delivery:** When native updates are unsupported, updates are projected as attributed timeline user messages (`[pi-forge instruction update]`). Forge never folds updates into the leading system prompt; genuine user/tool dialogue is never promoted to system authority.
@@ -203,7 +207,10 @@ Active state is derived deterministically from session events and delivery curso
 
 ## Compatibility and security boundaries
 
-- **Preceding extension message rewrites:** Pi permits `context` hooks to rewrite messages. When visible metadata anchors or unanchored events need positioning, Forge requires a unique ordered alignment with the session-derived context and aborts rather than guessing. Pi may persist queued custom messages absent from a tool follow-up: Forge permits only uniquely alignable custom-message omissions, ignores their regenerated envelope timestamps, and preserves the incoming objects without restoring omitted dialogue. A preceding rewrite can therefore conflict with this locator. Adjust the conflicting extension's order or behavior after review; moving it later does not guarantee safe composition. Broad plugin, warming, and automatic-overflow compatibility remain unverified.
+- **Upstream Pi 0.87 required:** Upstream Pi `>=0.87.0 <0.88.0` is required. Dual 0.86 runtime support is not provided. Extensions that previously manipulated or inspected full System messages in `context` must migrate to the full `context_with_system` hook.
+- **Timing with `before_agent_start`:** Any forced System prompt injection via `before_agent_start` continues to execute later than `context_with_system`.
+- **Preceding extension message rewrites:** Pi permits context hooks to rewrite messages. When visible metadata anchors or unanchored events need positioning, Forge requires a unique ordered alignment with the canonical session projection and fails closed if arbitrary preceding rewrites break alignment. Pi may persist queued custom messages absent from a tool follow-up: Forge permits only uniquely alignable custom-message omissions, ignores their regenerated envelope timestamps, and preserves incoming objects without restoring omitted dialogue. A preceding rewrite can therefore conflict with this locator; moving it later does not guarantee safe composition. Broad plugin, warming, and automatic-overflow compatibility remain unverified.
+- **Upstream defect status and protocol limits:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched and remain unfixed upstream. Compaction checkpoint placement is unchanged. Legacy sessions containing old `custom_message` carriers remain untouched without automatic disk migration; if compacted, old carriers may still contaminate summarizer input. Oh My Pi (OMP) is not supported or promised.
 - **System prompt getters:** `ctx.getSystemPrompt()` and SDK getters return Pi's raw base prompt, not Forge's compiled request. Inspect compiled requests via `/payload` or Run context diffs. Forge does not claim to synchronize SDK getters. Extensions returning a full `systemPrompt` in lifecycle hooks cause forced projection conflicts and are unsupported.
 - **Provider-managed tool transport and prompt caching:** Tool transport serialization and prompt prefix cache reuse are downstream provider-managed. Tool policy additions/removals, fallback formatting, and compaction alter prompt boundaries; pi-forge issues conservative provider-managed cache warnings and makes no guarantee of zero KV cache invalidation or exact cache hits.
 - **Sandbox disclaimer:** Instruction modes provide no OS-level sandboxing or process isolation. The demo `review.json` removes `bash`, `powershell`, `write`, and `edit`, but does not block external MCP tools or subagents. Configure tool removals matching your specific execution tools.
@@ -222,7 +229,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
 - Conservative provider-managed prompt cache warnings; no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Parent build and full verification passed: 730 Node tests and 33 browser tests; package version remains 0.5.4, and release, git push, and host reload (`/reload`) are separate user-authorized actions.
+- Core parent build and full verification passed on Pi 0.87.0 (750 Node / 35 browser); package version remains 0.5.4, and release, git push, and host reload (`/reload`) are separate user-authorized actions.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

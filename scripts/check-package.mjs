@@ -45,9 +45,9 @@ const hostDependencies = [
 	"typebox",
 ];
 for (const dependency of hostDependencies) {
-	// The transcript bridge needs Pi 0.86 APIs. Keep peers host-provided and
+	// The transcript bridge needs Pi 0.87 canonical projection APIs. Keep peers host-provided and
 	// optional, with a minimum (not an exact/upper-bound host release lock).
-	const expectedRange = dependency === "typebox" ? "*" : ">=0.86.0";
+	const expectedRange = dependency === "typebox" ? "*" : ">=0.87.0 <0.88.0";
 	if (packageJson.peerDependencies?.[dependency] !== expectedRange) {
 		failures.push(`host dependency must be an optional peer with range ${expectedRange}: ${dependency}`);
 	}

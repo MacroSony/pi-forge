@@ -137,7 +137,9 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         // Never return a forced full systemPrompt: Pi reapplies it AFTER context hooks,
         // which would silently suppress native instruction sections on tool follow-ups.
     });
-    pi.on("context", async (event, ctx) => {
+    // Pi 0.87 ordinary context hooks intentionally exclude System messages.
+    // Keep the complete Forge pipeline together at the full-transcript boundary.
+    pi.on("context_with_system", async (event, ctx) => {
         try {
             deps.syncActiveToolPolicy(ctx);
             let messages = event.messages;
@@ -200,11 +202,17 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         return { message };
     });
     pi.on("agent_end", async (_event, ctx) => {
+        // This is a safe low-level boundary, not the end of Pi's outer run.
+        // agent_before_settle may still request a continuation without another
+        // before_agent_start. Keep the compiled preset inputs until final settlement.
+        if (!runFailed && ctx)
+            deps.commitEndInstructionAnchors?.(ctx);
+    });
+    pi.on("agent_settled", async (_event, ctx) => {
         try {
             deps.setInstructionAgentBusy?.(false);
-            if (!runFailed && ctx) {
+            if (!runFailed && ctx)
                 deps.commitEndInstructionAnchors?.(ctx);
-            }
         }
         finally {
             resetCompileCycle(compileCycle);

@@ -20,8 +20,7 @@ import { isInstructionDelivery } from "../instruction-protocol.ts";
 import { formatResourceKey, parseResourceSelector, type ResourceKey } from "../resource-identity.ts";
 import { hasResourcePolicy } from "../policy.ts";
 import {
-	buildContextEntries,
-	sessionEntryToContextMessages,
+	buildSessionProjection,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -178,8 +177,8 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		for (const event of pendingEvents(ctx)) persistInstructionDelivery(pi, event.eventId);
 	}
 
-	function rawSessionMessages(ctx: ExtensionContext): AgentMessage[] {
-		return buildContextEntries(getCurrentBranchEntries(ctx) as SessionEntry[]).flatMap(sessionEntryToContextMessages);
+	function canonicalSessionMessages(ctx: ExtensionContext): AgentMessage[] {
+		return buildSessionProjection(getCurrentBranchEntries(ctx) as SessionEntry[]).messages;
 	}
 
 	function prepareMessages(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[] {
@@ -190,7 +189,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			if (hasPendingInstructionToolCalls(raw)) {
 				throw new Error("Cannot prepare instruction anchors during an incomplete tool batch.");
 			}
-			if (!instructionContextMatches(rawSessionMessages(ctx), raw)) {
+			if (!instructionContextMatches(canonicalSessionMessages(ctx), raw)) {
 				throw new Error("Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)");
 			}
 			persistPendingAnchors(ctx);
@@ -874,7 +873,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		if (!pendingEvents(ctx).length) return;
 		// Interrupted batches may leave an incomplete current tail. Keep intent
 		// pending rather than anchoring between its call and a later result.
-		if (hasPendingInstructionToolCalls(rawSessionMessages(ctx))) return;
+		if (hasPendingInstructionToolCalls(canonicalSessionMessages(ctx))) return;
 		persistPendingAnchors(ctx);
 	}
 

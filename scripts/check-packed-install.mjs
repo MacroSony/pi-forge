@@ -74,10 +74,10 @@ try {
 	try {
 		writeFileSync(join(mainOnly, "package.json"), JSON.stringify({ name: "smoke-main", private: true, type: "module" }));
 		run(npm, [...npmPrefix, "install", mainPack,
-			"@earendil-works/pi-coding-agent@0.86.0",
-			"@earendil-works/pi-ai@0.86.0",
-			"@earendil-works/pi-agent-core@0.86.0",
-			"@earendil-works/pi-tui@0.86.0",
+			"@earendil-works/pi-coding-agent@0.87.0",
+			"@earendil-works/pi-ai@0.87.0",
+			"@earendil-works/pi-agent-core@0.87.0",
+			"@earendil-works/pi-tui@0.87.0",
 			"typebox@1.3.7",
 			"--no-audit", "--no-fund", "--ignore-scripts"], { cwd: mainOnly });
 		writeFileSync(join(mainOnly, "smoke.mjs"), smokeScript([`const { ForgeHostPortOperation } = await import('@zihanw/pi-forge/subagent');`]));
@@ -103,10 +103,10 @@ try {
 				},
 			}));
 			run(npm, [...npmPrefix, "install",
-				"@earendil-works/pi-coding-agent@0.86.0",
-				"@earendil-works/pi-ai@0.86.0",
-				"@earendil-works/pi-agent-core@0.86.0",
-				"@earendil-works/pi-tui@0.86.0",
+				"@earendil-works/pi-coding-agent@0.87.0",
+				"@earendil-works/pi-ai@0.87.0",
+				"@earendil-works/pi-agent-core@0.87.0",
+				"@earendil-works/pi-tui@0.87.0",
 				"typebox@1.3.15",
 				"@zihanw/pi-subagent-runtime@0.1.0-beta.2",
 				"--no-audit", "--no-fund", "--ignore-scripts", "--legacy-peer-deps"], { cwd: both });

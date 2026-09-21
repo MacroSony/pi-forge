@@ -40,10 +40,10 @@
 		]
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-agent-core": ">=0.86.0",
-		"@earendil-works/pi-ai": ">=0.86.0",
-		"@earendil-works/pi-coding-agent": ">=0.86.0",
-		"@earendil-works/pi-tui": ">=0.86.0",
+		"@earendil-works/pi-agent-core": ">=0.87.0 <0.88.0",
+		"@earendil-works/pi-ai": ">=0.87.0 <0.88.0",
+		"@earendil-works/pi-coding-agent": ">=0.87.0 <0.88.0",
+		"@earendil-works/pi-tui": ">=0.87.0 <0.88.0",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {
@@ -64,10 +64,10 @@
 		}
 	},
 	"devDependencies": {
-		"@earendil-works/pi-agent-core": "0.86.0",
-		"@earendil-works/pi-ai": "0.86.0",
-		"@earendil-works/pi-coding-agent": "0.86.0",
-		"@earendil-works/pi-tui": "0.86.0",
+		"@earendil-works/pi-agent-core": "0.87.0",
+		"@earendil-works/pi-ai": "0.87.0",
+		"@earendil-works/pi-coding-agent": "0.87.0",
+		"@earendil-works/pi-tui": "0.87.0",
 		"@types/node": "22.20.1",
 		"@vitejs/plugin-vue": "6.0.8",
 		"playwright-core": "1.61.1",

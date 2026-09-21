@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
 import {
 	SessionManager,
 	buildSessionContext,
+	buildSessionProjection,
 } from "@earendil-works/pi-coding-agent";
 import {
 	hasPendingInstructionToolCalls,
@@ -83,7 +84,7 @@ function assistantToolCallMsg(calls: { id: string; name: string }[], timestamp =
 	};
 }
 
-function toolResultMsg(toolCallId: string, text = "result", isError = false, timestamp = 3000): AgentMessage {
+function toolResultMsg(toolCallId: string, text = "result", isError = false, timestamp = 3000): ToolResultMessage {
 	return {
 		role: "toolResult",
 		toolCallId,
@@ -91,7 +92,7 @@ function toolResultMsg(toolCallId: string, text = "result", isError = false, tim
 		content: [{ type: "text", text }],
 		isError,
 		timestamp,
-	} as AgentMessage;
+	} as ToolResultMessage;
 }
 
 function customPeerMsg(customType: string, text: string, timestamp = 2500): AgentMessage {
@@ -450,7 +451,9 @@ test("compaction preserves retained tail anchors and prunes older anchors", () =
 	sm.appendMessage(assistantTextMsg("POST_COMPACT_REPLY", 4));
 
 	const branch = sm.getBranch();
-	const rawMessages = buildSessionContext(branch).messages;
+	const projection = buildSessionProjection(branch);
+	const rawMessages = projection.messages;
+	assert.equal(projection.entries[0]?.sourceEntry.type, "compaction");
 
 	// In rawMessages:
 	// 0: compaction summary
@@ -498,7 +501,8 @@ test("compaction where all anchors were before cut point returns messages untouc
 	sm.appendCompaction("Summary of old turn", keptId, 100);
 
 	const branch = sm.getBranch();
-	const rawMessages = buildSessionContext(branch).messages;
+	const projection = buildSessionProjection(branch);
+	const rawMessages = projection.messages;
 
 	// Since the only anchor was pruned before compaction, no visible anchor remains
 	const foreignRewritten = [
@@ -653,6 +657,90 @@ test("projectInstructionMessages suppresses older precheckpoint anchors in retai
 		(m) => m.role === "system" && (m as { sections?: Record<string, string | null> }).sections?.["forge-instruction-act-post"] === "POST_CHECKPOINT_RULE",
 	);
 	assert.ok(postMsg, "Post checkpoint delta rendered");
+});
+
+test("canonical projection applies user, assistant, tool, and custom context edits before anchor materialization", () => {
+	const manager = SessionManager.inMemory("/test/canonical-projection");
+	const omittedUserId = manager.appendMessage({ role: "user", content: "OMITTED_USER", timestamp: 1 });
+	manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, {
+		schemaVersion: 1,
+		throughEventId: "ev-before-edits",
+	});
+	const assistantId = manager.appendMessage(assistantToolCallMsg([{ id: "call-1", name: "tool" }], 2));
+	const toolResultId = manager.appendMessage(toolResultMsg("call-1", "ORIGINAL_TOOL", false, 3));
+	const customId = manager.appendCustomMessageEntry("peer", "ORIGINAL_CUSTOM", false);
+	manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, {
+		schemaVersion: 1,
+		throughEventId: "ev-after-edits",
+	});
+	const replacedUserId = manager.appendMessage({ role: "user", content: "ORIGINAL_USER", timestamp: 4 });
+
+	manager.appendContextEdit(omittedUserId, null);
+	manager.appendContextEdit(assistantId, { content: "REPLACED_ASSISTANT" });
+	manager.appendContextEdit(toolResultId, { content: "REPLACED_TOOL" });
+	manager.appendContextEdit(customId, { content: "REPLACED_CUSTOM" });
+	manager.appendContextEdit(replacedUserId, { content: "REPLACED_USER" });
+
+	const branch = manager.getBranch();
+	const projection = buildSessionProjection(branch);
+	assert.deepEqual(
+		projection.entries.map((entry) => entry.sourceEntry.id),
+		branch.map((entry) => entry.id),
+		"Projection retains source-entry provenance, including context edits",
+	);
+	assert.deepEqual(
+		projection.messages.map((message) => `${message.role}:${textOf(message)}`),
+		[
+			"assistant:REPLACED_ASSISTANT",
+			"toolResult:REPLACED_TOOL",
+			"custom:REPLACED_CUSTOM",
+			"user:REPLACED_USER",
+		],
+	);
+
+	const incoming = structuredClone(projection.messages);
+	const materialized = materializeInstructionAnchors(branch, incoming);
+	assert.equal(materialized.length, 6);
+	assert.equal(isInstructionDelivery(materialized[0]), true);
+	assert.equal((materialized[0] as { details?: { throughEventId?: string } }).details?.throughEventId, "ev-before-edits");
+	assert.strictEqual(materialized[1], incoming[0]);
+	assert.strictEqual(materialized[2], incoming[1]);
+	assert.strictEqual(materialized[3], incoming[2]);
+	assert.equal(isInstructionDelivery(materialized[4]), true);
+	assert.equal((materialized[4] as { details?: { throughEventId?: string } }).details?.throughEventId, "ev-after-edits");
+	assert.strictEqual(materialized[5], incoming[3]);
+});
+
+test("canonical context edits remain isolated to their active branch", () => {
+	const manager = SessionManager.inMemory("/test/branch-edit-isolation");
+	const userId = manager.appendMessage({ role: "user", content: "BASE_USER", timestamp: 1 });
+	manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, {
+		schemaVersion: 1,
+		throughEventId: "ev-branch",
+	});
+	const assistantId = manager.appendMessage(assistantTextMsg("BASE_ASSISTANT", 2));
+
+	manager.branch(assistantId);
+	const editId = manager.appendContextEdit(userId, null);
+	const editedBranch = manager.getBranch();
+	const editedProjection = buildSessionProjection(editedBranch);
+	assert.ok(editedProjection.entries.some((entry) => entry.sourceEntry.id === editId));
+	assert.equal(editedProjection.messages.some((message) => textOf(message) === "BASE_USER"), false);
+	const editedMaterialized = materializeInstructionAnchors(editedBranch, structuredClone(editedProjection.messages));
+	assert.equal(isInstructionDelivery(editedMaterialized[0]), true);
+	assert.equal(textOf(editedMaterialized[1]), "BASE_ASSISTANT");
+
+	manager.branch(assistantId);
+	const siblingBranch = manager.getBranch();
+	const siblingProjection = buildSessionProjection(siblingBranch);
+	assert.equal(siblingProjection.entries.some((entry) => entry.sourceEntry.id === editId), false);
+	assert.deepEqual(siblingProjection.messages.map(textOf), ["BASE_USER", "BASE_ASSISTANT"]);
+	const siblingIncoming = structuredClone(siblingProjection.messages);
+	const siblingMaterialized = materializeInstructionAnchors(siblingBranch, siblingIncoming);
+	assert.equal(textOf(siblingMaterialized[0]), "BASE_USER");
+	assert.equal(isInstructionDelivery(siblingMaterialized[1]), true);
+	assert.strictEqual(siblingMaterialized[0], siblingIncoming[0]);
+	assert.strictEqual(siblingMaterialized[2], siblingIncoming[1]);
 });
 
 test("hasPendingInstructionToolCalls tracks tool batches, multi-call partials, and turn boundaries", () => {

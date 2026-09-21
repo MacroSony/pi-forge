@@ -94,8 +94,8 @@ test("characterization: before_agent_start returns full systemPrompt replacement
 	// 3. In default 'replace' mode, the Pi base system prompt is completely discarded.
 	assert.equal(result, undefined);
 
-	const contextResult = await harness.events.context({
-		type: "context",
+	const contextResult = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: [{ role: "user", content: "run something" }],
 	}, context.ctx);
 
@@ -260,8 +260,8 @@ test("characterization: followup turns apply request-frequency regex without rep
 	const initialMessages = [
 		{ role: "user", content: "Initial prompt containing SECRET_TOKEN" },
 	];
-	const firstContextResult = await harness.events.context({
-		type: "context",
+	const firstContextResult = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: initialMessages,
 	}, context.ctx);
 
@@ -279,8 +279,8 @@ test("characterization: followup turns apply request-frequency regex without rep
 		{ role: "assistant", content: "Calling tool..." },
 		{ role: "toolResult", toolCallId: "call_1", content: "Tool output with SECRET_TOKEN" },
 	];
-	const followupContextResult = await harness.events.context({
-		type: "context",
+	const followupContextResult = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: followupMessages,
 	}, context.ctx);
 
@@ -325,8 +325,8 @@ test("characterization: followup turns without request-frequency rules return un
 	}, context.ctx);
 
 	// First request rewrites messages layout
-	const firstResult = await harness.events.context({
-		type: "context",
+	const firstResult = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: [{ role: "user", content: "Initial prompt" }],
 	}, context.ctx);
 	assert.ok(firstResult?.messages);
@@ -336,8 +336,8 @@ test("characterization: followup turns without request-frequency rules return un
 	assert.equal(messageText(firstResult.messages[2]!), "Extra guidance");
 
 	// Followup turn without request-frequency rules preserves natural context with projected leading system
-	const followupResult = await harness.events.context({
-		type: "context",
+	const followupResult = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: [
 			{ role: "user", content: "Initial prompt" },
 			{ role: "assistant", content: "calling tool" },

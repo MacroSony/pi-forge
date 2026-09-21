@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
 import { buildPreview, renderPreview } from "../src/preview.ts";
 import {
 	INSTRUCTION_DELIVERY_TYPE,
@@ -12,7 +13,7 @@ import {
 	type InstructionDeactivateEvent,
 } from "../src/instruction-events.ts";
 import type { LoadedPromptStack, PromptCompileOptions } from "../src/types.ts";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const defaultOptions: PromptCompileOptions = { cwd: "/test" };
 
@@ -34,6 +35,20 @@ function makeStack(id = "test-stack"): LoadedPromptStack {
 	};
 }
 
+function ensureParentLinks<T extends Record<string, unknown>>(entries: T[]): T[] {
+	let prevId: string | null = null;
+	return entries.map((entry, index) => {
+		const id = typeof entry.id === "string" && entry.id ? entry.id : `entry-${index + 1}`;
+		const parentId = "parentId" in entry ? (entry.parentId as string | null) : prevId;
+		prevId = id;
+		return {
+			...entry,
+			id,
+			parentId,
+		};
+	});
+}
+
 function makeContext(options: {
 	entries?: unknown[];
 	leafId?: string | null;
@@ -42,8 +57,11 @@ function makeContext(options: {
 	trusted?: boolean;
 	appendCalls?: unknown[];
 }) {
-	const entries = options.entries ?? [];
-	const leafId = options.leafId !== undefined ? options.leafId : (entries.length ? "leaf-1" : null);
+	const rawEntries = (options.entries ?? []) as Array<Record<string, unknown>>;
+	const entries = ensureParentLinks(rawEntries);
+	const leafId = options.leafId !== undefined
+		? options.leafId
+		: (entries.length ? (entries[entries.length - 1] as { id: string }).id : null);
 	const appendCalls = options.appendCalls ?? [];
 	return {
 		sessionManager: {
@@ -60,6 +78,38 @@ function makeContext(options: {
 			api: "test-api",
 			compat: {
 				supportsMidConvoSystemMessages: options.supportsMidConvoSystemMessages ?? true,
+			},
+		},
+		appendEntry: (type: string, data: unknown) => {
+			appendCalls.push({ type, data });
+		},
+		sendMessage: () => {
+			throw new Error("sendMessage should not be called in pure preview");
+		},
+	} as unknown as ExtensionContext;
+}
+
+function makeRealContext(
+	sm: SessionManager,
+	options?: {
+		systemPrompt?: string;
+		supportsMidConvoSystemMessages?: boolean;
+		trusted?: boolean;
+		appendCalls?: unknown[];
+	},
+) {
+	const appendCalls = options?.appendCalls ?? [];
+	return {
+		sessionManager: sm,
+		getSystemPrompt: () => options?.systemPrompt ?? "Base Pi prompt",
+		getSystemPromptOptions: () => defaultOptions,
+		isProjectTrusted: () => options?.trusted ?? true,
+		model: {
+			provider: "test-provider",
+			id: "test-model",
+			api: "test-api",
+			compat: {
+				supportsMidConvoSystemMessages: options?.supportsMidConvoSystemMessages ?? true,
 			},
 		},
 		appendEntry: (type: string, data: unknown) => {
@@ -644,4 +694,184 @@ test("parent: native rule body and removal are structural, not synthesized prose
  assert.equal(result.preview.messages[2].content,'Added tool "read" is literal user text.');
  assert.match(result.text,/NATIVE_LITERAL_BODY/);
  assert.match(result.text,/Removed system prompt section/,'removal remains in explicitly structural report, not body');
+});
+
+function userMsg(text: string, timestamp = 1000): UserMessage {
+	return { role: "user", content: text, timestamp };
+}
+
+function assistantTextMsg(text: string, timestamp = 2000): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text }],
+		api: "test",
+		provider: "test-provider",
+		model: "test-model",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "stop",
+		timestamp,
+	};
+}
+
+test("Pi0.87 SessionManager context_edit: replacement reflects in preview while raw session history remains intact", () => {
+	const sm = SessionManager.inMemory("/test");
+	const m1 = sm.appendMessage(userMsg("Original user prompt before context edit", 1000));
+	sm.appendMessage(assistantTextMsg("Assistant response", 1100));
+	sm.appendContextEdit(m1, { content: "Canonically edited user prompt" });
+
+	const ctx = makeRealContext(sm);
+	const target = makeStack();
+	const result = buildPreview(ctx, target, defaultOptions);
+
+	// Displayed preview messages reflect the canonical replacement
+	assert.ok(
+		result.preview.messages.some((m) => m.content === "Canonically edited user prompt"),
+		"Preview messages must contain the context_edit replacement content",
+	);
+	assert.ok(
+		!result.preview.messages.some((m) => m.content === "Original user prompt before context edit"),
+		"Preview messages must not contain the original replaced content",
+	);
+	assert.ok(result.text.includes("Canonically edited user prompt"));
+	assert.ok(!result.text.includes("Original user prompt before context edit"));
+
+	// Context edit entry itself does not appear as an additional message
+	assert.equal(result.preview.messages.length, 2);
+
+	// Raw session history in SessionManager remains intact
+	const rawEntries = sm.getEntries();
+	const rawUserEntry = rawEntries.find((e) => e.id === m1);
+	assert.ok(rawUserEntry && rawUserEntry.type === "message");
+	assert.equal((rawUserEntry.message as { content: string }).content, "Original user prompt before context edit");
+});
+
+test("Pi0.87 SessionManager context_edit: omission removes message from preview while raw history is preserved", () => {
+	const sm = SessionManager.inMemory("/test");
+	const m1 = sm.appendMessage(userMsg("Omitted user message", 1000));
+	sm.appendMessage(assistantTextMsg("Assistant response retained", 1100));
+	sm.appendContextEdit(m1, null);
+
+	const ctx = makeRealContext(sm);
+	const target = makeStack();
+	const result = buildPreview(ctx, target, defaultOptions);
+
+	assert.equal(result.preview.messages.length, 1);
+	assert.equal(result.preview.messages[0].role, "assistant");
+	assert.ok(!result.text.includes("Omitted user message"));
+
+	// Raw history still has m1
+	assert.ok(sm.getEntries().some((e) => e.id === m1));
+});
+
+test("Pi0.87 SessionManager compaction branch: latest compaction with retained range and plain metadata anchor", () => {
+	const sm = SessionManager.inMemory("/test");
+	const ev1 = makeActivateEvent("ev-1", "act-1", "Pre-compact rule alpha", 1000);
+	sm.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, ev1);
+	sm.appendMessage(userMsg("Summarized old query", 1100));
+	const anchor1 = sm.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "ev-1" });
+	sm.appendMessage(assistantTextMsg("Old response", 1200));
+
+	sm.appendCompaction("Compacted conversation summary", anchor1, 5000);
+
+	const ev2 = makeActivateEvent("ev-2", "act-2", "Post-compact rule beta", 3000);
+	sm.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, ev2);
+	sm.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "ev-2" });
+	sm.appendMessage(userMsg("Post-compact active query", 3100));
+
+	const ctx = makeRealContext(sm);
+	const target = makeStack();
+	const result = buildPreview(ctx, target, defaultOptions);
+
+	// Pre-compact anchor is projected as checkpoint update
+	const checkpoint = result.preview.messages.find(
+		(m) => m.role === "system" && m.sections?.["forge-instruction-act-1"] === "Pre-compact rule alpha",
+	);
+	assert.ok(checkpoint, "Pre-compact checkpoint update must be present");
+
+	// Compaction summary message is present
+	const summaryMsg = result.preview.messages.find((m) => m.role === "compactionSummary");
+	assert.ok(summaryMsg, "Compaction summary message must be present");
+
+	// Summarized old query is not present in preview messages
+	assert.ok(!result.text.includes("Summarized old query"));
+
+	// Post-compact delta is present
+	const postDelta = result.preview.messages.find(
+		(m) => m.role === "system" && m.sections?.["forge-instruction-act-2"] === "Post-compact rule beta",
+	);
+	assert.ok(postDelta, "Post-compact delta update must be present");
+
+	// Raw history still has the summarized query
+	assert.ok(sm.getEntries().some((e) => e.type === "message" && (e.message as { content?: unknown }).content === "Summarized old query"));
+});
+
+test("Pi0.87 SessionManager branch isolation: preview projects only the active leaf branch", () => {
+	const sm = SessionManager.inMemory("/test");
+	sm.appendMessage(userMsg("Root user query", 1000));
+	const rootId = sm.getLeafId()!;
+
+	// Build Branch A
+	const evA = makeActivateEvent("ev-a", "act-a", "Branch A exclusive rule", 1100);
+	sm.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, evA);
+	sm.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "ev-a" });
+	sm.appendMessage(userMsg("Branch A prompt text", 1200));
+	const leafA = sm.getLeafId()!;
+
+	// Fork Branch B from root
+	sm.branch(rootId);
+	const evB = makeActivateEvent("ev-b", "act-b", "Branch B exclusive rule", 1300);
+	sm.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, evB);
+	sm.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "ev-b" });
+	sm.appendMessage(userMsg("Branch B prompt text", 1400));
+	const leafB = sm.getLeafId()!;
+
+	const target = makeStack();
+
+	// Preview on Branch A
+	sm.branch(leafA);
+	const ctxA = makeRealContext(sm);
+	const resultA = buildPreview(ctxA, target, defaultOptions);
+	assert.ok(resultA.text.includes("Branch A exclusive rule"));
+	assert.ok(resultA.text.includes("Branch A prompt text"));
+	assert.ok(!resultA.text.includes("Branch B exclusive rule"));
+	assert.ok(!resultA.text.includes("Branch B prompt text"));
+
+	// Preview on Branch B
+	sm.branch(leafB);
+	const ctxB = makeRealContext(sm);
+	const resultB = buildPreview(ctxB, target, defaultOptions);
+	assert.ok(resultB.text.includes("Branch B exclusive rule"));
+	assert.ok(resultB.text.includes("Branch B prompt text"));
+	assert.ok(!resultB.text.includes("Branch A exclusive rule"));
+	assert.ok(!resultB.text.includes("Branch A prompt text"));
+});
+
+test("Pi0.87 SessionManager read-only purity: preview does not mutate SessionManager entries or leaf", () => {
+	const sm = SessionManager.inMemory("/test");
+	sm.appendMessage(userMsg("Purity query", 1000));
+	const ev = makeActivateEvent("ev-p", "act-p", "Purity rule", 1100);
+	sm.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, ev);
+	sm.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "ev-p" });
+	sm.appendMessage(assistantTextMsg("Purity answer", 1200));
+
+	const beforeEntries = JSON.stringify(sm.getEntries());
+	const beforeLeaf = sm.getLeafId();
+	const appendCalls: unknown[] = [];
+
+	const ctx = makeRealContext(sm, { appendCalls });
+	const target = makeStack();
+
+	buildPreview(ctx, target, defaultOptions);
+	renderPreview(ctx as any, target);
+
+	assert.equal(JSON.stringify(sm.getEntries()), beforeEntries);
+	assert.equal(sm.getLeafId(), beforeLeaf);
+	assert.equal(appendCalls.length, 0);
 });

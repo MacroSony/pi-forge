@@ -101,6 +101,33 @@ Subagent execution moved out of the main package into the optional `@zihanw/pi-f
 | `@zihanw/pi-forge/src/*` aliases | removed; no replacement (internals) |
 | root loader/profile/catalog/engine re-exports | removed; no replacement (internals) |
 
+## Upstream Pi 0.87 migration
+
+The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 runtime support is not provided (repo dev SDK is pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; development package version remains 0.5.4; 0.5.5 is not published).
+
+### Context hook migration (`context_with_system`)
+
+- **Standard `context` excludes System:** In Pi 0.87, standard `context` lifecycle hooks intentionally exclude System messages. Any prior extension or custom integration that inspected, modified, or relied upon full System context must move to the full `context_with_system` hook.
+- **Unified Forge pipeline:** Forge moves its entire compiler, base prompt replacement, and instruction mode projection pipeline together to `context_with_system`, operating cleanly at the full-transcript boundary without an internal two-phase split.
+- **`before_agent_start` timing:** Any forced System prompt injection via `before_agent_start` continues to execute later in Pi's lifecycle than `context_with_system`.
+
+### Canonical projection and session history
+
+- **`buildSessionProjection` integration:** Runtime execution, the Preview dock, and anchor locator helpers now use Pi 0.87's `buildSessionProjection`. Turn-level `context_edit` omissions, replacements, and `sourceEntry` references are reflected in ephemeral model requests while raw session JSONL history on disk remains untouched.
+- **Leading System message ordering:** The SDK's incoming leading System message always remains first in the request transcript; Forge's own prefix plain metadata anchors are inserted immediately after it, never displacing the request head or user fallback.
+- **Arbitrary preceding rewrites fail closed:** Third-party extensions performing arbitrary message rewrites prior to Forge must maintain unique ordered alignment with the canonical session projection. Ambiguous or destructive preceding rewrites still fail closed.
+
+### Continuations and settlement lifecycle
+
+- **`agent_end` vs. `agent_settled`:** `agent_end` remains a safe boundary to commit uncommitted metadata anchors after a turn or tool batch. However, the compile cycle and busy fence reset only on `agent_settled`. This guarantees that `agent_before_settle` continuations preserve compiled Preset inputs and active instruction modes across low-level runs without dropping prompt context.
+
+### Guardrails and semantics unchanged
+
+- **Project trust:** Mutating instructions, activating modes, or running Agent control tools requires an explicitly trusted project (`isProjectTrusted()`).
+- **`sourceRevision` stale-save guard:** All mode definitions and Preset binding edits require the exact `sourceRevision` (sha256 of raw disk bytes). Stale saves fail with `409 Conflict`.
+- **Save ≠ Use:** Saving a mode or Preset binding updates library definitions on disk only; it never activates the mode into an active session.
+- **Upstream defect status:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched; compaction checkpoint placement is unchanged. Existing legacy session carriers remain untouched without automatic migration, and Oh My Pi (OMP) is not supported or promised.
+
 ## Compatibility notes
 
 - The wire shape of the host port is additive across `FORGE_HOST_PORT_VERSION = 1`; unknown operations are rejected with a plain `{ ok: false, error }` result (`"Unknown Forge host operation: …"`), not a thrown error, and optional packages must treat any operation failure as terminal for that request.

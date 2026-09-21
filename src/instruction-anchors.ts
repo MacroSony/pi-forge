@@ -1,8 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
-	buildContextEntries,
-	sessionEntryToContextMessages,
+	buildSessionProjection,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -182,6 +181,7 @@ export function instructionContextMatches(expected: readonly AgentMessage[], inc
 export function materializeInstructionAnchors(
 	entries: readonly unknown[],
 	messages: AgentMessage[],
+	leafId?: string | null,
 ): AgentMessage[] {
 	if (!Array.isArray(entries)) {
 		throw new TypeError("Invalid entries: expected an array");
@@ -194,13 +194,14 @@ export function materializeInstructionAnchors(
 		return messages;
 	}
 
-	const contextEntries = buildContextEntries(entries as SessionEntry[]);
+	const projection = buildSessionProjection(entries as SessionEntry[], leafId);
 
 	let hasVisibleAnchor = false;
-	for (const entry of contextEntries) {
-		if (isInstructionAnchorEntry(entry)) {
+	for (const projectedEntry of projection.entries) {
+		const sourceEntry = projectedEntry.sourceEntry;
+		if (isInstructionAnchorEntry(sourceEntry)) {
 			hasVisibleAnchor = true;
-			validateInstructionAnchorData((entry as { data?: unknown }).data);
+			validateInstructionAnchorData((sourceEntry as { data?: unknown }).data);
 		}
 	}
 
@@ -208,8 +209,7 @@ export function materializeInstructionAnchors(
 		return messages;
 	}
 
-	const rawMessages = contextEntries.flatMap(sessionEntryToContextMessages);
-	const alignment = contextAlignment(rawMessages, messages);
+	const alignment = contextAlignment(projection.messages, messages);
 	if (!alignment) {
 		throw new Error(
 			"Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)",
@@ -217,30 +217,39 @@ export function materializeInstructionAnchors(
 	}
 
 	const materialized: AgentMessage[] = [];
-	let messageIndex = 0;
+	let projectedMessageIndex = 0;
 
-	for (const entry of contextEntries) {
-		if (isInstructionAnchorEntry(entry)) {
-			const anchorMessage = instructionAnchorMessage(entry);
+	for (const projectedEntry of projection.entries) {
+		const sourceEntry = projectedEntry.sourceEntry;
+		if (isInstructionAnchorEntry(sourceEntry)) {
+			const anchorMessage = instructionAnchorMessage(sourceEntry);
 			if (anchorMessage) {
 				materialized.push(anchorMessage);
 			}
-			continue;
 		}
 
-		const entryMessages = sessionEntryToContextMessages(entry);
-		for (let i = 0; i < entryMessages.length; i++) {
-			const incomingIndex = alignment[messageIndex++];
+		for (const _projectedMessage of projectedEntry.messages) {
+			const incomingIndex = alignment[projectedMessageIndex++];
 			if (incomingIndex !== undefined) materialized.push(messages[incomingIndex]);
 		}
 	}
 
-	if (messageIndex !== rawMessages.length) {
+	if (projectedMessageIndex !== projection.messages.length) {
 		throw new Error(
-			`Cannot materialize instruction anchors: context message count mismatch (processed ${messageIndex} of ${rawMessages.length} session messages)`,
+			`Cannot materialize instruction anchors: context message count mismatch (processed ${projectedMessageIndex} of ${projection.messages.length} projected session messages)`,
 		);
 	}
 
+	// Idle changes can predate Pi's first persisted System entry. Their temporary
+	// controls must not displace the request head (especially user fallback).
+	// Cross only our injected prefix markers, never reorder incoming dialogue.
+	if (messages[0]?.role === "system") {
+		const headIndex = materialized.indexOf(messages[0]);
+		if (headIndex > 0) {
+			materialized.splice(headIndex, 1);
+			materialized.unshift(messages[0]);
+		}
+	}
 	return materialized;
 }
 

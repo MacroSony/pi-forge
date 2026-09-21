@@ -86,6 +86,33 @@ Subagent 执行功能从主包移入可选包 `@zihanw/pi-forge-subagents`（要
 | `@zihanw/pi-forge/src/*` 别名 | 已移除；无替代（内部实现） |
 | 根部的 loader/profile/catalog/engine 再导出 | 已移除；无替代（内部实现） |
 
+## 上游 Pi 0.87 迁移
+
+即将发布的 pi-forge 0.5.5 要求上游 Pi 版本 `>=0.87.0 <0.88.0`。不提供对 0.86 的双重运行时支持（仓库开发 SDK 固定为 `0.87.0`，peer 范围为 `>=0.87.0 <0.88.0`；开发树版本仍为 0.5.4，0.5.5 尚未发布）。
+
+### 上下文 Hook 迁移（`context_with_system`）
+
+- **标准 `context` 排除 System 消息：** 在 Pi 0.87 中，标准 `context` 生命周期 hook 默认排除 System 消息。之前依赖或操作完整 System 上下文的第三方扩展必须迁移至完整的 `context_with_system` hook。
+- **统一的 Forge 流水线：** Forge 将其整个编译器、基础提示词替换与指令模式投影流水线完整移至 `context_with_system`，在完整转录边界上统一运行，无需内部两阶段切分。
+- **`before_agent_start` 注入时机：** 任何通过 `before_agent_start` 强制注入的 System 提示词在 Pi 执行流中仍然晚于 `context_with_system` 执行。
+
+### 规范会话投影与转录隔离
+
+- **集成 `buildSessionProjection`：** 运行时执行、Preview 预览与锚点定位器均采用 Pi 0.87 的 `buildSessionProjection`。轮次级的 `context_edit` 忽略（omission）、替换（replacement）以及 `sourceEntry` 引用均能正确反映在瞬态请求中，而磁盘上的原始 JSONL 会话历史完全保持不变。
+- **首条 System 消息顺序：** SDK 传入的 leading System 提示词在请求转录中始终保持在第一位；Forge 自身的前缀纯元数据锚点紧随其后插入，绝不会置换请求头部或用户回退位置。
+- **前置任意改写 Fail-Closed：** 若第三方扩展在 Forge 之前执行了破坏与规范投影唯一有序对齐的改写，Forge 依然 fail-closed 报错中止。
+
+### 续跑与生命周期结算
+
+- **`agent_end` 与 `agent_settled` 的职责划分：** `agent_end` 仍是工具批次或当前轮次结束时提交未提交元数据锚点的安全时机。但编译周期与 busy fence 仅在 `agent_settled` 时重置。这保证了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 输入与活跃指令模式。
+
+### 防护机制与语义保持
+
+- **项目信任：** 激活指令模式或执行 Agent 控制工具必须处于受信任项目（`isProjectTrusted()`）。
+- **`sourceRevision` 防脏写：** 模式定义与预设绑定保存必须提供基于磁盘原始字节的 exact `sourceRevision`（sha256），并发冲突返回 `409 Conflict`。
+- **Save ≠ Use：** 保存模式或预设绑定仅更新磁盘定义，绝不自动将其激活入当前会话。
+- **上游缺陷状态：** 上游 Pi 元数据切分与语义截断缺陷未修复；压缩检查点位置保持不变；旧会话中的 carrier 保持原样不自动迁移；不支持也不承诺 OMP（Oh My Pi）。
+
 ## 兼容性说明
 
 - Host port 的 wire 结构在 `FORGE_HOST_PORT_VERSION = 1` 内只做增量扩展；未知操作会以普通的 `{ ok: false, error }` 结果拒绝（`"Unknown Forge host operation: …"`），而不是抛出异常。可选包必须把任何操作失败视为该请求的终态。

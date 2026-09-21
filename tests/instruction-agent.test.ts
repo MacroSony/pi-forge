@@ -825,7 +825,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 					timestamp: Date.now(),
 				};
 				harness.manager.appendMessage(foreignMsg);
-				harness.session.agent.state.messages = [...harness.session.agent.state.messages, foreignMsg];
+				harness.session.refreshContext();
 
 				// Turn 1: activate review mode and verify foreign sections survive preset projection and instruction projection
 				await harness.prompt("/system-update use review");

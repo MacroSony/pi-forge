@@ -278,8 +278,8 @@ export default function register(api: any) {
 		prompt: "hello",
 	}, context.ctx);
 	assert.equal(first, undefined);
-	const firstContext = await harness.events.context({
-		type: "context",
+	const firstContext = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: [{ role: "user", content: "hello" }],
 	}, context.ctx);
 	assert.equal(firstContext?.messages[0]?.content, "Macro macro-v1\n\nslot-v1");
@@ -299,8 +299,8 @@ export default function register(api: any) {
 		prompt: "hello",
 	}, context.ctx);
 	assert.equal(second, undefined);
-	const secondContext = await harness.events.context({
-		type: "context",
+	const secondContext = await harness.events.context_with_system({
+		type: "context_with_system",
 		messages: [{ role: "user", content: "hello" }],
 	}, context.ctx);
 	assert.equal(secondContext?.messages[0]?.content, "Macro macro-v2\n\nslot-v2");
@@ -322,8 +322,8 @@ export default function register(api: any) {
 		prompt: "hello",
 	}, replacementContext.ctx);
 	assert.equal(third, undefined);
-	const thirdContext = await replacementHarness.events.context({
-		type: "context",
+	const thirdContext = await replacementHarness.events.context_with_system({
+		type: "context_with_system",
 		messages: [{ role: "user", content: "hello" }],
 	}, replacementContext.ctx);
 	assert.equal(thirdContext?.messages[0]?.content, "Macro macro-v3\n\nslot-v3");
@@ -378,8 +378,8 @@ export default function register(api: any) {
 			prompt: "hello",
 		}, context.ctx);
 		assert.equal(result, undefined);
-		const contextResult = await harness.events.context({
-			type: "context",
+		const contextResult = await harness.events.context_with_system({
+			type: "context_with_system",
 			messages: [{ role: "user", content: "hello" }],
 		}, context.ctx);
 		assert.equal(contextResult?.messages[0]?.content, "Global global-macro\n\nglobal-slot\n\nProject project-macro\n\nproject-slot");
@@ -504,14 +504,14 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 	}, ctx);
 	assert.equal(startResult, undefined);
 
-	const firstContext = await harness.events.context({ type: "context", messages: [{ role: "user", content: "latest", timestamp: 1 }] }, ctx);
+	const firstContext = await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "user", content: "latest", timestamp: 1 }] }, ctx);
 	assert.equal(firstContext.messages.length, 3);
 	assert.equal(firstContext.messages[0].role, "system");
 	assert.equal(firstContext.messages[0].content, "base");
 	assert.equal(firstContext.messages[1].content[0].text, "before");
 	assert.equal(statuses["pi-forge-diagnostics"], "forge:1e/1w");
 
-	const secondContext = await harness.events.context({ type: "context", messages: [{ role: "user", content: "tool follow-up", timestamp: 2 }] }, ctx);
+	const secondContext = await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "user", content: "tool follow-up", timestamp: 2 }] }, ctx);
 	assert.ok(secondContext?.messages);
 	assert.equal(secondContext.messages.length, 2);
 	assert.equal(secondContext.messages[0].role, "system");
@@ -552,7 +552,7 @@ test("request-frequency rules run on tool-result follow-up requests over the nat
 	}, ctx);
 
 	// First request of the user turn: full compilation applies both rules.
-	const first = await harness.events.context({ type: "context", messages: [{ role: "user", content: "sk-first turn-secret", timestamp: 1 }] }, ctx);
+	const first = await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "user", content: "sk-first turn-secret", timestamp: 1 }] }, ctx);
 	assert.equal(first.messages.length, 2);
 	assert.equal(first.messages[0].role, "system");
 	assert.equal(first.messages[0].content, "System.");
@@ -566,7 +566,7 @@ test("request-frequency rules run on tool-result follow-up requests over the nat
 		{ role: "assistant", content: [{ type: "text", text: "calling a tool" }], timestamp: 2 },
 		{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "leaked sk-second" }], timestamp: 3 },
 	];
-	const second = await harness.events.context({ type: "context", messages: followUpMessages }, ctx);
+	const second = await harness.events.context_with_system({ type: "context_with_system", messages: followUpMessages }, ctx);
 	assert.ok(second);
 	assert.equal(second.messages.length, 4);
 	// The request rule re-scrubs older transcript messages on the follow-up
@@ -579,7 +579,7 @@ test("request-frequency rules run on tool-result follow-up requests over the nat
 	assert.equal(second.messages[3].content[0].text, "leaked [REDACTED]");
 
 	// Follow-up with nothing to scrub returns the natural context untouched.
-	const third = await harness.events.context({ type: "context", messages: [{ role: "user", content: "clean", timestamp: 4 }] }, ctx);
+	const third = await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "user", content: "clean", timestamp: 4 }] }, ctx);
 	assert.ok(third);
 	assert.equal(third.messages.length, 2);
 	assert.equal(third.messages[0].role, "system");

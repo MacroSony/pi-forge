@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { LoadedPromptStack, PromptCompileOptions, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview } from "./web-editor/index.ts";
 /**

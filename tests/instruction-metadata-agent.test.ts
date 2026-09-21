@@ -587,9 +587,12 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			assert.equal(h.fetchAttempts, 0);
 		});
 	});
-	await suite.test("queued legitimate peer messages remain aligned despite SDK persistence timestamp drift", async () => {
+	await suite.test("queued legitimate peer messages follow the canonical SDK projection without duplication", async () => {
 		const env = setupProject(); let peerApi: any;
-		await withHarness(env, { native: true, extensionFactories: [(pi: any) => { peerApi = pi; }] }, async h => {
+		const incomingContexts: any[][] = [];
+		await withHarness(env, { native: true,
+			beforeForgeExtensionFactories: [(pi: any) => { pi.on("context_with_system", (event: any) => { incomingContexts.push(structuredClone(event.messages)); }); }],
+			extensionFactories: [(pi: any) => { peerApi = pi; }] }, async h => {
 			await h.prompt("/system-update use review");
 			h.setOnDriver(async () => {
 				peerApi.sendMessage({customType: "legitimate-peer", content: "QUEUED_PEER_FACT", display: false},
@@ -601,12 +604,14 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			h.setResponses([{toolCalls: [{name: "fake_driver", id: "delayed-peer"}]}, "AFTER_PEER"]);
 			await h.prompt("Receive a peer during a tool batch");
 			assert.equal(h.streamContexts.length, 2, "a legitimate queued peer must not abort the follow-up");
-			// Pi persisted the queued peer but omits it from this tool follow-up.
-			assert.equal(h.streamContexts[1].messages.some((m: any) => messageContains(m, "QUEUED_PEER_FACT")), false);
+			// Pi 0.87 rebuilds from SessionManager before each request: the queued
+			// peer is already present BEFORE Forge, not reconstructed by our mapper.
+			assert.equal(incomingContexts[1].filter((m: any) => messageContains(m, "QUEUED_PEER_FACT")).length, 1);
+			assert.equal(h.streamContexts[1].messages.filter((m: any) => messageContains(m, "QUEUED_PEER_FACT")).length, 1);
 			assert.ok(h.streamContexts[1].messages.some((m: any) => messageContains(m, "QUEUED_RULE_TWO")));
 			const persisted = branchOf(h).find((e: any) => e.type === "custom_message" && e.customType === "legitimate-peer");
 			const live = h.session.agent.state.messages.find((m: any) => m.role === "custom" && m.customType === "legitimate-peer");
-			assert.ok(Date.parse(persisted.timestamp) > live.timestamp, "real SDK queue creates a later envelope timestamp");
+			assert.equal(Date.parse(persisted.timestamp), live.timestamp, "public finalized state reflects the canonical persisted envelope");
 			h.setResponses(["NEXT_PEER_TURN"]); await h.prompt("A new natural user turn");
 			assert.ok(h.streamContexts[2].messages.some((m: any) => messageContains(m, "QUEUED_PEER_FACT")), "Pi includes the persisted peer at the next user turn");
 			assertPlainAnchors(h, 2); assert.equal(h.fetchAttempts, 0);

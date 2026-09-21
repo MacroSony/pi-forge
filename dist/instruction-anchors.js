@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { buildContextEntries, sessionEntryToContextMessages, } from "@earendil-works/pi-coding-agent";
+import { buildSessionProjection, } from "@earendil-works/pi-coding-agent";
 import { INSTRUCTION_DELIVERY_TYPE, } from "./instruction-protocol.js";
 const CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F-\u009F]/;
 const MAX_CURSOR_LENGTH = 128;
@@ -156,7 +156,7 @@ export function instructionContextMatches(expected, incoming) {
  * - Preserves all original message object references from incoming messages.
  * - Never guesses by timestamps or text matching; fails closed if context was modified by preceding extensions.
  */
-export function materializeInstructionAnchors(entries, messages) {
+export function materializeInstructionAnchors(entries, messages, leafId) {
     if (!Array.isArray(entries)) {
         throw new TypeError("Invalid entries: expected an array");
     }
@@ -166,41 +166,50 @@ export function materializeInstructionAnchors(entries, messages) {
     if (entries.length === 0) {
         return messages;
     }
-    const contextEntries = buildContextEntries(entries);
+    const projection = buildSessionProjection(entries, leafId);
     let hasVisibleAnchor = false;
-    for (const entry of contextEntries) {
-        if (isInstructionAnchorEntry(entry)) {
+    for (const projectedEntry of projection.entries) {
+        const sourceEntry = projectedEntry.sourceEntry;
+        if (isInstructionAnchorEntry(sourceEntry)) {
             hasVisibleAnchor = true;
-            validateInstructionAnchorData(entry.data);
+            validateInstructionAnchorData(sourceEntry.data);
         }
     }
     if (!hasVisibleAnchor) {
         return messages;
     }
-    const rawMessages = contextEntries.flatMap(sessionEntryToContextMessages);
-    const alignment = contextAlignment(rawMessages, messages);
+    const alignment = contextAlignment(projection.messages, messages);
     if (!alignment) {
         throw new Error("Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)");
     }
     const materialized = [];
-    let messageIndex = 0;
-    for (const entry of contextEntries) {
-        if (isInstructionAnchorEntry(entry)) {
-            const anchorMessage = instructionAnchorMessage(entry);
+    let projectedMessageIndex = 0;
+    for (const projectedEntry of projection.entries) {
+        const sourceEntry = projectedEntry.sourceEntry;
+        if (isInstructionAnchorEntry(sourceEntry)) {
+            const anchorMessage = instructionAnchorMessage(sourceEntry);
             if (anchorMessage) {
                 materialized.push(anchorMessage);
             }
-            continue;
         }
-        const entryMessages = sessionEntryToContextMessages(entry);
-        for (let i = 0; i < entryMessages.length; i++) {
-            const incomingIndex = alignment[messageIndex++];
+        for (const _projectedMessage of projectedEntry.messages) {
+            const incomingIndex = alignment[projectedMessageIndex++];
             if (incomingIndex !== undefined)
                 materialized.push(messages[incomingIndex]);
         }
     }
-    if (messageIndex !== rawMessages.length) {
-        throw new Error(`Cannot materialize instruction anchors: context message count mismatch (processed ${messageIndex} of ${rawMessages.length} session messages)`);
+    if (projectedMessageIndex !== projection.messages.length) {
+        throw new Error(`Cannot materialize instruction anchors: context message count mismatch (processed ${projectedMessageIndex} of ${projection.messages.length} projected session messages)`);
+    }
+    // Idle changes can predate Pi's first persisted System entry. Their temporary
+    // controls must not displace the request head (especially user fallback).
+    // Cross only our injected prefix markers, never reorder incoming dialogue.
+    if (messages[0]?.role === "system") {
+        const headIndex = materialized.indexOf(messages[0]);
+        if (headIndex > 0) {
+            materialized.splice(headIndex, 1);
+            materialized.unshift(messages[0]);
+        }
     }
     return materialized;
 }

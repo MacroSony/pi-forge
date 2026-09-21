@@ -248,17 +248,22 @@ This file tracks the currently implemented feature surface for agent profiles, t
 
 ## Instruction Modes and System Updates
 
+- Upstream host requirement: Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; no dual 0.86 runtime support claim).
 - File-backed instruction mode definitions stored in `.pi/forge/instruction-modes/<id>.json` (project scope) and `~/.pi/forge/instruction-modes/<id>.json` (global scope) with schema `schemaVersion: 1`, `type: "pi-forge.instruction-mode"`.
 - Literal text content (up to 100,000 characters) without macro, template, or script evaluation.
 - Tool modification patches supporting `add` and `remove` arrays (tool IDs ≤ 128 characters, no whitespace/controls/wildcards, up to 256 tools per array). Modes support `add` and `remove` ONLY; candidate `only`/allowlist is not implemented.
 - Fail-closed project-over-global shadowing for bare IDs; invalid local definitions fail closed with diagnostics and never fall back to global definitions.
 - Scoped selectors (`project:<id>` and `global:<id>`) for targeting exact definitions.
 - Local execution with zero inference cost: `/system-update` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
+- Unified `context_with_system` lifecycle: whole compiler, base prompt replacement, and instruction mode projection pipeline moved to `context_with_system` without an internal two-phase split.
+- Canonical session projection via `buildSessionProjection`: runtime, preview, and anchor locator helpers reflect turn-level `context_edit` omissions, replacements, and `sourceEntry` tracking without mutating raw session JSONL history on disk.
+- Leading System prompt preservation: SDK incoming leading System message always remains first; Forge prefix plain metadata delivery anchors are inserted immediately after it.
+- Settlement lifecycle and continuations: `agent_end` acts as an anchor commit boundary after tool batches or turns; compile cycle and busy fence reset only on `agent_settled` so `agent_before_settle` continuations preserve compiled Preset inputs.
 - Immediate executable tool policy synchronization (`setActiveTools`) paired with next-model-request prompt text and section declaration delivery. Running tool batches are not killed mid-flight.
 - Top-level Preset policy precedence: mode additions cannot enable tools denied by the active Preset (`tools.deny`); tool removals win globally across all active modes.
 - Tool baseline recovery: restores session tools to a pristine baseline upon mode deactivation, adopting a conservative baseline for legacy sessions without a recorded baseline.
 - Delivery via plain `custom` session entries carrying cursor-only metadata (`pi-forge-instruction-delivery` with `{ schemaVersion: 1, throughEventId }`), replacing transcript `sendMessage` steering and `custom_message` carriers.
-- Pre-compilation ordinal materialization into ephemeral in-memory markers at exact session positions matching transcript order.
+- Pre-compilation ordinal materialization into ephemeral in-memory markers at exact session positions matching canonical projection order.
 - Request-only projection to native `SystemMessage.sections` (`forge-instruction-<id>`) when supported by the provider, or fallback attributed user timeline updates (`[pi-forge instruction update]`).
 - Compaction input characterization: metadata delivery anchors and request-only rule text do not enter summarizer inputs while dialogue history is preserved.
 - Backward compatibility: legacy `custom_message` delivery entries remain readable and recoverable without disk migration or summary rewrites.

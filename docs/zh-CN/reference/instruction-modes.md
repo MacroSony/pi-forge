@@ -6,7 +6,7 @@ Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词
 
 ## 环境要求与安装
 
-- **宿主版本：** Pi `>= 0.86.0`。
+- **宿主版本：** Pi `>=0.87.0 <0.88.0`（仓库开发 SDK 固定为 `0.87.0`，peer 范围为 `>=0.87.0 <0.88.0`；不声称对 0.86 的双重运行时支持；当前开发树软件包版本仍为 0.5.4，0.5.5 尚未发布）。
 - **项目信任：** 激活指令模式、预设绑定或添加手动指令需要项目处于受信任状态（`isProjectTrusted()`）。
 
 指令模式为 JSON 文件，存放在以下目录之一：
@@ -161,6 +161,10 @@ Web 编辑器在顶部导航栏下方提供了可折叠展开的**会话指令�
 
 ## 生命周期与工具同步
 
+- **统一的 `context_with_system` 流水线：** 在 Pi 0.87 中，标准 `context` 生命周期 hook 默认排除 System 消息。Forge 将完整编译器、基础提示词替换与指令模式投影流水线全部移至 `context_with_system`，无需内部两阶段拆分。
+- **使用 `buildSessionProjection` 规范投影：** 运行时、预览与锚点定位基于 Pi 0.87 的规范 `buildSessionProjection`（支持 `context_edit` 的 omission、replacement 与 `sourceEntry`），确保瞬态请求拼装准确反映轮次上下文编辑，同时保持磁盘上的原始会话历史完全不变。
+- **保持 Leading System 在首位：** SDK 传入的 leading System 始终保持在首位，Forge 自身的前缀纯元数据锚点紧跟其后插入。
+- **续跑与结算生命周期：** `agent_end` 仍是安全的落锚提交时机，但编译周期与 busy fence 仅在 `agent_settled` 时重置。这确保了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 状态。
 - **立即工具同步 vs. 下次请求提示词生效：**
   - 可执行工具策略在模式激活时**立即同步**（`pi.setActiveTools()`），被策略禁用的工具在执行期立即被拦截。
   - 提示词文本与原生 System 分段或 fallback 用户更新在**下一次模型请求边界**生效。
@@ -186,7 +190,7 @@ Web 编辑器在顶部导航栏下方提供了可折叠展开的**会话指令�
 
 Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增量：
 
-1. **编译前物化（Materialize）：** 扫描会话条目中的纯 `custom` 元数据锚点（`pi-forge-instruction-delivery`）。在请求上下文边界（`prepareInstructionMessages`）校验元数据，并严格按其在会话转录中的序数位置物化为内存中的瞬态标记，绝不在磁盘转录中伪造对话消息。
+1. **编译前物化（Materialize）：** 扫描通过 `buildSessionProjection` 规范投影后的会话条目中的纯 `custom` 元数据锚点（`pi-forge-instruction-delivery`）。在请求上下文边界（`prepareInstructionMessages`）校验元数据，并严格按其在投影转录中的序数位置物化为内存中的瞬态标记，绝不在磁盘转录中伪造对话消息或修改原始历史。
 2. **规则投影（Project）：** 由 `projectInstructionMessages` 将物化后的增量转化为适配当前模型的呈现形式：
    - **Native 投递：** 当模型服务商声明支持会话中系统消息（`compat.supportsMidConvoSystemMessages === true`）时，增量以 `SystemMessage.sections`（以 `forge-instruction-<id>` 为 key）注入，关闭时发送 null patch。Native 投递完全依赖服务商 capability 标记，并非所有提供商都支持。
    - **Fallback 投递：** 对不支持原生系统更新的模型，增量以带来源标记的时间线用户消息（`[pi-forge instruction update]`）投递。Forge 绝不折叠或篡改首条 leading system prompt，不把用户/工具对话提升为系统权限。
@@ -203,7 +207,10 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 
 ## 兼容性与安全边界
 
-- **前置扩展上下文改写：** Pi 允许 `context` hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与会话记录有唯一的有序对应，否则中止而非猜测。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突。需审查后调整冲突插件顺序或行为；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
+- **要求上游 Pi 0.87：** 必须使用上游 Pi `>=0.87.0 <0.88.0`。不提供对 0.86 的双重运行时支持。之前在 `context` hook 中操作或读取完整 System 消息的第三方扩展必须迁移到 `context_with_system` 完整 hook。
+- **`before_agent_start` 注入时机：** `before_agent_start` 阶段强制注入的 System 提示词在 Pi 执行流中仍然晚于 `context_with_system` 生效。
+- **前置扩展上下文改写：** Pi 允许 hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与规范会话投影有唯一的有序对应，否则中止而非猜测（fail-closed）。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
+- **上游缺陷与协议限制：** 上游 Pi 元数据分块及语义截断缺陷（semantic-cut defect）未被修复，压缩检查点位置保持不变。旧会话中的 `custom_message` 载体条目保持原样不进行自动迁移；若对此类会话执行压缩，旧载体仍可能污染摘要输入。不支持也不承诺 OMP（Oh My Pi）。
 - **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/payload` 或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
 - **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界；pi-forge 提供保守的 Provider 托管与缓存预警，不保证零 KV 缓存失效，亦不保证特定缓存命中率。
 - **沙盒免责：** 指令模式不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
@@ -222,7 +229,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 - Parent 核心防护：源版本一致性保障、外部新增绑定防脏写检测、生命周期与重入安全围栏。
 - 工具补丁仅支持 `add` 与 `remove`；候选的 `only`/allowlist 未实现。
 - 提供保守的 Provider 托管与缓存预警；不进行自动旧数据迁移，不重写历史摘要；无 Pi split patch；不声称 forceprompt、warming、autooverflow 或远程模型验收保证。
-- 父级 build 与完整 verify 已通过：730 个 Node 测试、33 个浏览器测试；软件包版本保持在 0.5.4，发布、代码推送与用户宿主 `/reload` 属于独立的授权操作。
+- 父级 build 与完整 verify 已通过：Pi 0.87.0 下 750 个 Node 测试和 35 个浏览器测试；开发树软件包版本仍为 0.5.4，0.5.5 尚未发布，发布、代码推送与用户宿主 `/reload` 属于独立的授权操作。
 
 
 文件路径校验会拒绝检查时已存在的符号链接，但不能隔离另一个本地进程并发替换目录的攻击；源版本比较也不是跨进程锁。不要把资源编辑用于不可信进程可竞争修改的共享目录。

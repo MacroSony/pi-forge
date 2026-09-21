@@ -9,7 +9,7 @@ import { projectInstructionMessages } from "../instruction-projection.js";
 import { isInstructionDelivery } from "../instruction-protocol.js";
 import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
 import { hasResourcePolicy } from "../policy.js";
-import { buildContextEntries, sessionEntryToContextMessages, } from "@earendil-works/pi-coding-agent";
+import { buildSessionProjection, } from "@earendil-works/pi-coding-agent";
 import { hasPendingInstructionToolCalls, instructionContextMatches, materializeInstructionAnchors, } from "../instruction-anchors.js";
 import { getCurrentBranchEntries, persistInstructionDelivery, persistInstructionEvent, persistInstructionTools, readInstructionSession, } from "../session-adapter.js";
 function isPlainObject(value) {
@@ -142,8 +142,8 @@ export function createInstructionRuntime(pi, workspace, tools) {
         for (const event of pendingEvents(ctx))
             persistInstructionDelivery(pi, event.eventId);
     }
-    function rawSessionMessages(ctx) {
-        return buildContextEntries(getCurrentBranchEntries(ctx)).flatMap(sessionEntryToContextMessages);
+    function canonicalSessionMessages(ctx) {
+        return buildSessionProjection(getCurrentBranchEntries(ctx)).messages;
     }
     function prepareMessages(raw, ctx) {
         context = ctx;
@@ -153,7 +153,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             if (hasPendingInstructionToolCalls(raw)) {
                 throw new Error("Cannot prepare instruction anchors during an incomplete tool batch.");
             }
-            if (!instructionContextMatches(rawSessionMessages(ctx), raw)) {
+            if (!instructionContextMatches(canonicalSessionMessages(ctx), raw)) {
                 throw new Error("Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)");
             }
             persistPendingAnchors(ctx);
@@ -849,7 +849,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             return;
         // Interrupted batches may leave an incomplete current tail. Keep intent
         // pending rather than anchoring between its call and a later result.
-        if (hasPendingInstructionToolCalls(rawSessionMessages(ctx)))
+        if (hasPendingInstructionToolCalls(canonicalSessionMessages(ctx)))
             return;
         persistPendingAnchors(ctx);
     }

@@ -67,6 +67,16 @@ Each coherent lane requires full verification. Project Pi dependency/minimum-ver
 
 After successful human CLI dogfooding, the owner approved bringing Session observability forward: a Web activity panel reads a derived view from the instruction runtime and sends human off/reset through the same coordinator. It does not introduce a persisted state store, a new package port, binding authorization, or a mode-library editor. Mutations are fenced by session/leaf/revision (including the runtime instance), and stale/retired hosts fail closed. Browser polling is local and never starts inference. Compaction-input characterization may run alongside this UI lane, but summary placement and semantic-model behavior require experiments before changing the projection design.
 
+### Pi 0.87 migration amendment
+
+In Pi 0.87, standard `context` lifecycle hooks intentionally exclude System messages. Forge aligns with Pi 0.87 transcript and projection architecture through the following invariants:
+
+1. **Unified `context_with_system` pipeline:** The entire compiler, base prompt replacement, and instruction mode projection pipeline moved from `context` to `context_with_system` without an internal two-phase split.
+2. **Canonical session projection (`buildSessionProjection`):** Runtime execution, Preview, and anchor helpers build against Pi 0.87's `buildSessionProjection` (handling `context_edit` omissions, replacements, and `sourceEntry`), ensuring ephemeral prompt requests reflect turn edits without modifying raw session history on disk.
+3. **Leading System preservation:** The SDK's incoming leading System message always remains first; Forge's own prefix plain metadata anchors are inserted immediately after it.
+4. **Settlement lifecycle and continuations:** `agent_end` remains a safe anchor opportunity to commit uncommitted anchors after tool execution or turn completion. However, the compile cycle and busy fence reset only on `agent_settled`, ensuring `agent_before_settle` continuations do not lose compiled Preset inputs.
+5. **Compatibility baseline:** Repo dev SDK is pinned to `0.87.0` with peer range `>=0.87.0 <0.88.0` (no dual 0.86 runtime support claim; development package version remains 0.5.4; 0.5.5 is not published; parent build and full verification passed on Pi 0.87.0 (750 Node / 35 browser)). Upstream metadata chunking and semantic-cut defects remain unfixed upstream; legacy session carriers remain untouched, and Oh My Pi (OMP) is not supported or promised.
+
 ## Extension port contract (0.5.0)
 
 The 0.5.0 extension contract is part of the breaking release. It is a trusted-extension port, not a security boundary.

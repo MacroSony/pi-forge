@@ -30,7 +30,7 @@ export declare function instructionContextMatches(expected: readonly AgentMessag
  * - Preserves all original message object references from incoming messages.
  * - Never guesses by timestamps or text matching; fails closed if context was modified by preceding extensions.
  */
-export declare function materializeInstructionAnchors(entries: readonly unknown[], messages: AgentMessage[]): AgentMessage[];
+export declare function materializeInstructionAnchors(entries: readonly unknown[], messages: AgentMessage[], leafId?: string | null): AgentMessage[];
 /**
  * Checks whether the current turn has in-flight or unresolved tool calls.
  *

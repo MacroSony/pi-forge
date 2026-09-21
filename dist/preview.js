@@ -1,3 +1,4 @@
+import { buildSessionProjection, } from "@earendil-works/pi-coding-agent";
 import { contentText } from "@earendil-works/pi-ai";
 import { agentMessageToPreviewText, dedupeDiagnostics, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
@@ -7,7 +8,7 @@ import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
 import { getPiBasePrompt, projectInstructionMessages, projectPresetSystemPrompt, } from "./instruction-projection.js";
 import { getCurrentBranchEntries, readInstructionSession } from "./session-adapter.js";
 import { isInstructionDelivery } from "./instruction-protocol.js";
-import { instructionAnchorMessage } from "./instruction-anchors.js";
+import { materializeInstructionAnchors } from "./instruction-anchors.js";
 import { reduceInstructionEvents } from "./instruction-events.js";
 /**
  * Render preview for a prompt stack against current session context.
@@ -170,94 +171,10 @@ function renderPreviewMetadata(preview) {
     return lines.join("\n");
 }
 function getPreviewSessionMessages(ctx) {
-    const entries = getCurrentBranchEntries(ctx).map(asSessionEntry);
-    const compaction = latestCompactionEntry(entries);
-    const messages = [];
-    const appendMessage = (entry) => {
-        if (entry.type === "message" && isAgentMessage(entry.message)) {
-            messages.push(entry.message);
-            return;
-        }
-        const anchor = instructionAnchorMessage(entry);
-        if (anchor) {
-            messages.push(anchor);
-            return;
-        }
-        if (entry.type === "custom_message" && typeof entry.customType === "string") {
-            messages.push({
-                role: "custom",
-                customType: entry.customType,
-                content: typeof entry.content === "string" || Array.isArray(entry.content) ? entry.content : "",
-                display: entry.display === true,
-                details: entry.details,
-                timestamp: entryTimestamp(entry),
-            });
-            return;
-        }
-        if (entry.type === "branch_summary" && typeof entry.summary === "string" && entry.summary) {
-            messages.push({
-                role: "branchSummary",
-                summary: entry.summary,
-                fromId: typeof entry.fromId === "string" ? entry.fromId : "",
-                timestamp: entryTimestamp(entry),
-            });
-        }
-    };
-    if (compaction && typeof compaction.summary === "string") {
-        if (isAgentMessage(compaction.systemMessage) && compaction.systemMessage.role === "system") {
-            messages.push(compaction.systemMessage);
-        }
-        messages.push({
-            role: "compactionSummary",
-            summary: compaction.summary,
-            tokensBefore: typeof compaction.tokensBefore === "number" ? compaction.tokensBefore : 0,
-            timestamp: entryTimestamp(compaction),
-        });
-        const compactionIndex = entries.findIndex((entry) => entry.type === "compaction" && entry.id === compaction.id);
-        let foundFirstKept = false;
-        for (let index = 0; index < compactionIndex; index++) {
-            const entry = entries[index];
-            if (entry.id === compaction.firstKeptEntryId)
-                foundFirstKept = true;
-            if (foundFirstKept) {
-                if (entry.type === "message" && isAgentMessage(entry.message) && entry.message.role === "system") {
-                    continue;
-                }
-                appendMessage(entry);
-            }
-        }
-        for (let index = compactionIndex + 1; index < entries.length; index++) {
-            appendMessage(entries[index]);
-        }
-        return messages;
-    }
-    for (const entry of entries)
-        appendMessage(entry);
-    return messages;
-}
-function latestCompactionEntry(entries) {
-    for (let index = entries.length - 1; index >= 0; index--) {
-        const entry = entries[index];
-        if (entry.type === "compaction")
-            return entry;
-    }
-    return undefined;
-}
-function asSessionEntry(value) {
-    return value && typeof value === "object" ? value : {};
-}
-function isAgentMessage(value) {
-    return !!value && typeof value === "object" && typeof value.role === "string";
-}
-function entryTimestamp(entry) {
-    if (typeof entry.timestamp === "number")
-        return entry.timestamp;
-    if (typeof entry.timestamp === "string") {
-        const timestamp = new Date(entry.timestamp).getTime();
-        if (Number.isFinite(timestamp))
-            return timestamp;
-    }
-    return Date.now();
+    const entries = (ctx.sessionManager.getEntries ? ctx.sessionManager.getEntries() : getCurrentBranchEntries(ctx));
+    const leafId = ctx.sessionManager.getLeafId ? ctx.sessionManager.getLeafId() : undefined;
+    const projection = buildSessionProjection(entries, leafId);
+    return materializeInstructionAnchors(entries, projection.messages, leafId);
 }
 function previewMessageTitle(source, index, isForgeUpdate = false) {
     if (isForgeUpdate) {
