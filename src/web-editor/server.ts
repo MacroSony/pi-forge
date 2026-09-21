@@ -7,6 +7,7 @@ import {
 	AGENT_PROFILE_TYPE,
 	type AgentProfile,
 } from "../agent-profile.ts";
+import { isInstructionStateMutation } from "../instruction-state.ts";
 import { ContributionService } from "./contrib-service.ts";
 import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
@@ -41,7 +42,7 @@ export async function startWebEditorServer(host: WebEditorHost, options: WebEdit
 		})
 		: undefined;
 	const server = createServer((req, res) => {
-		void handleRequest(currentHost, token, contributionService, req, res).catch((error) => {
+		void handleRequest(currentHost, token, contributionService, req, res, () => currentHost).catch((error) => {
 			const status = error instanceof RequestBodyError ? error.status : 500;
 			sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });
 		});
@@ -80,7 +81,14 @@ export async function startWebEditorServer(host: WebEditorHost, options: WebEdit
 	};
 }
 
-async function handleRequest(host: WebEditorHost, token: string, contributionService: ContributionService | undefined, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleRequest(
+	host: WebEditorHost,
+	token: string,
+	contributionService: ContributionService | undefined,
+	req: IncomingMessage,
+	res: ServerResponse,
+	getCurrentHost?: () => WebEditorHost,
+): Promise<void> {
 	const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
 	if (url.pathname === "/" && req.method === "GET") {
@@ -325,6 +333,51 @@ async function handleRequest(host: WebEditorHost, token: string, contributionSer
 
 	if (req.method === "GET" && parts[1] === "context-diff" && parts.length === 2) {
 		sendOperation(res, host.getContextDiff());
+		return;
+	}
+
+	if (req.method === "GET" && parts[1] === "instructions" && parts.length === 2) {
+		const hostNow = getCurrentHost ? getCurrentHost() : host;
+		if (!hostNow.readInstructions) {
+			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+			return;
+		}
+		const result = hostNow.readInstructions();
+		if (!result.ok) {
+			sendJson(res, result.status, { ok: false, error: result.error });
+			return;
+		}
+		sendJson(res, 200, { ok: true, state: result.state });
+		return;
+	}
+
+	if (req.method === "POST" && parts[1] === "instructions" && parts.length === 2) {
+		const body = await readJsonBody(req);
+		const hostNow = getCurrentHost ? getCurrentHost() : host;
+		try {
+			if (hostNow.isProjectTrusted?.() !== true) {
+				sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to mutate instructions." });
+				return;
+			}
+		} catch {
+			// Pi invalidates captured contexts during replacement/reload.
+			sendJson(res, 503, { ok: false, error: "Instruction session is unavailable. Refresh after session replacement." });
+			return;
+		}
+		if (!isInstructionStateMutation(body)) {
+			sendJson(res, 400, { ok: false, error: "Invalid instruction state mutation payload." });
+			return;
+		}
+		if (!hostNow.mutateInstructions) {
+			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+			return;
+		}
+		const result = hostNow.mutateInstructions(body);
+		if (!result.ok) {
+			sendJson(res, result.status, { ok: false, error: result.error });
+			return;
+		}
+		sendJson(res, 200, { ok: true, state: result.state });
 		return;
 	}
 

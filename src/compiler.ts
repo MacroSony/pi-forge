@@ -15,6 +15,7 @@ import type {
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.ts";
 import { ForgeTemplateRenderer } from "./template-render.ts";
 import { getRegisteredSlot, renderSlotText } from "./slot-renderers.ts";
+import { isInstructionControlMessage } from "./instruction-protocol.ts";
 
 const ZERO_USAGE = {
 	input: 0,
@@ -327,14 +328,14 @@ function getChatHistoryMessages(
 	}
 
 	if (options.includeSummaries === false) {
-		const next = result.filter((message) => !isSummaryMessage(message));
+		const next = result.filter((message) => isInstructionControlMessage(message) || !isSummaryMessage(message));
 		addHistoryFilterDiagnostic(diagnostics, item.id, "summary", result.length, next.length);
 		result = next;
 	}
 
 	if (isStringArray(options.roles) && options.roles.length > 0) {
 		const allowedRoles = new Set(options.roles);
-		const next = result.filter((message) => allowedRoles.has(messageRole(message)));
+		const next = result.filter((message) => isInstructionControlMessage(message) || allowedRoles.has(messageRole(message)));
 		addHistoryFilterDiagnostic(diagnostics, item.id, "role", result.length, next.length);
 		result = next;
 		shouldRepairToolPairs = true;
@@ -380,14 +381,16 @@ function limitChatHistory(
 	const maxMessages = positiveIntegerOption(options.maxMessages);
 	const maxChars = positiveIntegerOption(options.maxChars);
 
-	if (maxMessages !== undefined && result.length > maxMessages) {
-		const next = result.slice(-maxMessages);
-		diagnostics.push({
-			level: "info",
-			message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxMessages.`,
-			itemId,
-		});
-		result = next;
+	if (maxMessages !== undefined) {
+		const next = takeRecentMessagesWithinCount(result, maxMessages);
+		if (next.length < result.length) {
+			diagnostics.push({
+				level: "info",
+				message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxMessages.`,
+				itemId,
+			});
+			result = next;
+		}
 	}
 
 	if (maxChars !== undefined) {
@@ -405,17 +408,48 @@ function limitChatHistory(
 	return result;
 }
 
-function takeRecentMessagesWithinChars(messages: AgentMessage[], maxChars: number): AgentMessage[] {
-	const selected: AgentMessage[] = [];
-	let chars = 0;
+function takeRecentMessagesWithinCount(messages: AgentMessage[], maxMessages: number): AgentMessage[] {
+	const keepIndices = new Set<number>();
+	let ordinaryCount = 0;
 	for (let index = messages.length - 1; index >= 0; index--) {
-		const message = messages[index];
-		const messageChars = agentMessageToPreviewText(message).length;
-		if (selected.length > 0 && chars + messageChars > maxChars) break;
-		selected.push(message);
-		chars += messageChars;
+		const message = messages[index]!;
+		if (isInstructionControlMessage(message)) {
+			keepIndices.add(index);
+		} else {
+			if (ordinaryCount < maxMessages) {
+				keepIndices.add(index);
+				ordinaryCount++;
+			}
+		}
 	}
-	return selected.reverse();
+	if (keepIndices.size === messages.length) return messages;
+	return messages.filter((_, index) => keepIndices.has(index));
+}
+
+function takeRecentMessagesWithinChars(messages: AgentMessage[], maxChars: number): AgentMessage[] {
+	const keepIndices = new Set<number>();
+	let ordinaryChars = 0;
+	let ordinaryCount = 0;
+
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index]!;
+		if (isInstructionControlMessage(message)) {
+			keepIndices.add(index);
+			continue;
+		}
+
+		const messageChars = agentMessageToPreviewText(message).length;
+		if (ordinaryCount > 0 && ordinaryChars + messageChars > maxChars) {
+			continue;
+		}
+
+		keepIndices.add(index);
+		ordinaryCount++;
+		ordinaryChars += messageChars;
+	}
+
+	if (keepIndices.size === messages.length) return messages;
+	return messages.filter((_, index) => keepIndices.has(index));
 }
 
 function addHistoryFilterDiagnostic(
@@ -445,6 +479,10 @@ function dropToolHistory(
 	const result: AgentMessage[] = [];
 
 	for (const message of messages) {
+		if (isInstructionControlMessage(message)) {
+			result.push(message);
+			continue;
+		}
 		if (isToolResultMessage(message)) {
 			droppedToolResults++;
 			changed = true;
@@ -478,6 +516,7 @@ function repairToolHistory(
 	const includedCallIds = new Set<string>();
 	const includedResultIds = new Set<string>();
 	for (const message of messages) {
+		if (isInstructionControlMessage(message)) continue;
 		for (const id of toolCallIdsForMessage(message)) includedCallIds.add(id);
 		const resultId = toolResultMessageId(message);
 		if (resultId) includedResultIds.add(resultId);
@@ -490,6 +529,10 @@ function repairToolHistory(
 	const result: AgentMessage[] = [];
 
 	for (const message of messages) {
+		if (isInstructionControlMessage(message)) {
+			result.push(message);
+			continue;
+		}
 		if (isToolResultMessage(message)) {
 			const resultId = toolResultMessageId(message);
 			if (!resultId || !includedCallIds.has(resultId)) {
@@ -633,6 +676,10 @@ function stripAssistantThinkingFromHistory(
 	const result: AgentMessage[] = [];
 
 	for (const message of messages) {
+		if (isInstructionControlMessage(message)) {
+			result.push(message);
+			continue;
+		}
 		const stripped = stripAssistantThinkingFromMessage(message);
 		if (stripped.message !== message) {
 			changed = true;

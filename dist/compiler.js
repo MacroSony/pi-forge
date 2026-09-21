@@ -2,6 +2,7 @@ import { forgeV1 } from "./forge-v1/index.js";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.js";
 import { ForgeTemplateRenderer } from "./template-render.js";
 import { getRegisteredSlot, renderSlotText } from "./slot-renderers.js";
+import { isInstructionControlMessage } from "./instruction-protocol.js";
 const ZERO_USAGE = {
     input: 0,
     output: 0,
@@ -248,13 +249,13 @@ function getChatHistoryMessages(messages, item, diagnostics) {
             result = result.filter((_message, index) => index !== lastUserIndex);
     }
     if (options.includeSummaries === false) {
-        const next = result.filter((message) => !isSummaryMessage(message));
+        const next = result.filter((message) => isInstructionControlMessage(message) || !isSummaryMessage(message));
         addHistoryFilterDiagnostic(diagnostics, item.id, "summary", result.length, next.length);
         result = next;
     }
     if (isStringArray(options.roles) && options.roles.length > 0) {
         const allowedRoles = new Set(options.roles);
-        const next = result.filter((message) => allowedRoles.has(messageRole(message)));
+        const next = result.filter((message) => isInstructionControlMessage(message) || allowedRoles.has(messageRole(message)));
         addHistoryFilterDiagnostic(diagnostics, item.id, "role", result.length, next.length);
         result = next;
         shouldRepairToolPairs = true;
@@ -289,14 +290,16 @@ function limitChatHistory(messages, options, diagnostics, itemId) {
     let result = messages;
     const maxMessages = positiveIntegerOption(options.maxMessages);
     const maxChars = positiveIntegerOption(options.maxChars);
-    if (maxMessages !== undefined && result.length > maxMessages) {
-        const next = result.slice(-maxMessages);
-        diagnostics.push({
-            level: "info",
-            message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxMessages.`,
-            itemId,
-        });
-        result = next;
+    if (maxMessages !== undefined) {
+        const next = takeRecentMessagesWithinCount(result, maxMessages);
+        if (next.length < result.length) {
+            diagnostics.push({
+                level: "info",
+                message: `Trimmed chat history from ${result.length} to ${next.length} message(s) by maxMessages.`,
+                itemId,
+            });
+            result = next;
+        }
     }
     if (maxChars !== undefined) {
         const next = takeRecentMessagesWithinChars(result, maxChars);
@@ -311,18 +314,46 @@ function limitChatHistory(messages, options, diagnostics, itemId) {
     }
     return result;
 }
-function takeRecentMessagesWithinChars(messages, maxChars) {
-    const selected = [];
-    let chars = 0;
+function takeRecentMessagesWithinCount(messages, maxMessages) {
+    const keepIndices = new Set();
+    let ordinaryCount = 0;
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
-        const messageChars = agentMessageToPreviewText(message).length;
-        if (selected.length > 0 && chars + messageChars > maxChars)
-            break;
-        selected.push(message);
-        chars += messageChars;
+        if (isInstructionControlMessage(message)) {
+            keepIndices.add(index);
+        }
+        else {
+            if (ordinaryCount < maxMessages) {
+                keepIndices.add(index);
+                ordinaryCount++;
+            }
+        }
     }
-    return selected.reverse();
+    if (keepIndices.size === messages.length)
+        return messages;
+    return messages.filter((_, index) => keepIndices.has(index));
+}
+function takeRecentMessagesWithinChars(messages, maxChars) {
+    const keepIndices = new Set();
+    let ordinaryChars = 0;
+    let ordinaryCount = 0;
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (isInstructionControlMessage(message)) {
+            keepIndices.add(index);
+            continue;
+        }
+        const messageChars = agentMessageToPreviewText(message).length;
+        if (ordinaryCount > 0 && ordinaryChars + messageChars > maxChars) {
+            continue;
+        }
+        keepIndices.add(index);
+        ordinaryCount++;
+        ordinaryChars += messageChars;
+    }
+    if (keepIndices.size === messages.length)
+        return messages;
+    return messages.filter((_, index) => keepIndices.has(index));
 }
 function addHistoryFilterDiagnostic(diagnostics, itemId, filter, before, after) {
     if (before === after)
@@ -340,6 +371,10 @@ function dropToolHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
+        if (isInstructionControlMessage(message)) {
+            result.push(message);
+            continue;
+        }
         if (isToolResultMessage(message)) {
             droppedToolResults++;
             changed = true;
@@ -369,6 +404,8 @@ function repairToolHistory(messages, diagnostics, itemId) {
     const includedCallIds = new Set();
     const includedResultIds = new Set();
     for (const message of messages) {
+        if (isInstructionControlMessage(message))
+            continue;
         for (const id of toolCallIdsForMessage(message))
             includedCallIds.add(id);
         const resultId = toolResultMessageId(message);
@@ -381,6 +418,10 @@ function repairToolHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
+        if (isInstructionControlMessage(message)) {
+            result.push(message);
+            continue;
+        }
         if (isToolResultMessage(message)) {
             const resultId = toolResultMessageId(message);
             if (!resultId || !includedCallIds.has(resultId)) {
@@ -506,6 +547,10 @@ function stripAssistantThinkingFromHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
+        if (isInstructionControlMessage(message)) {
+            result.push(message);
+            continue;
+        }
         const stripped = stripAssistantThinkingFromMessage(message);
         if (stripped.message !== message) {
             changed = true;

@@ -16,6 +16,7 @@ export interface CompileCycleState {
 	currentBaseSystemPrompt?: string;
 	currentCompiledSystemPrompt?: string;
 	currentCompiledStackKey?: string;
+	currentPromptInputKey?: string;
 	contextRewritePending: boolean;
 	latestCompileDiagnostics: PromptStackDiagnostic[];
 }

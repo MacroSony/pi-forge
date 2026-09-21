@@ -20,7 +20,7 @@ they test dependency drift rather than operating-system behavior.
 
 ## Dependency policy
 
-Published manifests use wildcard peer dependencies for Pi-host-provided SDK packages. Exact versions belong in development dependencies and the lockfile so tests are reproducible without restricting compatible host releases.
+Pi-host-provided SDK packages remain optional peers, never private runtime dependencies. The 0.5.5 transcript bridge requires `>=0.86.0` for the four Pi SDK peers; `typebox` remains a wildcard peer. Exact tested versions belong in development dependencies and the lockfile. Do not impose an exact host version or an upper bound merely to match the development install.
 
 `pi-subagent-runtime` remains a normal exact dependency until its compatibility policy says otherwise. Its own host-facing Pi dependencies must follow the same host-provided peer model.
 

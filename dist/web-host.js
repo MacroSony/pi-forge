@@ -10,9 +10,34 @@ import { formatResourceKey, parseResourceSelector } from "./resource-identity.js
 import { getRegisteredSlots } from "./slot-renderers.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
+import { isInstructionStateMutation } from "./instruction-state.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
+        isProjectTrusted: () => ctx.isProjectTrusted(),
+        readInstructions: () => {
+            if (!runtime.readInstructions) {
+                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            }
+            return runtime.readInstructions();
+        },
+        mutateInstructions: (input) => {
+            try {
+                if (!ctx.isProjectTrusted()) {
+                    return { ok: false, status: 403, error: "Project is not trusted; refusing to mutate instructions." };
+                }
+            }
+            catch {
+                return { ok: false, status: 503, error: "Instruction session is unavailable." };
+            }
+            if (!runtime.mutateInstructions) {
+                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            }
+            if (!isInstructionStateMutation(input)) {
+                return { ok: false, status: 400, error: "Invalid instruction state mutation payload." };
+            }
+            return runtime.mutateInstructions(input);
+        },
         getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
         setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),
         listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),

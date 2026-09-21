@@ -1,7 +1,9 @@
+import { isValidToolName } from "../codecs/instruction-mode.js";
 import { applyResourcePolicy, hasResourcePolicy } from "../policy.js";
 export function createToolPolicyRuntime(pi, getActiveStack) {
     let baseline;
     let lastApplied;
+    let instructionPatches = [];
     function filterKnownTools(names) {
         const known = new Set(pi.getAllTools().map((tool) => tool.name));
         if (known.size === 0)
@@ -16,9 +18,39 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             ? pi.getAllTools().map((tool) => tool.name).filter((name) => typeof name === "string" && !!name)
             : filterKnownTools(activeBaseline);
     }
+    function computeEffectiveTools(policy, sourceBaseline) {
+        const policyActive = hasResourcePolicy(policy);
+        const sourceTools = filterKnownTools(sourceBaseline);
+        const baseList = policyActive
+            ? applyResourcePolicy(policySourceTools(policy, sourceTools), policy)
+            : sourceTools;
+        const registered = new Set(pi.getAllTools().map((tool) => tool.name));
+        const effective = [...baseList];
+        for (const patch of instructionPatches) {
+            for (const name of patch.add) {
+                if (registered.has(name) && !effective.includes(name)) {
+                    effective.push(name);
+                }
+            }
+        }
+        const allRemoved = new Set();
+        for (const patch of instructionPatches) {
+            for (const name of patch.remove) {
+                allRemoved.add(name);
+            }
+        }
+        let result = effective.filter((name) => !allRemoved.has(name));
+        if (policyActive) {
+            result = applyResourcePolicy(result, policy);
+        }
+        result = result.filter((name) => !allRemoved.has(name));
+        return result;
+    }
     function sync(ctx) {
         const policy = getActiveStack()?.stack.tools;
-        if (!hasResourcePolicy(policy)) {
+        const policyActive = hasResourcePolicy(policy);
+        const modesActive = instructionPatches.length > 0;
+        if (!policyActive && !modesActive) {
             restore(ctx);
             return;
         }
@@ -27,7 +59,7 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             baseline = reconcileToolPolicyBaseline(baseline, lastApplied, currentTools);
         const sourceTools = baseline ?? currentTools;
         baseline ??= [...sourceTools];
-        const nextTools = applyResourcePolicy(policySourceTools(policy, sourceTools), policy);
+        const nextTools = computeEffectiveTools(policy, sourceTools);
         if (!sameStringSet(currentTools, nextTools))
             pi.setActiveTools(nextTools);
         lastApplied = [...nextTools];
@@ -47,39 +79,104 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             baseline = undefined;
         }
         lastApplied = undefined;
+        instructionPatches = [];
         if (ctx)
             ctx.ui.setStatus("pi-forge-tools", undefined);
     }
+    function snapshot() {
+        return {
+            baseline: baseline ? [...baseline] : [...pi.getActiveTools()],
+            lastApplied: lastApplied ? [...lastApplied] : [...pi.getActiveTools()],
+        };
+    }
+    function validateInstructionModes(patches) {
+        if (!Array.isArray(patches)) {
+            return "Instruction mode patches must be an array.";
+        }
+        const registered = new Set(pi.getAllTools().map((tool) => tool.name));
+        const activeStack = getActiveStack();
+        const policy = activeStack?.stack.tools;
+        const policyActive = hasResourcePolicy(policy);
+        for (const patch of patches) {
+            if (!patch || typeof patch !== "object") {
+                return "Instruction mode patch must be an object.";
+            }
+            if (!Array.isArray(patch.add) || !Array.isArray(patch.remove)) {
+                return "Instruction mode patch must have add and remove arrays.";
+            }
+            for (const name of patch.remove) {
+                if (typeof name !== "string" || !isValidToolName(name)) {
+                    return `Invalid tool name "${name}" in instruction mode remove list.`;
+                }
+            }
+            for (const name of patch.add) {
+                if (typeof name !== "string" || !isValidToolName(name)) {
+                    return `Invalid tool name "${name}" in instruction mode add list.`;
+                }
+                if (!registered.has(name)) {
+                    return `Tool "${name}" is not registered.`;
+                }
+                if (policyActive && activeStack && !applyResourcePolicy([name], policy).includes(name)) {
+                    return `Tool "${name}" is blocked by prompt stack "${activeStack.stack.id}".`;
+                }
+            }
+        }
+        return undefined;
+    }
+    function setInstructionModes(patches, restored) {
+        const validationError = validateInstructionModes(patches);
+        if (validationError)
+            throw new Error(validationError);
+        if (restored !== undefined) {
+            if (!restored || typeof restored !== "object" || !Array.isArray(restored.baseline) || !Array.isArray(restored.lastApplied)) {
+                throw new Error("Invalid tool policy snapshot: baseline and lastApplied must be arrays.");
+            }
+            for (const name of [...restored.baseline, ...restored.lastApplied]) {
+                if (typeof name !== "string" || !name || name.length > 1024 || /[\x00-\x1f\x7f]/.test(name)) {
+                    throw new Error("Invalid tool name in tool policy snapshot.");
+                }
+            }
+            baseline = [...restored.baseline];
+            lastApplied = [...restored.lastApplied];
+        }
+        instructionPatches = patches.map((patch) => ({ add: [...patch.add], remove: [...patch.remove] }));
+        if (restored) {
+            const current = filterKnownTools(pi.getActiveTools());
+            const expected = computeEffectiveTools(getActiveStack()?.stack.tools, restored.baseline);
+            // A crash can land before or after the executable-selection update. Neither
+            // known side of this transition is an external tool change. Reconcile only
+            // distinguishable third-party differences against the saved applied set.
+            if (sameStringSet(current, restored.lastApplied) || sameStringSet(current, expected))
+                lastApplied = [...current];
+        }
+    }
     function blockReason(toolName) {
         const active = getActiveStack();
-        if (!active || !hasResourcePolicy(active.stack.tools))
-            return undefined;
-        if (applyResourcePolicy([toolName], active.stack.tools).includes(toolName))
-            return undefined;
-        return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
+        if (active && hasResourcePolicy(active.stack.tools)) {
+            if (!applyResourcePolicy([toolName], active.stack.tools).includes(toolName)) {
+                return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
+            }
+        }
+        const allRemoved = new Set();
+        for (const patch of instructionPatches) {
+            for (const name of patch.remove) {
+                allRemoved.add(name);
+            }
+        }
+        if (allRemoved.has(toolName)) {
+            return `Tool "${toolName}" is blocked by active instruction mode.`;
+        }
+        return undefined;
     }
     function previewToolNames(stack) {
         const sourceTools = filterKnownTools(baseline ?? pi.getActiveTools());
-        return stack && hasResourcePolicy(stack.tools)
-            ? applyResourcePolicy(policySourceTools(stack.tools, sourceTools), stack.tools)
-            : sourceTools;
+        return computeEffectiveTools(stack?.tools, sourceTools);
     }
     function previewOptions(base, stack) {
-        // The captured options may come from a request whose tools were already
-        // filtered by the active policy (sync() mutates pi's active tools), so
-        // prefer the pre-policy baseline; without it, fall back from a possibly
-        // empty snapshot to the session's current tools.
+        // Captured prompt options may predate activation OR restoration. The live
+        // baseline/current selection is authoritative, including an empty selection.
         const sessionTools = filterKnownTools(baseline ?? pi.getActiveTools());
-        const baseSelectedTools = baseline
-            ? sessionTools
-            : base.selectedTools?.length
-                ? [...base.selectedTools]
-                : sessionTools;
-        const policyActive = hasResourcePolicy(stack.tools);
-        const baselineTools = policyActive ? (baseline ?? pi.getActiveTools()) : baseSelectedTools;
-        const selectedTools = policyActive
-            ? applyResourcePolicy(policySourceTools(stack.tools, filterKnownTools(baselineTools)), stack.tools)
-            : baseSelectedTools;
+        const selectedTools = computeEffectiveTools(stack.tools, sessionTools);
         const selectedToolSet = new Set(selectedTools);
         const toolSnippets = filterToolSnippets(base.toolSnippets ?? {}, selectedToolSet);
         const toolInfos = pi.getAllTools();
@@ -100,7 +197,7 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             return !!name && selectedToolSet.has(name);
         })
             .flatMap((tool) => stringArrayValue(tool.promptGuidelines));
-        const promptGuidelines = baseline || (policyActive && !sameStringSet(baseSelectedTools, selectedTools))
+        const promptGuidelines = baseline || instructionPatches.length > 0 || !sameStringSet(base.selectedTools ?? sessionTools, selectedTools)
             ? mappedGuidelines
             : (base.promptGuidelines?.length ? [...base.promptGuidelines] : mappedGuidelines);
         return { ...base, selectedTools, toolSnippets, promptGuidelines };
@@ -118,7 +215,17 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             .sort(comparePolicyResource);
         return { tools, skills };
     }
-    return { sync, restore, blockReason, previewToolNames, previewOptions, policyResources };
+    return {
+        sync,
+        restore,
+        blockReason,
+        previewToolNames,
+        previewOptions,
+        policyResources,
+        snapshot,
+        setInstructionModes,
+        validateInstructionModes,
+    };
 }
 export function reconcileToolPolicyBaseline(baseline, lastApplied, current) {
     const baselineSet = new Set(baseline);

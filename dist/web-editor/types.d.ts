@@ -2,6 +2,7 @@ import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import type { ContextDiffView } from "../context-diff-history.ts";
+import type { InstructionStateResult } from "../instruction-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
     id: string;
@@ -20,6 +21,9 @@ export interface WebEditorStackSummary {
 export type WebEditorLocale = "en" | "zh-CN" | "auto";
 export interface WebEditorHost {
     cwd: string;
+    isProjectTrusted?(): boolean;
+    readInstructions?(): InstructionStateResult;
+    mutateInstructions?(input: unknown): InstructionStateResult;
     getEditorConfig(): {
         locale: WebEditorLocale;
     };
@@ -120,7 +124,20 @@ export interface WebEditorPreviewSection {
     diffKey?: string;
     title: string;
     role?: string;
+    /** Message body only; structural fields are never synthesized into prose. */
     content: string;
+    /** Native named System sections, including explicit removals (null). */
+    sections?: Record<string, string | null>;
+    /** Recorded transcript declarations, NOT current executable tool selection. */
+    toolChanges?: {
+        added: Array<{
+            name: string;
+            description?: string;
+            parameters?: unknown;
+        }>;
+        removed: string[];
+    };
+    /** Text-only counts: body plus named section values, excluding tool schemas. */
     chars: number;
     approxTokens: number;
 }
@@ -129,6 +146,8 @@ export interface WebEditorPreview {
     generatedAt: string;
     system: WebEditorPreviewSection;
     messages: WebEditorPreviewSection[];
+    /** Evaluated draft policy + current instruction overlays, not historical declarations. */
+    selectedTools?: string[];
     totalChars: number;
     approxTokens: number;
 }

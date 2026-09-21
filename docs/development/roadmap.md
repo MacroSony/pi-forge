@@ -4,7 +4,21 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## 0.5.0 breaking cleanup (lean)
+## Active 0.5.5: session instruction modes
+
+Implementation is authorized under the [accepted instruction-mode design](../design/pi-forge-system-update-design-notes.md) and [lean-plan amendment](../design/architecture-0.5.md#accepted-055-amendment-session-instruction-modes). Pi 0.86 is released; the old upstream-blocked thin-sections proposal is superseded.
+
+One active lane at a time:
+
+1. **Foundation (verified):** strict mode/override codec, scoped binding resolution, immutable snapshots and branch event reducer.
+2. **Human CLI core (implemented, local SDK acceptance):** Pi 0.86 dependency upgrade, exact request-base replacement, native/user projection, semantic events and compaction cursors, durable tool baselines, repositories/ForgeWorkspace discovery, and `/system-update` add/list/use/off/status/reset. See [current reference](../reference/instruction-modes.md).
+3. **Session observability (user-approved early UI lane):** derived multi-mode state, actual selected tools, pending/prepared indicators and guarded human off/reset; real SDK summarizer-input characterization. No change to checkpoint placement or tool-patch schema; real-model compaction behavior still needs comparison.
+4. **Next — Preset authorization:** live binding schema, current `modelCallable`/registered-tool/top-policy admission, shared restricted Agent controls; no arbitrary agent-supplied privileged text/path/patch.
+5. **Editor and release:** mode library and binding diff; extend the implemented session activity panel with source/effective-diff inspection; bilingual/stale-page checks; compatibility/migration/docs/media and full release gates.
+
+Existing README and optional Pet active-state changes are preserved. No host upgrade, reload, commit or publication follows implicitly from local feature development. Foundation tests are not proof of live 0.5.5 behavior.
+
+## 0.5.0 breaking cleanup (lean history)
 
 0.5.0 is a deliberately breaking cleanup release plus the minimum foundation for 0.5.x. Net-new feature work is frozen.
 
@@ -78,7 +92,7 @@ Candidate history controls need concrete use cases and dangling tool-pair tests.
 - Skill filtering is model-visible prompt filtering, not an invocation or security boundary.
 - Delegation remains opt-in, foreground, clean-context, and fail-closed on missing capabilities, and lives in the optional package.
 - Do not report shared-user read-only policy as an OS sandbox.
-- New editor product workflows are frozen; migration changes retain real-browser coverage.
+- New editor workflows remain frozen except the explicitly accepted instruction-mode surfaces above; migration and new workflows retain real-browser coverage.
 - Run the full verification and package checks before release.
 
 The detailed completed 0.4 plan is retained in the [historical roadmap](../design/roadmap-0.4-archive.md).

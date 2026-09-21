@@ -22,11 +22,13 @@ Use this page as the documentation map. Each subject has one authoritative home;
 ## Reference
 
 - [Commands](reference/commands.md)
+- [Instruction modes](reference/instruction-modes.md)
 - [Preset schema and policy](reference/stack-schema.md)
 - [Macros and runtime slots](reference/macros-and-slots.md)
 - [Configuration](reference/configuration.md)
 - [Implemented feature inventory](reference/features.md)
 - [Public API policy](reference/public-api.md)
+- [Active-state bus contract](reference/active-state.md)
 - [Experimental subagent host port contract](reference/subagent-host-port.md)
 - [Experimental UI contribution port contract](reference/ui-contribution-port.md)
 

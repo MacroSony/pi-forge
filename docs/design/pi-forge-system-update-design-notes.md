@@ -1,229 +1,124 @@
-# pi-forge `system_update` Design Notes
+# Instruction modes — accepted 0.5.5 design
 
-**Status:** Current plan (revised 2026-09-12). Supersedes the 2026-09-10
-exploration draft, which assumed pi-forge would implement the full
-persistence/projection/transport stack itself. Upstream Pi has since started
-building the primitive natively, so pi-forge's scope shrinks to the
-workflow layer.
+[Documentation](../README.md) · [Lean architecture](architecture-0.5.md) · [Roadmap](../development/roadmap.md)
 
-**Target:** 0.5.5+, blocked on an upstream Pi redo (see §2).
+**Status:** implementation authorized, 2026-09-20. Foundation and human CLI core implemented, with real Pi 0.86/fake-provider tests for text/tools, disk resume, branches and manual compaction. [Current CLI reference](../reference/instruction-modes.md) states the remaining limits. Preset binding schema, Agent control and UI are not yet implemented. Package remains 0.5.4 until release preparation.
 
----
+This supersedes the [September 12 upstream-blocked proposal](archive/2026-09-12-system-update-design.md). Pi 0.86.0 is released. Its actual behavior differs from the closed #9116/#9117 branches; those branch results are historical evidence, not a current contract.
 
-## 1. TL;DR — Current Plan
+## Ownership and bounded scope
 
-`system_update` is a **session-timeline event**, not a mutation of the
-top-level system prompt. That core decision from the original draft survives.
-What changed is who builds what:
+**Definitions are reusable; authorization belongs to Presets; active state belongs to Sessions.** Modes contain continuing collaboration/output guidance and optional tool selection changes. Skills remain the place for procedures, scripts and reference material.
 
-- **Upstream Pi is building the primitive**: a first-class `SystemMessage`
-  (`role: "system"`) appended to the transcript, rendered natively on models
-  that support mid-conversation system messages and as a tagged user turn
-  elsewhere. Persistence, resume, compaction, and provider rendering are all
-  owned by the harness.
-- **pi-forge builds only the workflow layer**: an append-only event log, a
-  reducer over it, the `/system-update` command family, preset-declared
-  dormant instruction blocks, and a permission-gated agent tool.
-- **Integration is declarative**: pi-forge renders its active update set into
-  `systemPromptOptions.sections` and lets the harness diff engine emit the
-  deltas. pi-forge no longer returns a fully-compiled replacement string for
-  this path.
+- Forge owns semantic events, activation snapshots, derived delivery anchors and request-only instruction projection.
+- Pi owns ordinary transcript storage/branching, message protocols, provider encoding and actual tool execution. No fork or private `AgentSession` patches.
+- `ForgeWorkspace` remains the single resource-state owner. Existing codecs/repositories/catalogs are reused. The instruction reducer is a pure view, not a second mutable workspace.
+- `tool-policy-runtime` remains the only Forge owner of executable tool selection. Text saying a tool is disabled is not enforcement.
+- CLI, restricted Agent tool and Web UI must share one application service. No dynamic control-tool schema, new registry/framework/package entry point, arbitrary JSON Patch, inheritance chain, mode dependencies, automatic resource bundling, or general undo/redo.
 
-Discarded from the original draft: the custom-entry + self-written projector
-design, the `custom_message` transport, the provider transport matrix, and
-the six-phase rollout. See §5 for why.
+## Evidence behind the architecture
 
----
+An isolated Pi 0.86 `AgentSession`/extension-runner spike used fake models/tools and intercepted adapter payload assembly; no provider HTTP was sent by that harness. Nineteen assertions and a separate smoke passed, including assertions that intentionally reproduce integration failures. They are not nineteen production features passing.
 
-## 2. Upstream Landscape (snapshot 2026-09-12)
+1. Keeping and mutating `before_agent_start.systemPromptOptions.sections` across a tool loop did not reliably synchronize later changes: the expected text sequence off/on/off became off/on/on while tools restored correctly. The command options getter was not a live-run setter.
+2. Returning Forge's current full `systemPrompt` invokes Pi's forced request projection after context hooks; it suppresses later native system updates. `customPrompt` is not an exact replacement because the cwd contribution remains.
+3. A Forge-owned marker/context projector worked in the sampled repeated toggle, native/user/native switch, branch/JSON reconstruction and manual-compaction scenarios. Those samples do not establish production crash recovery, automatic compaction, concurrency, old-Preset compatibility or tool-baseline recovery.
+4. `systemPromptOptions.sections` is a prompt-building input; `SystemMessage.sections` is still useful as a native request representation. Failure of the tested thin bridge does not prove every upstream integration impossible.
+5. `sendMessage` steering with explicit `triggerTurn:false` did not enter the next request in the tested live loop. Omitting it worked while streaming and did not start inference in the tested idle command. Context-hook exceptions alone are swallowed; explicit abort behavior must be accounted for.
 
-### 2.1 The PRs
+The implemented request-base bridge preserves compiled replacement strings while retaining foreign named sections and tool declarations. Built-in base text and selected-tool macros refresh when the executable set changes.
 
-- **PR #9116** (`system-role` branch, pi-ai layer): adds `SystemMessage` to
-  the `Message` union. Appended to the transcript, never folded into
-  `Context.systemPrompt`. Persisted as ordinary message entries; compaction
-  cut points and summaries understand them (rendered as `[System]:` in
-  summaries); interactive mode hides them.
-- **PR #9117** (`system-tool-deltas` branch, stacked, coding-agent layer):
-  the first rendered prompt of a session becomes a stored **baseline**;
-  anything that changes afterwards is appended as a provider-neutral system
-  message delta. On resume/tree navigation the stored baseline is reinstated
-  so a resumed session sends byte-identical cached prefixes. After
-  compaction, the effective prompt folds into a fresh baseline at no extra
-  cost.
+**Production difference from the spike:** management uses `triggerTurn:false` so a command issued while the model is finishing cannot enqueue an extra paid turn. While Pi defers a carrier, request projection replays each missing semantic delta at the next naturally occurring request, including instance-specific off notices. Invalid state explicitly aborts before provider dispatch.
 
-**Both PRs were closed by the author on 2026-09-11 with "I will redo this."**
-Direction is alive; implementation is being redone; timeline unknown.
-Community testing (13-scenario harness, all green) flagged two design
-issues likely motivating the redo: ~10 KB per-prompt-entry session bloat
-from storing rendered baselines, and silent tool disappearance on
-non-supporting models across resume.
+## Resource and binding contract
 
-### 2.2 Verified behavior of the PR branch (local clone: `~/programming/pi-pr9117`)
+Discovered directories (read-only repository and ForgeWorkspace integration implemented):
 
-Measured against the actual `system-tool-deltas` build:
+- `.pi/forge/instruction-modes/*.json`
+- `~/.pi/forge/instruction-modes/*.json`
 
-- `sections: Record<string, string>` on `systemPromptOptions` renders as
-  XML-wrapped blocks (`<name>\n...\n</name>`), diff-keyed as `section:name`.
-- `diffSystemPrompts` behavior matrix:
-  - identical pieces → `unchanged` (no cost)
-  - section added → update delta: "The following `<name>` system guidance
-    now applies: ..."
-  - section removed → retraction: "The previous `<name>` system guidance no
-    longer applies."
-  - section content changed → "The `<name>` system guidance has changed. The
-    following supersedes..."
-  - literals changed or `forceSystemPrompt` changed → `replace`
-    (deliberate full cache miss)
-- **`forceSystemPrompt` short-circuits everything**: when set, pieces are
-  only the forced prompt; sections are not rendered at all. Any extension
-  returning a full replacement string from `before_agent_start` gets this
-  path, and every content change is a full prefix miss.
-- **`customPrompt` is a value piece** (keyed `customPrompt`, diff-friendly)
-  and does NOT short-circuit sections. This is pi-forge's integration point
-  for `mode = replace` stacks.
-- Mid-run timing: the diff runs before every LLM request
-  (`agent-loop.ts`), including mid-tool-loop, so an agent tool that mutates
-  sections gets its delta delivered after the tool batch and before the next
-  inference. The tool-call adjacency problem from the original draft is
-  handled by the harness.
-- Fallback rendering for unsupported providers:
-  `<system_update>\n{text}\n</system_update>` as a user-role message
-  (`pi-ai/utils/system-messages.ts`); Gemini confirmed user-role.
-- Native support matrix (upstream compat flags): Anthropic Opus 4.8/5,
-  Fable 5/5.1, Mythos 5/5.1 get real system messages (Anthropic requires a
-  system message to directly precede an assistant turn; pending messages are
-  held). OpenAI transports get `developer`/`system` items. Everything else
-  gets the tagged user turn.
-- `BeforeAgentStartEventResult.message` only accepts `CustomMessage`
-  (customType/content/display/details) — there is **no imperative
-  append-SystemMessage extension API** in the PR as written. The declarative
-  sections path is the intended extension surface.
-- The PR branch itself had two TypeScript errors (`openrouter.ts`,
-  `xai.ts`) when we built it; dist artifacts were still produced.
+```json
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.instruction-mode",
+  "id": "review",
+  "name": "Review",
+  "description": "Report findings and evidence before editing.",
+  "content": "List findings, evidence and risks. Do not directly edit files.",
+  "tools": {
+    "add": ["grep", "find", "ls"],
+    "remove": ["bash", "powershell", "write", "edit"]
+  }
+}
+```
 
-### 2.3 Trigger to resume this work
+The definition has no Agent authorization. Content is literal text, not an executable template or file path. `name`/`description` are optional; omitted tool arrays normalize to empty arrays. At least non-whitespace text or one tool effect is required. Content is bounded to 100,000 characters, name to 1,000, each tool array to 256 names and each exact tool name to 128 characters. Tool names cannot contain whitespace, controls, `*` or `?`. Resource IDs retain the existing resource grammar. Unknown and malformed fields are errors, not silently normalized permissions.
 
-When the redone PR appears: verify the sections/diff semantics survived the
-redo (re-run the §2.2 matrix), then wire pi-forge's workflow layer to it.
-If the redo removes the declarative sections surface, reassess; the escape
-hatch is splicing `SystemMessage` in the context hook (see §5).
+Planned Preset field:
 
----
+```json
+{
+  "instructionModes": [{
+    "ref": "global:review",
+    "id": "review",
+    "modelCallable": true,
+    "overrides": {
+      "appendContent": "Also inspect backwards compatibility.",
+      "tools": { "add": ["grep", "find"] }
+    }
+  }]
+}
+```
 
-## 3. pi-forge Design (workflow layer)
+This field is **not yet accepted by the live Preset schema** in the current CLI slice. Saving a resource or binding must never activate it.
 
-These decisions survive from the original draft and remain the plan.
+- Direct library selection of a bare ID uses project-over-global. Invalid or duplicate local definitions do not fall back to global.
+- A bare Preset reference resolves exactly in its owner's scope. A project Preset must explicitly write `global:<id>` to use a global mode; a global Preset cannot use project modes.
+- UI writes qualified references. Binding ID defaults to the referenced ID; duplicate effective binding IDs are rejected, including same-name cross-scope references unless explicitly disambiguated. At most 256 bindings per Preset.
+- Only `modelCallable:true` grants eligibility for the future Agent control path; omission is false. Current tool policy and registration still apply.
+- Overrides allow `content` **or** `appendContent`, never both. Nonempty paragraphs append with two newlines. Each specified `tools.add`/`tools.remove` array replaces that entire field; the other field is preserved. Identity, name, authorization and arbitrary fields cannot be overridden.
+- Base resources must validate before applying overrides; an override cannot repair an invalid source silently. Effective results are defensive snapshots.
 
-### 3.1 Event model
+## Semantic events and snapshots
 
-- Updates are **append-only custom session entries**
-  (`pi-forge-system-update`, schemaVersion 1), written via the existing
-  `session-adapter.ts` pattern (`pi.appendEntry` / `getCurrentBranchEntries`).
-  Branch semantics come for free.
-- Entry payload: `{ updateId, op: "apply" | "revoke" | "reset", source,
-  presetId?, contentSnapshot, createdAt }`.
-- **Snapshot content, not file paths**: file-backed presets are rendered at
-  activation time and the rendered text is persisted. Editing a preset file
-  tomorrow must not alter yesterday's session.
-- Logical state is a **reducer view** over the branch's events, never
-  canonical mutable state. Powers `/system-update status`, badges, and
-  section rendering.
-- Revoke/reset are new events, never history rewrites. In practice the
-  harness retraction wording ("no longer applies") is generated for us once
-  the section disappears; the event log only records intent.
+The internal schema is persisted through existing `session-adapter`/Pi custom entries, not a new persistence backend. Semantic entries carry validated snapshots; delivery messages carry only a versioned event cursor. Baseline records belong to the existing tool-policy owner.
 
-### 3.2 Rendering (the declarative bridge)
+Common event fields: `schemaVersion:1`, `eventId`, `op`, `actor`, `createdAt` (finite nonnegative milliseconds). Branch order, not timestamps, determines reduction. Opaque event/activation IDs are at most 128 characters. Resource/Preset/binding IDs keep the existing grammar rather than inheriting that opaque-ID bound.
 
-- The reducer's active set is rendered into
-  `systemPromptOptions.sections["pi-forge-update-<id>"]` during
-  `before_agent_start` (and picked up mid-run by the harness's per-request
-  diff).
-- pi-forge's stack compilation moves off the legacy "return one big string"
-  path: `mode = replace` stacks go into `systemPromptOptions.customPrompt`,
-  additive content into keyed `sections`. This is a prerequisite refactor,
-  and it upgrades cache behavior for the whole stack system, not just
-  updates.
-- Transport is not pi-forge's concern: native vs fallback rendering is the
-  harness's compatibility layer.
+- **activate:** actor `user` or `agent`, with an immutable `snapshot` containing `activationId`, `source`, optional name, content, normalized tool patch and content fingerprint.
+- **deactivate:** targets an `activationId`; actor `user`, `agent` or `lifecycle`.
+- **reset:** user only. Clears current activity, not historical events.
+- Source is `{kind:"manual"}` or `{kind:"mode",key:{scope,id},binding?:{preset:{scope,id},id}}`.
+- Agent activation requires a bound mode. Agent deactivation cannot close user-owned activations. Lifecycle deactivation is restricted to bound modes; it cannot clear manual or unbound user rules. These are structural/history-ownership checks, **not** verification of current `modelCallable`, registered tools or current Preset policy; the application service must do those checks before committing.
+- Unknown/repeated off is a no-op. Activation IDs cannot be reused within one branch even after reset/off. Repeated identical event IDs are no-ops without moving the latest event marker backwards; conflicting reuse fails closed. Simultaneously active duplicate Preset binding IDs are rejected; the future service deduplicates repeated `use` before appending.
+- Malformed owned event data fails reduction with an index/error, never a partially restored active set. Unrelated Pi entries are filtered by the adapter, not fed as fake instruction events.
+- Fingerprints use Forge's existing canonical `sha256:v1` algorithm, moved into a shared internal helper without changing the subagent wire values. The payload is domain-tagged effective source/name/content/tools, excluding activation ID. It is content identity, **not a signature or protection against someone editing their own session file**.
 
-### 3.3 Commands
+Snapshot content never drifts with source edits. Switching Presets must append deactivations for old bound activations while retaining manual/unbound user rules; reloading the same Preset is not a switch. No event undoes file writes, kills running tools or erases historical facts. User takeover of an Agent activation must be explicit off/reapply rather than silently changing ownership on repeated use.
 
-- `/system-update <text>` — apply a freeform update (auto-id `update-N`).
-- `/system-update status` — reducer view of active updates.
-- `/system-update reset` — deactivate all (new event, append-only).
-- 0.5.5+ with presets: `/system-update list|use <id>|off <id>`.
-- No command deletes history. None of these trigger an agent turn.
+## Delivery, recovery and tools — implemented CLI core
 
-### 3.4 Presets and the agent tool
+Derived custom-message markers anchor delivery; they do not independently own active state or duplicate authoritative snapshot payloads. One semantic history must support both presentations:
 
-- Presets declare dormant runtime blocks:
-  `{ "systemUpdates": [{ "id", "name", "description", "modelCallable",
-  "content" | "file" }] }`.
-- The base system prompt carries only a compact inventory; full blocks load
-  on activation (lazy privileged prompt loading).
-- Agent-facing tool `forge_system_update({action, id})` references declared
-  preset IDs only. **No arbitrary file elevation, no arbitrary agent-provided
-  privileged text.** Repository content is untrusted; elevation requires an
-  explicit preset declaration.
-- Source-aware deactivation: the agent may only deactivate agent-activated
-  modes; the user may deactivate anything.
-- Mid-turn activation rides the harness's per-request diff — no
-  pending-commit machinery on our side.
+- Native: request-only `SystemMessage.sections` keyed by activation identity; off uses a null patch and Pi's existing removal wording, without an extra duplicate user notice.
+- Unsupported models: an attributed timeline user update/stop notice. Do not silently fold Forge mode updates into the leading prompt. Genuine user/tool content must never be promoted to system authority.
+- Transform only clearly owned Forge rule content, never an entire mixed system message. Preserve unrelated content/sections and `toolsAdded`/`toolsRemoved` for Pi's adapters.
+- Compaction requires an owned current-state checkpoint derived from semantic events; suppress pre-checkpoint carriers, including retained-tail copies, then replay later deltas. Request-only sections are not automatically saved by Pi's raw transcript checkpoint.
+- Admission validates text/reference/authorization/tool effects before commit. Selected, pending and applied status must be distinct; text and executable selection change coherently at request boundaries. Already running batches are not killed.
+- Compute tools from a recoverable baseline plus all remaining additions minus all remaining removals, subject to top-level policy; removal wins. Additions must be registered/permitted. Off is recomputation, not an inverse patch or restoration of a whole obsolete active-tool list. Preserve identifiable external changes.
+- Restored active tools may already include effects; they cannot simply become the fresh baseline. Same-run changes, restart, branch, compaction and external changes are release gates. No OS-sandbox claim.
+- Human recovery via CLI/Web must remain available; an Agent-owned mode cannot disable its own control path without a safe recovery policy.
 
-### 3.5 Compaction, resume, branching
+## Staged implementation and release gates
 
-All owned by the harness under the new architecture: update sections are part
-of the effective prompt, folded into the post-compaction baseline; stored
-baseline is reinstated on resume; events live on the branch. pi-forge's only
-job is to re-derive the active set from the branch's event log on session
-start/branch switch (same restore pattern as the active-stack state today).
+Only one coherent lane is active at a time; workers may parallelize isolated parts within it.
 
----
+1. **Foundation (verified):** JSON codec, finite overrides, scoped resolution, immutable snapshots and strict event reduction.
+2. **Human CLI core (implemented):** Pi 0.86 peers/dependencies, request-base bridge, scoped discovery, session event/cursor persistence, compaction checkpoints and one executable-tool-policy owner. Real SDK tests cover same-run toggles, native/fallback switches, actual blocked/restored fake tool execution, disk reopens, branches and crash-window baseline recovery. No provider HTTP in these tests.
+3. **Session activity UI (user-approved early usability lane):** read/control view derived from the existing runtime, never a second state owner. Human off/reset carries an exact session/leaf/revision guard with runtime-instance fencing; Web requires trust, pure reads never synchronize or infer, and stale pages cannot retry writes automatically. Real-SDK compaction-input tests exercise the summarization request but use fake responses: request-only Forge rules are absent from summarizer history, while generic carriers and ordinary assistant statements remain. Checkpoint placement is unchanged pending real-model comparison.
+4. **Next — authorized controls:** live Preset binding schema and current authorization; restricted fixed-schema `forge_system_update` list/status/use/off. CLI and repository/service infrastructure are already present. Management alone must not initiate paid inference; human recovery remains available.
+5. **Editor and release:** mode library, Preset binding/effective override diff, further activity/source-diff inspection; session/branch/revision stale-page checks; bilingual UI, migration/min-Pi notes, accurate README media and release verification.
 
-## 4. Version Plan
+Acceptance includes old Presets, regex/history filtering, repeated same-run toggles, native/user/native transitions, request abort/retry/concurrency, explicit and automatic compaction, disk resume/branches/crash boundaries, baseline recovery, real tool-call rejection, external tool changes, warming and payload/usage association. JSON round-trips and fake-provider tests alone do not certify these paths.
 
-- **0.5.4 (done, pushed):** web editor fixes and visual work; prompt-cache
-  features — cache-impact warning on `/preset use` / `/profile use`
-  (common-prefix estimate + last-request cacheRead), and compile-time
-  diagnostics for cache-sensitive content (`{{time}}`, date slots with
-  `includeTime`, `{{date}}` info).
-- **0.5.5:** system update workflow layer per §3, gated on the upstream redo
-  landing in a released Pi. Build the upstream-touching code behind a small
-  isolated module so a redo API change rewrites one file, not the feature.
-
----
-
-## 5. Discarded Designs (recorded so we don't re-litigate)
-
-- **Custom entry + self-written projector** (original draft's main design):
-  required replicating Pi's session-entry→context translation rules
-  (compaction truncation, deferred-message filtering) to compute splice
-  positions, plus a compaction checkpoint synthesizer. Real maintenance
-  coupling to Pi internals. Killed by the upstream `SystemMessage`.
-- **`pi.sendMessage` custom_message transport**: zero projection code, but
-  `custom_message` entries evaporate at compaction (the compaction path
-  doesn't recognize them) and render only as user-role. Viable fallback if
-  the upstream redo dies entirely; otherwise obsolete.
-- **Provider transport matrix / native lowering in pi-forge**: the wire role
-  is the harness's compatibility layer. pi-forge stores semantics
-  (`op`, `presetId`) so a future transport change needs no data migration.
-- **Context-hook SystemMessage splicing**: possible once upstream keeps
-  `role: "system"` messages, but brings back per-request projection, position
-  mapping, and Anthropic placement-rule handling. Escape hatch only.
-
----
-
-## 6. Open Questions for the Redo
-
-1. Did sections survive the redo, and did their diff semantics change?
-2. Is there an imperative append path for extensions after all, or is
-   declarative sections still the only surface?
-3. How does the redo store baselines (the session-bloat feedback)?
-4. Does `customPrompt` remain a non-short-circuiting value piece?
-5. Timing: which Pi release carries it, and what's our minimum-version
-   dependency story for the feature?
-
-Community posture: when the redo PR opens, comment as a downstream consumer
-with the runtime-instruction-modes use case (do not file a new issue;
-feature-request issues get auto-closed while a PR is in flight).
+Stable prefixes may help caching, but schema changes, removals, fallback, base recompilation, model switches and compaction can invalidate it. No universal native support, obedience, zero-KV-invalidation or guaranteed cache-hit claims. Publishing, host upgrades, reloads and deployment remain separate user-authorized actions.

@@ -1,17 +1,63 @@
+import { contentText } from "@earendil-works/pi-ai";
 import { agentMessageToPreviewText, dedupeDiagnostics, getLatestUserMessage, PromptCompilationContext, } from "./compiler.js";
 import { estimatePayloadTokens } from "./payload-capture.js";
 import { hashText } from "./context-diff.js";
+import { isTrulyEmptySystemSection, previewSectionText } from "./preview-text.js";
 import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
+import { getPiBasePrompt, projectInstructionMessages, projectPresetSystemPrompt, } from "./instruction-projection.js";
+import { getCurrentBranchEntries, readInstructionSession } from "./session-adapter.js";
+import { isInstructionDelivery } from "./instruction-protocol.js";
+import { reduceInstructionEvents } from "./instruction-events.js";
+/**
+ * Render preview for a prompt stack against current session context.
+ * Evaluates the selected draft against current session mode snapshots without
+ * mutating runtime state, applying tool policy, or marking preparation.
+ */
 export function renderPreview(ctx, target) {
     return buildPreview(ctx, target, ctx.getSystemPromptOptions()).text;
 }
+/**
+ * Build a structured preview and text rendering for a prompt stack.
+ *
+ * Evaluates the selected draft against current session mode snapshots:
+ * 1. Restores compaction base System and Pi base prompt.
+ * 2. Matches live compile -> base projection -> mode projection ordering.
+ * 3. Fails closed for active modes when project is untrusted.
+ * 4. Preserves untouched message provenance and labels synthesized updates.
+ * 5. Avoids duplicating leading compiled base between preview.system and preview.messages.
+ * 6. Separates actual text from named-section operations and historical tool declarations.
+ * Pure and non-mutating: zero persistence, tool sync, or model inference side effects.
+ */
 export function buildPreview(ctx, target, options) {
     const sessionMessages = getPreviewSessionMessages(ctx);
     const latestUserMessage = getLatestUserMessage(sessionMessages);
     const runtime = promptRuntimeFromCompileOptions(options, ctx.model ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api } : undefined, latestUserMessage);
     const compilation = new PromptCompilationContext(target.stack, runtime);
-    const system = compilation.compileSystemPrompt(ctx.getSystemPrompt());
+    const basePrompt = getPiBasePrompt(sessionMessages, ctx.getSystemPrompt());
+    const system = compilation.compileSystemPrompt(basePrompt);
     const messages = compilation.compileMessages(sessionMessages);
+    const baseProjected = projectPresetSystemPrompt(messages.messages, system.systemPrompt ?? "");
+    // Base projection clones every System and may insert one new leading System.
+    // Preserve provenance by position here, before mode projection inserts/removes entries.
+    const originalMessageSources = new Map();
+    const baseOffset = baseProjected.length - messages.messages.length;
+    for (let i = 0; i < messages.messages.length; i++) {
+        originalMessageSources.set(baseProjected[i + baseOffset], messages.messageSources[i]);
+    }
+    const beforeModeProjection = new Set(baseProjected);
+    const history = readInstructionSession(ctx);
+    const trusted = ctx.isProjectTrusted?.() === true;
+    const reduced = reduceInstructionEvents(history.events);
+    if (!reduced.ok) {
+        throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
+    }
+    if (!trusted && reduced.active.length > 0) {
+        throw new Error("Active instruction modes require a trusted project. Use /system-update reset to clear them, or trust the project.");
+    }
+    const native = ctx.model?.compat?.supportsMidConvoSystemMessages === true;
+    const projected = projectInstructionMessages(baseProjected, history, native);
+    // Match the runtime's untrusted, inactive recovery path without replaying old rules.
+    const previewMessages = trusted ? projected.messages : baseProjected.filter(message => !isInstructionDelivery(message));
     const diagnostics = dedupeDiagnostics([target.diagnostics, system.diagnostics, messages.diagnostics]);
     let hasFinalize = false;
     let hasRequestFrequency = false;
@@ -35,41 +81,92 @@ export function buildPreview(ctx, target, options) {
             message: 'request-frequency regex rules also run on tool-result follow-up requests; only the first request of a turn is previewed.',
         });
     }
+    const leadingSystem = previewMessages[0]?.role === "system" ? previewMessages[0] : undefined;
+    const systemSection = leadingSystem
+        ? previewMessageSection(leadingSystem, "system", "System prompt", "system")
+        : previewSection("system", "System prompt", "", undefined, "system");
+    const messagesToDisplay = leadingSystem ? previewMessages.slice(1) : previewMessages;
     const diffKeyOccurrences = new Map();
-    const messageSections = messages.messages.map((message, index) => {
-        const content = agentMessageToPreviewText(message);
-        const source = messages.messageSources[index];
-        const baseDiffKey = previewMessageDiffKey(source, content, message.role);
+    const messageSections = [];
+    for (const [index, message] of messagesToDisplay.entries()) {
+        const source = originalMessageSources.get(message);
+        const isForgeUpdate = !beforeModeProjection.has(message);
+        const section = previewMessageSection(message, `message-${index}`, previewMessageTitle(source, index, isForgeUpdate));
+        // Display-only omission: never remove events or mutate the request projection.
+        if (isTrulyEmptySystemSection(section))
+            continue;
+        const baseDiffKey = previewMessageDiffKey(source, previewSectionText(section), message.role, isForgeUpdate);
         const occurrence = (diffKeyOccurrences.get(baseDiffKey) ?? 0) + 1;
         diffKeyOccurrences.set(baseDiffKey, occurrence);
-        return previewSection(`message-${index}`, previewMessageTitle(source, index), content, message.role, `${baseDiffKey}:${occurrence}`);
-    });
-    const systemSection = previewSection("system", "System prompt", system.systemPrompt || "(empty)", undefined, "system");
+        section.diffKey = `${baseDiffKey}:${occurrence}`;
+        messageSections.push(section);
+    }
     const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);
     const preview = {
         stackId: target.stack.id,
         generatedAt: new Date().toISOString(),
         system: systemSection,
         messages: messageSections,
+        ...(options.selectedTools === undefined ? {} : { selectedTools: [...options.selectedTools] }),
         totalChars,
-        approxTokens: estimatePayloadTokens(`${system.systemPrompt}\n${messageSections.map((section) => section.content).join("\n")}`),
+        approxTokens: totalChars ? estimatePayloadTokens([systemSection, ...messageSections].map(previewSectionText).filter(Boolean).join("\n")) : 0,
     };
     const text = [
         `# Preset preview: ${target.stack.id}`,
         "",
         "## System prompt",
         "",
-        system.systemPrompt || "(empty)",
+        previewSectionText(systemSection) || "(No leading system text; any System updates appear in the message layout.)",
         "",
         "## Message layout",
         "",
         renderPreviewSectionText(messageSections),
+        "",
+        "## Structured metadata (inspection only; not prompt prose)",
+        "",
+        renderPreviewMetadata(preview),
         "",
         "## Diagnostics",
         "",
         renderDiagnostics(diagnostics),
     ].join("\n");
     return { text, preview, diagnostics };
+}
+/** Keep System body/section values distinct from protocol declarations. */
+function previewMessageSection(message, id, title, diffKey) {
+    const system = message.role === "system" ? message : undefined;
+    const section = previewSection(id, title, system ? contentText(system.content) : agentMessageToPreviewText(message), message.role, diffKey);
+    if (system?.sections && Object.keys(system.sections).length)
+        section.sections = { ...system.sections };
+    if (system && (system.toolsAdded?.length || system.toolsRemoved?.length)) {
+        section.toolChanges = {
+            added: (system.toolsAdded ?? []).map(tool => ({
+                name: tool.name,
+                ...(tool.description === undefined ? {} : { description: tool.description }),
+                ...(tool.parameters === undefined ? {} : { parameters: structuredClone(tool.parameters) }),
+            })),
+            removed: (system.toolsRemoved ?? []).map(tool => tool.name),
+        };
+    }
+    const text = previewSectionText(section);
+    section.chars = text.length;
+    section.approxTokens = text.length ? estimatePayloadTokens(text) : 0;
+    return section;
+}
+function renderPreviewMetadata(preview) {
+    const lines = [];
+    lines.push(preview.selectedTools === undefined
+        ? "Preview tool selection is unavailable."
+        : `Preview tool selection (draft policy + session rules): ${preview.selectedTools.join(", ") || "(none)"}`);
+    for (const section of [preview.system, ...preview.messages]) {
+        for (const [name, value] of Object.entries(section.sections ?? {})) {
+            lines.push(`[${section.id}] ${value === null ? `Removed system prompt section "${name}".` : `Named system section "${name}" (${value.length ? "set" : "set empty"}).`}`);
+        }
+        if (section.toolChanges) {
+            lines.push(`[${section.id}] Historical transcript tool declarations (not current selection): +[${section.toolChanges.added.map(t => t.name).join(", ")}] -[${section.toolChanges.removed.join(", ")}].`);
+        }
+    }
+    return lines.join("\n");
 }
 function getPreviewSessionMessages(ctx) {
     const entries = getCurrentBranchEntries(ctx).map(asSessionEntry);
@@ -101,6 +198,9 @@ function getPreviewSessionMessages(ctx) {
         }
     };
     if (compaction && typeof compaction.summary === "string") {
+        if (isAgentMessage(compaction.systemMessage) && compaction.systemMessage.role === "system") {
+            messages.push(compaction.systemMessage);
+        }
         messages.push({
             role: "compactionSummary",
             summary: compaction.summary,
@@ -113,8 +213,12 @@ function getPreviewSessionMessages(ctx) {
             const entry = entries[index];
             if (entry.id === compaction.firstKeptEntryId)
                 foundFirstKept = true;
-            if (foundFirstKept)
+            if (foundFirstKept) {
+                if (entry.type === "message" && isAgentMessage(entry.message) && entry.message.role === "system") {
+                    continue;
+                }
                 appendMessage(entry);
+            }
         }
         for (let index = compactionIndex + 1; index < entries.length; index++) {
             appendMessage(entries[index]);
@@ -133,13 +237,6 @@ function latestCompactionEntry(entries) {
     }
     return undefined;
 }
-function getCurrentBranchEntries(ctx) {
-    const leafId = ctx.sessionManager.getLeafId();
-    if (leafId === null)
-        return [];
-    const sessionManager = ctx.sessionManager;
-    return sessionManager.getBranch ? sessionManager.getBranch(leafId ?? undefined) : sessionManager.getEntries();
-}
 function asSessionEntry(value) {
     return value && typeof value === "object" ? value : {};
 }
@@ -156,7 +253,10 @@ function entryTimestamp(entry) {
     }
     return Date.now();
 }
-function previewMessageTitle(source, index) {
+function previewMessageTitle(source, index, isForgeUpdate = false) {
+    if (isForgeUpdate) {
+        return "Forge instruction update";
+    }
     if (source?.kind === "stack-item") {
         if (source.mergedItems?.length) {
             return source.mergedItems.map((item) => item.itemName?.trim() || item.itemId || "item").join(" + ");
@@ -172,19 +272,20 @@ function previewMessageTitle(source, index) {
     }
     return `Message ${index + 1}`;
 }
-function renderPreviewSectionText(sections, maxChars = 8000) {
+function renderPreviewSectionText(sections) {
     let text = "";
     for (const section of sections) {
         const role = section.role ? ` (${section.role})` : "";
         text += `\n--- ${section.title}${role} ---\n`;
-        text += section.content;
+        text += previewSectionText(section);
         text += "\n";
-        if (text.length > maxChars)
-            return `${text.slice(0, maxChars)}\n\n[preview truncated]`;
     }
     return text.trimStart();
 }
-function previewMessageDiffKey(source, content, role) {
+function previewMessageDiffKey(source, content, role, isForgeUpdate = false) {
+    if (isForgeUpdate) {
+        return `forge-instruction-update:${hashText(`${role}\0${content}`)}`;
+    }
     if (source?.kind === "stack-item" && source.mergedItems?.length) {
         return `stack-items:${source.mergedItems.map((item) => item.itemId ?? "").join("+")}`;
     }
@@ -203,7 +304,7 @@ function previewSection(id, title, content, role, diffKey) {
         role,
         content,
         chars: content.length,
-        approxTokens: estimatePayloadTokens(content),
+        approxTokens: content.length ? estimatePayloadTokens(content) : 0,
     };
 }
 export function renderDiagnostics(diagnostics) {

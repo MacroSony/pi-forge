@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, } from "../agent-profile.js";
+import { isInstructionStateMutation } from "../instruction-state.js";
 import { ContributionService } from "./contrib-service.js";
 import { renderEditorHtml } from "./page.js";
 // Port 0 asks Node to bind any available localhost port.
@@ -23,7 +24,7 @@ export async function startWebEditorServer(host, options = {}) {
         })
         : undefined;
     const server = createServer((req, res) => {
-        void handleRequest(currentHost, token, contributionService, req, res).catch((error) => {
+        void handleRequest(currentHost, token, contributionService, req, res, () => currentHost).catch((error) => {
             const status = error instanceof RequestBodyError ? error.status : 500;
             sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });
         });
@@ -58,7 +59,7 @@ export async function startWebEditorServer(host, options = {}) {
         },
     };
 }
-async function handleRequest(host, token, contributionService, req, res) {
+async function handleRequest(host, token, contributionService, req, res, getCurrentHost) {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/" && req.method === "GET") {
         if (url.searchParams.get("token") !== token) {
@@ -276,6 +277,50 @@ async function handleRequest(host, token, contributionService, req, res) {
     }
     if (req.method === "GET" && parts[1] === "context-diff" && parts.length === 2) {
         sendOperation(res, host.getContextDiff());
+        return;
+    }
+    if (req.method === "GET" && parts[1] === "instructions" && parts.length === 2) {
+        const hostNow = getCurrentHost ? getCurrentHost() : host;
+        if (!hostNow.readInstructions) {
+            sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+            return;
+        }
+        const result = hostNow.readInstructions();
+        if (!result.ok) {
+            sendJson(res, result.status, { ok: false, error: result.error });
+            return;
+        }
+        sendJson(res, 200, { ok: true, state: result.state });
+        return;
+    }
+    if (req.method === "POST" && parts[1] === "instructions" && parts.length === 2) {
+        const body = await readJsonBody(req);
+        const hostNow = getCurrentHost ? getCurrentHost() : host;
+        try {
+            if (hostNow.isProjectTrusted?.() !== true) {
+                sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to mutate instructions." });
+                return;
+            }
+        }
+        catch {
+            // Pi invalidates captured contexts during replacement/reload.
+            sendJson(res, 503, { ok: false, error: "Instruction session is unavailable. Refresh after session replacement." });
+            return;
+        }
+        if (!isInstructionStateMutation(body)) {
+            sendJson(res, 400, { ok: false, error: "Invalid instruction state mutation payload." });
+            return;
+        }
+        if (!hostNow.mutateInstructions) {
+            sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+            return;
+        }
+        const result = hostNow.mutateInstructions(body);
+        if (!result.ok) {
+            sendJson(res, result.status, { ok: false, error: result.error });
+            return;
+        }
+        sendJson(res, 200, { ok: true, state: result.state });
         return;
     }
     if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "activate") {

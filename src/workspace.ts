@@ -3,6 +3,8 @@ import { createResourceCatalog } from "./catalog.ts";
 import { hasAgentProfileErrors, type AgentProfileProvenance, type LoadedAgentProfile } from "./agent-profile.ts";
 import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.ts";
 import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.ts";
+import { readGlobalInstructionModes, readInstructionModesScoped } from "./repositories/instruction-mode.ts";
+import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
 import { chooseDefaultStack, isDisabledPromptStackId } from "./loader.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.ts";
@@ -30,6 +32,7 @@ export interface ForgeWorkspaceSnapshot {
 	cwd: string;
 	stacks: readonly LoadedPromptStack[];
 	profiles: readonly LoadedAgentProfile[];
+	instructionModes: readonly LoadedInstructionMode[];
 	activeStackId: string | null;
 	active?: LoadedPromptStack;
 	lastAppliedProfile?: AgentProfileProvenance;
@@ -57,9 +60,36 @@ export class ForgeWorkspace {
 	private readonly extensionState = createForgeExtensionState();
 	private current?: ForgeWorkspaceSnapshot;
 	private host?: ForgeHost;
+	private readonly listeners = new Set<() => void>();
 
 	get snapshotKnown(): boolean {
 		return this.current !== undefined;
+	}
+
+	/**
+	 * Subscribe to coherent snapshot publications. Listeners are optional and
+	 * must never alter workspace/compilation behavior, so a throwing listener is
+	 * isolated and does not prevent later listeners from running.
+	 */
+	subscribe(listener: () => void): () => void {
+		this.listeners.add(listener);
+		let removed = false;
+		return () => {
+			if (removed) return;
+			removed = true;
+			this.listeners.delete(listener);
+		};
+	}
+
+	private notifyListeners(): void {
+		for (const listener of [...this.listeners]) {
+			try {
+				listener();
+			} catch {
+				// Optional observers (for example the active-state publisher) must not
+				// break Forge compilation, tool policy, or provider behavior.
+			}
+		}
 	}
 
 	reload(cwd: string, options: ForgeWorkspaceReloadOptions = {}): ForgeWorkspaceSnapshot {
@@ -75,6 +105,8 @@ export class ForgeWorkspace {
 			cwd,
 			stacks,
 			profiles,
+			// Mode definitions load on explicit library use, never to reconstruct active snapshots.
+			instructionModes: [],
 			activeStackId,
 			active,
 			lastAppliedProfile: options.lastAppliedProfile ?? this.current?.lastAppliedProfile,
@@ -83,7 +115,14 @@ export class ForgeWorkspace {
 			capturedAt: new Date().toISOString(),
 		};
 		this.current = deepFreeze(structuredClone(snapshot));
+		this.notifyListeners();
 		return this.current;
+	}
+
+	reloadInstructionModes(cwd: string, trusted = true): ForgeWorkspaceSnapshot {
+		if (!this.current || this.current.cwd !== cwd) throw new Error("Forge workspace does not match this session.");
+		const instructionModes = trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes();
+		return this.publish({ ...this.current, instructionModes, capturedAt: new Date().toISOString() });
 	}
 
 	reloadProfiles(cwd: string, trusted = true): ForgeWorkspaceSnapshot {
@@ -312,10 +351,24 @@ export class ForgeWorkspace {
 	}
 
 	dispose(): void {
-		this.disposeExtensions();
-		if (this.host?.isLive) this.host.stop();
-		this.host = undefined;
-		this.current = undefined;
+		// Attempt every teardown step, then release the owned state in a finally so
+		// an optional host transport or extension disposal failure cannot leave a
+		// half-live workspace behind. The first error still propagates.
+		let firstError: unknown;
+		try {
+			this.disposeExtensions();
+		} catch (error) {
+			firstError = error;
+		}
+		try {
+			if (this.host?.isLive) this.host.stop();
+		} catch (error) {
+			firstError ??= error;
+		} finally {
+			this.host = undefined;
+			this.current = undefined;
+		}
+		if (firstError !== undefined) throw firstError;
 	}
 
 	private resolveActive(stacks: readonly LoadedPromptStack[], options: ForgeWorkspaceReloadOptions): LoadedPromptStack | undefined {
@@ -336,6 +389,7 @@ export class ForgeWorkspace {
 
 	private publish(next: ForgeWorkspaceSnapshot): ForgeWorkspaceSnapshot {
 		this.current = deepFreeze(structuredClone(next));
+		this.notifyListeners();
 		return this.current;
 	}
 

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [Unreleased] - 0.5.5-core
+
+### Added
+
+- **Instruction modes and session update CLI.** Session-scoped dynamic instruction modes and manual directives via `/system-update` (`add`, `list`, `use`, `off`, `status`, `reset`). Modes are stored as JSON definitions (`schemaVersion: 1`, `type: "pi-forge.instruction-mode"`) under `.pi/forge/instruction-modes/` or `~/.pi/forge/instruction-modes/`.
+- **Web session instructions activity panel.** Expandable top-bar panel for inspecting and controlling active session instructions. Displays item sources, actor attribution (`user` or `agent`), collapsible frozen rule text snapshots, tool patch deltas (`+add`, `-remove`), and overall effective tools alongside delivery state (`none`, `pending`, `prepared`) and text presentation (`native`, `user`). Supports per-item deactivation by `activationId` and two-step reset confirmation.
+- **State concurrency guarding and conservative polling.** The Web panel polls `GET /api/instructions` every 3 seconds only while visible, upon window focus, or via manual refresh without LLM inference. Web mutations require project trust (`isProjectTrusted()`), returning 403 on untrusted sessions with CLI recovery retained. Mutation requests enforce derived guards (`sessionId`, `leafId`, `revision`, runtime generation) to reject stale browser views (409 Conflict); errors and conflicts halt mutations for manual review rather than blindly retrying.
+- **Local execution without inference.** Mode operations (`/system-update` and Web activity panel actions) execute locally without invoking LLM inference or consuming paid API tokens. Active instruction text continues to consume input tokens on subsequent model requests when inference occurs.
+- **Request-boundary tool and prompt synchronization.** Instruction text and selected tool changes apply coherently at the next model request boundary without interrupting running tool batches. Mode definitions are captured as immutable snapshots, preventing disk drift until an explicit deactivation and reactivation cycle.
+- **Dual native and fallback delivery.** Native delivery projects request-only `SystemMessage.sections` when supported by provider capabilities (`compat.supportsMidConvoSystemMessages`). Unsupported providers receive attributed timeline user updates (`[pi-forge instruction update]`) without mutating or folding into the leading system prompt.
+- **Session event recovery and branch coherence.** Semantic events and derived delivery cursors enable state reconstruction across session reloads, manual compaction checkpoints, and tree branch navigation, verified offline via local SDK test harnesses.
+- **Fail-closed shadowing and literal rule isolation.** Bare mode selectors resolve project-over-global; invalid local mode definitions fail closed rather than falling back to global. Content is evaluated strictly as literal text without macro or script execution.
+
+### Changed
+
+- **Preview text/metadata separation.** Keep actual System prose and named-section values separate from historical tool declarations; show draft-relative selected tools independently, hide only genuinely empty projected System cards, and retain structural-only changes in Draft diff. After the final overlay is stopped, tool previews use the restored live selection rather than captured filtered options. Text estimates exclude tool schemas. Group only consecutive history runs so intervening instruction updates retain their chronological position.
+
+- **Instruction-aware Preview.** Compile the selected Preset draft with current session instruction snapshots using the existing pure projection. Render native sections, stop notices and tool declaration changes; do not leak cursor-only carriers or mark previewed instructions prepared. Preserve message provenance/order and remove the 8,000-character copy-text cutoff. Existing summaries and compaction behavior are unchanged.
+
+- **Minimum Pi version: 0.86.0.** This development slice uses the new transcript APIs; all four Pi peers require >=0.86.0. Package version remains 0.5.4 until release.
+- **Tool policy coordination.** Active modes participate in Forge's single tool-policy runtime: additions are subject to top-level Preset deny policies, removals take global priority, and session baseline tools are restored conservatively upon deactivation.
+
+### Note
+
+- **0.5.5 unreleased scope.** This slice delivers the human CLI, projection runtime, and read/control Web session instructions activity panel. Preset `instructionModes` schema bindings, mode library file editing in the web UI, and the model-callable `forge_system_update` agent tool remain in progress and are not yet released. Compaction checkpoints remain placed after the leading system prompt and before summary; SDK summarization input characterization shows summarizers observe carrier context and assistant history without request-only Forge rule text, characterized offline without real LLM semantic claims.
+
 ## [0.5.4] - 2026-09-12
 
 ### Added

@@ -46,7 +46,7 @@ test("web editor preserves its shell and guarded editing state", { timeout: 30_0
 		assert.ok(Math.abs(scopeBox.y - newStackBox.y) < 2, "scope and New stack should remain one compact control");
 		assert.ok(scopeBox.width < 120, "stack scope should not consume a full toolbar row");
 		assert.ok(actionsBox.height <= 44, "primary stack actions should fit on one compact row");
-		assert.ok(workspaceBox.y <= 225, "stack editing should begin near the top of the viewport");
+		assert.ok(workspaceBox.y <= 225, `stack editing should begin near the top of the viewport (y=${workspaceBox.y})`);
 		assert.equal(await page.locator("#deleteStackBtn").isVisible(), false);
 		await page.locator("#moreActions > summary").click();
 		assert.equal(await page.locator("#deleteStackBtn").isVisible(), true);

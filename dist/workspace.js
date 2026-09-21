@@ -2,6 +2,7 @@ import { createResourceCatalog } from "./catalog.js";
 import { hasAgentProfileErrors } from "./agent-profile.js";
 import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.js";
 import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.js";
+import { readGlobalInstructionModes, readInstructionModesScoped } from "./repositories/instruction-mode.js";
 import { chooseDefaultStack, isDisabledPromptStackId } from "./loader.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.js";
@@ -19,8 +20,35 @@ export class ForgeWorkspace {
     extensionState = createForgeExtensionState();
     current;
     host;
+    listeners = new Set();
     get snapshotKnown() {
         return this.current !== undefined;
+    }
+    /**
+     * Subscribe to coherent snapshot publications. Listeners are optional and
+     * must never alter workspace/compilation behavior, so a throwing listener is
+     * isolated and does not prevent later listeners from running.
+     */
+    subscribe(listener) {
+        this.listeners.add(listener);
+        let removed = false;
+        return () => {
+            if (removed)
+                return;
+            removed = true;
+            this.listeners.delete(listener);
+        };
+    }
+    notifyListeners() {
+        for (const listener of [...this.listeners]) {
+            try {
+                listener();
+            }
+            catch {
+                // Optional observers (for example the active-state publisher) must not
+                // break Forge compilation, tool policy, or provider behavior.
+            }
+        }
     }
     reload(cwd, options = {}) {
         const trusted = options.trusted !== false;
@@ -36,6 +64,8 @@ export class ForgeWorkspace {
             cwd,
             stacks,
             profiles,
+            // Mode definitions load on explicit library use, never to reconstruct active snapshots.
+            instructionModes: [],
             activeStackId,
             active,
             lastAppliedProfile: options.lastAppliedProfile ?? this.current?.lastAppliedProfile,
@@ -44,7 +74,14 @@ export class ForgeWorkspace {
             capturedAt: new Date().toISOString(),
         };
         this.current = deepFreeze(structuredClone(snapshot));
+        this.notifyListeners();
         return this.current;
+    }
+    reloadInstructionModes(cwd, trusted = true) {
+        if (!this.current || this.current.cwd !== cwd)
+            throw new Error("Forge workspace does not match this session.");
+        const instructionModes = trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes();
+        return this.publish({ ...this.current, instructionModes, capturedAt: new Date().toISOString() });
     }
     reloadProfiles(cwd, trusted = true) {
         if (!this.current)
@@ -280,11 +317,29 @@ export class ForgeWorkspace {
         };
     }
     dispose() {
-        this.disposeExtensions();
-        if (this.host?.isLive)
-            this.host.stop();
-        this.host = undefined;
-        this.current = undefined;
+        // Attempt every teardown step, then release the owned state in a finally so
+        // an optional host transport or extension disposal failure cannot leave a
+        // half-live workspace behind. The first error still propagates.
+        let firstError;
+        try {
+            this.disposeExtensions();
+        }
+        catch (error) {
+            firstError = error;
+        }
+        try {
+            if (this.host?.isLive)
+                this.host.stop();
+        }
+        catch (error) {
+            firstError ??= error;
+        }
+        finally {
+            this.host = undefined;
+            this.current = undefined;
+        }
+        if (firstError !== undefined)
+            throw firstError;
     }
     resolveActive(stacks, options) {
         if (options.suppressAutoActivate && options.activeStackId == null)
@@ -306,6 +361,7 @@ export class ForgeWorkspace {
     }
     publish(next) {
         this.current = deepFreeze(structuredClone(next));
+        this.notifyListeners();
         return this.current;
     }
     get extensionDiagnostics() {

@@ -1,4 +1,5 @@
-import { compileMessages, getLatestUserMessage, } from "./compiler.js";
+import { getPiBasePrompt, projectPresetSystemPrompt } from "./instruction-projection.js";
+import { getLatestUserMessage, } from "./compiler.js";
 import { PromptCompilationContext, dedupeDiagnostics } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules } from "./regex.js";
 import { promptRuntimeFromPi } from "./prompt-runtime.js";
@@ -8,31 +9,61 @@ import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredA
 export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     let startupToolPolicyPending = false;
     pi.on("session_shutdown", async () => {
-        // Pi carries the old runtime's active built-in tool names into a replacement
-        // runtime. Restore the pre-policy set before reload/session replacement so the
-        // replacement pi-forge instance can capture a complete baseline.
+        // Publish a final cleared active-state snapshot before teardown so optional
+        // consumers do not retain appearance context from the retiring session.
+        // Active-state is optional, so a throwing transport/listener must never
+        // block tool-policy restoration or workspace teardown.
+        disposeActiveStateSafely(deps);
         startupToolPolicyPending = false;
-        deps.restoreActiveToolPolicy();
-        // Tear down the host first so a throwing subagent disposal cannot leak a
-        // live host that keeps advertising the stale snapshot.
-        deps.disposeForgeWorkspace();
-        deps.disposePromptStackRuntime();
+        // Every teardown step runs even if a preceding one throws (for example
+        // when an optional bus transport rejects emit/unsubscribe). The first
+        // failure is rethrown only after all cleanup has been attempted.
+        let firstError;
+        for (const step of [
+            // A shared editor may outlive this runtime; stale hosts must stop accepting controls.
+            () => deps.disposeInstructions?.(),
+            // Pi carries the old runtime's active built-in tool names into a
+            // replacement runtime. Restore the pre-policy set before reload/session
+            // replacement so the replacement can capture a complete baseline.
+            () => deps.restoreActiveToolPolicy(),
+            // Tear down the host first so a throwing subagent disposal cannot leak
+            // a live host that keeps advertising the stale snapshot.
+            () => deps.disposeForgeWorkspace(),
+            () => deps.disposePromptStackRuntime(),
+        ]) {
+            try {
+                step();
+            }
+            catch (error) {
+                firstError ??= error;
+            }
+        }
+        if (firstError !== undefined)
+            throw firstError;
     });
     pi.on("session_start", async (event, ctx) => {
         startupToolPolicyPending = true;
+        // Suspend before any workspace reload so intermediate snapshots cannot be
+        // published under the still-bound old session id.
+        deps.suspendActiveState();
         try {
             const freshSession = shouldAutoActivateForSessionStart(event, ctx);
             await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, { deferToolPolicy: true, suppressAutoActivate: freshSession });
             if (freshSession)
                 await deps.activateFreshSessionDefaults(ctx);
+            deps.reloadForgeWorkspace(ctx);
+            deps.refreshWebEditorHost(ctx);
+            deps.notifyActivePreset(ctx, "after session " + event.reason);
+            // Resume and bind only once the restored workspace is complete.
+            deps.bindActiveState(ctx);
         }
         catch (error) {
             startupToolPolicyPending = false;
+            // A failed restore leaves the old binding stale; detach/clear instead
+            // of publishing it under a foreign workspace.
+            disposeActiveStateSafely(deps);
             throw error;
         }
-        deps.reloadForgeWorkspace(ctx);
-        deps.refreshWebEditorHost(ctx);
-        deps.notifyActivePreset(ctx, "after session " + event.reason);
     });
     pi.on("resources_discover", async (_event, ctx) => {
         if (!startupToolPolicyPending)
@@ -41,23 +72,41 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         deps.syncActiveToolPolicy(ctx);
     });
     pi.on("session_tree", async (_event, ctx) => {
-        await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
-        deps.reloadForgeWorkspace(ctx);
-        deps.refreshWebEditorHost(ctx);
-        deps.notifyActivePreset(ctx, "after tree navigation");
+        deps.suspendActiveState();
+        try {
+            await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
+            deps.reloadForgeWorkspace(ctx);
+            deps.refreshWebEditorHost(ctx);
+            deps.notifyActivePreset(ctx, "after tree navigation");
+            deps.bindActiveState(ctx);
+        }
+        catch (error) {
+            disposeActiveStateSafely(deps);
+            throw error;
+        }
     });
     pi.on("session_compact", async (_event, ctx) => {
-        await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
-        deps.reloadForgeWorkspace(ctx);
-        deps.refreshWebEditorHost(ctx);
-        deps.notifyActivePreset(ctx, "after compaction");
+        deps.suspendActiveState();
+        try {
+            await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
+            deps.reloadForgeWorkspace(ctx);
+            deps.refreshWebEditorHost(ctx);
+            deps.notifyActivePreset(ctx, "after compaction");
+            // Same session: bindSession keeps the live instance and revision
+            // epoch, so compaction does not clear/recreate cosmetic state.
+            deps.bindActiveState(ctx);
+        }
+        catch (error) {
+            disposeActiveStateSafely(deps);
+            throw error;
+        }
     });
-    pi.on("turn_start", async () => {
-        deps.syncActiveToolPolicy();
+    pi.on("turn_start", async (_event, ctx) => {
+        deps.syncActiveToolPolicy(ctx);
         deps.persistActiveSelection();
     });
-    pi.on("input", async () => {
-        deps.syncActiveToolPolicy();
+    pi.on("input", async (_event, ctx) => {
+        deps.syncActiveToolPolicy(ctx);
     });
     pi.on("tool_call", async (event) => {
         const reason = deps.toolPolicyBlockReason(event.toolName);
@@ -68,50 +117,60 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         compileCycle.currentLatestUserMessage = event.prompt;
         compileCycle.contextRewritePending = true;
-        const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
-        if (!active)
-            return;
-        const compilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
-        compileCycle.currentCompilationRuntime = compilationRuntime;
         compileCycle.currentBaseSystemPrompt = event.systemPrompt;
-        compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, compilationRuntime);
-        const result = compileCycle.currentCompilationContext.compileSystemPrompt(event.systemPrompt);
-        compileCycle.currentCompiledSystemPrompt = result.systemPrompt;
-        compileCycle.currentCompiledStackKey = formatResourceKey(active.key);
-        deps.recordCompileDiagnostics(ctx, result.diagnostics);
-        return { systemPrompt: result.systemPrompt };
+        compileCycle.currentCompiledSystemPrompt = undefined;
+        compileCycle.currentCompiledStackKey = undefined;
+        compileCycle.currentPromptInputKey = undefined;
+        compileCycle.currentCompilationContext = undefined;
+        compileCycle.currentCompilationRuntime = promptRuntimeFromPi(event.systemPromptOptions, ctx, event.prompt);
+        // Never return a forced full systemPrompt: Pi reapplies it AFTER context hooks,
+        // which would silently suppress native instruction sections on tool follow-ups.
     });
     pi.on("context", async (event, ctx) => {
-        const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
-        if (!active || !compileCycle.currentSystemPromptOptions)
-            return;
-        if (!compileCycle.contextRewritePending) {
-            // Tool-result follow-up requests receive Pi's natural context. Outgoing
-            // rules that opt into every-request application (frequency: "request")
-            // still run over the full natural context — this is the only regex
-            // pipeline entry on follow-ups, and it is wire-consistent because each
-            // request is rebuilt from the transcript rather than from the first
-            // request's rewritten output.
-            if (!hasRequestFrequencyRules(active.stack))
-                return;
-            const diagnostics = [];
-            const messages = applyRequestFrequencyRulesToMessages(active.stack, event.messages, diagnostics);
-            if (diagnostics.length > 0)
-                deps.recordCompileDiagnostics(ctx, diagnostics);
+        try {
+            deps.syncActiveToolPolicy(ctx);
+            let messages = event.messages;
+            const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
+            if (active && compileCycle.currentSystemPromptOptions) {
+                const options = deps.toolPromptOptions?.(compileCycle.currentSystemPromptOptions) ?? compileCycle.currentSystemPromptOptions;
+                const runtime = promptRuntimeFromPi(options, ctx, compileCycle.currentLatestUserMessage, compileCycle.currentCompilationRuntime?.now);
+                const basePrompt = getPiBasePrompt(event.messages, compileCycle.currentBaseSystemPrompt ?? "");
+                const key = JSON.stringify([active.stack, runtime.options, runtime.model, basePrompt]);
+                if (!compileCycle.currentCompilationContext || compileCycle.currentPromptInputKey !== key) {
+                    compileCycle.currentCompilationRuntime = runtime;
+                    compileCycle.currentCompilationContext = new PromptCompilationContext(active.stack, runtime);
+                    const result = compileCycle.currentCompilationContext.compileSystemPrompt(basePrompt);
+                    compileCycle.currentBaseSystemPrompt = basePrompt;
+                    compileCycle.currentCompiledSystemPrompt = result.systemPrompt;
+                    compileCycle.currentCompiledStackKey = formatResourceKey(active.key);
+                    compileCycle.currentPromptInputKey = key;
+                    deps.recordCompileDiagnostics(ctx, result.diagnostics);
+                }
+                if (compileCycle.contextRewritePending) {
+                    compileCycle.contextRewritePending = false;
+                    const latest = getLatestUserMessage(messages) ?? compileCycle.currentLatestUserMessage;
+                    compileCycle.currentCompilationContext.setLatestUserMessage(latest ?? "");
+                    const result = compileCycle.currentCompilationContext.compileMessages(messages);
+                    messages = result.messages;
+                    deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, result.diagnostics]));
+                }
+                else if (hasRequestFrequencyRules(active.stack)) {
+                    const diagnostics = [];
+                    messages = applyRequestFrequencyRulesToMessages(active.stack, messages, diagnostics);
+                    if (diagnostics.length)
+                        deps.recordCompileDiagnostics(ctx, diagnostics);
+                }
+                messages = projectPresetSystemPrompt(messages, compileCycle.currentCompiledSystemPrompt ?? "");
+            }
+            messages = deps.projectInstructions?.(messages, ctx) ?? messages;
             return messages === event.messages ? undefined : { messages };
         }
-        // Rewrite the message layout only for the first provider request of a user-submitted prompt.
-        // Tool-result follow-up turns must receive Pi's natural context; otherwise post-history
-        // prompt blocks such as COT / {{lastUserMessage}} are re-appended after every tool call
-        // and the model restarts its planning instead of continuing from the tool result.
-        compileCycle.contextRewritePending = false;
-        const latestUserMessage = getLatestUserMessage(event.messages) ?? compileCycle.currentLatestUserMessage;
-        compileCycle.currentCompilationContext?.setLatestUserMessage(latestUserMessage ?? "");
-        const result = compileCycle.currentCompilationContext
-            ? compileCycle.currentCompilationContext.compileMessages(event.messages)
-            : compileMessages(active.stack, promptRuntimeFromPi(compileCycle.currentSystemPromptOptions, ctx, latestUserMessage), event.messages);
-        deps.recordCompileDiagnostics(ctx, dedupeDiagnostics([compileCycle.latestCompileDiagnostics, result.diagnostics]));
-        return { messages: result.messages };
+        catch (error) {
+            // Pi logs hook exceptions and may otherwise dispatch the unmodified context.
+            // Abort explicitly so malformed state never yields text/tool half-application.
+            ctx.abort();
+            throw error;
+        }
     });
     pi.on("message_end", async (event, ctx) => {
         if (event.message.role === "assistant")
@@ -131,18 +190,29 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         resetCompileCycle(compileCycle);
     });
 }
+function disposeActiveStateSafely(deps) {
+    try {
+        deps.disposeActiveState();
+    }
+    catch {
+        // Optional active-state observers must never block lifecycle cleanup.
+    }
+}
 async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, options) {
+    deps.prepareInstructionRestore?.(ctx);
     const restoredProfile = getRestoredProfileProvenance(ctx);
     compileCycle.currentCompilationContext = undefined;
     compileCycle.currentCompilationRuntime = undefined;
     compileCycle.currentBaseSystemPrompt = undefined;
     compileCycle.currentCompiledSystemPrompt = undefined;
     compileCycle.currentCompiledStackKey = undefined;
+    compileCycle.currentPromptInputKey = undefined;
     compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
     const restoredActiveId = getRestoredActiveId(ctx);
     deps.restorePersistedActiveId(restoredActiveId);
-    await deps.reloadStacks(ctx, restoredActiveId, options);
+    await deps.reloadStacks(ctx, restoredActiveId, { ...options, deferToolPolicy: true });
     workspace.setLastAppliedProfile(restoredProfile);
+    deps.restoreInstructions?.(ctx, options);
 }
 function shouldAutoActivateForSessionStart(event, ctx) {
     if (event.reason === "new")

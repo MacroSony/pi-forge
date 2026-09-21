@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
 import ProfileBrowser from "./components/ProfileBrowser.vue";
+import SessionInstructions from "./components/SessionInstructions.vue";
 import { startContributionTabs } from "./contrib-tab-host.ts";
 import { startContextDiffTabs } from "./context-diff-tab-host.ts";
 import { editorLocale, setEditorLocale, t, translateDom, type EditorLocale } from "./i18n.ts";
@@ -152,6 +153,7 @@ onUnmounted(() => {
 				<option value="zh-CN">中文</option>
 			</select>
 		</nav>
+		<SessionInstructions />
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 		<header class="topbar">

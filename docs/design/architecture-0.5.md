@@ -55,6 +55,18 @@ Two small product increments, both consistent with existing invariants:
 4. **Per-rule regex frequency.** Regex rules gain `frequency: "turn" | "request"` (default `"turn"`, preserving 0.5.1 behavior). On tool-result follow-up requests — where the stack layout rewrite is deliberately skipped — `frequency: "request"` outgoing message rules apply to Pi's full natural context. Each provider request is rebuilt from the transcript, so re-application is wire-consistent and never doubled. The option is meaningful only for `effect: "outgoing"` rules that target messages (history stage, or compiled stage with a `messages` target); other combinations produce validation warnings.
 5. **Finalize role extension.** The 0.5.0 "assistant roles only" finalize constraint is relaxed: a finalize rule whose `roles` explicitly includes `"toolResult"` also rewrites stored tool-result messages at `message_end` (which Pi emits and persists for user/assistant/toolResult, before the follow-up request — so the wire inherits the scrubbed transcript). Rules without `roles` keep assistant-only behavior; `frequency` has no meaning for storage-time finalize and produces a validation warning. This remains a documented, user-enabled destructive transform, and user-role messages stay out of scope.
 
+## Accepted 0.5.5 amendment: session instruction modes
+
+The prior new-prompt-feature freeze is lifted only for the authorized [instruction-mode design](pi-forge-system-update-design-notes.md). Definitions are reusable JSON resources; Presets bind and authorize them; active state is reduced from Session events. Forge owns recoverable rule projection, while Pi retains ordinary message/provider/tool execution protocols. The real Pi 0.86 spike invalidated the previously proposed retained-sections thin bridge.
+
+The first lane adds only characterization tests, codecs/finite overrides, pure owner-scope binding resolution and immutable event snapshots/reduction. Resource discovery, live Preset schema, request projection, recovery, executable-tool integration and CLI/Agent/UI surfaces follow in their explicit lanes; adding their data types is not delivery of those features. `ForgeWorkspace` remains the resource owner, `tool-policy-runtime` the single tool-selection owner, and the existing canonical fingerprint algorithm is shared without changing subagent wire values. No package entry point, framework, native Pi fork, new database, or independently editable projection state is introduced.
+
+Each coherent lane requires full verification. Project Pi dependency/minimum-version changes and migration notes are intentional steps of the core integration lane, not implicit host upgrades. The owner's current instruction permits local development but not commits, push, publish, reload or deployment; this supersedes the historical commit-at-lane-end convention below for this work.
+
+### 2026-09-20 usability follow-up
+
+After successful human CLI dogfooding, the owner approved bringing Session observability forward: a Web activity panel reads a derived view from the instruction runtime and sends human off/reset through the same coordinator. It does not introduce a persisted state store, a new package port, binding authorization, or a mode-library editor. Mutations are fenced by session/leaf/revision (including the runtime instance), and stale/retired hosts fail closed. Browser polling is local and never starts inference. Compaction-input characterization may run alongside this UI lane, but summary placement and semantic-model behavior require experiments before changing the projection design.
+
 ## Extension port contract (0.5.0)
 
 The 0.5.0 extension contract is part of the breaking release. It is a trusted-extension port, not a security boundary.

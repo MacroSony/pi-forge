@@ -277,7 +277,12 @@ export default function register(api: any) {
 		systemPrompt: "base system",
 		prompt: "hello",
 	}, context.ctx);
-	assert.equal(first.systemPrompt, "Macro macro-v1\n\nslot-v1");
+	assert.equal(first, undefined);
+	const firstContext = await harness.events.context({
+		type: "context",
+		messages: [{ role: "user", content: "hello" }],
+	}, context.ctx);
+	assert.equal(firstContext?.messages[0]?.content, "Macro macro-v1\n\nslot-v1");
 
 	writeForgeExtension(cwd, "system-status.ts", `
 export default function register(api: any) {
@@ -293,7 +298,12 @@ export default function register(api: any) {
 		systemPrompt: "base system",
 		prompt: "hello",
 	}, context.ctx);
-	assert.equal(second.systemPrompt, "Macro macro-v2\n\nslot-v2");
+	assert.equal(second, undefined);
+	const secondContext = await harness.events.context({
+		type: "context",
+		messages: [{ role: "user", content: "hello" }],
+	}, context.ctx);
+	assert.equal(secondContext?.messages[0]?.content, "Macro macro-v2\n\nslot-v2");
 
 	await harness.events.session_shutdown({ type: "session_shutdown", reason: "reload" }, context.ctx);
 	writeForgeExtension(cwd, "system-status.ts", `
@@ -311,7 +321,12 @@ export default function register(api: any) {
 		systemPrompt: "base system",
 		prompt: "hello",
 	}, replacementContext.ctx);
-	assert.equal(third.systemPrompt, "Macro macro-v3\n\nslot-v3");
+	assert.equal(third, undefined);
+	const thirdContext = await replacementHarness.events.context({
+		type: "context",
+		messages: [{ role: "user", content: "hello" }],
+	}, replacementContext.ctx);
+	assert.equal(thirdContext?.messages[0]?.content, "Macro macro-v3\n\nslot-v3");
 	assert.doesNotMatch(replacementContext.notifications.map((notification) => notification.message).join("\n"), /already registered/);
 
 	const untrusted = createContext(cwd, [], { trusted: false });
@@ -362,7 +377,12 @@ export default function register(api: any) {
 			systemPrompt: "base system",
 			prompt: "hello",
 		}, context.ctx);
-		assert.equal(result.systemPrompt, "Global global-macro\n\nglobal-slot\n\nProject project-macro\n\nproject-slot");
+		assert.equal(result, undefined);
+		const contextResult = await harness.events.context({
+			type: "context",
+			messages: [{ role: "user", content: "hello" }],
+		}, context.ctx);
+		assert.equal(contextResult?.messages[0]?.content, "Global global-macro\n\nglobal-slot\n\nProject project-macro\n\nproject-slot");
 
 		await harness.commands.preset.handler("diagnostics", context.ctx);
 		const diagnostics = context.editors.at(-1)?.text ?? "";
@@ -482,15 +502,21 @@ test("context rewrite runs once per user turn and surfaces diagnostics", async (
 		systemPrompt: "base",
 		systemPromptOptions: ctx.getSystemPromptOptions(),
 	}, ctx);
-	assert.equal(startResult.systemPrompt, "base");
-	assert.equal(statuses["pi-forge-diagnostics"], "forge:1e/1w");
+	assert.equal(startResult, undefined);
 
 	const firstContext = await harness.events.context({ type: "context", messages: [{ role: "user", content: "latest", timestamp: 1 }] }, ctx);
-	assert.equal(firstContext.messages.length, 2);
-	assert.equal(firstContext.messages[0].content[0].text, "before");
+	assert.equal(firstContext.messages.length, 3);
+	assert.equal(firstContext.messages[0].role, "system");
+	assert.equal(firstContext.messages[0].content, "base");
+	assert.equal(firstContext.messages[1].content[0].text, "before");
+	assert.equal(statuses["pi-forge-diagnostics"], "forge:1e/1w");
 
 	const secondContext = await harness.events.context({ type: "context", messages: [{ role: "user", content: "tool follow-up", timestamp: 2 }] }, ctx);
-	assert.equal(secondContext, undefined);
+	assert.ok(secondContext?.messages);
+	assert.equal(secondContext.messages.length, 2);
+	assert.equal(secondContext.messages[0].role, "system");
+	assert.equal(secondContext.messages[0].content, "base");
+	assert.equal(secondContext.messages[1].content, "tool follow-up");
 
 	await harness.commands.preset.handler("diagnostics", ctx);
 	assert.match(editors.at(-1)?.text ?? "", /Undefined forge-v1 path: \{\{missing\}\}/);
@@ -527,9 +553,11 @@ test("request-frequency rules run on tool-result follow-up requests over the nat
 
 	// First request of the user turn: full compilation applies both rules.
 	const first = await harness.events.context({ type: "context", messages: [{ role: "user", content: "sk-first turn-secret", timestamp: 1 }] }, ctx);
-	assert.equal(first.messages.length, 1);
-	assert.match(first.messages[0].content, /\[REDACTED\]/);
-	assert.match(first.messages[0].content, /X/);
+	assert.equal(first.messages.length, 2);
+	assert.equal(first.messages[0].role, "system");
+	assert.equal(first.messages[0].content, "System.");
+	assert.match(first.messages[1].content, /\[REDACTED\]/);
+	assert.match(first.messages[1].content, /X/);
 
 	// Follow-up request: no layout rewrite, but the request-frequency rule still
 	// scrubs the natural context; the turn-scoped rule stays out of it.
@@ -540,17 +568,23 @@ test("request-frequency rules run on tool-result follow-up requests over the nat
 	];
 	const second = await harness.events.context({ type: "context", messages: followUpMessages }, ctx);
 	assert.ok(second);
-	assert.equal(second.messages.length, 3);
+	assert.equal(second.messages.length, 4);
 	// The request rule re-scrubs older transcript messages on the follow-up
 	// (wire-consistent with the first request), while the turn-scoped rule
 	// stays out of the follow-up entirely.
-	assert.equal(second.messages[0].content, "[REDACTED] turn-secret");
-	assert.equal(second.messages[1].content[0].text, "calling a tool");
-	assert.equal(second.messages[2].content[0].text, "leaked [REDACTED]");
+	assert.equal(second.messages[0].role, "system");
+	assert.equal(second.messages[0].content, "System.");
+	assert.equal(second.messages[1].content, "[REDACTED] turn-secret");
+	assert.equal(second.messages[2].content[0].text, "calling a tool");
+	assert.equal(second.messages[3].content[0].text, "leaked [REDACTED]");
 
 	// Follow-up with nothing to scrub returns the natural context untouched.
 	const third = await harness.events.context({ type: "context", messages: [{ role: "user", content: "clean", timestamp: 4 }] }, ctx);
-	assert.equal(third, undefined);
+	assert.ok(third);
+	assert.equal(third.messages.length, 2);
+	assert.equal(third.messages[0].role, "system");
+	assert.equal(third.messages[0].content, "System.");
+	assert.equal(third.messages[1].content, "clean");
 });
 
 test("message_end applies destructive finalize regex to assistant messages", async () => {
@@ -1065,7 +1099,8 @@ test("/preset ui serves and saves through the local stack editor API", async () 
 		assert.equal(longMessage?.content.length, longPreviewContent.length);
 		assert.ok((longMessage?.chars ?? 0) > 9000);
 		assert.match(previewResult.text, /--- after \(user\) ---/);
-		assert.match(previewResult.text, /preview truncated/);
+		assert.doesNotMatch(previewResult.text, /preview truncated/);
+		assert.ok(previewResult.text.includes(longPreviewContent), "copy text retains the complete message, including its tail");
 
 		const stateResponse = await fetch(new URL("/api/state", editorUrl), { headers: { "x-pi-forge-token": token } });
 		assert.equal(stateResponse.status, 404);

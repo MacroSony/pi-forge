@@ -31,6 +31,10 @@ test("preset switching warns from the saved compile and latest provider usage", 
 		systemPrompt: "base system",
 		prompt: "hello",
 	}, context.ctx);
+	await harness.events.context({
+		type: "context",
+		messages: [{ role: "user", content: "hello" }],
+	}, context.ctx);
 	await harness.events.before_provider_request({
 		type: "before_provider_request",
 		payload: { model: "test-model", messages: [{ role: "user", content: "hello" }] },

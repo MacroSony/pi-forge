@@ -55,7 +55,7 @@ Set `CHROME_PATH` when Chrome/Chromium is outside a standard location. CI runs t
 
 ## Pi compatibility
 
-Published pi-forge treats Pi-owned SDK packages (`pi-agent-core`, `pi-ai`, `pi-coding-agent`, `pi-tui`, and `typebox`) as host-provided wildcard peers. The running Pi host supplies one coherent SDK instance, avoiding duplicate packages and avoiding an install-time lock to Pi's frequent release cadence.
+Pi-forge treats Pi-owned SDK packages (`pi-agent-core`, `pi-ai`, `pi-coding-agent`, `pi-tui`, and `typebox`) as host-provided optional peers, not private runtime dependencies. The 0.5.5 development bridge requires Pi SDK peers `>=0.86.0`; `typebox` remains `*`. The running host supplies one coherent SDK instance, avoiding duplicate packages and exact-version locks while expressing the actual minimum API requirement.
 
 The repository keeps exact SDK versions as development/test fixtures for reproducibility. Exact fixtures do not constrain which Pi version may load the published extension.
 

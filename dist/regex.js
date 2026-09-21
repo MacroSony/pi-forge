@@ -1,3 +1,4 @@
+import { isInstructionControlMessage } from "./instruction-protocol.js";
 const ALLOWED_REGEX_FLAGS = new Set(["g", "i", "m", "s", "u"]);
 const VALID_STAGES = new Set(["history", "compiled"]);
 const VALID_EFFECTS = new Set(["outgoing", "finalize"]);
@@ -311,6 +312,8 @@ function transformMessages(messages, rule, stats) {
 function eligibleMessageIndexes(messages, rule) {
     const indexes = [];
     for (const [index, message] of messages.entries()) {
+        if (isInstructionControlMessage(message))
+            continue;
         if (rule.roles && !rule.roles.includes(String(message.role)))
             continue;
         const depth = messages.length - 1 - index;
@@ -323,6 +326,8 @@ function eligibleMessageIndexes(messages, rule) {
     return indexes;
 }
 function transformMessage(message, rule, stats) {
+    if (isInstructionControlMessage(message))
+        return message;
     const content = message.content;
     if (typeof content === "string") {
         const result = transformString(content, rule);

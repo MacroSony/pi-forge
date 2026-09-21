@@ -72,6 +72,14 @@ import {
 
 The experimental generic Settings integration surface. Optional packages contribute recursively validated, JSON-compatible schemas and values over the Pi event bus; pi-forge owns only the renderer and web proxy. Providers own validation and persistence, may resolve operations asynchronously, and receive an abort signal tied to provider generation so stale requests can stop before side effects. The full contract is documented in the [UI contribution port reference](ui-contribution-port.md).
 
+## Event bus contracts (no import entry point)
+
+Optional cosmetic consumers integrate over the Pi event bus instead of importing the package:
+
+- Active-state snapshot/change uses `@zihanw/pi-forge/active-state/v1` and `@zihanw/pi-forge/active-state/request/v1`. See the [active-state bus contract](active-state.md).
+
+These channels carry only plain JSON scalars. They are not `@zihanw/pi-forge` import surfaces and consumers must not depend on package internals.
+
 ## Compatibility policy
 
 - **Stable** surfaces (root factory, macro/slot registration) preserve source compatibility within the documented release range unless a changelog entry announces a breaking release.

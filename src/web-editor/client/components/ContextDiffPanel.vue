@@ -20,7 +20,8 @@ import {
 	type SplitLineDiffRow,
 } from "../../line-diff.ts";
 import type { LegacyEditorDraft } from "../legacy-editor.ts";
-import { previewSections, previewToTurnSnapshot } from "../preview-diff.ts";
+import { previewSections, previewSectionText, previewToTurnSnapshot } from "../preview-diff.ts";
+import PreviewSectionBody from "./PreviewSectionBody.vue";
 
 const props = defineProps<{
 	getStackDraft?: () => LegacyEditorDraft | undefined;
@@ -69,25 +70,37 @@ type PreviewSectionGroup = {
 
 const previewGroups = computed<PreviewSectionGroup[]>(() => {
 	const groups: PreviewSectionGroup[] = [];
-	const byKey = new Map<string, PreviewSectionGroup>();
+	let currentGroup: PreviewSectionGroup | null = null;
+	let currentSourceKey: string | undefined;
+
 	for (const section of compiledSections.value) {
 		const key = historySourceKey(section);
 		if (!key) {
-			groups.push({ key: `section:${section.id}`, label: section.title || section.id, history: false, sections: [section] });
+			currentGroup = null;
+			currentSourceKey = undefined;
+			groups.push({
+				key: `section:${section.id}`,
+				label: section.title || section.id,
+				history: false,
+				sections: [section],
+			});
 			continue;
 		}
-		let group = byKey.get(key);
-		if (!group) {
-			group = {
-				key,
-				label: historySourceLabel(section),
-				history: true,
-				sections: [],
-			};
-			byKey.set(key, group);
-			groups.push(group);
+
+		if (currentGroup && currentSourceKey === key) {
+			currentGroup.sections.push(section);
+			continue;
 		}
-		group.sections.push(section);
+
+		currentSourceKey = key;
+		currentGroup = {
+			// Identify the run without delimiter collisions with another source key.
+			key: JSON.stringify([key, section.id]),
+			label: historySourceLabel(section),
+			history: true,
+			sections: [section],
+		};
+		groups.push(currentGroup);
 	}
 	return groups;
 });
@@ -296,10 +309,11 @@ function metadataOnlyChange(block: DiffBlock): boolean {
 function metadataChangeText(block: DiffBlock): string {
 	const beforeRole = block.before?.role ?? "—";
 	const afterRole = block.after?.role ?? "—";
+	const draft = mode.value !== "run";
 	const roleDetail = beforeRole === afterRole
-		? t("diff.roleUnchanged", { role: afterRole })
+		? t(draft ? "diff.previewRoleUnchanged" : "diff.roleUnchanged", { role: afterRole })
 		: t("diff.roleChanged", { before: beforeRole, after: afterRole });
-	return t("diff.metadataChanged", { detail: roleDetail });
+	return t(draft ? "diff.previewMetadataChanged" : "diff.metadataChanged", { detail: roleDetail });
 }
 
 function formatUsageTokens(value: number | undefined): string {
@@ -338,9 +352,25 @@ function groupTitle(group: PreviewSectionGroup): string {
 	return `${group.label} (${t(count === 1 ? "diff.messageOne" : "diff.messageMany", { count })})`;
 }
 
+function sectionCopyText(section: WebEditorPreviewSection): string {
+	return previewSectionText(section);
+}
+
+function hasCopyableText(section: WebEditorPreviewSection): boolean {
+	return sectionCopyText(section).length > 0;
+}
+
+function sectionChars(section: WebEditorPreviewSection): number {
+	return typeof section.chars === "number" ? section.chars : sectionCopyText(section).length;
+}
+
+function sectionTokens(section: WebEditorPreviewSection): number {
+	return typeof section.approxTokens === "number" ? section.approxTokens : Math.ceil(sectionChars(section) / 4);
+}
+
 function sectionMeta(section: WebEditorPreviewSection): string {
 	const rolePrefix = `${sectionRole(section)} · `;
-	return t("diff.sectionMeta", { rolePrefix, chars: section.chars, tokens: section.approxTokens });
+	return t("diff.sectionMeta", { rolePrefix, chars: sectionChars(section), tokens: sectionTokens(section) });
 }
 
 async function copyPreviewText(text: string): Promise<void> {
@@ -380,7 +410,7 @@ function turnLabel(): string {
 			<div class="context-diff-panel-head">
 				<div class="context-diff-title">{{ t("diff.compiledDraft") }}</div>
 				<div class="context-diff-meta">
-					<span v-if="preview">{{ t("diff.compiledMeta", { tokens: preview.approxTokens, chars: preview.totalChars }) }}</span>
+					<span v-if="preview" :title="t('diff.compiledMeta', { tokens: preview.approxTokens, chars: preview.totalChars })">{{ t("diff.compiledMeta", { tokens: preview.approxTokens, chars: preview.totalChars }) }}</span>
 					<span v-else-if="previewLoading">{{ t("diff.refreshing") }}</span>
 					<span v-else-if="previewError" class="error">{{ previewError }}</span>
 					<span v-else>{{ t("diff.noPreview") }}</span>
@@ -394,6 +424,27 @@ function turnLabel(): string {
 					{{ diagnostic.level.toUpperCase() }}<template v-if="diagnostic.itemId"> · {{ diagnostic.itemId }}</template>: {{ diagnostic.message }}
 				</div>
 			</div>
+			<div v-if="preview && preview.selectedTools !== undefined" class="preview-selected-tools-panel">
+				<div class="selected-tools-head">
+					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-count">
+						{{ preview.selectedTools.length === 0
+							? t("diff.noToolsSelected")
+							: t(preview.selectedTools.length === 1 ? "diff.toolCountOne" : "diff.toolCountMany", { count: preview.selectedTools.length }) }}
+					</span>
+				</div>
+				<p class="selected-tools-note">{{ t("diff.previewSelectedToolsNote") }}</p>
+				<div v-if="preview.selectedTools.length > 0" class="selected-tools-list">
+					<span v-for="tool in preview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
+				</div>
+			</div>
+			<div v-else-if="preview && preview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
+				<div class="selected-tools-head">
+					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-count muted">{{ t("diff.toolSelectionUnknown") }}</span>
+				</div>
+				<p class="selected-tools-note">{{ t("diff.previewSelectedToolsNote") }}</p>
+			</div>
 			<div v-if="previewError" class="context-diff-error">{{ previewError }}</div>
 			<pre v-else-if="compiledSections.length === 0 && previewText" class="section-text">{{ previewText }}</pre>
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
@@ -401,30 +452,46 @@ function turnLabel(): string {
 			</div>
 			<div v-else class="context-diff-sections">
 				<template v-for="group in previewGroups" :key="group.key">
-					<details v-if="group.history" class="context-diff-group" open>
+					<details v-if="group.history" class="context-diff-group" :data-group-key="group.key" open>
 						<summary class="context-diff-group-summary">
 							<span class="group-title">{{ groupTitle(group) }}</span>
 						</summary>
 						<div class="context-diff-group-messages">
-							<details v-for="section in group.sections" :key="section.id" :class="['context-diff-section', roleClass(section)]" open>
+							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
 								<summary>
 									<span class="section-title">{{ section.title || section.id }}</span>
 									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 									<span class="section-meta">{{ sectionMeta(section) }}</span>
-									<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
+									<button
+										type="button"
+										class="context-diff-copy-section"
+										:disabled="!hasCopyableText(section)"
+										:title="!hasCopyableText(section) ? t('diff.metadataOnlyNoCopy') : t('inspector.copy')"
+										@click.prevent.stop="copyPreviewText(sectionCopyText(section))"
+									>
+										{{ t("inspector.copy") }}
+									</button>
 								</summary>
-								<pre class="section-text">{{ section.content }}</pre>
+								<PreviewSectionBody :section="section" @copy="copyPreviewText" />
 							</details>
 						</div>
 					</details>
-					<details v-else v-for="section in group.sections" :key="section.id" :class="['context-diff-section', roleClass(section)]" open>
+					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
 						<summary>
 							<span class="section-title">{{ section.title || section.id }}</span>
 							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 							<span class="section-meta">{{ sectionMeta(section) }}</span>
-							<button type="button" class="context-diff-copy-section" @click.prevent.stop="copyPreviewText(section.content)">{{ t("inspector.copy") }}</button>
+							<button
+								type="button"
+								class="context-diff-copy-section"
+								:disabled="!hasCopyableText(section)"
+								:title="!hasCopyableText(section) ? t('diff.metadataOnlyNoCopy') : t('inspector.copy')"
+								@click.prevent.stop="copyPreviewText(sectionCopyText(section))"
+							>
+								{{ t("inspector.copy") }}
+							</button>
 						</summary>
-						<pre class="section-text">{{ section.content }}</pre>
+						<PreviewSectionBody :section="section" @copy="copyPreviewText" />
 					</details>
 				</template>
 			</div>
@@ -543,13 +610,24 @@ function turnLabel(): string {
 .context-diff-mode-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
 .context-diff-expand { margin-left: auto; }
 .context-diff-mode-tabs button.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
-.context-diff-panel-head { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.context-diff-title { font-weight: 700; }
-.context-diff-meta { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-diff-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; }
+.context-diff-panel-head button { flex-shrink: 0; white-space: nowrap; }
+.context-diff-title { font-weight: 700; flex-shrink: 0; white-space: nowrap; }
+.context-diff-meta { flex: 1 1 120px; color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-diff-meta .error, .context-diff-error { color: var(--error); }
 .context-diff-refresh { margin-left: auto; min-height: 28px; font-size: 12px; padding: 2px 8px; }
 .context-diff-copy-full, .context-diff-copy-section { min-height: 28px; font-size: 12px; padding: 2px 8px; }
 .context-diff-copy-section { margin-left: auto; }
+.context-diff-copy-section:disabled { opacity: 0.45; cursor: not-allowed; }
+.preview-selected-tools-panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--pane); display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.preview-selected-tools-panel.unknown { background: var(--pane-soft); }
+.selected-tools-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.selected-tools-title { font-weight: 700; color: var(--text); }
+.selected-tools-count { font-size: 11px; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; line-height: 16px; }
+.selected-tools-count.muted { color: var(--muted); }
+.selected-tools-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.selected-tools-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.selected-tool-chip { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); color: var(--code-text); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .context-diff-diagnostics { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); font-size: 12px; }
 .context-diff-diagnostic.error { color: var(--error); }
 .context-diff-diagnostic.warning { color: var(--warning); }

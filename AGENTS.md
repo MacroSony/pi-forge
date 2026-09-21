@@ -4,7 +4,7 @@ These instructions apply to humans and coding agents.
 
 ## Current mode
 
-pi-forge is stabilizing the lean 0.5 line through the accepted 0.5.2 amendments in [docs/design/architecture-0.5.md](docs/design/architecture-0.5.md). Do not add unrelated product features. The long-term target is archived in [docs/design/archive/0.5-full-proposal/](docs/design/archive/0.5-full-proposal/README.md).
+pi-forge is continuing the lean 0.5 line through the accepted amendments in [docs/design/architecture-0.5.md](docs/design/architecture-0.5.md), including the authorized [0.5.5 instruction-mode lanes](docs/design/pi-forge-system-update-design-notes.md). The codec/event foundation and human CLI core are implemented: Pi 0.86 request projection, scoped mode discovery, semantic session recovery and real tool overlays. See docs/reference/instruction-modes.md for current capability and limitations. The user-approved follow-up adds the Web Session activity read/control panel and real-SDK compaction-input characterization before the full binding editor. The next lane is live Preset binding/current authorization and restricted Agent control; mode library/binding UI and release remain later. Compaction checkpoint placement is still under evaluation, not silently changed. Do not confuse the usable CLI slice with a completed 0.5.5 release. Do not add unrelated product features. The long-term target is archived in [docs/design/archive/0.5-full-proposal/](docs/design/archive/0.5-full-proposal/README.md).
 
 Prefer removal and simplification. Move code when splitting packages; do not rewrite working behavior unless the lean plan requires it.
 

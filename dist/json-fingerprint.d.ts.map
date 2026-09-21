@@ -1,0 +1,1 @@
+{"version":3,"file":"json-fingerprint.d.ts","sourceRoot":"","sources":["../src/json-fingerprint.ts"],"names":[],"mappings":"AAEA;;;;;GAKG;AACH,eAAO,MAAM,uBAAuB,EAAG,YAAqB,CAAC;AAC7D,MAAM,MAAM,eAAe,GAAG,GAAG,OAAO,uBAAuB,GAAG,MAAM,EAAE,CAAC;AAE3E,wBAAgB,aAAa,CAAC,KAAK,EAAE,OAAO,GAAG,MAAM,CAEpD;AAED,wBAAgB,eAAe,CAAC,KAAK,EAAE,OAAO,GAAG,eAAe,CAK/D"}

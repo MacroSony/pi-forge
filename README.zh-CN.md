@@ -1,151 +1,112 @@
 # pi-forge
 
-[English](README.md) | [简体中文](README.zh-CN.md) · [中文文档](docs/zh-CN/README.md)
+[English](README.md) | [简体中文](README.zh-CN.md) · [中文文档](docs/zh-CN/README.md) · [快速开始](#安装与第一次使用)
 
-![pi-forge header](https://raw.githubusercontent.com/MacroSony/pi-forge/main/assets/pi-forge-header-concept-1.png)
+**全面掌控你的 Pi Agent 看到什么、能做什么。**
 
-**pi-forge** 让你自定义 [Pi](https://github.com/badlogic/pi-mono) 的思考方式和行为。Preset（预设）把有序 prompt 堆栈与工具/skill 策略、Regex 和参数放在一起；Agent Profile 可以一次性应用模型、思考等级和预设。
+pi-forge 给 [Pi](https://github.com/earendil-works/pi) 加了一个可视化工作台。你可以在里面改提示词、调整上下文、选工具，再把调好的配置存下来，下次接着用。
 
-可以把它理解为 AI agent 的角色卡和工作台。
+## 为什么做这个插件
 
-## 主要能力
+现在大部分 AI Agent 都能加规则、改提示词，但想方便地自定义整套上下文，就没那么容易了。我想改的不只是几段文字，还有系统提示词、工具说明、项目文件、示例消息和聊天记录怎么拼在一起。
 
-- 把 system prompt、聊天历史、工具、skills、项目上下文和运行时数据组合成可排序的 block 和 slot。
-- 用一条命令切换编程、审查、写作、角色扮演和翻译模式。
-- 保存并应用完整的模型/思考等级/预设 Profile。
-- 按预设严格限制工具，并过滤模型可见的 skills。
-- 使用静态、轮次和会话变量，以及支持嵌套的模板宏。
-- 对发给模型的 prompt 或最终 assistant 消息执行确定性 regex 转换。
-- 在本地 Web 编辑器中管理 Preset/Profile，并检查实际 provider payload。
-- 用明确启用的 profile 运行实验性、需要审批的前台 subagent。
+我用惯了 SillyTavern 的预设系统，对这点很不爽。我想把上下文拆开细改，也想检查真正发给模型的请求。所以就做了 pi-forge。
 
-## 安装
+<!-- MEDIA: editor-overview — PNG 候选。真实编辑器中展示一个有实际用途的预设、内容块／插槽、选中的文本与编译预览；审核素材前不插图片链接。 -->
 
-pi-forge 需要 Node.js 22.19 或更高版本。
+## 功能
+
+### 编排上下文
+
+一份预设由写好的**内容块（Block）**和运行时填入的**插槽（Slot）**组成。写入指令或示例消息，把工具说明、技能、项目文件和聊天记录放到需要的位置。条目可以排序、开关，改完在 Preview 里看结果。
+
+你可以替换 Pi 默认的系统提示词，也可以只在它前面或后面加内容。聊天记录能按角色筛选、限制保留的上下文，或者从模型输入中去掉先前的思考内容，不会改写已存储的聊天记录。
+
+<!-- MEDIA: context-toggle — GIF 候选。只展示一件事：切换 project-context 插槽，右侧预览中对应的段落消失／恢复。固定画面，不缩放，不加字幕。 -->
+
+### 选择工具与处理文本
+
+- 每份预设都能用 `allow` 或 `deny` 匹配规则控制工具，不必只写一句话让模型避开某个工具。
+- 筛选 Forge 展示给模型的技能列表。
+- 重复用到的值可以存成不可变参数，再用 `{{ parameters.style }}` 这样的模板插进内容；也可以使用运行时数据和自定义宏。
+- 用正则按确定的规则改写出站文本，或者会话记录里已完成的助手消息和工具结果。
+
+### 看清每次改动
+
+- **预览（Preview）**：编译当前草稿，不需要真的请求模型。
+- **草稿差异（Draft diff）**：和已保存的预设比较，看看还没保存的修改有哪些。
+- **运行差异（Run diff）**：比对前后两次 provider 请求。大小估算与 provider 返回的 token／cache 用量分开展示，后者在有返回数据时才显示。
+- **请求捕获（Payload capture）**：通过编辑器或 `/payload next`，查看下一次 provider 请求的脱敏版本。
+
+缓存提示会标出容易影响缓存的时间戳宏，也会估算切换预设或 Profile 对提示词缓存的影响。
+
+<!-- MEDIA: draft-diff — PNG 候选。展示一处容易读懂的指令修改，以及相对已保存预设的增删高亮。 -->
+
+### 复用你的配置
+
+把模型、思考强度，以及要用哪份预设存成 **Agent Profile**，以后用 `/profile use <id>` 一次应用。预设和 Profile 都可以放在项目里，也可以存到用户全局目录；项目里有同 ID 的配置时，优先用项目里的那份。
+
+编程、审查、写作、角色扮演，都可以分别配一套，不只是给同一段提示词换个名字。
+
+## 安装与第一次使用
+
+先装好 Pi，Node.js 需要 **22.19 或更高版本**。
 
 ```bash
 pi install npm:@zihanw/pi-forge
 ```
 
-安装或更新后请重启 Pi。运行中的 Pi host 会向 extension 提供 SDK package；pi-forge 只在开发和测试中固定精确版本，以保证结果可复现，不会用 peer dependency 锁死 Pi 频繁发布的版本。兼容策略见[开发与兼容性](docs/development/setup.md#pi-compatibility)（英文）。
+安装或更新后重启 Pi。然后在已信任的项目中：
 
-## 五分钟上手
+1. 输入 `/preset ui`，打开本地编辑器。
+2. 点 **New preset**，从默认 Pi mirror 布局开始。
+3. 改一个内容块或工具策略，在 **Preview** 里看结果。
+4. 点 **Save** 保存，再点 **Activate**，让当前会话用上这份预设。
 
-### 1. 创建预设
+保存和切换是两回事：改的是未启用的预设，保存后不会自动切过去；改的是正在用的预设，保存后会重新加载。
 
-从[默认 Pi mirror](examples/default-prompt-stack.json) 创建 `default` 预设。0.5.3 的兼容存储路径仍是 `.pi/forge/prompt-stacks/default.json`：
-
-```bash
-mkdir -p .pi/forge/prompt-stacks
-cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
-```
-
-如果你通过 npm 安装而不是 clone 仓库，请直接打开 `/preset ui` 新建预设；编辑器使用相同的 Pi mirror 布局。
-
-重启 Pi，或执行：
-
-```text
-/preset reload
-/preset use default
-```
-
-没有其他预设或已恢复 session 选择优先时，`default.json` 会自动启用。
-
-### 2. 打开可视化编辑器
-
-```text
-/preset ui
-```
-
-本地编辑器可以新建、fork、校验、预览、导入、导出和删除预设，并可在新建/fork/导入时明确选择写入项目或用户全局存储。Preview dock 提供带旧/新行号和行内高亮的 unified/split diff，可只看变化行或保留三行/全部上下文；Run diff 会把 chars/4 估算与 Pi 返回的真实 prompt/cache usage、cache hit rate 明确分开。切换到 **Agent profiles** 可以浏览项目与全局 Profile、编辑和删除全局 Profile（通过显式 `global:<id>` 路由）。写入操作要求项目已被信任。Delegation 配置由可选包 `@zihanw/pi-forge-subagents` 的 `subagents.json` 文件管理，不在编辑器中。
-
-### 3. 保存 profile
-
-先正常配置 Pi，然后捕获当前设置：
+终端里也可以用 `/preset use <id>` 切换，用 `/preset use none` 停用当前预设。如果想把当前模型、思考强度和预设一起存下来：
 
 ```text
 /profile save reviewer
 /profile use reviewer
 ```
 
-Profile 只应用一次。之后手动修改模型或思考等级会被保留，直到再次应用 Profile；当前预设的工具策略则会在启用期间持续执行。
+## Preset 和 Profile
 
-## 基本概念
-
-一份 **Preset（预设）**对应一个 JSON 文档，其中有序的上下文编排部分叫 **Stack（堆栈）**：
-
-| 堆栈条目 | 用途 |
+| 名称 | 保存什么 |
 |---|---|
-| **Block** | 固定的 `system`、`user`、`assistant` 或隐藏 `custom` 文本 |
-| **Slot** | 工具、skills、项目上下文、参数、日期/cwd、聊天历史等运行时内容 |
+| **Preset（预设）** | 上下文编排、工具策略、技能列表过滤、正则规则和参数 |
+| **Agent Profile** | 模型、思考强度，以及要用哪份预设 |
 
-预设还会携带 system mode（`replace`、`append` 或 `prepend`）、工具/skill 策略、Regex、参数和扩展引用。编译时，pi-forge 会展开堆栈、插入对话、执行工具策略、过滤自己渲染的 skill 列表，并应用已启用的 Regex 规则。
+**Stack（提示词栈）** 就是预设里按顺序排列的内容块和插槽。排序分两个通道：system 条目拼成系统提示词，非 system 条目组成消息。把一个 system 内容块拖到聊天记录后面，并不会把它插进那段历史。
 
-Agent Profile 引用精确 provider/model、思考等级和预设。它不会重复保存工具或 skill 策略；被引用的预设始终是唯一来源。项目 Profile 和预设可以遮蔽同 ID 的全局资源；需要精确选择时使用 `project:<id>` 或 `global:<id>`。
+Profile 只在应用时切一次设置。之后你手动换模型或思考强度，它不会再给你改回去；正在用的预设仍然会管住工具范围。
 
-> **0.5.3 兼容说明。** 用户界面已经统一为“预设 → 堆栈”，但这个补丁版本不会偷偷迁移存储和 schema：`.pi/forge/prompt-stacks/`、`"pi-forge.prompt-stack"`、Profile 字段 `promptStack`、`/api/stacks` 和内部 `PromptStack` 类型名暂时保持不变。后续存储/schema 迁移见 [roadmap](docs/development/roadmap.md)。
+## 示例
 
-推荐从这些示例开始：
+- [默认 Pi mirror](examples/default-prompt-stack.json)：从一份 Pi 风格的配置开始，内容已经拆成可编辑的文本块和运行时插槽。
+- [Minimal worker](examples/minimal-prompt-stack.json)：一行提示词、聊天记录，只留 `bash` 和 `edit` 两个工具。
+- [正则示例](examples/hack-prompt-stack.json)：拿两种示例 token 格式，演示发送前脱敏，以及清理已存储的会话文本。
 
-- [默认 Pi mirror](examples/default-prompt-stack.json)：保留 Pi 默认行为，同时让所有区域都可移动。
-- [最小 worker](examples/minimal-prompt-stack.json)：用 Pi 自带工具借用 DeepSeek Harness Minimal 的结构——同一句 persona、聊天历史，以及仅 `bash` + `edit`；不复刻 DSH 的 shell/editor 语义。
-- [Regex hack pack](examples/hack-prompt-stack.json)：针对两种示例 token 形态展示 request 频率的出站脱敏和 transcript finalize 清理；它不是完整的密钥扫描器。
-- [自定义 system-status extension](examples/custom-system-status-extension/README.md)：注册可信 macro 和 slot。
-- [Fake assistant 直接输出实验](examples/fake-assistant-direct-output-prompt-stack.json)：在聊天历史后追加普通 assistant 文本，测试模型特定的思考捷径；是否有效取决于 model/provider/endpoint，使用前必须做同条件 A/B。
+更多用法见[模式与用例（英文）](docs/guides/use-cases.md)。
 
-## 常用命令
+## 可选 Subagents
 
-| 命令 | 用途 |
-|---|---|
-| `/preset ui [stop\|restart]` | 打开或管理 Web 编辑器 |
-| `/preset list` | 列出预设 |
-| `/preset use <id\|none>` | 选择或禁用预设 |
-| `/preset preview [id]` | 编译预设，但不发送请求 |
-| `/preset validate [id]` | 校验一个或全部预设 |
-| `/preset diagnostics` | 查看运行时和 extension 诊断 |
-| `/profile list` | 列出并 preflight profile |
-| `/profile save <id> [--overwrite]` | 把当前运行时保存为 profile |
-| `/profile use <id>` | preflight 后一次性应用 profile |
-| `/profile status` | 查看上次应用 provenance 和当前 drift |
-| `/payload next [save=<path>]` | 检查下一个经过脱敏的 provider payload |
+装上实验性可选包 `@zihanw/pi-forge-subagents`，Agent 就可以用 `forge_subagent_profiles` 查看已获授权的 Profile，再通过 `forge_subagent` 派出一次性的前台任务。
 
-完整列表见[命令参考](docs/zh-CN/reference/commands.md)。
+对应的 Profile 要先明确启用，运行默认需要审批。想让模型免逐次审批调用，需要在可信项目里明确授权。有没有操作系统沙箱，要看选的 backend；光限制工具不等于有沙箱。
 
-## 实验性前台 delegation
+启用前先看[委派指南](docs/zh-CN/guides/delegation.md)。
 
-可选包 `@zihanw/pi-forge-subagents` 在 pi-forge 的 `/subagent` host port 之上提供前台 delegation。模型通过 `forge_subagent_profiles` 发现可用 profile，再用 `forge_subagent` 调用；用户可以使用 `/forge-agent plan` 和 `/forge-agent run`。
+## 注意事项与文档
 
-此功能仍是**实验性功能**，profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json`（或可选包只读兼容的 `.pi/forge/config.json.subagents`）中逐个启用。除非项目明确授权无人值守的模型调用，否则执行前会显示与不可变计划绑定的审批界面。
+- 目前还是 **0.x**，更新可能有不兼容改动。
+- `replace` 会替换 Pi 原本的系统提示词。还想保留的工具指南、技能或项目上下文，要自己放进预设。
+- 技能过滤只管 Forge 渲染的列表，不会禁用显式 skill 调用。工具策略也不负责隔离文件系统或进程。
+- 正则只会处理你选定的文本和匹配规则。`finalize` 会覆盖已存储的助手消息或工具结果，不保留原文。捕获的请求会脱敏，也可能截断，但仍可能包含私人对话。
 
-> **安全边界：** 当前 backend 是 shared-user 进程，不是操作系统沙箱。“只读”只描述模型可见工具策略。Child 仍有启动用户的 OS 读取权限；可读内容可能发送给所选 provider，并保留在 Pi session 数据中。Timeout 和取消仅为 best effort，`/tree` 不能撤销 provider 请求、计费或外部影响。
-
-启用前必须阅读[前台 delegation 与安全模型](docs/zh-CN/guides/delegation.md)。
-
-## 文档导航
-
-### 学习
-
-- [快速上手](docs/zh-CN/getting-started.md)
-- [Prompt stack 概念](docs/zh-CN/concepts/prompt-stacks.md)
-- [Agent profile 概念](docs/zh-CN/concepts/agent-profiles.md)
-- [Web 编辑器](docs/zh-CN/guides/web-editor.md)
-- [前台 delegation](docs/zh-CN/guides/delegation.md)
-
-### 参考
-
-- [命令](docs/zh-CN/reference/commands.md)
-- [英文 stack schema](docs/reference/stack-schema.md)
-- [英文 macros 与 slots](docs/reference/macros-and-slots.md)
-- [英文配置参考](docs/reference/configuration.md)
-
-完整英文文档从 [docs/README.md](docs/README.md) 开始。
-
-## 兼容性原则
-
-- npm 安装不会要求用户跟随某个精确 Pi patch 版本。
-- Release 会分别记录实际测试过的 Pi 最低版本和当前版本。
-- 如果实验性 subagent 依赖的 host capability 不存在，它应在 provider transport 前明确报错并 fail closed。
-- 普通 prompt stack 和 profile 使用不应因为可选 delegation backend 不兼容而失效。
+[快速上手](docs/zh-CN/getting-started.md) · [Web 编辑器](docs/zh-CN/guides/web-editor.md) · [命令参考](docs/zh-CN/reference/commands.md) · [Schema 与策略（英文）](docs/reference/stack-schema.md) · [调试（英文）](docs/guides/debugging.md) · [全部文档](docs/zh-CN/README.md)
 
 ## License
 

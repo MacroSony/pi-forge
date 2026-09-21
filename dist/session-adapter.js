@@ -1,4 +1,6 @@
 import { isAgentProfileProvenance } from "./agent-profile.js";
+import { decodeInstructionEvent, reduceInstructionEvents } from "./instruction-events.js";
+import { INSTRUCTION_EVENT_ENTRY, INSTRUCTION_TOOLS_ENTRY } from "./instruction-protocol.js";
 export const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 export const PROFILE_ENTRY_TYPE = "pi-forge-agent-profile-state";
 /**
@@ -53,5 +55,64 @@ export function persistActiveSelection(pi, activeStackId) {
 }
 export function persistProfileProvenance(pi, provenance) {
     pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
+}
+/** Branch-local semantic history; compaction positions, not wall clocks, cut the checkpoint. */
+export function readInstructionSession(ctx) {
+    const events = [];
+    let checkpointThrough;
+    let toolsData;
+    let lastNewEventId;
+    const seenEvents = new Set();
+    for (const raw of getCurrentBranchEntries(ctx)) {
+        if (!raw || typeof raw !== "object")
+            continue;
+        const entry = raw;
+        if (entry.type === "compaction")
+            checkpointThrough = lastNewEventId;
+        if (entry.type !== "custom")
+            continue;
+        if (entry.customType === INSTRUCTION_EVENT_ENTRY) {
+            const decoded = decodeInstructionEvent(entry.data);
+            if (!decoded.ok)
+                throw new Error(`Invalid Forge instruction history: ${decoded.error}`);
+            events.push(decoded.event);
+            if (!seenEvents.has(decoded.event.eventId)) {
+                seenEvents.add(decoded.event.eventId);
+                lastNewEventId = decoded.event.eventId;
+            }
+        }
+        if (entry.customType === INSTRUCTION_TOOLS_ENTRY)
+            toolsData = entry.data;
+    }
+    const reduced = reduceInstructionEvents(events);
+    if (!reduced.ok)
+        throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
+    return { events, checkpointThrough, ...(toolsData === undefined ? {} : { tools: decodeInstructionTools(toolsData) }) };
+}
+export function persistInstructionEvent(pi, event) {
+    const decoded = decodeInstructionEvent(event);
+    if (!decoded.ok)
+        throw new Error(decoded.error);
+    pi.appendEntry(INSTRUCTION_EVENT_ENTRY, decoded.event);
+}
+export function persistInstructionTools(pi, snapshot) {
+    const data = { schemaVersion: 1, baseline: [...snapshot.baseline], lastApplied: [...snapshot.lastApplied] };
+    decodeInstructionTools(data);
+    pi.appendEntry(INSTRUCTION_TOOLS_ENTRY, data);
+}
+function decodeInstructionTools(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error("Invalid Forge tool baseline.");
+    const data = raw;
+    if (data.schemaVersion !== 1 || Object.keys(data).some((key) => !["schemaVersion", "baseline", "lastApplied"].includes(key))) {
+        throw new Error("Unsupported Forge tool baseline schema.");
+    }
+    for (const key of ["baseline", "lastApplied"]) {
+        if (!Array.isArray(data[key]) || data[key].length > 4096
+            || data[key].some((value) => typeof value !== "string" || !value || value.length > 1024 || /[\x00-\x1f\x7f]/.test(value))) {
+            throw new Error(`Invalid Forge tool baseline ${key}.`);
+        }
+    }
+    return { baseline: [...data.baseline], lastApplied: [...data.lastApplied] };
 }
 //# sourceMappingURL=session-adapter.js.map

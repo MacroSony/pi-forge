@@ -1,0 +1,282 @@
+<script setup lang="ts">
+import { computed } from "vue";
+import { t } from "../i18n.ts";
+import type { WebEditorPreviewSection } from "../../types.ts";
+
+const props = defineProps<{
+	section: WebEditorPreviewSection;
+}>();
+
+const emit = defineEmits<{
+	(e: "copy", text: string): void;
+}>();
+
+const namedSectionEntries = computed(() => {
+	if (!props.section.sections) return [];
+	return Object.entries(props.section.sections);
+});
+
+const hasNamedSections = computed(() => namedSectionEntries.value.length > 0);
+
+const toolChanges = computed(() => props.section.toolChanges);
+const addedTools = computed(() => toolChanges.value?.added ?? []);
+const removedTools = computed(() => toolChanges.value?.removed ?? []);
+const totalToolDeltas = computed(() => addedTools.value.length + removedTools.value.length);
+const hasToolChanges = computed(() => totalToolDeltas.value > 0);
+
+function hasParams(params: unknown): boolean {
+	if (params === undefined || params === null) return false;
+	if (typeof params === "object" && Object.keys(params).length === 0) return false;
+	return true;
+}
+
+function formatParams(params: unknown): string {
+	if (typeof params === "string") return params;
+	try {
+		return JSON.stringify(params, null, 2);
+	} catch {
+		return String(params);
+	}
+}
+
+function onCopyNamed(value: string | null): void {
+	if (value && value.length > 0) {
+		emit("copy", value);
+	}
+}
+</script>
+
+<template>
+	<div class="preview-section-body">
+		<!-- Actual prompt body (if present, or if no structured sections exist) -->
+		<pre v-if="section.content || (!hasNamedSections && !hasToolChanges)" class="section-text">{{ section.content }}</pre>
+
+		<!-- Native named System sections (labels and actions outside prompt text) -->
+		<div v-if="hasNamedSections" class="preview-named-sections">
+			<div v-for="[name, value] in namedSectionEntries" :key="name" class="preview-named-section">
+				<div class="named-section-header">
+					<span class="named-section-name">{{ name }}</span>
+					<span v-if="value === null" class="named-section-op op-removed">{{ t("diff.opRemoved") }}</span>
+					<span v-else-if="value === ''" class="named-section-op op-empty">{{ t("diff.opEmpty") }}</span>
+					<span v-else class="named-section-op op-set">{{ t("diff.opSet") }}</span>
+					<button
+						v-if="value !== null && value.length > 0"
+						type="button"
+						class="named-section-copy"
+						@click.prevent.stop="onCopyNamed(value)"
+					>
+						{{ t("inspector.copy") }}
+					</button>
+				</div>
+				<div v-if="value === null" class="named-section-notice removed">
+					{{ t("diff.namedSectionRemovedNotice", { name }) }}
+				</div>
+				<div v-else-if="value === ''" class="named-section-notice empty">
+					{{ t("diff.namedSectionEmptyNotice", { name }) }}
+				</div>
+				<pre v-else class="section-text">{{ value }}</pre>
+			</div>
+		</div>
+
+		<!-- Historical transcript tool declarations (collapsed separate inspector, explicitly not current selection) -->
+		<details v-if="hasToolChanges" class="preview-tool-changes">
+			<summary class="tool-changes-summary">
+				<span class="tool-changes-title">{{ t("diff.historicalToolChangesSummary", { count: totalToolDeltas }) }}</span>
+				<span class="tool-changes-badge">{{ t("diff.historicalNotCurrentBadge") }}</span>
+			</summary>
+			<div class="tool-changes-content">
+				<p class="tool-changes-note">{{ t("diff.historicalToolChangesNote") }}</p>
+				<div v-if="addedTools.length > 0" class="tool-changes-group">
+					<div class="tool-group-label">{{ t("diff.toolsAddedLabel") }} ({{ addedTools.length }})</div>
+					<div v-for="tool in addedTools" :key="tool.name" class="tool-change-item added">
+						<div class="tool-item-head">
+							<code class="tool-name">{{ tool.name }}</code>
+							<span v-if="tool.description" class="tool-desc">{{ tool.description }}</span>
+						</div>
+						<pre v-if="hasParams(tool.parameters)" class="tool-params"><code>{{ formatParams(tool.parameters) }}</code></pre>
+					</div>
+				</div>
+				<div v-if="removedTools.length > 0" class="tool-changes-group">
+					<div class="tool-group-label">{{ t("diff.toolsRemovedLabel") }} ({{ removedTools.length }})</div>
+					<div v-for="name in removedTools" :key="name" class="tool-change-item removed">
+						<code class="tool-name">{{ name }}</code>
+					</div>
+				</div>
+			</div>
+		</details>
+	</div>
+</template>
+
+<style scoped>
+.preview-section-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.section-text {
+	margin: 0;
+	padding: 10px;
+	background: var(--code-bg);
+	color: var(--code-text);
+	white-space: pre-wrap;
+	overflow: auto;
+	font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.preview-named-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 8px 8px;
+	background: var(--pane-soft);
+	border-top: 1px solid var(--line);
+}
+.preview-named-section {
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--pane);
+	overflow: hidden;
+}
+.named-section-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 8px;
+	background: var(--pane-soft);
+	border-bottom: 1px solid var(--line);
+	font-size: 11px;
+}
+.named-section-name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font-weight: 650;
+	color: var(--text);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.named-section-op {
+	border-radius: 999px;
+	padding: 0 6px;
+	font-size: 10px;
+	line-height: 16px;
+	font-weight: 700;
+	text-transform: lowercase;
+}
+.named-section-op.op-removed {
+	background: color-mix(in srgb, var(--error) 15%, transparent);
+	color: var(--error);
+}
+.named-section-op.op-empty {
+	background: color-mix(in srgb, var(--warning) 15%, transparent);
+	color: var(--warning);
+}
+.named-section-op.op-set {
+	background: color-mix(in srgb, var(--success) 15%, transparent);
+	color: var(--success);
+}
+.named-section-copy {
+	margin-left: auto;
+	min-height: 22px;
+	padding: 1px 6px;
+	font-size: 11px;
+}
+.named-section-notice {
+	padding: 8px 10px;
+	font-size: 12px;
+	font-style: italic;
+}
+.named-section-notice.removed {
+	color: var(--error);
+	background: color-mix(in srgb, var(--error) 8%, var(--pane));
+}
+.named-section-notice.empty {
+	color: var(--muted);
+	background: color-mix(in srgb, var(--warning) 8%, var(--pane));
+}
+.preview-tool-changes {
+	margin: 6px 8px 8px;
+	border: 1px dashed var(--line);
+	border-radius: 4px;
+	background: var(--pane-soft);
+	font-size: 12px;
+}
+.tool-changes-summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	cursor: pointer;
+	user-select: none;
+}
+.tool-changes-title {
+	font-weight: 600;
+	color: var(--text);
+}
+.tool-changes-badge {
+	color: var(--muted);
+	font-size: 11px;
+}
+.tool-changes-content {
+	padding: 8px 10px 10px;
+	border-top: 1px solid var(--line);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.tool-changes-note {
+	margin: 0;
+	color: var(--muted);
+	font-size: 11px;
+	line-height: 1.4;
+}
+.tool-changes-group {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.tool-group-label {
+	font-weight: 600;
+	font-size: 11px;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: .02em;
+}
+.tool-change-item {
+	padding: 6px 8px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--pane);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.tool-change-item.added {
+	border-left: 3px solid var(--success);
+}
+.tool-change-item.removed {
+	border-left: 3px solid var(--error);
+}
+.tool-item-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.tool-name {
+	font-weight: 700;
+	font-size: 12px;
+	color: var(--text);
+}
+.tool-desc {
+	color: var(--muted);
+	font-size: 11px;
+}
+.tool-params {
+	margin: 2px 0 0;
+	padding: 6px;
+	border-radius: 3px;
+	background: var(--code-bg);
+	color: var(--code-text);
+	font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	max-height: 140px;
+	overflow: auto;
+}
+</style>

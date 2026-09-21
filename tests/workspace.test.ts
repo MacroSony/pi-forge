@@ -345,3 +345,40 @@ test("ForgeWorkspace leaves active unset when stale persisted id has no autoActi
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("ForgeWorkspace snapshot subscriptions isolate optional observers", () => {
+	const cwd = tempCwd();
+	const original = process.env[GLOBAL_FORGE_DIR_ENV];
+	const globalRoot = join(cwd, ".pi", "forge", "global-root");
+	process.env[GLOBAL_FORGE_DIR_ENV] = globalRoot;
+	mkdirSync(globalRoot, { recursive: true });
+	try {
+		const workspace = new ForgeWorkspace();
+		const seen: string[] = [];
+		const unsubscribeThrowing = workspace.subscribe(() => {
+			throw new Error("optional observer must not break workspace behavior");
+		});
+		const unsubscribeSecond = workspace.subscribe(() => seen.push("second"));
+
+		workspace.reload(cwd, {});
+		workspace.setActiveStack("none");
+		workspace.reloadProfiles(cwd, true);
+		workspace.setLastAppliedProfile(undefined);
+		assert.deepEqual(seen, ["second", "second", "second", "second"]);
+
+		const unsubscribeThird = workspace.subscribe(() => seen.push("third"));
+		workspace.setActiveStack("none");
+		assert.deepEqual(seen, ["second", "second", "second", "second", "second", "third"]);
+
+		unsubscribeThird();
+		unsubscribeSecond();
+		unsubscribeThrowing();
+		workspace.setActiveStack("none");
+		assert.equal(seen.length, 6);
+		workspace.dispose();
+	} finally {
+		if (original === undefined) delete process.env[GLOBAL_FORGE_DIR_ENV];
+		else process.env[GLOBAL_FORGE_DIR_ENV] = original;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

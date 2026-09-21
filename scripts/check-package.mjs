@@ -45,8 +45,11 @@ const hostDependencies = [
 	"typebox",
 ];
 for (const dependency of hostDependencies) {
-	if (packageJson.peerDependencies?.[dependency] !== "*") {
-		failures.push(`host dependency must be a wildcard peer: ${dependency}`);
+	// The transcript bridge needs Pi 0.86 APIs. Keep peers host-provided and
+	// optional, with a minimum (not an exact/upper-bound host release lock).
+	const expectedRange = dependency === "typebox" ? "*" : ">=0.86.0";
+	if (packageJson.peerDependencies?.[dependency] !== expectedRange) {
+		failures.push(`host dependency must be an optional peer with range ${expectedRange}: ${dependency}`);
 	}
 	if (packageJson.peerDependenciesMeta?.[dependency]?.optional !== true) {
 		failures.push(`host dependency peer must be optional: ${dependency}`);

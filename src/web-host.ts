@@ -35,6 +35,7 @@ import {
 	type AgentProfileApplicationResult,
 	type AgentProfileCurrentRuntime,
 } from "./profile-service.ts";
+import { isInstructionStateMutation, type InstructionStateResult } from "./instruction-state.ts";
 import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type {
@@ -77,11 +78,36 @@ export interface WebHostRuntime {
 	armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	getContextDiff(): WebEditorOperationResult<ContextDiffView>;
+	readInstructions?(): InstructionStateResult;
+	mutateInstructions?(input: unknown): InstructionStateResult;
 }
 
 export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost {
 	return {
 		cwd: ctx.cwd,
+		isProjectTrusted: () => ctx.isProjectTrusted(),
+		readInstructions: () => {
+			if (!runtime.readInstructions) {
+				return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+			}
+			return runtime.readInstructions();
+		},
+		mutateInstructions: (input: unknown) => {
+			try {
+				if (!ctx.isProjectTrusted()) {
+					return { ok: false, status: 403, error: "Project is not trusted; refusing to mutate instructions." };
+				}
+			} catch {
+				return { ok: false, status: 503, error: "Instruction session is unavailable." };
+			}
+			if (!runtime.mutateInstructions) {
+				return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+			}
+			if (!isInstructionStateMutation(input)) {
+				return { ok: false, status: 400, error: "Invalid instruction state mutation payload." };
+			}
+			return runtime.mutateInstructions(input);
+		},
 		getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
 		setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),
 		listStacks: () => stackSummaries(runtime.getStacks(), runtime.getActive()),

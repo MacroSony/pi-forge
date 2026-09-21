@@ -23,6 +23,7 @@
 ## 参考
 
 - [命令参考](reference/commands.md)
+- [指令模式 (system-update)](reference/instruction-modes.md)
 - [Stack schema 与策略（英文）](../reference/stack-schema.md)
 - [Macros 与 slots（英文）](../reference/macros-and-slots.md)
 - [配置（英文）](../reference/configuration.md)

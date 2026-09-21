@@ -1,3 +1,5 @@
+import { createInstructionRuntime } from "./runtime/instruction-runtime.js";
+import { registerInstructionCommand } from "./instruction-command.js";
 import { registerLifecycleHandlers } from "./lifecycle.js";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.js";
 import { buildPreview } from "./preview.js";
@@ -5,6 +7,7 @@ import { registerPresetCommand } from "./preset-command.js";
 import { registerProfileCommand } from "./profile-command.js";
 import { applyResolvedAgentProfile } from "./profile-service.js";
 import { formatResourceKey } from "./resource-identity.js";
+import { ForgeActiveStatePublisher } from "./active-state.js";
 import { createProfileRuntime } from "./runtime/profile-runtime.js";
 import { createPromptStackRuntime } from "./runtime/prompt-stack-runtime.js";
 import { ForgeWorkspace } from "./workspace.js";
@@ -23,19 +26,43 @@ export { registerMacro, } from "./macro-engine.js";
 export { registerSlot, } from "./slot-renderers.js";
 export default function piForge(pi) {
     const workspace = new ForgeWorkspace();
+    const activeState = new ForgeActiveStatePublisher({
+        transport: pi.events,
+        readWorkspace: () => {
+            if (!workspace.snapshotKnown)
+                return { stackKey: null };
+            const snapshot = workspace.snapshot();
+            return {
+                stackKey: snapshot.active ? formatResourceKey(snapshot.active.key) : null,
+                profile: snapshot.lastAppliedProfile
+                    ? {
+                        profileId: snapshot.lastAppliedProfile.profileId,
+                        scope: snapshot.lastAppliedProfile.scope,
+                        promptStack: snapshot.lastAppliedProfile.snapshot.promptStack,
+                    }
+                    : undefined,
+            };
+        },
+    });
+    // Optional observer: publishes on reload, active-stack/profile changes, and
+    // web-editor mutations without any provider/model/tool-policy side effect.
+    workspace.subscribe(() => activeState.publish());
     const compileCycle = createCompileCycleState();
     const payloadState = createPayloadState();
     const currentActive = () => workspace.snapshotKnown ? workspace.snapshot().active : undefined;
     const toolPolicy = createToolPolicyRuntime(pi, () => currentActive());
+    const instructions = createInstructionRuntime(pi, workspace, toolPolicy);
     let profileRuntime;
     const stackRuntime = createPromptStackRuntime(pi, workspace, compileCycle, {
-        syncToolPolicy: toolPolicy.sync,
+        syncToolPolicy: instructions.sync,
     });
     profileRuntime = createProfileRuntime(pi, workspace, {
         setActive: (id, ctx) => stackRuntime.setActive(id, ctx),
         updateStatus: stackRuntime.updateStatus,
     });
     const webEditorRuntime = createWebEditorRuntime((ctx, promptOptions) => ({
+        readInstructions: () => instructions.readState(),
+        mutateInstructions: (input) => instructions.mutateState(input),
         getStacks: () => [...workspace.snapshot().stacks],
         getActive: () => currentActive(),
         getActiveId: stackRuntime.activeId,
@@ -77,7 +104,15 @@ export default function piForge(pi) {
         activateFreshSessionDefaults: profileRuntime.activateFreshSessionDefaults,
         refreshWebEditorHost: webEditorRuntime.refreshHost,
         notifyActivePreset: stackRuntime.notifyActivePreset,
-        syncActiveToolPolicy: toolPolicy.sync,
+        syncActiveToolPolicy: instructions.sync,
+        disposeInstructions: instructions.dispose,
+        prepareInstructionRestore: instructions.prepareRestore,
+        restoreInstructions: instructions.restore,
+        projectInstructions: instructions.project,
+        toolPromptOptions: (options) => {
+            const active = currentActive();
+            return active ? toolPolicy.previewOptions({ ...options, selectedTools: pi.getActiveTools() }, active.stack) : options;
+        },
         restoreActiveToolPolicy: toolPolicy.restore,
         toolPolicyBlockReason: toolPolicy.blockReason,
         persistActiveSelection: stackRuntime.persistActiveSelection,
@@ -87,9 +122,13 @@ export default function piForge(pi) {
             workspace.startHostPort(pi.events);
         },
         disposeForgeWorkspace: () => workspace.dispose(),
+        suspendActiveState: () => activeState.suspend(),
+        bindActiveState: (ctx) => activeState.bindSession({ sessionId: ctx.sessionManager.getSessionId(), cwd: ctx.cwd }),
+        disposeActiveState: () => activeState.dispose(),
         recordProviderResponseUsage: (message) => recordProviderResponseUsage(payloadState, message),
     });
     registerPayloadRequestHandler(pi, payloadState, () => currentActive());
+    registerInstructionCommand(pi, instructions);
     registerPayloadCommands(pi, payloadState);
     registerPresetCommand(pi, workspace, compileCycle, {
         selectedActiveId: stackRuntime.selectedActiveId,

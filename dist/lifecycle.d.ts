@@ -1,4 +1,5 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type CompileCycleState } from "./compile-cycle.ts";
 import type { ForgeWorkspace } from "./workspace.ts";
@@ -20,7 +21,17 @@ export interface LifecycleDeps {
     restorePersistedActiveId(id?: string): void;
     reloadForgeWorkspace(ctx: ExtensionContext): void;
     disposeForgeWorkspace(): void;
+    suspendActiveState(): void;
+    bindActiveState(ctx: ExtensionContext): void;
+    disposeActiveState(): void;
     recordProviderResponseUsage(message: AssistantMessage): void;
+    disposeInstructions?(): void;
+    prepareInstructionRestore?(ctx: ExtensionContext): void;
+    restoreInstructions?(ctx: ExtensionContext, options?: {
+        deferToolPolicy?: boolean;
+    }): void;
+    projectInstructions?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+    toolPromptOptions?(options: BuildSystemPromptOptions): BuildSystemPromptOptions;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: LifecycleDeps): void;
 //# sourceMappingURL=lifecycle.d.ts.map
