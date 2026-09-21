@@ -8,7 +8,10 @@ import { resetCompileCycle } from "./compile-cycle.js";
 import { getCurrentBranchEntries, getLegacyVariableStateDiagnostic, getRestoredActiveId, getRestoredProfileProvenance } from "./session-adapter.js";
 export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     let startupToolPolicyPending = false;
+    let runFailed = false;
     pi.on("session_shutdown", async () => {
+        runFailed = false;
+        deps.setInstructionAgentBusy?.(false);
         // Publish a final cleared active-state snapshot before teardown so optional
         // consumers do not retain appearance context from the retiring session.
         // Active-state is optional, so a throwing transport/listener must never
@@ -42,6 +45,8 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
             throw firstError;
     });
     pi.on("session_start", async (event, ctx) => {
+        runFailed = false;
+        deps.setInstructionAgentBusy?.(false);
         startupToolPolicyPending = true;
         // Suspend before any workspace reload so intermediate snapshots cannot be
         // published under the still-bound old session id.
@@ -72,6 +77,8 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         deps.syncActiveToolPolicy(ctx);
     });
     pi.on("session_tree", async (_event, ctx) => {
+        runFailed = false;
+        deps.setInstructionAgentBusy?.(false);
         deps.suspendActiveState();
         try {
             await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -86,6 +93,8 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         }
     });
     pi.on("session_compact", async (_event, ctx) => {
+        runFailed = false;
+        deps.setInstructionAgentBusy?.(false);
         deps.suspendActiveState();
         try {
             await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -113,6 +122,8 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         return reason ? { block: true, reason } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
+        runFailed = false;
+        deps.setInstructionAgentBusy?.(true);
         compileCycle.currentSystemPromptOptions = event.systemPromptOptions;
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         compileCycle.currentLatestUserMessage = event.prompt;
@@ -130,6 +141,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         try {
             deps.syncActiveToolPolicy(ctx);
             let messages = event.messages;
+            messages = deps.prepareInstructionMessages?.(messages, ctx) ?? messages;
             const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
             if (active && compileCycle.currentSystemPromptOptions) {
                 const options = deps.toolPromptOptions?.(compileCycle.currentSystemPromptOptions) ?? compileCycle.currentSystemPromptOptions;
@@ -168,6 +180,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         catch (error) {
             // Pi logs hook exceptions and may otherwise dispatch the unmodified context.
             // Abort explicitly so malformed state never yields text/tool half-application.
+            runFailed = true;
             ctx.abort();
             throw error;
         }
@@ -186,8 +199,16 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
             return;
         return { message };
     });
-    pi.on("agent_end", async () => {
-        resetCompileCycle(compileCycle);
+    pi.on("agent_end", async (_event, ctx) => {
+        try {
+            deps.setInstructionAgentBusy?.(false);
+            if (!runFailed && ctx) {
+                deps.commitEndInstructionAnchors?.(ctx);
+            }
+        }
+        finally {
+            resetCompileCycle(compileCycle);
+        }
     });
 }
 function disposeActiveStateSafely(deps) {
@@ -199,6 +220,7 @@ function disposeActiveStateSafely(deps) {
     }
 }
 async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, options) {
+    deps.setInstructionAgentBusy?.(false);
     deps.prepareInstructionRestore?.(ctx);
     const restoredProfile = getRestoredProfileProvenance(ctx);
     compileCycle.currentCompilationContext = undefined;

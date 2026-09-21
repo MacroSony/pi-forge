@@ -122,6 +122,20 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				const writeExecutionsAfterOff = harness.toolExecutions.filter((t) => t.name === "fake_write");
 				assert.equal(writeExecutionsAfterOff.length, 1, "fake_write must execute after mode deactivated");
 
+				// Plain metadata delivery assertions
+				const branch = harness.manager.getBranch();
+				assert.equal(
+					branch.some((e: any) => e.type === "custom_message" && e.customType === "pi-forge-instruction-delivery"),
+					false,
+					"delivery markers must never be custom_message",
+				);
+				const anchors = branch.filter((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery");
+				assert.equal(anchors.length, 2, "both on and off transitions have plain custom anchors");
+				for (const anchor of anchors) {
+					assert.equal((anchor as any).data?.schemaVersion, 1);
+					assert.equal(typeof (anchor as any).data?.throughEventId, "string");
+				}
+
 				assert.equal(harness.fetchAttempts, 0, "no network fetch operations allowed");
 			} finally {
 				await harness.dispose();
@@ -800,8 +814,8 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
 				// Inject foreign system message with foreign sections and foreign toolsAdded into transcript
-				(harness.session.agent.state.messages as any).push({
-					role: "system",
+				const foreignMsg = {
+					role: "system" as const,
 					content: "foreign preamble",
 					sections: {
 						foreign_meta: "foreign_metadata_value",
@@ -809,7 +823,9 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 					},
 					toolsAdded: [{ name: "foreign_tool", description: "foreign tool desc", parameters: {} }],
 					timestamp: Date.now(),
-				});
+				};
+				harness.manager.appendMessage(foreignMsg);
+				harness.session.agent.state.messages = [...harness.session.agent.state.messages, foreignMsg];
 
 				// Turn 1: activate review mode and verify foreign sections survive preset projection and instruction projection
 				await harness.prompt("/system-update use review");

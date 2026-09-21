@@ -10,7 +10,10 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
         deferToolPolicy?: boolean;
     }) => void;
     sync: (ctx?: ExtensionContext | undefined) => void;
+    prepareMessages: (raw: AgentMessage[], ctx: ExtensionContext) => AgentMessage[];
     project: (messages: AgentMessage[], ctx: ExtensionContext) => AgentMessage[];
+    commitEndAnchors: (ctx: ExtensionContext) => void;
+    setAgentBusy: (busy: boolean) => void;
     library: (ctx: ExtensionContext) => string;
     status: (ctx: ExtensionContext) => string;
     change: (ctx: ExtensionContext, command: "add" | "use" | "off" | "reset", value: string) => string;

@@ -9,6 +9,7 @@ import {
 import {
 	hasPendingInstructionToolCalls,
 	instructionAnchorMessage,
+	instructionContextMatches,
 	isInstructionAnchorEntry,
 	materializeInstructionAnchors,
 	validateInstructionAnchorData,
@@ -378,14 +379,14 @@ test("materializeInstructionAnchors rejects foreign modifications: insertion, de
 	];
 	assert.throws(
 		() => materializeInstructionAnchors(branch, foreignInserted),
-		/preceding extension changed context/,
+		/no unique session alignment/,
 	);
 
 	// 2. Foreign deletion / trimming
 	const foreignTrimmed = rawMessages.slice(1);
 	assert.throws(
 		() => materializeInstructionAnchors(branch, foreignTrimmed),
-		/preceding extension changed context/,
+		/no unique session alignment/,
 	);
 
 	// 3. Same-length text rewrite (e.g. content modified with same character length)
@@ -393,7 +394,7 @@ test("materializeInstructionAnchors rejects foreign modifications: insertion, de
 	(sameLengthRewritten[0] as { content: unknown }).content = "MODIFIED_1"; // same 10 chars as ORIGINAL_1
 	assert.throws(
 		() => materializeInstructionAnchors(branch, sameLengthRewritten),
-		/preceding extension changed context/,
+		/no unique session alignment/,
 	);
 
 	// 4. Role rewrite
@@ -401,7 +402,7 @@ test("materializeInstructionAnchors rejects foreign modifications: insertion, de
 	(roleRewritten[0] as { role: string }).role = "system";
 	assert.throws(
 		() => materializeInstructionAnchors(branch, roleRewritten),
-		/preceding extension changed context/,
+		/no unique session alignment/,
 	);
 });
 
@@ -755,4 +756,42 @@ test("hasPendingInstructionToolCalls clears historical orphans on genuine user m
 		true,
 		"Custom peer message does NOT clear pending tool call; boundary remains guarded",
 	);
+});
+
+
+test("queued custom omission requires a unique ordered alignment and preserves caller references", () => {
+	const manager = SessionManager.inMemory("/test/queued-custom");
+	manager.appendCustomMessageEntry("peer", "A", false);
+	manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, {schemaVersion: 1, throughEventId: "event"});
+	manager.appendCustomMessageEntry("peer", "B", false);
+	manager.appendMessage({role: "user", content: "NEXT", timestamp: 3});
+	const full = buildSessionContext(manager.getBranch()).messages;
+	const live = structuredClone(full.slice(1));
+	live[0].timestamp = 1; // SDK queue creation and persistence clocks differ.
+	const projected = materializeInstructionAnchors(manager.getBranch(), live);
+	assert.equal(projected.length, 3);
+	assert.ok(isInstructionDelivery(projected[0]));
+	assert.equal(projected[1], live[0]);
+	assert.equal(projected[2], live[1]);
+	const ambiguous = [full[0], structuredClone(full[0])];
+	assert.equal(instructionContextMatches(ambiguous, [full[0]]), false);
+	assert.equal(instructionContextMatches(ambiguous, structuredClone(ambiguous)), true);
+	assert.equal(instructionContextMatches([full[2]], []), false, "non-custom omissions are not allowed");
+});
+
+test("custom-run alignment agrees with exhaustive uniqueness enumeration", () => {
+	const sequences: string[][] = [[]];
+	for (let size = 1; size <= 5; size++) for (let bits = 0; bits < (1 << size); bits++) {
+		sequences.push(Array.from({length: size}, (_, index) => (bits >> index) & 1 ? "A" : "B"));
+	}
+	const messages = (sequence: string[]): AgentMessage[] => sequence.map(content => ({role: "custom", customType: "peer", content, display: false, timestamp: 0}));
+	function count(expected: string[], incoming: string[], e = 0, i = 0): number {
+		if (i === incoming.length) return 1;
+		if (e === expected.length) return 0;
+		return count(expected, incoming, e + 1, i) + (expected[e] === incoming[i] ? count(expected, incoming, e + 1, i + 1) : 0);
+	}
+	for (const expected of sequences) for (const incoming of sequences) {
+		assert.equal(instructionContextMatches(messages(expected), messages(incoming)), count(expected, incoming) === 1,
+			JSON.stringify({expected, incoming}));
+	}
 });

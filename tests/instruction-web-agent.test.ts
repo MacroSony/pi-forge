@@ -259,6 +259,15 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.equal(getResAfter.json().state.delivery, "prepared", "delivery transitions to prepared after model request");
 				assert.equal(harness.streamContexts.length, intentionalInferences, "subsequent GET must not trigger model inference");
 				assert.equal(harness.fetchAttempts, 0, "must have zero external network fetch attempts");
+
+				const branch1 = harness.session.sessionManager.getEntries() as any[];
+				assert.equal(
+					branch1.some((e: any) => e.type === "custom_message" && e.customType === "pi-forge-instruction-delivery"),
+					false,
+					"delivery markers must never be custom_message",
+				);
+				const anchors1 = branch1.filter((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery");
+				assert.equal(anchors1.length, 2, "both instruction modes produce plain metadata anchors");
 			} finally {
 				await closePresetUi(harness);
 				await harness.dispose();
@@ -383,6 +392,17 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.ok(!offRes.json().state.active.some((a) => a.activationId === freshReviewAct.activationId), "review activation removed from state");
 				assert.equal(harness.streamContexts.length, baselineInferences, "POST off must not trigger model inference (0 extra calls)");
 				assert.equal(harness.fetchAttempts, 0, "must have zero external network fetch attempts");
+
+				const branch2 = harness.session.sessionManager.getEntries() as any[];
+				assert.equal(
+					branch2.some((e: any) => e.type === "custom_message" && e.customType === "pi-forge-instruction-delivery"),
+					false,
+					"delivery markers must never be custom_message",
+				);
+				assert.ok(
+					branch2.some((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery"),
+					"web mutation appends plain metadata anchor",
+				);
 			} finally {
 				await closePresetUi(harness);
 				await harness.dispose();

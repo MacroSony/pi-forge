@@ -20,13 +20,13 @@ export declare function isInstructionAnchorEntry(entry: unknown): boolean;
  * Throws if the entry is an anchor with invalid metadata.
  */
 export declare function instructionAnchorMessage(entry: unknown): AgentMessage | undefined;
+export declare function instructionContextMatches(expected: readonly AgentMessage[], incoming: readonly AgentMessage[]): boolean;
 /**
  * Materializes plain metadata anchors into context messages at their exact ordinal positions.
  *
  * Rules:
  * - If no visible plain metadata anchor exists in context entries, returns the original messages array.
- * - If visible anchors exist, validates their metadata and strictly checks that incoming messages
- *   deeply equal the session context entries' projected messages before injecting markers.
+ * - If visible anchors exist, validates their metadata and checks the ordered protocol alignment before injection (see instructionContextMatches).
  * - Preserves all original message object references from incoming messages.
  * - Never guesses by timestamps or text matching; fails closed if context was modified by preceding extensions.
  */

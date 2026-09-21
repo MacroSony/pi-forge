@@ -31,6 +31,9 @@ export interface LifecycleDeps {
         deferToolPolicy?: boolean;
     }): void;
     projectInstructions?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+    prepareInstructionMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+    commitEndInstructionAnchors?(ctx: ExtensionContext): void;
+    setInstructionAgentBusy?(busy: boolean): void;
     toolPromptOptions?(options: BuildSystemPromptOptions): BuildSystemPromptOptions;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: LifecycleDeps): void;

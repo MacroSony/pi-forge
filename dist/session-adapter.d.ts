@@ -17,10 +17,14 @@ export declare function getRestoredProfileProvenance(ctx: ExtensionContext): Age
 export declare function getLegacyVariableStateDiagnostic(ctx: ExtensionContext): PromptStackDiagnostic[];
 export declare function persistActiveSelection(pi: ExtensionAPI, activeStackId: string): void;
 export declare function persistProfileProvenance(pi: ExtensionAPI, provenance: AgentProfileProvenance | null): void;
-/** Branch-local semantic history; compaction positions, not wall clocks, cut the checkpoint. */
-export declare function readInstructionSession(ctx: ExtensionContext): InstructionHistory & {
+export interface InstructionSessionHistory extends InstructionHistory {
     tools?: ToolPolicySnapshot;
-};
+    /** First-occurrence event index covered by a stored anchor, not a delivery acknowledgment. */
+    lastAnchoredIndex: number;
+}
+/** Branch-local semantic history; compaction positions, not wall clocks, cut the checkpoint. */
+export declare function readInstructionSession(ctx: ExtensionContext): InstructionSessionHistory;
+export declare function persistInstructionDelivery(pi: ExtensionAPI, throughEventId: string): void;
 export declare function persistInstructionEvent(pi: ExtensionAPI, event: InstructionEvent): void;
 export declare function persistInstructionTools(pi: ExtensionAPI, snapshot: ToolPolicySnapshot): void;
 //# sourceMappingURL=session-adapter.d.ts.map

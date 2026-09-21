@@ -121,13 +121,61 @@ export function instructionAnchorMessage(entry: unknown): AgentMessage | undefin
 	} as AgentMessage;
 }
 
+/** Compare stable protocol fields; Pi regenerates custom-message envelope timestamps. */
+function sameContextMessage(expected: AgentMessage, incoming: AgentMessage): boolean {
+	if (expected.role !== "custom" || incoming.role !== "custom") return isDeepStrictEqual(expected, incoming);
+	const { timestamp: _expectedTime, ...expectedFields } = expected;
+	const { timestamp: _incomingTime, ...incomingFields } = incoming;
+	return isDeepStrictEqual(expectedFields, incomingFields);
+}
+
+/**
+ * Pi can persist queued custom messages without including them in the current
+ * tool follow-up context. All non-custom messages must match exactly. Within a
+ * custom-message run, admit omission only when earliest and latest ordered
+ * alignments agree. Ambiguous duplicates fail; no text/time proximity heuristic,
+ * insertion, body rewrite, or replacement of caller-owned context is permitted.
+ * The result maps expected message positions to incoming positions (or omission).
+ */
+function contextAlignment(expected: readonly AgentMessage[], incoming: readonly AgentMessage[]): (number | undefined)[] | undefined {
+	const mapping: (number | undefined)[] = new Array(expected.length);
+	let e = 0, i = 0;
+	while (e < expected.length || i < incoming.length) {
+		if (expected[e]?.role !== "custom") {
+			if (!expected[e] || !incoming[i] || !sameContextMessage(expected[e], incoming[i])) return undefined;
+			mapping[e++] = i++;
+			continue;
+		}
+		const expectedStart = e, incomingStart = i;
+		while (expected[e]?.role === "custom") e++;
+		while (incoming[i]?.role === "custom") i++;
+		const earliest: number[] = [];
+		let cursor = expectedStart;
+		for (let current = incomingStart; current < i; current++) {
+			while (cursor < e && !sameContextMessage(expected[cursor], incoming[current])) cursor++;
+			if (cursor === e) return undefined;
+			earliest.push(cursor++);
+		}
+		cursor = e - 1;
+		for (let current = i - 1; current >= incomingStart; current--) {
+			while (cursor >= expectedStart && !sameContextMessage(expected[cursor], incoming[current])) cursor--;
+			if (cursor !== earliest[current - incomingStart]) return undefined;
+			mapping[cursor--] = current;
+		}
+	}
+	return mapping;
+}
+
+export function instructionContextMatches(expected: readonly AgentMessage[], incoming: readonly AgentMessage[]): boolean {
+	return contextAlignment(expected, incoming) !== undefined;
+}
+
 /**
  * Materializes plain metadata anchors into context messages at their exact ordinal positions.
  *
  * Rules:
  * - If no visible plain metadata anchor exists in context entries, returns the original messages array.
- * - If visible anchors exist, validates their metadata and strictly checks that incoming messages
- *   deeply equal the session context entries' projected messages before injecting markers.
+ * - If visible anchors exist, validates their metadata and checks the ordered protocol alignment before injection (see instructionContextMatches).
  * - Preserves all original message object references from incoming messages.
  * - Never guesses by timestamps or text matching; fails closed if context was modified by preceding extensions.
  */
@@ -161,9 +209,10 @@ export function materializeInstructionAnchors(
 	}
 
 	const rawMessages = contextEntries.flatMap(sessionEntryToContextMessages);
-	if (!isDeepStrictEqual(rawMessages, messages)) {
+	const alignment = contextAlignment(rawMessages, messages);
+	if (!alignment) {
 		throw new Error(
-			"Cannot materialize instruction anchors: preceding extension changed context (messages do not match session context entries)",
+			"Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)",
 		);
 	}
 
@@ -181,13 +230,14 @@ export function materializeInstructionAnchors(
 
 		const entryMessages = sessionEntryToContextMessages(entry);
 		for (let i = 0; i < entryMessages.length; i++) {
-			materialized.push(messages[messageIndex++]);
+			const incomingIndex = alignment[messageIndex++];
+			if (incomingIndex !== undefined) materialized.push(messages[incomingIndex]);
 		}
 	}
 
-	if (messageIndex !== messages.length) {
+	if (messageIndex !== rawMessages.length) {
 		throw new Error(
-			`Cannot materialize instruction anchors: context message count mismatch (processed ${messageIndex} of ${messages.length} messages)`,
+			`Cannot materialize instruction anchors: context message count mismatch (processed ${messageIndex} of ${rawMessages.length} session messages)`,
 		);
 	}
 

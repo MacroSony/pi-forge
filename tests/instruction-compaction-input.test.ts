@@ -58,7 +58,7 @@ function setupHermeticProject(options?: {
 
 test("Characterize real SDK compaction input and postcompact context", async (suite) => {
 	await suite.test(
-		"1. native active compact: summarizer sees generic carrier and assistant mention but NOT Forge rule body (request-only projection); checkpoint precedes summary in postcompact context",
+		"1. native active compact: summarizer sees NO carrier, preserves assistant mention but NOT Forge rule body (request-only projection); checkpoint precedes summary in postcompact context",
 		async () => {
 			const env = setupHermeticProject();
 			let compactEvents = 0;
@@ -121,10 +121,11 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				assert.ok(summarizerUserMsg, "summarizer request must have a user message");
 				const promptText = summarizerUserMsg.content[0].text as string;
 
-				// 1. Summarizer sees generic carrier
-				assert.ok(
-					promptText.includes("Forge instruction state changed. Use /system-update status to inspect it."),
-					"summarizer sees generic carrier",
+				// 1. Summarizer DOES NOT see generic carrier
+				assert.equal(
+					promptText.includes("Forge instruction state changed"),
+					false,
+					"summarizer input MUST NOT contain internal carrier",
 				);
 
 				// 2. Summarizer sees old assistant mention
@@ -192,7 +193,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 	);
 
 	await suite.test(
-		"2. native on -> off then compact: summarizer sees generic carriers and assistant statements but off command and rule literal are not in transcript; fake summary does not resurrect structural state or affect tools",
+		"2. native on -> off then compact: summarizer sees NO carriers, preserves assistant statements but off command and rule literal are not in transcript; fake summary does not resurrect structural state or affect tools",
 		async () => {
 			const env = setupHermeticProject();
 			let compactEvents = 0;
@@ -251,11 +252,11 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				const summarizerUserMsg = summarizerCtx.messages.find((m: any) => m.role === "user");
 				const promptText = summarizerUserMsg.content[0].text as string;
 
-				// Summarizer saw carriers from activation and deactivation
-				const carrierMatches = promptText.match(/Forge instruction state changed/g) ?? [];
-				assert.ok(
-					carrierMatches.length >= 2,
-					"summarizer saw generic carriers for both on and off transitions",
+				// Summarizer DOES NOT see generic carriers
+				assert.equal(
+					promptText.includes("Forge instruction state changed"),
+					false,
+					"summarizer input MUST NOT contain internal carriers for on and off transitions",
 				);
 
 				// Summarizer saw Turn 1 old assistant mention
@@ -318,7 +319,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 	);
 
 	await suite.test(
-		"3. fallback active compact: summarizer sees generic carrier and assistant mention but NOT fallback user update or rule body (request-only); fallback checkpoint precedes summary in postcompact context",
+		"3. fallback active compact: summarizer sees NO carrier, preserves assistant mention but NOT fallback user update or rule body (request-only); fallback checkpoint precedes summary in postcompact context",
 		async () => {
 			const env = setupHermeticProject();
 			let compactEvents = 0;
@@ -381,10 +382,11 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				assert.ok(summarizerUserMsg, "summarizer request must have a user message");
 				const promptText = summarizerUserMsg.content[0].text as string;
 
-				// 1. Generic carrier is in raw transcript and thus seen by summarizer
-				assert.ok(
-					promptText.includes("Forge instruction state changed. Use /system-update status to inspect it."),
-					"summarizer sees generic carrier",
+				// 1. Generic carrier is NOT in transcript and thus NOT seen by summarizer
+				assert.equal(
+					promptText.includes("Forge instruction state changed"),
+					false,
+					"summarizer input MUST NOT contain internal carrier",
 				);
 
 				// 2. Old assistant mention is seen by summarizer
@@ -451,7 +453,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 	);
 
 	await suite.test(
-		"4. fallback on -> off then compact: summarizer sees generic carriers and assistant statements but off command and rule literal are not in transcript; fake summary does not resurrect structural state or affect tools",
+		"4. fallback on -> off then compact: summarizer sees NO carriers, preserves assistant statements but off command and rule literal are not in transcript; fake summary does not resurrect structural state or affect tools",
 		async () => {
 			const env = setupHermeticProject();
 			let compactEvents = 0;
@@ -509,11 +511,11 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				const summarizerUserMsg = summarizerCtx.messages.find((m: any) => m.role === "user");
 				const promptText = summarizerUserMsg.content[0].text as string;
 
-				// Summarizer saw carriers from activation and deactivation
-				const carrierMatches = promptText.match(/Forge instruction state changed/g) ?? [];
-				assert.ok(
-					carrierMatches.length >= 2,
-					"summarizer saw generic carriers for both on and off transitions",
+				// Summarizer DOES NOT see generic carriers
+				assert.equal(
+					promptText.includes("Forge instruction state changed"),
+					false,
+					"summarizer input MUST NOT contain internal carriers for on and off transitions",
 				);
 
 				// Summarizer saw old assistant statement from Turn 1

@@ -7,10 +7,26 @@ import { createResourceCatalog } from "../catalog.ts";
 import { createInstructionSnapshot, reduceInstructionEvents, type ActiveInstruction, type InstructionEvent } from "../instruction-events.ts";
 import { resolveInstructionMode } from "../instruction-modes.ts";
 import { projectInstructionMessages } from "../instruction-projection.ts";
-import { INSTRUCTION_DELIVERY_TYPE, isInstructionDelivery } from "../instruction-protocol.ts";
+import { isInstructionDelivery } from "../instruction-protocol.ts";
 import { formatResourceKey } from "../resource-identity.ts";
 import { hasResourcePolicy } from "../policy.ts";
-import { persistInstructionEvent, persistInstructionTools, readInstructionSession } from "../session-adapter.ts";
+import {
+	buildContextEntries,
+	sessionEntryToContextMessages,
+	type SessionEntry,
+} from "@earendil-works/pi-coding-agent";
+import {
+	hasPendingInstructionToolCalls,
+	instructionContextMatches,
+	materializeInstructionAnchors,
+} from "../instruction-anchors.ts";
+import {
+	getCurrentBranchEntries,
+	persistInstructionDelivery,
+	persistInstructionEvent,
+	persistInstructionTools,
+	readInstructionSession,
+} from "../session-adapter.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
 import type { ToolPolicyRuntime, ToolPolicySnapshot } from "./tool-policy-runtime.ts";
 
@@ -23,6 +39,20 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 	let preparedModel: string | undefined;
 	let lastToolRecord: string | undefined;
 	let restoredTools: ToolPolicySnapshot | undefined;
+	let agentBusy = false;
+
+	function setAgentBusy(busy: boolean): void {
+		agentBusy = busy;
+	}
+
+	function isBusy(ctx?: ExtensionContext): boolean {
+		if (agentBusy) return true;
+		const targetCtx = ctx ?? context;
+		if (targetCtx && typeof targetCtx.isIdle === "function") {
+			return !targetCtx.isIdle();
+		}
+		return false;
+	}
 
 	function view(ctx: ExtensionContext) {
 		const history = readInstructionSession(ctx);
@@ -46,7 +76,9 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		context = ctx;
 		restoring = true;
 		preparedRevision = undefined;
+		preparedModel = undefined;
 		lastToolRecord = undefined;
+		agentBusy = false;
 		const history = readInstructionSession(ctx);
 		// A branch without a durable baseline must not replace an existing pristine
 		// baseline with the currently filtered selection. Let its owner reconcile it.
@@ -57,19 +89,8 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 	function restore(ctx: ExtensionContext, options?: { deferToolPolicy?: boolean }): void {
 		context = ctx;
 		restoring = false;
+		agentBusy = false;
 		if (!options?.deferToolPolicy) sync(ctx);
-	}
-
-	function sendMarker(eventId: string): void {
-		pi.sendMessage({
-			customType: INSTRUCTION_DELIVERY_TYPE,
-			content: "Forge instruction state changed. Use /system-update status to inspect it.",
-			display: false,
-			details: { schemaVersion: 1, throughEventId: eventId },
-		}, { deliverAs: "steer", triggerTurn: false });
-		// Management must not enqueue an extra model turn. Pi safely appends this
-		// carrier after a running batch; pending events project at the next existing
-		// request boundary even before that carrier is present.
 	}
 
 	function sync(ctx: ExtensionContext | undefined = context): void {
@@ -90,7 +111,10 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			persistInstructionEvent(pi, event);
 			lastRetired = event.eventId;
 		}
-		if (lastRetired) { sendMarker(lastRetired); current = view(ctx); }
+		if (lastRetired) {
+			if (!isBusy(ctx)) persistPendingAnchors(ctx);
+			current = view(ctx);
+		}
 		if (!ctx.isProjectTrusted() && current.state.active.length) {
 			throw new Error("Active instruction modes require a trusted project. Use /system-update reset to clear them, or trust the project.");
 		}
@@ -103,8 +127,44 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		rememberTools(ctx);
 	}
 
+	function pendingEvents(ctx: ExtensionContext): InstructionEvent[] {
+		const history = readInstructionSession(ctx);
+		const checkpoint = history.events.findIndex(event => event.eventId === history.checkpointThrough);
+		const through = Math.max(history.lastAnchoredIndex, checkpoint);
+		const seen = new Set<string>();
+		return history.events.filter((event, index) => {
+			if (seen.has(event.eventId)) return false;
+			seen.add(event.eventId);
+			return index > through;
+		});
+	}
+
+	function persistPendingAnchors(ctx: ExtensionContext): void {
+		// Do not collapse a saved-but-unanchored activate/off sequence into net state.
+		for (const event of pendingEvents(ctx)) persistInstructionDelivery(pi, event.eventId);
+	}
+
+	function rawSessionMessages(ctx: ExtensionContext): AgentMessage[] {
+		return buildContextEntries(getCurrentBranchEntries(ctx) as SessionEntry[]).flatMap(sessionEntryToContextMessages);
+	}
+
+	function prepareMessages(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[] {
+		context = ctx;
+		if (pendingEvents(ctx).length > 0) {
+			// Context hooks should run after a complete batch. Never project pending
+			// deltas into an unresolved current batch if that invariant is broken.
+			if (hasPendingInstructionToolCalls(raw)) {
+				throw new Error("Cannot prepare instruction anchors during an incomplete tool batch.");
+			}
+			if (!instructionContextMatches(rawSessionMessages(ctx), raw)) {
+				throw new Error("Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)");
+			}
+			persistPendingAnchors(ctx);
+		}
+		return materializeInstructionAnchors(getCurrentBranchEntries(ctx), raw);
+	}
+
 	function project(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[] {
-		sync(ctx);
 		const { history, state } = view(ctx);
 		if (!ctx.isProjectTrusted()) return messages.filter((message) => !isInstructionDelivery(message));
 		const native = (ctx.model?.compat as { supportsMidConvoSystemMessages?: boolean } | undefined)?.supportsMidConvoSystemMessages === true;
@@ -129,9 +189,9 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			lastToolRecord = JSON.stringify(before);
 		}
 		persistInstructionEvent(pi, event);
-		// A failure after commit remains recoverable from the event; never claim it was applied.
+		// Any failure after saving intent remains recoverable; never imply rollback.
 		try {
-			sendMarker(event.eventId);
+			if (!isBusy(ctx)) persistPendingAnchors(ctx);
 			sync(ctx);
 			ctx.ui.setStatus("pi-forge-instructions", `${next.active.length} mode(s) · pending request`);
 		} catch (error) {
@@ -263,15 +323,26 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		return `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`;
 	}
 
+	function commitEndAnchors(ctx: ExtensionContext): void {
+		context = ctx;
+		if (restoring) return;
+		if (!pendingEvents(ctx).length) return;
+		// Interrupted batches may leave an incomplete current tail. Keep intent
+		// pending rather than anchoring between its call and a later result.
+		if (hasPendingInstructionToolCalls(rawSessionMessages(ctx))) return;
+		persistPendingAnchors(ctx);
+	}
+
 	function dispose(): void {
 		context = undefined;
 		restoring = true;
 		preparedRevision = undefined;
 		preparedModel = undefined;
 		restoredTools = undefined;
+		agentBusy = false;
 	}
 
-	return { prepareRestore, restore, sync, project, library, status, change, readState, mutateState, dispose };
+	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readState, mutateState, dispose };
 }
 
 function sourceLabel(item: ActiveInstruction): string {

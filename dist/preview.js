@@ -7,6 +7,7 @@ import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
 import { getPiBasePrompt, projectInstructionMessages, projectPresetSystemPrompt, } from "./instruction-projection.js";
 import { getCurrentBranchEntries, readInstructionSession } from "./session-adapter.js";
 import { isInstructionDelivery } from "./instruction-protocol.js";
+import { instructionAnchorMessage } from "./instruction-anchors.js";
 import { reduceInstructionEvents } from "./instruction-events.js";
 /**
  * Render preview for a prompt stack against current session context.
@@ -175,6 +176,11 @@ function getPreviewSessionMessages(ctx) {
     const appendMessage = (entry) => {
         if (entry.type === "message" && isAgentMessage(entry.message)) {
             messages.push(entry.message);
+            return;
+        }
+        const anchor = instructionAnchorMessage(entry);
+        if (anchor) {
+            messages.push(anchor);
             return;
         }
         if (entry.type === "custom_message" && typeof entry.customType === "string") {

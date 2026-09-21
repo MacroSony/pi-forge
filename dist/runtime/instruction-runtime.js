@@ -5,10 +5,12 @@ import { createResourceCatalog } from "../catalog.js";
 import { createInstructionSnapshot, reduceInstructionEvents } from "../instruction-events.js";
 import { resolveInstructionMode } from "../instruction-modes.js";
 import { projectInstructionMessages } from "../instruction-projection.js";
-import { INSTRUCTION_DELIVERY_TYPE, isInstructionDelivery } from "../instruction-protocol.js";
+import { isInstructionDelivery } from "../instruction-protocol.js";
 import { formatResourceKey } from "../resource-identity.js";
 import { hasResourcePolicy } from "../policy.js";
-import { persistInstructionEvent, persistInstructionTools, readInstructionSession } from "../session-adapter.js";
+import { buildContextEntries, sessionEntryToContextMessages, } from "@earendil-works/pi-coding-agent";
+import { hasPendingInstructionToolCalls, instructionContextMatches, materializeInstructionAnchors, } from "../instruction-anchors.js";
+import { getCurrentBranchEntries, persistInstructionDelivery, persistInstructionEvent, persistInstructionTools, readInstructionSession, } from "../session-adapter.js";
 /** Branch entries are authoritative. This service only coordinates the existing tool owner and delivery. */
 export function createInstructionRuntime(pi, workspace, tools) {
     const instanceId = randomUUID();
@@ -18,6 +20,19 @@ export function createInstructionRuntime(pi, workspace, tools) {
     let preparedModel;
     let lastToolRecord;
     let restoredTools;
+    let agentBusy = false;
+    function setAgentBusy(busy) {
+        agentBusy = busy;
+    }
+    function isBusy(ctx) {
+        if (agentBusy)
+            return true;
+        const targetCtx = ctx ?? context;
+        if (targetCtx && typeof targetCtx.isIdle === "function") {
+            return !targetCtx.isIdle();
+        }
+        return false;
+    }
     function view(ctx) {
         const history = readInstructionSession(ctx);
         const state = reduceInstructionEvents(history.events);
@@ -40,7 +55,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
         context = ctx;
         restoring = true;
         preparedRevision = undefined;
+        preparedModel = undefined;
         lastToolRecord = undefined;
+        agentBusy = false;
         const history = readInstructionSession(ctx);
         // A branch without a durable baseline must not replace an existing pristine
         // baseline with the currently filtered selection. Let its owner reconcile it.
@@ -50,19 +67,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
     function restore(ctx, options) {
         context = ctx;
         restoring = false;
+        agentBusy = false;
         if (!options?.deferToolPolicy)
             sync(ctx);
-    }
-    function sendMarker(eventId) {
-        pi.sendMessage({
-            customType: INSTRUCTION_DELIVERY_TYPE,
-            content: "Forge instruction state changed. Use /system-update status to inspect it.",
-            display: false,
-            details: { schemaVersion: 1, throughEventId: eventId },
-        }, { deliverAs: "steer", triggerTurn: false });
-        // Management must not enqueue an extra model turn. Pi safely appends this
-        // carrier after a running batch; pending events project at the next existing
-        // request boundary even before that carrier is present.
     }
     function sync(ctx = context) {
         if (restoring)
@@ -88,7 +95,8 @@ export function createInstructionRuntime(pi, workspace, tools) {
             lastRetired = event.eventId;
         }
         if (lastRetired) {
-            sendMarker(lastRetired);
+            if (!isBusy(ctx))
+                persistPendingAnchors(ctx);
             current = view(ctx);
         }
         if (!ctx.isProjectTrusted() && current.state.active.length) {
@@ -103,8 +111,42 @@ export function createInstructionRuntime(pi, workspace, tools) {
         tools.sync(ctx);
         rememberTools(ctx);
     }
+    function pendingEvents(ctx) {
+        const history = readInstructionSession(ctx);
+        const checkpoint = history.events.findIndex(event => event.eventId === history.checkpointThrough);
+        const through = Math.max(history.lastAnchoredIndex, checkpoint);
+        const seen = new Set();
+        return history.events.filter((event, index) => {
+            if (seen.has(event.eventId))
+                return false;
+            seen.add(event.eventId);
+            return index > through;
+        });
+    }
+    function persistPendingAnchors(ctx) {
+        // Do not collapse a saved-but-unanchored activate/off sequence into net state.
+        for (const event of pendingEvents(ctx))
+            persistInstructionDelivery(pi, event.eventId);
+    }
+    function rawSessionMessages(ctx) {
+        return buildContextEntries(getCurrentBranchEntries(ctx)).flatMap(sessionEntryToContextMessages);
+    }
+    function prepareMessages(raw, ctx) {
+        context = ctx;
+        if (pendingEvents(ctx).length > 0) {
+            // Context hooks should run after a complete batch. Never project pending
+            // deltas into an unresolved current batch if that invariant is broken.
+            if (hasPendingInstructionToolCalls(raw)) {
+                throw new Error("Cannot prepare instruction anchors during an incomplete tool batch.");
+            }
+            if (!instructionContextMatches(rawSessionMessages(ctx), raw)) {
+                throw new Error("Cannot materialize instruction anchors: context has no unique session alignment (possible preceding extension rewrite or deferred custom messages)");
+            }
+            persistPendingAnchors(ctx);
+        }
+        return materializeInstructionAnchors(getCurrentBranchEntries(ctx), raw);
+    }
     function project(messages, ctx) {
-        sync(ctx);
         const { history, state } = view(ctx);
         if (!ctx.isProjectTrusted())
             return messages.filter((message) => !isInstructionDelivery(message));
@@ -132,9 +174,10 @@ export function createInstructionRuntime(pi, workspace, tools) {
             lastToolRecord = JSON.stringify(before);
         }
         persistInstructionEvent(pi, event);
-        // A failure after commit remains recoverable from the event; never claim it was applied.
+        // Any failure after saving intent remains recoverable; never imply rollback.
         try {
-            sendMarker(event.eventId);
+            if (!isBusy(ctx))
+                persistPendingAnchors(ctx);
             sync(ctx);
             ctx.ui.setStatus("pi-forge-instructions", `${next.active.length} mode(s) · pending request`);
         }
@@ -274,14 +317,27 @@ export function createInstructionRuntime(pi, workspace, tools) {
         commit(ctx, { ...common, op: "activate", snapshot });
         return `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`;
     }
+    function commitEndAnchors(ctx) {
+        context = ctx;
+        if (restoring)
+            return;
+        if (!pendingEvents(ctx).length)
+            return;
+        // Interrupted batches may leave an incomplete current tail. Keep intent
+        // pending rather than anchoring between its call and a later result.
+        if (hasPendingInstructionToolCalls(rawSessionMessages(ctx)))
+            return;
+        persistPendingAnchors(ctx);
+    }
     function dispose() {
         context = undefined;
         restoring = true;
         preparedRevision = undefined;
         preparedModel = undefined;
         restoredTools = undefined;
+        agentBusy = false;
     }
-    return { prepareRestore, restore, sync, project, library, status, change, readState, mutateState, dispose };
+    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readState, mutateState, dispose };
 }
 function sourceLabel(item) {
     return item.snapshot.source.kind === "manual" ? "manual" : formatResourceKey(item.snapshot.source.key);

@@ -94,16 +94,21 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				assert.equal(semanticEntry.data?.snapshot?.content, "RECOVERY_REVIEW_RULE");
 				assert.deepEqual(semanticEntry.data?.snapshot?.tools?.remove, ["fake_write"]);
 
-				// Check delivery marker: must be cursor ONLY (schemaVersion, throughEventId), no rule content or sections
-				const deliveryEntry = entries.find(
-					(e) => e.type === "custom_message" && e.customType === INSTRUCTION_DELIVERY_TYPE,
+				// Check delivery marker: must be plain custom anchor entry with cursor ONLY (schemaVersion, throughEventId), no rule content or sections
+				assert.equal(
+					entries.some((e) => e.type === "custom_message" && e.customType === INSTRUCTION_DELIVERY_TYPE),
+					false,
+					"delivery marker must never be persisted as custom_message",
 				);
-				assert.ok(deliveryEntry, "session file must contain delivery custom_message marker");
-				assert.equal(deliveryEntry.details?.schemaVersion, 1);
-				assert.equal(typeof deliveryEntry.details?.throughEventId, "string");
-				assert.ok(deliveryEntry.details.throughEventId.length > 0);
-				assert.equal((deliveryEntry.details as any).content, undefined, "delivery marker must not contain raw rule content");
-				assert.equal((deliveryEntry.details as any).sections, undefined, "delivery marker must not contain rendered sections");
+				const deliveryEntry = entries.find(
+					(e) => e.type === "custom" && e.customType === INSTRUCTION_DELIVERY_TYPE,
+				);
+				assert.ok(deliveryEntry, "session file must contain plain custom delivery anchor");
+				assert.equal(deliveryEntry.data?.schemaVersion, 1);
+				assert.equal(typeof deliveryEntry.data?.throughEventId, "string");
+				assert.ok(deliveryEntry.data.throughEventId.length > 0);
+				assert.equal((deliveryEntry.data as any).content, undefined, "delivery marker must not contain raw rule content");
+				assert.equal((deliveryEntry.data as any).sections, undefined, "delivery marker must not contain rendered sections");
 
 				// Check baseline tools record
 				const toolsEntry = entries.find(

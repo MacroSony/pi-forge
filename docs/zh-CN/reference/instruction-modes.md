@@ -48,15 +48,15 @@ Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词
 | `/system-update reset` | 关闭当前会话所有激活的指令模式与手动指令。 |
 | `/system-update add <text>` | 向当前会话追加一条手动字面指令（无工具变更）。 |
 
-**零推理成本：** 所有 `/system-update` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态，操作本身不调用模型推理，不消耗付费 token（no inference）。但请注意：活动指令的规则正文仍会在随后的真实模型请求中占用输入 token。处于忙碌状态的会话变更将等待下一次现有请求生效，不会额外排队插入新的模型轮次。
+**零推理成本：** 所有 `/system-update` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态，操作本身不调用模型推理，不消耗付费 token（no inference）。但请注意：活动指令的规则正文仍会在随后的真实模型请求中占用输入 token。投递锚点使用同名投递类型（`pi-forge-instruction-delivery`）下的纯 `custom` 会话条目持久化，仅携带游标元数据（`schemaVersion: 1`, `throughEventId`），彻底取代先前的 `sendMessage` steering 与对话消息型 `custom_message` 载体。空闲时立即落锚；运行中的会话变更则安全推迟到当前工具调用批次全部完成后落锚，或在 `agent_end` 助手回复产生后提交，不额外向模型排入轮次。UI 状态通知（`ctx.ui.setStatus`）完全独立解耦。
 
 ## 检查规则更新的预览
 
-现有 **Preview／预览** 按“选中的 Preset 草稿＋当前会话指令快照”试算，复用正常请求的纯预设／指令投影：显示原生 System 分段或带归属的 user 更新，包括停用通知和压缩检查点。Forge 游标占位不再作为普通 custom 任务展示；命名分段和工具声明变化也不再显示为空白 System 卡片。普通历史仍尊重插槽名称，例如插槽叫 `Delegated Task`，普通历史就仍用这个标签。
+现有 **Preview／预览** 按“选中的 Preset 草稿＋当前会话指令快照”试算，复用正常请求的纯预设／指令投影：显示原生 System 分段或带归属的 user 更新，包括停用通知和压缩检查点。投递标记为纯元数据锚点，不再作为对话消息或通用 custom_message 任务展示。命名分段和工具声明变化可读，不显示为空白 System 卡片。普通历史仍尊重插槽名称，例如插槽叫 `Delegated Task`，普通历史就仍用这个标签。
 
 System 正文、原生命名分段与历史工具声明分开展示。代码区和分段复制只含正文／分段值，不把展示器生成的 `Added tool`、`Updated system prompt section` 当成原生 System 正文；fallback 用户更新本身包含的文字则原样保留。历史工具声明折叠显示，并明确标注**不是当前选择**。独立的“预览工具选择”采用草稿策略＋当前模式计算出的工具，而非旧转录声明。文本估算不含工具 schema 和检查器标签；只有结构化变更的消息仍可检查，投影后真正空掉的 System 卡片隐藏。空的非 System 消息以及真实正文中的同名短语不删除。草稿差异仍能检测无正文变化的结构化字段／工具选择变更。历史只按连续段分组：中途插入的指令更新保持在前后消息之间，不移到全部历史末尾。
 
-切换模式后刷新预览即可检查新投影。它不是最终 provider payload，也不是送达确认；读取／复制不会推理、改变工具或把 pending 标成 prepared。全文不再受原先消息布局 8,000 字符截断限制。修改源文件不替换活动快照。已有自然语言摘要（包括其中引用的旧通知）保持原样；这次修复不改变摘要输入或 Pi 的压缩切点。
+切换模式后刷新预览即可检查新投影。它不是最终 provider payload，也不是送达确认；读取／复制不会推理、改变工具或把 pending 标成 prepared。全文不再受原先消息布局 8,000 字符截断限制。修改源文件不替换活动快照。已有自然语言摘要（包括其中引用的旧通知）保持原样；这次修复不重写历史摘要，也不改变 Pi 的压缩切点。
 
 ## Web 会话指令面板
 
@@ -104,21 +104,26 @@ System 正文、原生命名分段与历史工具声明分开展示。代码区�
 
 ## 投递模型：Native 与 Fallback
 
-Forge 在每次发起模型请求时动态投影指令增量：
+Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增量：
 
-- **Native 投递：** 当模型服务商声明支持会话中系统消息（`compat.supportsMidConvoSystemMessages === true`）时，增量以 `SystemMessage.sections`（以 `forge-instruction-<id>` 为 key）注入，关闭时发送 null patch。Native 投递完全依赖服务商 capability 标记，并非所有提供商都支持。
-- **Fallback 投递：** 对不支持原生系统更新的模型，增量以带来源标记的时间线用户消息（`[pi-forge instruction update]`）投递。Forge 绝不折叠或篡改首条 leading system prompt，不把用户/工具对话提升为系统权限。
+1. **编译前物化（Materialize）：** 扫描会话条目中的纯 `custom` 元数据锚点（`pi-forge-instruction-delivery`）。在请求上下文边界（`prepareInstructionMessages`）校验元数据，并严格按其在会话转录中的序数位置物化为内存中的瞬态标记，绝不在磁盘转录中伪造对话消息。
+2. **规则投影（Project）：** 由 `projectInstructionMessages` 将物化后的增量转化为适配当前模型的呈现形式：
+   - **Native 投递：** 当模型服务商声明支持会话中系统消息（`compat.supportsMidConvoSystemMessages === true`）时，增量以 `SystemMessage.sections`（以 `forge-instruction-<id>` 为 key）注入，关闭时发送 null patch。Native 投递完全依赖服务商 capability 标记，并非所有提供商都支持。
+   - **Fallback 投递：** 对不支持原生系统更新的模型，增量以带来源标记的时间线用户消息（`[pi-forge instruction update]`）投递。Forge 绝不折叠或篡改首条 leading system prompt，不把用户/工具对话提升为系统权限。
 
 ## 状态恢复与验证边界
 
 指令状态由追加式会话事件与投递游标（`throughEventId`）推导恢复：
 
+- **纯元数据投递锚点：** 投递标记以同名类型（`pi-forge-instruction-delivery`）的纯 `custom` 会话条目持久化，仅包含 `{ schemaVersion: 1, throughEventId }` 游标元数据，不写入 `custom_message`，不使用 `sendMessage`。空闲变更立即落锚；运行中变更在工具批次完成后安全落锚；`agent_end` 在没有 Forge 上下文处理失败且批次完整时补齐未提交游标。UI 状态通知独立解耦，不向模型排入额外轮次。
 - **SDK 离线验证：** 会话恢复、手动 compaction checkpoint 及分支切换（`session.navigateTree`）均已通过 SDK 本地测试套件离线验证。这验证了提示词拼装与工具门控逻辑，但不构成对远程模型实际遵从或服从程度的保证。
-- **Compaction 与缓存：** 压缩断点（compaction checkpoint）实际仍保持在引导系统提示词（`leadingSystem`）之后、压缩摘要（`summary`）之前。测试套件补充了真实 SDK 压缩请求输入表征测试（采用模拟假摘要 characterization）；测试发现 summarizer 请求仅包含通用载体信息与过往 assistant 对话，看不到 request-only 的 Forge 规则正文。此项测试属于请求输入形状表征，不应视作模型真实语义遵从验收，且未改变投影位置。完整 AutoCompact 与真实服务商 prompt cache 信号未作全面覆盖，请勿夸大缓存命中保证。
+- **Compaction 与缓存：** 压缩断点（compaction checkpoint）位置保持不变（位于引导系统提示词之后、压缩摘要之前；上游 Pi 的元数据切分 bug 独立存在，当前尚未修复）。真实 SDK 压缩请求输入表征测试表明：新的控制元数据和仅请求内投影的规则**不会自动进入摘要输入**；选中摘要窗口内的真实用户、助手与 peer 对话不因这次修复被过滤，其中真实引用的规则文字仍保留。测试套件采用模拟假响应，仅用于验证请求组装与管线形状，不能等同于远程 LLM 实际语义压缩与遵从验收。
+- **向后兼容与旧会话风险：** 系统兼容读取并恢复历史会话中既有的 `custom_message` 投递条目。但 Forge 不会主动迁移磁盘旧条目，也不会抹除或重写既有的历史压缩摘要。**重要警示：** 若在包含旧版 `custom_message` 载体的旧会话中触发压缩，这些旧载体仍可能被读入总结器而造成历史污染！
 - **会话写盘时机：** 在仅输入斜杠命令的新会话中，在首个 assistant 回复产生前，Pi 可能尚未向磁盘写出 JSONL 会话条目。
 
 ## 兼容性与安全边界
 
+- **前置扩展上下文改写：** Pi 允许 `context` hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与会话记录有唯一的有序对应，否则中止而非猜测。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突。需审查后调整冲突插件顺序或行为；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
 - **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/payload` 或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
 - **沙盒免责：** 指令模式不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
 
@@ -126,6 +131,6 @@ Forge 在每次发起模型请求时动态投影指令增量：
 
 0.5.5 仍在分阶段实现中，尚未全量完成：
 
-- 人工 CLI 切片（`/system-update`）、投影运行时以及用于状态查看与控制的 Web 会话指令活动面板已实现。
-- Preset `instructionModes` 字段、模式库编辑界面及 Agent 工具 `forge_system_update` 尚未上线。
-- CLI 人工激活的模式未绑定 Preset（Web 面板只能关闭或重置现有活动项），切换 Preset 时予以保留，但仍受新 Preset 顶层策略约束。完整演示视频与完整媒体尚未发布。
+- 人工 CLI 切片（`/system-update`）、投影运行时、Web 会话指令活动面板以及正式的纯元数据锚点修复已实现。
+- Preset `instructionModes` 字段、运行时权限检查、Agent 工具 `forge_system_update`（list/status/use/off）及完整模式库 Web 编辑界面尚未开发。
+- CLI 人工激活的模式未绑定 Preset（Web 面板只能关闭或重置现有活动项），切换 Preset 时予以保留，但仍受新 Preset 顶层策略约束。完整演示视频与完整媒体尚未发布，版本号维持 0.5.4 直至发布筹备。

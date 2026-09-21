@@ -46,7 +46,9 @@ test(`built editor uses projected text and separate tools without management inf
 		await quietPrompt("Seed a historical tool declaration.");
 		assert.equal(harness.streamContexts.length, 1);
 		// Public session record fixture: a Pi base-only refresh, like the user's empty card.
-		harness.manager.appendMessage({role: "system", content: "", sections: {tools: "Base tool descriptions", rules: "Base rules"}, timestamp: Date.now()});
+		const seedMsg = {role: "system" as const, content: "", sections: {tools: "Base tool descriptions", rules: "Base rules"}, timestamp: Date.now()};
+		harness.manager.appendMessage(seedMsg);
+		harness.session.agent.state.messages = [...harness.session.agent.state.messages, seedMsg];
 		await quietPrompt("/system-update use project:review");
 		await quietPrompt("Ordinary user dialogue after mode activation.");
 		assert.equal(harness.streamContexts.length, 2);
@@ -145,6 +147,15 @@ test(`built editor uses projected text and separate tools without management inf
 		await panel.locator("[data-item-deactivate-btn]").first().click();
 		await page.waitForFunction(() => document.querySelectorAll("[data-session-instructions] .active-item-card").length === 1);
 		assert.ok(harness.getActiveToolNames().includes("fake_write"), "browser off reaches the real tool owner");
+
+		const branch = harness.manager.getBranch();
+		assert.equal(
+			branch.some((e: any) => e.type === "custom_message" && e.customType === "pi-forge-instruction-delivery"),
+			false,
+			"delivery markers must never be custom_message",
+		);
+		const anchors = branch.filter((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery");
+		assert.ok(anchors.length >= 2, "instruction modes produce plain metadata anchors");
 		await compiled.locator(".context-diff-refresh").click();
 		await page.waitForFunction((isNative) => isNative
 			? !!document.querySelector(".context-diff-compiled .op-removed")

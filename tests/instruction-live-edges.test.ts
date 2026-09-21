@@ -28,6 +28,16 @@ test("live tools and base prompts track an off performed in a run that started w
 			assert.ok(!getCurrentSystemPrompt(h.streamContexts[0]!.messages).includes("fake_write"));
 			assert.ok(getCurrentTools(h.streamContexts[1]!.messages).some((tool) => tool.name === "fake_write"));
 			assert.ok(getCurrentSystemPrompt(h.streamContexts[1]!.messages).includes("fake_write"), "restored tools must also restore their prompt description");
+
+			const branch = h.manager.getBranch();
+			assert.equal(
+				branch.some((e: any) => e.type === "custom_message" && e.customType === "pi-forge-instruction-delivery"),
+				false,
+				"no custom_message delivery entries",
+			);
+			const anchors = branch.filter((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery");
+			assert.equal(anchors.length, 2, "both on and off transitions produce plain metadata anchors");
+
 			assert.equal(h.fetchAttempts, 0);
 		} finally { await h.dispose(); rmSync(cwd, { recursive: true, force: true }); }
 	});

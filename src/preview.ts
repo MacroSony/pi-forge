@@ -19,6 +19,7 @@ import {
 } from "./instruction-projection.ts";
 import { getCurrentBranchEntries, readInstructionSession } from "./session-adapter.ts";
 import { isInstructionDelivery } from "./instruction-protocol.ts";
+import { instructionAnchorMessage } from "./instruction-anchors.ts";
 import { reduceInstructionEvents } from "./instruction-events.ts";
 import type { CompileMessageSource, LoadedPromptStack, PromptCompileOptions, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorPreview, WebEditorPreviewSection } from "./web-editor/index.ts";
@@ -215,6 +216,7 @@ interface SessionEntryLike {
 	content?: unknown;
 	display?: unknown;
 	details?: unknown;
+	data?: unknown;
 	systemMessage?: unknown;
 }
 
@@ -226,6 +228,11 @@ function getPreviewSessionMessages(ctx: ExtensionContext): AgentMessage[] {
 	const appendMessage = (entry: SessionEntryLike): void => {
 		if (entry.type === "message" && isAgentMessage(entry.message)) {
 			messages.push(entry.message);
+			return;
+		}
+		const anchor = instructionAnchorMessage(entry);
+		if (anchor) {
+			messages.push(anchor);
 			return;
 		}
 		if (entry.type === "custom_message" && typeof entry.customType === "string") {

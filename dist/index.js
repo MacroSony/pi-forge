@@ -109,6 +109,9 @@ export default function piForge(pi) {
         prepareInstructionRestore: instructions.prepareRestore,
         restoreInstructions: instructions.restore,
         projectInstructions: instructions.project,
+        prepareInstructionMessages: instructions.prepareMessages,
+        commitEndInstructionAnchors: instructions.commitEndAnchors,
+        setInstructionAgentBusy: instructions.setAgentBusy,
         toolPromptOptions: (options) => {
             const active = currentActive();
             return active ? toolPolicy.previewOptions({ ...options, selectedTools: pi.getActiveTools() }, active.stack) : options;

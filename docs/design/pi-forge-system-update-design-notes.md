@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [Lean architecture](architecture-0.5.md) · [Roadmap](../development/roadmap.md)
 
-**Status:** implementation authorized, 2026-09-20. Foundation and human CLI core implemented, with real Pi 0.86/fake-provider tests for text/tools, disk resume, branches and manual compaction. [Current CLI reference](../reference/instruction-modes.md) states the remaining limits. Preset binding schema, Agent control and UI are not yet implemented. Package remains 0.5.4 until release preparation.
+**Status:** implementation authorized, 2026-09-20. Foundation, human CLI core, and formal plain metadata anchor projection implemented, with real Pi 0.86/fake-provider tests for text/tools, disk resume, branches and manual compaction. [Current CLI reference](../reference/instruction-modes.md) states the remaining limits. Live Preset binding, Agent control and full library UI are not yet implemented. Package remains 0.5.4 until release preparation.
 
 This supersedes the [September 12 upstream-blocked proposal](archive/2026-09-12-system-update-design.md). Pi 0.86.0 is released. Its actual behavior differs from the closed #9116/#9117 branches; those branch results are historical evidence, not a current contract.
 
@@ -28,7 +28,20 @@ An isolated Pi 0.86 `AgentSession`/extension-runner spike used fake models/tools
 
 The implemented request-base bridge preserves compiled replacement strings while retaining foreign named sections and tool declarations. Built-in base text and selected-tool macros refresh when the executable set changes.
 
-**Production difference from the spike:** management uses `triggerTurn:false` so a command issued while the model is finishing cannot enqueue an extra paid turn. While Pi defers a carrier, request projection replays each missing semantic delta at the next naturally occurring request, including instance-specific off notices. Invalid state explicitly aborts before provider dispatch.
+**Production architecture:** management completely avoids transcript `sendMessage` and `custom_message` carriers, preventing dialogue contamination and spurious model turns. Instead, delivery is anchored using plain `custom` session entries under the same delivery type (`pi-forge-instruction-delivery`) carrying strictly cursor-only metadata (`{ schemaVersion: 1, throughEventId: string }`).
+
+- **Anchor persistence points:**
+  - **Idle:** persisted immediately upon `/system-update` execution or synchronization.
+  - **Running session:** safely deferred while a tool loop is busy; anchors are never inserted between an in-flight tool call and its matching result.
+  - **On `agent_end`:** uncommitted pending anchors are committed after the assistant's final response when no Forge context failure or incomplete batch remains, before the next user turn.
+- **Two-stage context assembly:**
+  - `prepareInstructionMessages` materializes before Preset compilation plain metadata anchors into ephemeral in-memory markers at their exact ordinal positions, verifying a unique ordered alignment against session context entries.
+  - `projectInstructionMessages` then projects active instruction deltas into native request-only `SystemMessage.sections` or fallback attributed timeline user messages.
+- **Decoupled UI notification:** UI status notifications (`ctx.ui.setStatus` and Web activity panel) are completely independent and never enqueue turns to the model.
+
+Preceding extension message rewrites (modifying messages in `context`) are a legal and valid Pi SDK capability. However, Forge's anchor materialization requires a unique ordered alignment with session context entries. Content/protocol rewrites, inserted messages, non-custom omissions and ambiguous custom-message omissions fail closed. This strict locator incompatibility must not be characterized as improper or non-standard extension behavior. Users may adjust conflicting extension order (e.g. running Forge before rewriting extensions) or extension behavior, but this is an operational suggestion only; Forge does not guarantee post-extension rewrite safety, nor can it guarantee generic plugin compatibility, prompt cache retention, warming, or automatic overflow handling.
+
+The SDK queue exception is explicit: persisted custom messages can be absent from the current tool follow-up and have different live/persisted envelope timestamps. Compare full content/protocol fields, ignore only the regenerated custom timestamp, and permit custom-message omissions only when earliest/latest ordered alignments agree. Identical ambiguous omissions fail closed. Never rebuild/overwrite incoming context or reinsert omitted peer messages.
 
 ## Resource and binding contract
 
@@ -98,13 +111,15 @@ Snapshot content never drifts with source edits. Switching Presets must append d
 
 ## Delivery, recovery and tools — implemented CLI core
 
-Derived custom-message markers anchor delivery; they do not independently own active state or duplicate authoritative snapshot payloads. One semantic history must support both presentations:
+Derived plain `custom` metadata entries anchor delivery; they do not independently own active state, duplicate authoritative snapshot payloads, or pollute conversation dialogue. One semantic history must support both presentations:
 
 - Native: request-only `SystemMessage.sections` keyed by activation identity; off uses a null patch and Pi's existing removal wording, without an extra duplicate user notice.
 - Unsupported models: an attributed timeline user update/stop notice. Do not silently fold Forge mode updates into the leading prompt. Genuine user/tool content must never be promoted to system authority.
 - Transform only clearly owned Forge rule content, never an entire mixed system message. Preserve unrelated content/sections and `toolsAdded`/`toolsRemoved` for Pi's adapters.
-- Compaction requires an owned current-state checkpoint derived from semantic events; suppress pre-checkpoint carriers, including retained-tail copies, then replay later deltas. Request-only sections are not automatically saved by Pi's raw transcript checkpoint.
-- Admission validates text/reference/authorization/tool effects before commit. Selected, pending and applied status must be distinct; text and executable selection change coherently at request boundaries. Already running batches are not killed.
+- Compaction requires an owned current-state checkpoint derived from semantic events; suppress pre-checkpoint anchors, including retained-tail copies, then replay later deltas. Request-only sections are not automatically saved by Pi's raw transcript checkpoint. Checkpoint placement remains unchanged (precedes summary, follows leading system prompt); the upstream Pi metadata chunking bug is an independent issue and remains unfixed.
+- Compaction input characterization: in real SDK compaction, summarizers receive no metadata anchors and no Forge rule bodies (projection is request-only), while user, assistant, and peer dialogue are preserved. Simulated/fake responses in test harnesses characterize request plumbing and harness shape, not remote LLM semantic compaction fidelity or summarizer compliance.
+- Backward compatibility: legacy `custom_message` delivery entries can still be read and recovered for backward compatibility, but they are not migrated on disk, and historical compaction summaries are not erased or rewritten. **Warning:** legacy sessions containing old `custom_message` carriers may still contaminate summarizer input if compacted.
+- Admission validates text/reference/authorization/tool effects before commit. Selected, pending and prepared status must be distinct; executable selection synchronizes at activation, while request text/declarations follow at request boundaries. Already running batches are not killed.
 - Compute tools from a recoverable baseline plus all remaining additions minus all remaining removals, subject to top-level policy; removal wins. Additions must be registered/permitted. Off is recomputation, not an inverse patch or restoration of a whole obsolete active-tool list. Preserve identifiable external changes.
 - Restored active tools may already include effects; they cannot simply become the fresh baseline. Same-run changes, restart, branch, compaction and external changes are release gates. No OS-sandbox claim.
 - Human recovery via CLI/Web must remain available; an Agent-owned mode cannot disable its own control path without a safe recovery policy.
@@ -114,10 +129,10 @@ Derived custom-message markers anchor delivery; they do not independently own ac
 Only one coherent lane is active at a time; workers may parallelize isolated parts within it.
 
 1. **Foundation (verified):** JSON codec, finite overrides, scoped resolution, immutable snapshots and strict event reduction.
-2. **Human CLI core (implemented):** Pi 0.86 peers/dependencies, request-base bridge, scoped discovery, session event/cursor persistence, compaction checkpoints and one executable-tool-policy owner. Real SDK tests cover same-run toggles, native/fallback switches, actual blocked/restored fake tool execution, disk reopens, branches and crash-window baseline recovery. No provider HTTP in these tests.
-3. **Session activity UI (user-approved early usability lane):** read/control view derived from the existing runtime, never a second state owner. Human off/reset carries an exact session/leaf/revision guard with runtime-instance fencing; Web requires trust, pure reads never synchronize or infer, and stale pages cannot retry writes automatically. Real-SDK compaction-input tests exercise the summarization request but use fake responses: request-only Forge rules are absent from summarizer history, while generic carriers and ordinary assistant statements remain. Checkpoint placement is unchanged pending real-model comparison.
-4. **Next — authorized controls:** live Preset binding schema and current authorization; restricted fixed-schema `forge_system_update` list/status/use/off. CLI and repository/service infrastructure are already present. Management alone must not initiate paid inference; human recovery remains available.
-5. **Editor and release:** mode library, Preset binding/effective override diff, further activity/source-diff inspection; session/branch/revision stale-page checks; bilingual UI, migration/min-Pi notes, accurate README media and release verification.
+2. **Human CLI core and metadata anchor projection (implemented):** Pi 0.86 peers/dependencies, request-base bridge, scoped discovery, session event persistence, plain `custom` cursor-only metadata anchors (replacing transcript carriers), ordinal materialization, compaction checkpoints and one executable-tool-policy owner. Real SDK tests cover same-run toggles, native/fallback switches, actual blocked/restored fake tool execution, disk reopens, branches, crash-window baseline recovery, and legitimate preceding extension rewrite fail-closed safety. No provider HTTP in these tests.
+3. **Session activity UI (user-approved early usability lane):** read/control view derived from the existing runtime, never a second state owner. Human off/reset carries an exact session/leaf/revision guard with runtime-instance fencing; Web requires trust, pure reads never synchronize or infer, and stale pages cannot retry writes automatically. Real-SDK compaction-input tests exercise the summarization request: Forge metadata and request-only rules are absent from summarizer history, while user, assistant, and peer dialogue remain intact; fake test responses are plumbing characterization, not remote semantic validation. Compaction checkpoint placement is unchanged.
+4. **Next — authorized controls:** live Preset binding and current authorization; restricted fixed-schema `forge_system_update` list/status/use/off. CLI and repository/service infrastructure are already present. Management alone must not initiate paid inference; human recovery remains available.
+5. **Editor and release:** mode library, Preset binding/effective override diff, further activity/source-diff inspection; session/branch/revision stale-page checks; bilingual UI, migration/min-Pi notes, accurate README media and release verification. Package remains 0.5.4 until release preparation.
 
 Acceptance includes old Presets, regex/history filtering, repeated same-run toggles, native/user/native transitions, request abort/retry/concurrency, explicit and automatic compaction, disk resume/branches/crash boundaries, baseline recovery, real tool-call rejection, external tool changes, warming and payload/usage association. JSON round-trips and fake-provider tests alone do not certify these paths.
 

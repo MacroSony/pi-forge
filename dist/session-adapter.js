@@ -1,6 +1,7 @@
 import { isAgentProfileProvenance } from "./agent-profile.js";
 import { decodeInstructionEvent, reduceInstructionEvents } from "./instruction-events.js";
-import { INSTRUCTION_EVENT_ENTRY, INSTRUCTION_TOOLS_ENTRY } from "./instruction-protocol.js";
+import { INSTRUCTION_DELIVERY_TYPE, INSTRUCTION_EVENT_ENTRY, INSTRUCTION_TOOLS_ENTRY, } from "./instruction-protocol.js";
+import { validateInstructionAnchorData } from "./instruction-anchors.js";
 export const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
 export const PROFILE_ENTRY_TYPE = "pi-forge-agent-profile-state";
 /**
@@ -63,31 +64,73 @@ export function readInstructionSession(ctx) {
     let toolsData;
     let lastNewEventId;
     const seenEvents = new Set();
+    const eventIndexMap = new Map();
+    let lastAnchoredIndex = -1;
     for (const raw of getCurrentBranchEntries(ctx)) {
         if (!raw || typeof raw !== "object")
             continue;
         const entry = raw;
         if (entry.type === "compaction")
             checkpointThrough = lastNewEventId;
-        if (entry.type !== "custom")
-            continue;
-        if (entry.customType === INSTRUCTION_EVENT_ENTRY) {
-            const decoded = decodeInstructionEvent(entry.data);
-            if (!decoded.ok)
-                throw new Error(`Invalid Forge instruction history: ${decoded.error}`);
-            events.push(decoded.event);
-            if (!seenEvents.has(decoded.event.eventId)) {
-                seenEvents.add(decoded.event.eventId);
-                lastNewEventId = decoded.event.eventId;
+        if (entry.type === "custom") {
+            if (entry.customType === INSTRUCTION_EVENT_ENTRY) {
+                const decoded = decodeInstructionEvent(entry.data);
+                if (!decoded.ok)
+                    throw new Error(`Invalid Forge instruction history: ${decoded.error}`);
+                events.push(decoded.event);
+                if (!seenEvents.has(decoded.event.eventId)) {
+                    seenEvents.add(decoded.event.eventId);
+                    lastNewEventId = decoded.event.eventId;
+                    eventIndexMap.set(decoded.event.eventId, events.length - 1);
+                }
+            }
+            else if (entry.customType === INSTRUCTION_TOOLS_ENTRY) {
+                toolsData = entry.data;
+            }
+            else if (entry.customType === INSTRUCTION_DELIVERY_TYPE) {
+                const anchorData = validateInstructionAnchorData(entry.data);
+                const cursorIndex = eventIndexMap.get(anchorData.throughEventId);
+                if (cursorIndex === undefined) {
+                    throw new Error(`Invalid Forge instruction delivery anchor: unknown or future cursor "${anchorData.throughEventId}"`);
+                }
+                if (cursorIndex < lastAnchoredIndex) {
+                    throw new Error(`Invalid Forge instruction delivery anchor: out-of-order cursor "${anchorData.throughEventId}" (index ${cursorIndex} < ${lastAnchoredIndex})`);
+                }
+                lastAnchoredIndex = cursorIndex;
             }
         }
-        if (entry.customType === INSTRUCTION_TOOLS_ENTRY)
-            toolsData = entry.data;
+        else if (entry.type === "custom_message" && entry.customType === INSTRUCTION_DELIVERY_TYPE) {
+            const details = entry.details;
+            if (details && typeof details === "object" && "throughEventId" in details) {
+                const cursorId = details.throughEventId;
+                if (typeof cursorId === "string") {
+                    const cursorIndex = eventIndexMap.get(cursorId);
+                    if (cursorIndex !== undefined) {
+                        if (cursorIndex >= lastAnchoredIndex) {
+                            lastAnchoredIndex = cursorIndex;
+                        }
+                    }
+                }
+            }
+        }
     }
     const reduced = reduceInstructionEvents(events);
     if (!reduced.ok)
         throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
-    return { events, checkpointThrough, ...(toolsData === undefined ? {} : { tools: decodeInstructionTools(toolsData) }) };
+    return {
+        events,
+        checkpointThrough,
+        lastAnchoredIndex,
+        ...(toolsData === undefined ? {} : { tools: decodeInstructionTools(toolsData) }),
+    };
+}
+export function persistInstructionDelivery(pi, throughEventId) {
+    const data = {
+        schemaVersion: 1,
+        throughEventId,
+    };
+    validateInstructionAnchorData(data);
+    pi.appendEntry(INSTRUCTION_DELIVERY_TYPE, data);
 }
 export function persistInstructionEvent(pi, event) {
     const decoded = decodeInstructionEvent(event);

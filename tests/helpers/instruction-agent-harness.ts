@@ -98,6 +98,8 @@ export interface InstructionAgentHarnessOptions {
 	cwd: string;
 	responses?: ScriptedResponse[];
 	extensionFactories?: ExtensionFactory[];
+	/** Public extensions that must observe/rewrite context before Forge's handlers. */
+	beforeForgeExtensionFactories?: ExtensionFactory[];
 	sessionManager?: SessionManager;
 	initialTools?: string[];
 	native?: boolean;
@@ -403,6 +405,7 @@ export async function createInstructionAgentHarness(
 		settingsManager,
 		extensionFactories: [
 			providerFactory,
+			...(options.beforeForgeExtensionFactories ?? []),
 			forgeFactory,
 			fakeToolsFactory,
 			observerFactory,
