@@ -105,6 +105,8 @@ Subagent execution moved out of the main package into the optional `@zihanw/pi-f
 
 The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 runtime support is not provided (repo dev SDK is pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; development package version remains 0.5.4; 0.5.5 is not published).
 
+**Restart Pi after upgrading:** Updating the global installation does not replace the core in already-running processes. If the session predates the upgrade, exit and start Pi again before resuming it; extension-only `/reload` does not upgrade the running core. Use the new `/preset ui` URL; old server tokens are not retained.
+
 ### Context hook migration (`context_with_system`)
 
 - **Standard `context` excludes System:** In Pi 0.87, standard `context` lifecycle hooks intentionally exclude System messages. Any prior extension or custom integration that inspected, modified, or relied upon full System context must move to the full `context_with_system` hook.
@@ -119,12 +121,12 @@ The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 r
 
 ### Continuations and settlement lifecycle
 
-- **`agent_end` vs. `agent_settled`:** `agent_end` remains a safe boundary to commit uncommitted metadata anchors after a turn or tool batch. However, the compile cycle and busy fence reset only on `agent_settled`. This guarantees that `agent_before_settle` continuations preserve compiled Preset inputs and active instruction modes across low-level runs without dropping prompt context.
+- **`agent_end` vs. `agent_settled`:** `agent_end` offers an anchor boundary after a low-level run, provided no Forge context failure or incomplete tool batch remains. However, the compile cycle and busy fence reset only on `agent_settled`. This guarantees that `agent_before_settle` continuations preserve compiled Preset inputs and active instruction modes across low-level runs without dropping prompt context.
 
 ### Guardrails and semantics unchanged
 
-- **Project trust:** Mutating instructions, activating modes, or running Agent control tools requires an explicitly trusted project (`isProjectTrusted()`).
-- **`sourceRevision` stale-save guard:** All mode definitions and Preset binding edits require the exact `sourceRevision` (sha256 of raw disk bytes). Stale saves fail with `409 Conflict`.
+- **Project trust:** Activations and Agent control require an explicitly trusted project (`isProjectTrusted()`); human CLI off/reset recovery remains available.
+- **`sourceRevision` stale-save guard:** Existing mode updates/deletes and binding-bearing Preset updates must match the loaded source revision; mode creation must not overwrite an existing file. Stale saves fail with `409 Conflict`.
 - **Save ≠ Use:** Saving a mode or Preset binding updates library definitions on disk only; it never activates the mode into an active session.
 - **Upstream defect status:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched; compaction checkpoint placement is unchanged. Existing legacy session carriers remain untouched without automatic migration, and Oh My Pi (OMP) is not supported or promised.
 

@@ -883,3 +883,18 @@ test("custom-run alignment agrees with exhaustive uniqueness enumeration", () =>
 			JSON.stringify({expected, incoming}));
 	}
 });
+
+test("idle prefix anchors keep the incoming System head first without reordering dialogue or cursors", () => {
+	const manager = SessionManager.inMemory("/test/idle-prefix-head");
+	for (const throughEventId of ["prefix-a", "prefix-b"]) manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId });
+	manager.appendMessage({ role: "system", content: "PI_HEAD", timestamp: 1 });
+	manager.appendMessage({ role: "user", content: "USER_AFTER_HEAD", timestamp: 2 });
+	manager.appendCustomEntry(INSTRUCTION_DELIVERY_TYPE, { schemaVersion: 1, throughEventId: "tail-c" });
+	const incoming = structuredClone(manager.buildSessionProjection().messages);
+	const result = materializeInstructionAnchors(manager.getBranch(), incoming);
+	assert.strictEqual(result[0], incoming[0], "original leading System stays first, not an instruction-only replacement head");
+	assert.strictEqual(result[3], incoming[1], "original user reference and order survive");
+	assert.deepEqual(result.filter(isInstructionDelivery).map(message => (message as any).details.throughEventId), ["prefix-a", "prefix-b", "tail-c"]);
+	assert.deepEqual(result.filter(message => !isInstructionDelivery(message)), incoming);
+	assert.deepEqual(manager.buildSessionProjection().messages, incoming, "materialization did not mutate canonical storage");
+});

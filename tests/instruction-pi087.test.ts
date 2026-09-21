@@ -742,3 +742,37 @@ test("Pi0.87 actionable continuations preserve the compiled preset across low-le
 		}
 	}
 });
+
+test("Pi0.87 automatic retry retains Preset and pending rules while omitting the abandoned attempt", async suite => {
+	for (const native of [true, false]) {
+		await suite.test(native ? "native" : "fallback", async () => {
+			const env = setupHermeticProject();
+			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native });
+			try {
+				harness.settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 1, baseDelayMs: 1, maxAgentDelayMs: 20, provider: { maxRetries: 0 } } });
+				await harness.prompt("/system-update use review");
+				harness.setResponses([
+					async () => {
+						await harness.prompt("/system-update add RETRY_PENDING_RULE");
+						return { text: "ABANDONED_ATTEMPT_TEXT", stopReason: "error", errorMessage: "503 Service Unavailable" };
+					},
+					"RETRY_SUCCEEDED",
+				]);
+				await harness.prompt("One user prompt with a retryable provider error");
+				assert.equal(harness.beforeAgentStartEvents.length, 1);
+				assert.equal(harness.streamContexts.length, 2, "one real SDK retry, no unscripted requests");
+				assert.ok(harness.observedEvents.some(event => event.type === "auto_retry_start"));
+				assert.ok(harness.observedEvents.some(event => event.type === "auto_retry_end" && event.success));
+				const last = harness.streamContexts[1].messages;
+				assertLeadingSystemAndMode(last, "Base preset system block for pi087", "REVIEW_MODE_ACTIVE_RULE", native);
+				assert.ok(!JSON.stringify(last).includes("ABANDONED_ATTEMPT_TEXT"));
+				assert.ok(JSON.stringify(last).includes("RETRY_PENDING_RULE"), "pending rule survives recovery and is projected on retry");
+				assert.ok(!getCurrentTools(last).some(tool => tool.name === "fake_write"));
+				const entries = harness.manager.getEntries();
+				assert.ok(entries.some(entry => entry.type === "message" && textOf(entry.message).includes("ABANDONED_ATTEMPT_TEXT")), "raw failed attempt remains in history");
+				assert.ok(entries.some(entry => entry.type === "context_edit" && entry.replacement === null), "SDK persists the recovery omission");
+				assert.equal(harness.fetchAttempts, 0);
+			} finally { await harness.dispose(); env.cleanup(); }
+		});
+	}
+});

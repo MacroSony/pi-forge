@@ -229,7 +229,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
 - Conservative provider-managed prompt cache warnings; no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Core parent build and full verification passed on Pi 0.87.0 (750 Node / 35 browser); package version remains 0.5.4, and release, git push, and host reload (`/reload`) are separate user-authorized actions.
+- Core parent build and full verification passed on Pi 0.87.0 (754 Node / 35 browser); package version remains 0.5.4, and release, git push, and host reload (`/reload`) are separate user-authorized actions.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

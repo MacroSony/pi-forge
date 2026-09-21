@@ -90,6 +90,8 @@ Subagent 执行功能从主包移入可选包 `@zihanw/pi-forge-subagents`（要
 
 即将发布的 pi-forge 0.5.5 要求上游 Pi 版本 `>=0.87.0 <0.88.0`。不提供对 0.86 的双重运行时支持（仓库开发 SDK 固定为 `0.87.0`，peer 范围为 `>=0.87.0 <0.88.0`；开发树版本仍为 0.5.4，0.5.5 尚未发布）。
 
+**升级后重启 Pi 进程：** 更新全局安装不会替换已运行进程的核心。若当前会话在升级前启动，请退出并重新启动 Pi，再恢复会话；仅 `/reload` 扩展不足以切换 Pi 核心。重新打开 `/preset ui` 给出的新链接，旧服务器 token 不沿用。
+
 ### 上下文 Hook 迁移（`context_with_system`）
 
 - **标准 `context` 排除 System 消息：** 在 Pi 0.87 中，标准 `context` 生命周期 hook 默认排除 System 消息。之前依赖或操作完整 System 上下文的第三方扩展必须迁移至完整的 `context_with_system` hook。
@@ -104,12 +106,12 @@ Subagent 执行功能从主包移入可选包 `@zihanw/pi-forge-subagents`（要
 
 ### 续跑与生命周期结算
 
-- **`agent_end` 与 `agent_settled` 的职责划分：** `agent_end` 仍是工具批次或当前轮次结束时提交未提交元数据锚点的安全时机。但编译周期与 busy fence 仅在 `agent_settled` 时重置。这保证了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 输入与活跃指令模式。
+- **`agent_end` 与 `agent_settled` 的职责划分：** `agent_end` 在低层运行结束后提供落锚机会，前提是没有 Forge 上下文失败或未完成的工具批次。但编译周期与 busy fence 仅在 `agent_settled` 时重置。这保证了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 输入与活跃指令模式。
 
 ### 防护机制与语义保持
 
-- **项目信任：** 激活指令模式或执行 Agent 控制工具必须处于受信任项目（`isProjectTrusted()`）。
-- **`sourceRevision` 防脏写：** 模式定义与预设绑定保存必须提供基于磁盘原始字节的 exact `sourceRevision`（sha256），并发冲突返回 `409 Conflict`。
+- **项目信任：** 激活指令模式或执行 Agent 控制工具必须处于受信任项目（`isProjectTrusted()`）；人类 CLI 的 off/reset 恢复入口仍可用。
+- **`sourceRevision` 防脏写：** 已有模式的更新/删除与带绑定的预设更新需要匹配原始字节的源版本；创建模式不得覆盖已有文件。并发冲突返回 `409 Conflict`。
 - **Save ≠ Use：** 保存模式或预设绑定仅更新磁盘定义，绝不自动将其激活入当前会话。
 - **上游缺陷状态：** 上游 Pi 元数据切分与语义截断缺陷未修复；压缩检查点位置保持不变；旧会话中的 carrier 保持原样不自动迁移；不支持也不承诺 OMP（Oh My Pi）。
 
