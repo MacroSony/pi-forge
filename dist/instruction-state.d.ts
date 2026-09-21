@@ -5,6 +5,15 @@ export interface InstructionStateGuard {
     leafId: string | null;
     revision: string;
 }
+export interface InstructionChoice {
+    kind: "mode" | "binding";
+    id: string;
+    label: string;
+    content: string;
+    tools: InstructionToolPatch;
+    fingerprint: string;
+    problem?: string;
+}
 export interface InstructionStateView {
     guard: InstructionStateGuard;
     trusted: boolean;
@@ -30,6 +39,21 @@ export type InstructionStateMutation = {
     action: "reset";
     guard: InstructionStateGuard;
 };
+export interface InstructionUseRequest {
+    guard: InstructionStateGuard;
+    kind: "mode" | "binding";
+    id: string;
+    fingerprint: string;
+}
+export type InstructionAvailableResult = {
+    ok: true;
+    state: InstructionStateView;
+    choices: InstructionChoice[];
+} | {
+    ok: false;
+    status: number;
+    error: string;
+};
 export type InstructionStateResult = {
     ok: true;
     state: InstructionStateView;
@@ -40,4 +64,6 @@ export type InstructionStateResult = {
 };
 /** Exact input validation is shared by HTTP and direct application callers. */
 export declare function isInstructionStateMutation(value: unknown): value is InstructionStateMutation;
+/** Exact validation for the guarded, human-only activation operation. */
+export declare function isInstructionUseRequest(value: unknown): value is InstructionUseRequest;
 //# sourceMappingURL=instruction-state.d.ts.map

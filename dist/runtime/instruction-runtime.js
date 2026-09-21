@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { fingerprintJson } from "../json-fingerprint.js";
-import { isInstructionStateMutation } from "../instruction-state.js";
+import { isInstructionStateMutation, isInstructionUseRequest, } from "../instruction-state.js";
 import { createResourceCatalog } from "../catalog.js";
 import { createInstructionSnapshot, reduceInstructionEvents, MAX_ID_LENGTH } from "../instruction-events.js";
 import { resolveInstructionMode, resolveInstructionModeBindings } from "../instruction-modes.js";
+import { isUsableInstructionMode } from "../codecs/instruction-mode.js";
 import { projectInstructionMessages } from "../instruction-projection.js";
 import { isInstructionDelivery } from "../instruction-protocol.js";
-import { formatResourceKey } from "../resource-identity.js";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
 import { hasResourcePolicy } from "../policy.js";
 import { buildContextEntries, sessionEntryToContextMessages, } from "@earendil-works/pi-coding-agent";
 import { hasPendingInstructionToolCalls, instructionContextMatches, materializeInstructionAnchors, } from "../instruction-anchors.js";
@@ -28,6 +29,8 @@ export function createInstructionRuntime(pi, workspace, tools) {
     let lastToolRecord;
     let restoredTools;
     let agentBusy = false;
+    let disposed = false;
+    let lifecycleRevision = 0;
     function setAgentBusy(busy) {
         agentBusy = busy;
     }
@@ -59,6 +62,8 @@ export function createInstructionRuntime(pi, workspace, tools) {
         }
     }
     function prepareRestore(ctx) {
+        disposed = false;
+        lifecycleRevision++;
         context = ctx;
         restoring = true;
         preparedRevision = undefined;
@@ -72,6 +77,8 @@ export function createInstructionRuntime(pi, workspace, tools) {
         tools.setInstructionModes([]);
     }
     function restore(ctx, options) {
+        if (disposed)
+            return;
         context = ctx;
         restoring = false;
         agentBusy = false;
@@ -226,9 +233,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
             const sessionId = ctx.sessionManager.getSessionId();
             const leafId = ctx.sessionManager.getLeafId();
             const preset = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
-            const revision = fingerprintJson({ domain: "forge-instruction-view-v1", instanceId, sessionId, leafId,
+            const revision = fingerprintJson({ domain: "forge-instruction-view-v1", instanceId, lifecycleRevision, sessionId, leafId,
                 lastEventId: state.lastEventId, active, effectiveTools, trusted, restoring, model, delivery,
-                preset: preset ? { key: preset.key, tools: preset.stack.tools } : null, baseline: history.tools });
+                preset: preset ? { key: preset.key, tools: preset.stack.tools, instructionModes: preset.stack.instructionModes ?? [] } : null, baseline: history.tools });
             const result = {
                 guard: { sessionId, leafId, revision }, trusted, restoring, delivery,
                 textPresentation: ctx.model?.compat?.supportsMidConvoSystemMessages === true ? "native" : "user",
@@ -238,6 +245,149 @@ export function createInstructionRuntime(pi, workspace, tools) {
         }
         catch (error) {
             return { ok: false, status: 503, error: `Instruction state unavailable: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    function choiceForMode(kind, id, mode, source) {
+        const snapshot = createInstructionSnapshot({
+            activationId: randomUUID(),
+            source,
+            ...(mode.name === undefined ? {} : { name: mode.name }),
+            content: mode.content,
+            tools: mode.tools,
+        });
+        const problem = tools.validateInstructionModes([mode.tools]);
+        return {
+            kind,
+            id,
+            label: mode.name ?? id,
+            content: mode.content,
+            tools: { add: [...mode.tools.add], remove: [...mode.tools.remove] },
+            fingerprint: snapshot.fingerprint,
+            ...(problem ? { problem } : {}),
+        };
+    }
+    /** Read-only resource discovery for the human web client. */
+    function readAvailableInstructions() {
+        const stateResult = readState();
+        if (!stateResult.ok)
+            return stateResult;
+        const ctx = context;
+        if (!ctx)
+            return { ok: false, status: 503, error: "No active Forge session." };
+        if (!stateResult.state.trusted)
+            return { ok: false, status: 403, error: "Project is not trusted." };
+        if (stateResult.state.restoring || disposed)
+            return { ok: false, status: 503, error: "Instruction session is restoring." };
+        try {
+            if (!ctx.isProjectTrusted())
+                return { ok: false, status: 403, error: "Project is not trusted." };
+            const modes = workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes;
+            const choices = [];
+            for (const loaded of modes) {
+                if (!isUsableInstructionMode(loaded))
+                    continue;
+                choices.push(choiceForMode("mode", formatResourceKey(loaded.key), loaded.mode, { kind: "mode", key: loaded.key }));
+            }
+            const bindings = readBindings(ctx);
+            if (!bindings.ok)
+                return { ok: false, status: 409, error: bindings.error };
+            for (const binding of bindings.bindings) {
+                choices.push(choiceForMode("binding", binding.id, binding.mode, {
+                    kind: "mode",
+                    key: binding.ref,
+                    binding: { preset: binding.preset, id: binding.id },
+                }));
+            }
+            const finalState = readState();
+            if (!finalState.ok)
+                return finalState;
+            if (!sameGuard(stateResult.state.guard, finalState.state.guard))
+                return { ok: false, status: 409, error: "Session changed during resource discovery. Refresh and review." };
+            return { ok: true, state: finalState.state, choices };
+        }
+        catch (error) {
+            return { ok: false, status: 503, error: `Instruction choices unavailable: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
+    /** Guarded, explicit human web activation. It never retries or infers. */
+    function useInstruction(input) {
+        if (!isInstructionUseRequest(input))
+            return { ok: false, status: 400, error: "Invalid instruction activation payload." };
+        const initial = readState();
+        if (!initial.ok)
+            return initial;
+        if (disposed || initial.state.restoring)
+            return { ok: false, status: 503, error: "Instruction session is restoring." };
+        if (!initial.state.trusted)
+            return { ok: false, status: 403, error: "Project is not trusted." };
+        if (!sameGuard(input.guard, initial.state.guard))
+            return { ok: false, status: 409, error: "Session, branch or instruction state changed. Refresh and review before trying again." };
+        const ctx = context;
+        if (!ctx)
+            return { ok: false, status: 503, error: "No active Forge session." };
+        try {
+            let expected = "";
+            if (input.kind === "mode") {
+                const parsed = parseResourceSelector(input.id);
+                if (!parsed.ok || !parsed.selector.scope)
+                    return { ok: false, status: 409, error: "Direct mode IDs must be qualified resource IDs." };
+                if (!ctx.isProjectTrusted())
+                    return { ok: false, status: 403, error: "Project is not trusted." };
+                const modes = workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes;
+                const resolved = resolveInstructionMode(createResourceCatalog([...modes]), input.id);
+                if (!resolved.ok)
+                    return { ok: false, status: 409, error: resolved.error };
+                const mode = resolved.loaded.mode;
+                expected = choiceForMode("mode", input.id, mode, { kind: "mode", key: resolved.loaded.key }).fingerprint;
+                if (expected !== input.fingerprint)
+                    return { ok: false, status: 409, error: "Instruction source changed. Refresh and review before trying again." };
+            }
+            else {
+                const bindings = readBindings(ctx);
+                if (!bindings.ok)
+                    return { ok: false, status: 409, error: bindings.error };
+                const binding = bindings.bindings.find((candidate) => candidate.id === input.id);
+                if (!binding)
+                    return { ok: false, status: 409, error: "Instruction binding changed or is no longer available. Refresh and review before trying again." };
+                expected = choiceForMode("binding", binding.id, binding.mode, {
+                    kind: "mode", key: binding.ref, binding: { preset: binding.preset, id: binding.id },
+                }).fingerprint;
+                if (expected !== input.fingerprint)
+                    return { ok: false, status: 409, error: "Instruction binding changed. Refresh and review before trying again." };
+            }
+            const checked = readState();
+            if (!checked.ok)
+                return checked;
+            if (checked.state.restoring || !checked.state.trusted || !sameGuard(input.guard, checked.state.guard)) {
+                return { ok: false, status: checked.state.trusted ? 409 : 403, error: checked.state.trusted ? "Session, branch or instruction state changed. Refresh and review before trying again." : "Project is not trusted." };
+            }
+            if (input.kind === "binding") {
+                const result = useBound(ctx, input.id, "user", expected, input.guard);
+                if (!result.ok) {
+                    try {
+                        if (!ctx.isProjectTrusted())
+                            return { ok: false, status: 403, error: result.error };
+                    }
+                    catch {
+                        return { ok: false, status: 503, error: "Instruction session is unavailable." };
+                    }
+                    return { ok: false, status: 409, error: result.error };
+                }
+            }
+            else {
+                change(ctx, "use", input.id, expected, input.guard);
+            }
+            return readState();
+        }
+        catch (error) {
+            try {
+                if (!ctx.isProjectTrusted())
+                    return { ok: false, status: 403, error: "Project is not trusted." };
+            }
+            catch {
+                return { ok: false, status: 503, error: "Instruction session is unavailable." };
+            }
+            return { ok: false, status: 409, error: error instanceof Error ? error.message : String(error) };
         }
     }
     /** Human Web controls share CLI semantics, with an exact displayed-view guard. */
@@ -272,6 +422,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
         return [
             `Instruction modes: ${state.active.length}; ${presentation}; ${delivery}`,
             `Currently selected tools: ${pi.getActiveTools().join(", ") || "(none)"}`,
+            "Tool transport is provider-managed: native text does not guarantee incremental tools. Full schema resubmission and cache changes are possible; prepared does not guarantee delivery or cache hits.",
             ...state.active.flatMap((item) => [
                 `${item.snapshot.activationId} · ${sourceLabel(item)} · ${item.actor}`,
                 `  +tools: ${item.snapshot.tools.add.join(", ") || "(none)"}; -tools: ${item.snapshot.tools.remove.join(", ") || "(none)"}`,
@@ -279,7 +430,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
             ]),
         ].join("\n");
     }
-    function change(ctx, command, value) {
+    function change(ctx, command, value, expectedFingerprint, expectedGuard) {
+        if (disposed || restoring || (context !== undefined && !sameContext(context, ctx)))
+            throw new Error("Instruction runtime is no longer active for this session.");
         context = ctx;
         const { state } = view(ctx);
         if ((command === "add" || command === "use" || command === "use-bound") && !ctx.isProjectTrusted())
@@ -319,6 +472,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             const resolved = resolveInstructionMode(createResourceCatalog([...modes]), value);
             if (!resolved.ok)
                 throw new Error(resolved.error);
+            assertActivationGuard(expectedGuard);
             const existing = state.active.find((item) => item.snapshot.source.kind === "mode" && !item.snapshot.source.binding
                 && formatResourceKey(item.snapshot.source.key) === formatResourceKey(resolved.loaded.key));
             if (existing)
@@ -328,6 +482,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
                 ...(mode.name === undefined ? {} : { name: mode.name }) };
         }
         const snapshot = createInstructionSnapshot(input);
+        if (expectedFingerprint !== undefined && snapshot.fingerprint !== expectedFingerprint) {
+            throw new Error("Instruction source changed. Refresh and review before trying again.");
+        }
         commit(ctx, { ...common, op: "activate", snapshot });
         return `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`;
     }
@@ -340,10 +497,15 @@ export function createInstructionRuntime(pi, workspace, tools) {
             return { ok: true, preset: null, bindings: [] };
         }
         const declaredBindings = activePreset.stack.instructionModes ?? [];
+        const presetMarker = fingerprintJson({ key: activePreset.key, stack: activePreset.stack });
         if (declaredBindings.length === 0) {
             return { ok: true, preset: activePreset.key, bindings: [] };
         }
         const modes = workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes;
+        const afterReload = workspace.snapshot().active;
+        if (!afterReload || fingerprintJson({ key: afterReload.key, stack: afterReload.stack }) !== presetMarker) {
+            return { ok: false, error: "Active preset changed while resolving instruction mode bindings. Refresh and try again." };
+        }
         const catalog = createResourceCatalog([...modes]);
         const res = resolveInstructionModeBindings(catalog, activePreset.key, declaredBindings);
         if (!res.ok) {
@@ -351,7 +513,10 @@ export function createInstructionRuntime(pi, workspace, tools) {
         }
         return { ok: true, preset: activePreset.key, bindings: res.bindings };
     }
-    function useBound(ctx, id, actor = "user") {
+    function useBound(ctx, id, actor = "user", expectedFingerprint, expectedGuard) {
+        if (disposed || restoring || (context !== undefined && !sameContext(context, ctx))) {
+            return { ok: false, error: "Instruction runtime is no longer active for this session." };
+        }
         context = ctx;
         if (!ctx.isProjectTrusted()) {
             return { ok: false, error: "Project is not trusted; refusing to activate an instruction mode." };
@@ -403,6 +568,12 @@ export function createInstructionRuntime(pi, workspace, tools) {
         if (policyErr) {
             return { ok: false, error: `Cannot activate instruction mode "${targetId}": ${policyErr}` };
         }
+        try {
+            assertActivationGuard(expectedGuard);
+        }
+        catch (error) {
+            return { ok: false, error: String(error) };
+        }
         // Repeated use idempotent/no owner takeover
         const { state } = view(ctx);
         const existing = state.active.find((item) => item.snapshot.source.kind === "mode" &&
@@ -442,6 +613,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
             tools: binding.mode.tools,
             ...(binding.mode.name !== undefined ? { name: binding.mode.name } : {}),
         });
+        if (expectedFingerprint !== undefined && snapshot.fingerprint !== expectedFingerprint) {
+            return { ok: false, error: "Instruction source or binding changed. Refresh and review before trying again." };
+        }
         try {
             commit(ctx, {
                 schemaVersion: 1,
@@ -462,6 +636,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
         };
     }
     function deactivateBound(ctx, id, actor = "user") {
+        if (disposed || restoring || (context !== undefined && !sameContext(context, ctx))) {
+            return { ok: false, error: "Instruction runtime is no longer active for this session." };
+        }
         context = ctx;
         if (!ctx.isProjectTrusted()) {
             return { ok: false, error: "Project is not trusted; refusing to deactivate an instruction mode." };
@@ -543,7 +720,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
         };
     }
     async function executeAgentTool(ctx, params) {
-        context = ctx;
+        if (disposed || restoring) {
+            throw new Error("forge_system_update is unavailable for this session.");
+        }
         if (!isPlainObject(params)) {
             throw new Error("forge_system_update parameters must be a plain object.");
         }
@@ -574,6 +753,9 @@ export function createInstructionRuntime(pi, workspace, tools) {
         if (!ctx.isProjectTrusted()) {
             throw new Error("forge_system_update requires a trusted project.");
         }
+        if (context !== undefined && !sameContext(context, ctx))
+            throw new Error("forge_system_update is unavailable for this session.");
+        context = ctx;
         const allTools = pi.getAllTools();
         const activeTools = pi.getActiveTools();
         if (!allTools.some((t) => t.name === "forge_system_update") ||
@@ -672,7 +854,30 @@ export function createInstructionRuntime(pi, workspace, tools) {
             return;
         persistPendingAnchors(ctx);
     }
+    function assertActivationGuard(expected) {
+        if (!expected)
+            return;
+        const current = readState();
+        if (disposed || !current.ok || current.state.restoring || !current.state.trusted || !sameGuard(expected, current.state.guard)) {
+            throw new Error("Session changed during resource resolution. Refresh and review before activating.");
+        }
+    }
+    function sameGuard(a, b) {
+        return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
+    }
+    function sameContext(a, b) {
+        try {
+            if (!a.sessionManager || !b.sessionManager)
+                return false;
+            return a.cwd === b.cwd && a.sessionManager.getSessionId() === b.sessionManager.getSessionId()
+                && a.sessionManager.getLeafId() === b.sessionManager.getLeafId();
+        }
+        catch {
+            return false;
+        }
+    }
     function dispose() {
+        disposed = true;
         context = undefined;
         restoring = true;
         preparedRevision = undefined;
@@ -680,7 +885,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
         restoredTools = undefined;
         agentBusy = false;
     }
-    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, dispose };
+    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, readAvailableInstructions, useInstruction, dispose };
 }
 function sourceLabel(item) {
     return item.snapshot.source.kind === "manual" ? "manual" : formatResourceKey(item.snapshot.source.key);

@@ -12,7 +12,7 @@ import { formatResourceKey, parseResourceSelector } from "./resource-identity.js
 import { getRegisteredSlots } from "./slot-renderers.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
-import { isInstructionStateMutation } from "./instruction-state.js";
+import { isInstructionStateMutation, isInstructionUseRequest, } from "./instruction-state.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
@@ -23,6 +23,12 @@ export function createWebEditorHost(ctx, runtime) {
                 return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
             }
             return runtime.readInstructions();
+        },
+        readInstructionChoices: () => {
+            if (!runtime.readInstructionChoices) {
+                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            }
+            return runtime.readInstructionChoices();
         },
         mutateInstructions: (input) => {
             try {
@@ -40,6 +46,20 @@ export function createWebEditorHost(ctx, runtime) {
                 return { ok: false, status: 400, error: "Invalid instruction state mutation payload." };
             }
             return runtime.mutateInstructions(input);
+        },
+        useInstruction: (input) => {
+            try {
+                if (!ctx.isProjectTrusted())
+                    return { ok: false, status: 403, error: "Project is not trusted; refusing to activate instructions." };
+            }
+            catch {
+                return { ok: false, status: 503, error: "Instruction session is unavailable." };
+            }
+            if (!runtime.useInstruction)
+                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            if (!isInstructionUseRequest(input))
+                return { ok: false, status: 400, error: "Invalid instruction activation payload." };
+            return runtime.useInstruction(input);
         },
         getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
         setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),

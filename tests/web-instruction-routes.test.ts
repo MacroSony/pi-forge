@@ -419,3 +419,28 @@ test("race condition: updateHost during segmented POST body only executes new ho
 		);
 	});
 });
+
+
+for (const [method,path,callback,body] of [
+ ["POST","/api/stacks","createStack",{stack:{schemaVersion:2,id:"bound",items:[],instructionModes:[{ref:"global:review",modelCallable:true}]},activate:true}],
+ ["PUT","/api/stacks/project:bound","saveStack",{stack:{schemaVersion:2,id:"bound",items:[]},expectedSourceRevision:"revision"}],
+ ["PUT","/api/editor-config","setEditorLocale",{locale:"en"}],
+ ["POST","/api/profiles","createProfile",{profile:{schemaVersion:1,type:"pi-forge.agent-profile",id:"p",model:{provider:"test",id:"test"},thinkingLevel:"off",promptStack:null}}],
+ ["PUT","/api/profiles/project:p","saveProfile",{profile:{schemaVersion:1,type:"pi-forge.agent-profile",id:"p",model:{provider:"test",id:"test"},thinkingLevel:"off",promptStack:null}}],
+] as const) {
+ test(`delayed ${method} ${path} uses current host after body`, async()=>{
+  let oldCalls=0,newCalls=0;
+  const oldHost={ [callback]:()=>{oldCalls++;return {ok:true,locale:"en"};} } as unknown as WebEditorHost;
+  const newHost={ [callback]:()=>{newCalls++;return {ok:true,locale:"en"};} } as unknown as WebEditorHost;
+  await withServer(oldHost,async server=>{
+   const url=new URL(server.url); const payload=JSON.stringify(body);
+   const status=await new Promise<number>((resolve,reject)=>{
+    const req=http.request({hostname:url.hostname,port:url.port,path,method,headers:{"x-pi-forge-token":url.searchParams.get("token")!,"content-type":"application/json","transfer-encoding":"chunked",expect:"100-continue"}},res=>{
+     res.resume();res.on("end",()=>resolve(res.statusCode!));
+    });
+    req.on("error",reject);req.once("continue",()=>{req.write(payload.slice(0,1));server.updateHost(newHost);req.end(payload.slice(1));});req.flushHeaders();
+   });
+   assert.equal(status,200);assert.equal(oldCalls,0);assert.equal(newCalls,1);
+  });
+ });
+}

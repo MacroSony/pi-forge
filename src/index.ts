@@ -94,7 +94,9 @@ export default function piForge(pi: ExtensionAPI) {
 	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
 		readInstructionModes: () => workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes,
 		readInstructions: () => instructions.readState(),
+		readInstructionChoices: () => instructions.readAvailableInstructions(),
 		mutateInstructions: (input) => instructions.mutateState(input),
+		useInstruction: (input) => instructions.useInstruction(input),
 		getStacks: () => [...workspace.snapshot().stacks],
 		getActive: () => currentActive(),
 		getActiveId: stackRuntime.activeId,

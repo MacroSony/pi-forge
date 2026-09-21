@@ -7,6 +7,16 @@ export interface InstructionStateGuard {
 	revision: string;
 }
 
+export interface InstructionChoice {
+	kind: "mode" | "binding";
+	id: string;
+	label: string;
+	content: string;
+	tools: InstructionToolPatch;
+	fingerprint: string;
+	problem?: string;
+}
+
 export interface InstructionStateView {
 	guard: InstructionStateGuard;
 	trusted: boolean;
@@ -29,6 +39,17 @@ export type InstructionStateMutation =
 	| { action: "off"; activationId: string; guard: InstructionStateGuard }
 	| { action: "reset"; guard: InstructionStateGuard };
 
+export interface InstructionUseRequest {
+	guard: InstructionStateGuard;
+	kind: "mode" | "binding";
+	id: string;
+	fingerprint: string;
+}
+
+export type InstructionAvailableResult =
+	| { ok: true; state: InstructionStateView; choices: InstructionChoice[] }
+	| { ok: false; status: number; error: string };
+
 export type InstructionStateResult =
 	| { ok: true; state: InstructionStateView }
 	| { ok: false; status: number; error: string };
@@ -45,6 +66,22 @@ export function isInstructionStateMutation(value: unknown): value is Instruction
 		&& Object.keys(guard).every((key) => ["sessionId", "leafId", "revision"].includes(key))
 		&& text(guard.sessionId, 1024) && (guard.leafId === null || text(guard.leafId, 1024))
 		&& text(guard.revision, 256);
+}
+
+/** Exact validation for the guarded, human-only activation operation. */
+export function isInstructionUseRequest(value: unknown): value is InstructionUseRequest {
+	if (!plain(value) || Object.keys(value).length !== 4) return false;
+	if (Object.keys(value).some((key) => !["guard", "kind", "id", "fingerprint"].includes(key))) return false;
+	if (value.kind !== "mode" && value.kind !== "binding") return false;
+	if (!text(value.id, 128) || !text(value.fingerprint, 256)) return false;
+	return isGuard(value.guard);
+}
+
+function isGuard(value: unknown): value is InstructionStateGuard {
+	return plain(value) && Object.keys(value).length === 3
+		&& Object.keys(value).every((key) => ["sessionId", "leafId", "revision"].includes(key))
+		&& text(value.sessionId, 1024) && (value.leafId === null || text(value.leafId, 1024))
+		&& text(value.revision, 256);
 }
 
 function text(value: unknown, max: number): value is string {

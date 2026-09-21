@@ -1,4 +1,4 @@
-import { type InstructionStateResult } from "../instruction-state.ts";
+import { type InstructionAvailableResult, type InstructionStateGuard, type InstructionStateResult } from "../instruction-state.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type ResolvedInstructionModeBinding } from "../instruction-modes.ts";
@@ -43,9 +43,9 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
     setAgentBusy: (busy: boolean) => void;
     library: (ctx: ExtensionContext) => string;
     status: (ctx: ExtensionContext) => string;
-    change: (ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string) => string;
+    change: (ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string, expectedFingerprint?: string, expectedGuard?: InstructionStateGuard) => string;
     readBindings: (ctx: ExtensionContext) => ReadBindingsResult;
-    useBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent") => UseBoundResult;
+    useBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent", expectedFingerprint?: string, expectedGuard?: InstructionStateGuard) => UseBoundResult;
     deactivateBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent") => DeactivateBoundResult;
     executeAgentTool: (ctx: ExtensionContext, params: unknown) => Promise<{
         content: Array<{
@@ -56,6 +56,8 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
     }>;
     readState: () => InstructionStateResult;
     mutateState: (input: unknown) => InstructionStateResult;
+    readAvailableInstructions: () => InstructionAvailableResult;
+    useInstruction: (input: unknown) => InstructionStateResult;
     dispose: () => void;
 };
 export type InstructionRuntime = ReturnType<typeof createInstructionRuntime>;

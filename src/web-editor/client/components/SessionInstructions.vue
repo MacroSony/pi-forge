@@ -2,10 +2,16 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
-import type { InstructionStateGuard, InstructionStateMutation, InstructionStateView } from "../../../instruction-state.ts";
+import type { InstructionChoice, InstructionStateGuard, InstructionStateMutation, InstructionStateView } from "../../../instruction-state.ts";
 
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
+
+interface InstructionAvailableResponse {
+	ok: boolean;
+	state: InstructionStateView;
+	choices: InstructionChoice[];
+}
 
 const state = ref<InstructionStateView | null>(null);
 const isExpanded = ref(false);
@@ -16,16 +22,41 @@ const unavailable = ref(false);
 const errorMessage = ref("");
 const pendingResetGuard = ref<InstructionStateGuard | null>(null);
 
+const availableChoices = ref<InstructionChoice[]>([]);
+const availableLoaded = ref(false);
+const isLoadingAvailable = ref(false);
+const selectedKey = ref("");
+const isUsing = ref(false);
+
 let isMounted = false;
 let requestIdSeq = 0;
 let activeReadRequestId = 0;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+function choiceKey(choice: { kind: string; id: string }): string {
+	return `${choice.kind}:${choice.id}`;
+}
+
+const libraryChoices = computed(() => availableChoices.value.filter((c) => c.kind === "mode"));
+const presetChoices = computed(() => availableChoices.value.filter((c) => c.kind === "binding"));
+
+const selectedChoice = computed<InstructionChoice | null>(() => {
+	if (!selectedKey.value) return null;
+	return availableChoices.value.find((c) => choiceKey(c) === selectedKey.value) ?? null;
+});
 
 const canMutate = computed(() => {
 	if (isMutating.value || isStale.value || !state.value || unavailable.value) return false;
 	if (!state.value.trusted) return false;
 	if (state.value.restoring) return false;
 	if (state.value.problem) return false;
+	return true;
+});
+
+const canUseSelected = computed(() => {
+	if (!canMutate.value || isMutating.value || isUsing.value || isLoadingAvailable.value || isRefreshing.value) return false;
+	if (!selectedChoice.value) return false;
+	if (selectedChoice.value.problem) return false;
 	return true;
 });
 
@@ -66,9 +97,22 @@ function presentationLabel(presentation: string | undefined): string {
 	return presentation;
 }
 
-function applyState(newState: InstructionStateView, reqId: number): void {
+function setChoices(newChoices: InstructionChoice[]): void {
+	const previous = selectedChoice.value;
+	availableChoices.value = newChoices;
+	if (selectedKey.value) {
+		const match = newChoices.find((c) => choiceKey(c) === selectedKey.value);
+		if (!match || match.fingerprint !== previous?.fingerprint) {
+			selectedKey.value = "";
+		}
+	}
+}
+
+function applyState(newState: InstructionStateView, reqId: number, includesChoices = false): void {
 	if (!isMounted) return;
 	if (reqId !== requestIdSeq) return;
+
+	const guardChanged = !guardsEqual(state.value?.guard, newState.guard);
 
 	if (pendingResetGuard.value && !guardsEqual(newState.guard, pendingResetGuard.value)) {
 		pendingResetGuard.value = null;
@@ -77,27 +121,46 @@ function applyState(newState: InstructionStateView, reqId: number): void {
 	state.value = newState;
 	unavailable.value = false;
 	isStale.value = false;
+
+	if (guardChanged && !includesChoices) {
+		availableChoices.value = []; availableLoaded.value = false; selectedKey.value = "";
+	}
 }
 
-async function fetchInstructions(): Promise<void> {
+async function fetchAvailable(_silent = false): Promise<void> {
+	await fetchInstructions(true);
+}
+
+async function fetchInstructions(forceChoices = false): Promise<void> {
 	if (!isMounted || isMutating.value || activeReadRequestId) return;
 	const reqId = ++requestIdSeq;
 	activeReadRequestId = reqId;
 	isRefreshing.value = true;
+	const withChoices = forceChoices || availableLoaded.value;
+	isLoadingAvailable.value = withChoices;
 	try {
-		const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions");
-		if (!isMounted || reqId !== requestIdSeq) return;
-		if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
-		applyState(res.state, reqId);
-	} catch {
+		if (withChoices) {
+			const res = await api<InstructionAvailableResponse>("/api/instructions/available");
+			if (!isMounted || reqId !== requestIdSeq) return;
+			if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
+			applyState(res.state, reqId, true);
+			setChoices(res.choices ?? []);
+			availableLoaded.value = true;
+		} else {
+			const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions");
+			if (!isMounted || reqId !== requestIdSeq) return;
+			if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
+			applyState(res.state, reqId);
+		}
+	} catch (error) {
 		if (!isMounted || reqId !== requestIdSeq) return;
 		isStale.value = true;
 		pendingResetGuard.value = null;
+		if (withChoices) errorMessage.value = error instanceof Error ? error.message : String(error);
 		if (!state.value) unavailable.value = true;
 	} finally {
 		if (activeReadRequestId === reqId) {
-			activeReadRequestId = 0;
-			isRefreshing.value = false;
+			activeReadRequestId = 0; isRefreshing.value = false; isLoadingAvailable.value = false;
 		}
 	}
 }
@@ -108,6 +171,7 @@ async function executeMutation(mutation: InstructionStateMutation): Promise<void
 	// make a stale view actionable again after a failed refresh.
 	const reqId = ++requestIdSeq;
 	activeReadRequestId = 0;
+	isLoadingAvailable.value = false;
 	isRefreshing.value = false;
 	isMutating.value = true;
 	errorMessage.value = "";
@@ -129,6 +193,65 @@ async function executeMutation(mutation: InstructionStateMutation): Promise<void
 		isMutating.value = false;
 	}
 	if (isMounted && hasError) void fetchInstructions();
+}
+
+async function handleUse(): Promise<void> {
+	if (!state.value || !selectedChoice.value || !canUseSelected.value || isMutating.value || isUsing.value) return;
+
+	const guard: InstructionStateGuard = {
+		sessionId: state.value.guard.sessionId,
+		leafId: state.value.guard.leafId,
+		revision: state.value.guard.revision,
+	};
+	const { kind, id, fingerprint } = selectedChoice.value;
+
+	const reqId = ++requestIdSeq;
+	activeReadRequestId = 0;
+	isLoadingAvailable.value = false;
+	isRefreshing.value = false;
+	isMutating.value = true;
+	isUsing.value = true;
+	errorMessage.value = "";
+	let hasError = false;
+
+	try {
+		const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions/use", {
+			method: "POST",
+			body: { guard, kind, id, fingerprint },
+		});
+		if (!isMounted || reqId !== requestIdSeq) return;
+		if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
+		applyState(res.state, reqId);
+		selectedKey.value = "";
+		if (availableLoaded.value) {
+			void fetchAvailable(true);
+		}
+	} catch (error) {
+		if (!isMounted) return;
+		hasError = true;
+		isStale.value = true;
+		pendingResetGuard.value = null;
+		errorMessage.value = error instanceof Error ? error.message : String(error);
+	} finally {
+		isMutating.value = false;
+		isUsing.value = false;
+	}
+
+	if (isMounted && hasError) {
+		void fetchInstructions();
+	}
+}
+
+function onSelectFocus(): void {
+	if (!availableLoaded.value && !isLoadingAvailable.value && canMutate.value) {
+		void fetchAvailable();
+	}
+}
+
+function onSelectClick(): void {
+	if (!availableLoaded.value && !isLoadingAvailable.value && canMutate.value) {
+		void fetchAvailable();
+	}
 }
 
 async function handleDeactivate(activationId: string): Promise<void> {
@@ -278,6 +401,7 @@ onUnmounted(() => {
 
 		<!-- Expanded details body -->
 		<div v-show="isExpanded" class="instructions-body" data-instructions-body>
+			<p class="instructions-notice" data-instructions-transport-warning>{{ t("instructions.transportCaution") }}</p>
 			<!-- Warning & Error Banners -->
 			<div v-if="errorMessage" class="instruction-banner error-banner" role="alert" data-instructions-error-banner>
 				{{ errorMessage }}
@@ -328,6 +452,113 @@ onUnmounted(() => {
 				</div>
 				<div v-if="state.delivery === 'prepared'" class="delivery-prepared-notice full-width" data-instructions-prepared-notice>
 					{{ t("instructions.deliveryPreparedNote") }}
+				</div>
+			</div>
+
+			<!-- Human Activation Picker -->
+			<div v-if="state" class="instructions-picker-section" data-instructions-picker-section>
+				<div class="picker-section-header">
+					<div class="picker-header-title-group">
+						<span class="picker-section-title">{{ t("instructions.pickerTitle") }}</span>
+						<span v-if="availableLoaded" class="instructions-badge picker-count-badge" data-instructions-picker-count>
+							{{ availableChoices.length }}
+						</span>
+					</div>
+					<button
+						type="button"
+						class="action-btn picker-refresh-btn"
+						:disabled="isLoadingAvailable || isMutating || !canMutate"
+						:title="t('instructions.refreshCatalog')"
+						data-instructions-catalog-load
+						data-instructions-picker-refresh
+						@click="() => fetchAvailable()"
+					>
+						{{ isLoadingAvailable ? t("instructions.loadingCatalog") : (availableLoaded ? t("instructions.refreshCatalog") : t("instructions.loadCatalog")) }}
+					</button>
+				</div>
+
+				<div class="picker-control-row">
+					<select
+						class="picker-select"
+						v-model="selectedKey"
+						:disabled="isLoadingAvailable || isMutating || isUsing || !canMutate"
+						data-instructions-picker-select
+						@focus="onSelectFocus"
+						@click="onSelectClick"
+					>
+						<option value="" disabled>{{ availableLoaded ? t("instructions.selectChoice") : t("instructions.loadChoicesPrompt") }}</option>
+						<optgroup v-if="libraryChoices.length" :label="t('instructions.kindLibraryUnbound')" data-picker-optgroup-library>
+							<option
+								v-for="choice in libraryChoices"
+								:key="choiceKey(choice)"
+								:value="choiceKey(choice)"
+								data-picker-option
+							>
+								{{ choice.label }} ({{ choice.id }}){{ choice.problem ? ' ⚠' : '' }}
+							</option>
+						</optgroup>
+						<optgroup v-if="presetChoices.length" :label="t('instructions.kindPresetBound')" data-picker-optgroup-preset>
+							<option
+								v-for="choice in presetChoices"
+								:key="choiceKey(choice)"
+								:value="choiceKey(choice)"
+								data-picker-option
+							>
+								{{ choice.label }} ({{ choice.id }}){{ choice.problem ? ' ⚠' : '' }}
+							</option>
+						</optgroup>
+					</select>
+
+					<button
+						type="button"
+						class="action-btn use-btn"
+						:disabled="!canUseSelected"
+						:title="t('instructions.useTitle')"
+						data-instructions-use-btn
+						@click="handleUse"
+					>
+						{{ isUsing ? t("instructions.using") : t("instructions.use") }}
+					</button>
+				</div>
+
+				<!-- Selected Choice Literal Content / Tools / Problem Preview -->
+				<div v-if="selectedChoice" class="picker-preview-card" data-instructions-picker-preview>
+					<div class="picker-preview-header">
+						<div class="picker-preview-meta">
+							<span class="preview-name" data-picker-preview-label>{{ selectedChoice.label }}</span>
+							<span class="item-source-badge preview-kind-badge" :class="selectedChoice.kind" data-picker-preview-kind>
+								{{ selectedChoice.kind === "mode" ? t("instructions.kindLibraryBadge") : t("instructions.kindPresetBadge") }}
+							</span>
+							<span class="item-source-badge" data-picker-preview-id>{{ selectedChoice.id }}</span>
+							<span class="item-source-badge" :title="selectedChoice.fingerprint" data-picker-preview-fingerprint>
+								#{{ shortRevision(selectedChoice.fingerprint) }}
+							</span>
+						</div>
+
+						<div class="picker-preview-tools" data-picker-preview-tools>
+							<span
+								v-if="selectedChoice.tools?.add?.length"
+								class="tool-diff-add"
+								data-picker-preview-tools-add
+							>+ {{ selectedChoice.tools.add.join(", ") }}</span>
+							<span
+								v-if="selectedChoice.tools?.remove?.length"
+								class="tool-diff-remove"
+								data-picker-preview-tools-remove
+							>- {{ selectedChoice.tools.remove.join(", ") }}</span>
+							<span
+								v-if="!selectedChoice.tools?.add?.length && !selectedChoice.tools?.remove?.length"
+								class="preview-tools-none"
+								data-picker-preview-tools-none
+							>{{ t("instructions.noToolChanges") }}</span>
+						</div>
+					</div>
+
+					<div v-if="selectedChoice.problem" class="instruction-banner problem-banner picker-problem-banner" role="alert" data-picker-preview-problem>
+						{{ t("instructions.choiceProblem", { problem: selectedChoice.problem }) }}
+					</div>
+
+					<pre class="picker-content-pre" data-picker-preview-content>{{ selectedChoice.content }}</pre>
 				</div>
 			</div>
 
@@ -678,5 +909,151 @@ onUnmounted(() => {
 	text-align: center;
 	color: var(--muted);
 	font-size: 12px;
+}
+
+.instructions-picker-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	background: var(--pane);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+
+.picker-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.picker-header-title-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.picker-section-title {
+	font-weight: 600;
+	font-size: 12px;
+	color: var(--text);
+}
+
+.picker-control-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.picker-select {
+	flex: 1;
+	min-width: 0;
+	height: 26px;
+	padding: 2px 8px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--pane-soft);
+	color: var(--text);
+	font-size: 12px;
+}
+
+.picker-select:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.picker-select:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.use-btn {
+	min-height: 26px;
+	padding: 2px 12px;
+	font-weight: 600;
+	background: var(--accent);
+	color: #fff;
+	border-color: var(--accent);
+}
+
+.use-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--accent) 85%, #000);
+}
+
+.use-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	background: var(--pane);
+	color: var(--muted);
+	border-color: var(--line);
+}
+
+.picker-preview-card {
+	background: var(--pane-soft);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 8px 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.picker-preview-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.picker-preview-meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.preview-name {
+	font-weight: 600;
+	font-size: 12px;
+}
+
+.preview-kind-badge.binding {
+	background: color-mix(in srgb, var(--accent) 15%, var(--pane));
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.picker-preview-tools {
+	font-family: monospace;
+	font-size: 11px;
+	display: flex;
+	gap: 8px;
+}
+
+.preview-tools-none {
+	font-family: sans-serif;
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.picker-problem-banner {
+	padding: 4px 8px;
+	font-size: 11px;
+}
+
+.picker-content-pre {
+	margin: 2px 0 0;
+	padding: 6px 8px;
+	background: var(--pane);
+	border: 1px solid var(--line);
+	border-radius: 3px;
+	font-family: monospace;
+	font-size: 11px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 120px;
+	overflow-y: auto;
 }
 </style>

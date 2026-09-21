@@ -172,6 +172,14 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset reload`
 - `/preset ui [stop|restart]`
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
+- `/system-update list`
+- `/system-update bindings`
+- `/system-update use <[scope:]id>`
+- `/system-update use-bound <id>`
+- `/system-update status`
+- `/system-update off <activation-or-mode-id>`
+- `/system-update reset`
+- `/system-update add <text>`
 - `/intercept`
 - `/payload next [save=<path>]`
 
@@ -237,3 +245,53 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - A runtime/provenance card distinguishes current runtime, last-applied provenance, source-definition state, and per-field runtime drift after external model, thinking-level, or stack changes.
 - The main web editor no longer ships a delegation card; delegation configuration is owned by the optional `@zihanw/pi-forge-subagents` package through `.pi/forge/subagents.json`.
 - Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, native JSON import, collision handling, delete, and stop behavior.
+
+## Instruction Modes and System Updates
+
+- File-backed instruction mode definitions stored in `.pi/forge/instruction-modes/<id>.json` (project scope) and `~/.pi/forge/instruction-modes/<id>.json` (global scope) with schema `schemaVersion: 1`, `type: "pi-forge.instruction-mode"`.
+- Literal text content (up to 100,000 characters) without macro, template, or script evaluation.
+- Tool modification patches supporting `add` and `remove` arrays (tool IDs ≤ 128 characters, no whitespace/controls/wildcards, up to 256 tools per array). Modes support `add` and `remove` ONLY; candidate `only`/allowlist is not implemented.
+- Fail-closed project-over-global shadowing for bare IDs; invalid local definitions fail closed with diagnostics and never fall back to global definitions.
+- Scoped selectors (`project:<id>` and `global:<id>`) for targeting exact definitions.
+- Local execution with zero inference cost: `/system-update` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
+- Immediate executable tool policy synchronization (`setActiveTools`) paired with next-model-request prompt text and section declaration delivery. Running tool batches are not killed mid-flight.
+- Top-level Preset policy precedence: mode additions cannot enable tools denied by the active Preset (`tools.deny`); tool removals win globally across all active modes.
+- Tool baseline recovery: restores session tools to a pristine baseline upon mode deactivation, adopting a conservative baseline for legacy sessions without a recorded baseline.
+- Delivery via plain `custom` session entries carrying cursor-only metadata (`pi-forge-instruction-delivery` with `{ schemaVersion: 1, throughEventId }`), replacing transcript `sendMessage` steering and `custom_message` carriers.
+- Pre-compilation ordinal materialization into ephemeral in-memory markers at exact session positions matching transcript order.
+- Request-only projection to native `SystemMessage.sections` (`forge-instruction-<id>`) when supported by the provider, or fallback attributed user timeline updates (`[pi-forge instruction update]`).
+- Compaction input characterization: metadata delivery anchors and request-only rule text do not enter summarizer inputs while dialogue history is preserved.
+- Backward compatibility: legacy `custom_message` delivery entries remain readable and recoverable without disk migration or summary rewrites.
+- Provider-managed prompt cache warning: prompt caching and tool transport are downstream provider-managed; no guarantee of zero KV cache invalidation or exact cache hits.
+
+## Preset Instruction Mode Bindings
+
+- Declarative `instructionModes` binding list in the Preset schema.
+- Qualified mode references (`project:<id>`, `global:<id>`), unique binding IDs (≤ 128 characters), and opt-in `modelCallable: boolean` (defaults to `false`).
+- Finite overrides: either content replacement (`content`) or paragraph append (`appendContent` with two newlines), and independent whole-array replacement for `tools.add` and/or `tools.remove`.
+- Source-effective preview via the shared server resolver (`resolveInstructionModeBindings`).
+- Stale-save guard using `sourceRevision` checking against raw file bytes, rejecting concurrent or external edits (409 Conflict) whenever bindings are present or modified.
+- Same-Preset reload preserves immutable active snapshots; switching Presets retires old bound activations while retaining manual/unbound rules.
+- Revocation behavior: disabling `modelCallable` does not retroactively erase active snapshots; human CLI or Web deactivation is the recovery path.
+
+## Agent Instruction Controls
+
+- Model-callable tool `forge_system_update` registered when an active Preset includes bound modes.
+- Fixed parameter schema: `{ action: "list" | "status" | "use" | "off", id?: string }` (ID ≤ 128 characters).
+- Re-verifies project trust, active Preset existence, binding existence, `modelCallable: true`, and current tool policy on every call.
+- Strict actor ownership: agent can only activate authorized bindings; agent `off` can only stop its own agent-owned activations; agent cannot stop human rules, reset instructions, add arbitrary prompt text, or remove `forge_system_update`.
+- Repeated use is idempotent and does not take over ownership from user to agent.
+- Fences against disposed runtimes, restoring sessions, and cross-session re-entry.
+
+## Web Editor Modes and Session Activity
+
+- Top-level **Modes** surface for project and global instruction mode CRUD with validation diagnostics.
+- Mode writes and deletions require `sourceRevision` checking against raw file bytes; 409 Conflict on stale views preserves user drafts.
+- Mode saves never activate definitions into the active session.
+- **Preset metadata → Instruction mode bindings** tab in the Preset editor with binding configuration, `modelCallable` toggle, finite overrides, and live source vs effective preview.
+- Top-bar **Session instructions** activity panel showing active instructions, actor attribution (`user`/`agent`), collapsible frozen snapshots, tool deltas, effective tools, delivery status (`none`/`pending`/`prepared`), and presentation mode.
+- Human activation picker with available modes (`GET /api/instructions/available`) categorized into Library modes (unbound) and Current preset (bound).
+- Explicit pre-activation preview displaying label, ID, badge, fingerprint, tool diff, problem banner, and full literal content.
+- Bodyguard activation (`POST /api/instructions/use`) requiring session guard (`sessionId`, `leafId`, `revision`) and source fingerprint validation, rejecting stale or modified sources (409 Conflict) without automatic retry or inference.
+- Read-only resource discovery and Preview never mutate tool policies, commit session events, or mark pending instructions as prepared.
+- Visibility-based polling (every 3 seconds while visible, on focus, or manual refresh) with zero inference.

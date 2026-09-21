@@ -2,7 +2,7 @@ import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
 import { type AgentProfileApplicationResult, type AgentProfileCurrentRuntime } from "./profile-service.ts";
-import { type InstructionStateResult } from "./instruction-state.ts";
+import { type InstructionAvailableResult, type InstructionStateResult } from "./instruction-state.ts";
 import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorLocale, WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
@@ -33,7 +33,9 @@ export interface WebHostRuntime {
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     getContextDiff(): WebEditorOperationResult<ContextDiffView>;
     readInstructions?(): InstructionStateResult;
+    readInstructionChoices?(): InstructionAvailableResult;
     mutateInstructions?(input: unknown): InstructionStateResult;
+    useInstruction?(input: unknown): InstructionStateResult;
 }
 export declare function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost;
 export declare function stackSummary(loaded: LoadedPromptStack, active: LoadedPromptStack | undefined): WebEditorStackSummary;

@@ -15,6 +15,24 @@ export function isInstructionStateMutation(value) {
         && text(guard.sessionId, 1024) && (guard.leafId === null || text(guard.leafId, 1024))
         && text(guard.revision, 256);
 }
+/** Exact validation for the guarded, human-only activation operation. */
+export function isInstructionUseRequest(value) {
+    if (!plain(value) || Object.keys(value).length !== 4)
+        return false;
+    if (Object.keys(value).some((key) => !["guard", "kind", "id", "fingerprint"].includes(key)))
+        return false;
+    if (value.kind !== "mode" && value.kind !== "binding")
+        return false;
+    if (!text(value.id, 128) || !text(value.fingerprint, 256))
+        return false;
+    return isGuard(value.guard);
+}
+function isGuard(value) {
+    return plain(value) && Object.keys(value).length === 3
+        && Object.keys(value).every((key) => ["sessionId", "leafId", "revision"].includes(key))
+        && text(value.sessionId, 1024) && (value.leafId === null || text(value.leafId, 1024))
+        && text(value.revision, 256);
+}
 function text(value, max) {
     return typeof value === "string" && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
 }

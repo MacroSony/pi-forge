@@ -3,7 +3,7 @@ import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import type { ContextDiffView } from "../context-diff-history.ts";
-import type { InstructionStateResult } from "../instruction-state.ts";
+import type { InstructionAvailableResult, InstructionStateResult } from "../instruction-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 export interface WebEditorStackSummary {
     id: string;
@@ -29,7 +29,9 @@ export interface WebEditorHost {
     cwd: string;
     isProjectTrusted?(): boolean;
     readInstructions?(): InstructionStateResult;
+    readInstructionChoices?(): InstructionAvailableResult;
     mutateInstructions?(input: unknown): InstructionStateResult;
+    useInstruction?(input: unknown): InstructionStateResult;
     getEditorConfig(): {
         locale: WebEditorLocale;
     };

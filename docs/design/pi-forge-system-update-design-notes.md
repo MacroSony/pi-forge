@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [Lean architecture](architecture-0.5.md) · [Roadmap](../development/roadmap.md)
 
-**Status:** implementation authorized, 2026-09-20. Foundation, human CLI core, and formal plain metadata anchor projection implemented, with real Pi 0.86/fake-provider tests for text/tools, disk resume, branches and manual compaction. [Current CLI reference](../reference/instruction-modes.md) states the remaining limits. Live Preset binding, Agent control and full library UI are not yet implemented. Package remains 0.5.4 until release preparation.
+**Status:** implementation authorized, 2026-09-20. Functional source is delivered across all planned lanes: foundation codecs, human CLI core (`/system-update`), plain metadata anchor projection, Web Session instructions activity panel, live Preset bindings (`instructionModes`) with finite overrides and opt-in `modelCallable: true`, restricted model-callable Agent control (`forge_system_update`), Web Modes surface CRUD with `sourceRevision` stale-save protection, Preset binding editor with source-effective preview, and guarded human Web activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`). Parent safeguards enforce raw source/revision coherence, external new-bindings stale-save protection, and lifecycle/re-entry fences (`disposed`, `lifecycleRevision`, `sameContext`). [Current reference](../reference/instruction-modes.md) states operational boundaries. Modes support `add`/`remove` only; candidate `only`/allowlist is not implemented. Final parent verification is pending until report; package remains 0.5.4 until release preparation.
 
 This supersedes the [September 12 upstream-blocked proposal](archive/2026-09-12-system-update-design.md). Pi 0.86.0 is released. Its actual behavior differs from the closed #9116/#9117 branches; those branch results are historical evidence, not a current contract.
 
@@ -14,7 +14,7 @@ This supersedes the [September 12 upstream-blocked proposal](archive/2026-09-12-
 - Pi owns ordinary transcript storage/branching, message protocols, provider encoding and actual tool execution. No fork or private `AgentSession` patches.
 - `ForgeWorkspace` remains the single resource-state owner. Existing codecs/repositories/catalogs are reused. The instruction reducer is a pure view, not a second mutable workspace.
 - `tool-policy-runtime` remains the only Forge owner of executable tool selection. Text saying a tool is disabled is not enforcement.
-- CLI, restricted Agent tool and Web UI must share one application service. No dynamic control-tool schema, new registry/framework/package entry point, arbitrary JSON Patch, inheritance chain, mode dependencies, automatic resource bundling, or general undo/redo.
+- CLI, restricted Agent tool and Web UI share one application service. No dynamic control-tool schema, new registry/framework/package entry point, arbitrary JSON Patch, inheritance chain, mode dependencies, automatic resource bundling, or general undo/redo.
 
 ## Evidence behind the architecture
 
@@ -45,7 +45,7 @@ The SDK queue exception is explicit: persisted custom messages can be absent fro
 
 ## Resource and binding contract
 
-Discovered directories (read-only repository and ForgeWorkspace integration implemented):
+Discovered directories:
 
 - `.pi/forge/instruction-modes/*.json`
 - `~/.pi/forge/instruction-modes/*.json`
@@ -65,9 +65,9 @@ Discovered directories (read-only repository and ForgeWorkspace integration impl
 }
 ```
 
-The definition has no Agent authorization. Content is literal text, not an executable template or file path. `name`/`description` are optional; omitted tool arrays normalize to empty arrays. At least non-whitespace text or one tool effect is required. Content is bounded to 100,000 characters, name to 1,000, each tool array to 256 names and each exact tool name to 128 characters. Tool names cannot contain whitespace, controls, `*` or `?`. Resource IDs retain the existing resource grammar. Unknown and malformed fields are errors, not silently normalized permissions.
+The definition has no Agent authorization. Content is literal text, not an executable template or file path. `name`/`description` are optional; omitted tool arrays normalize to empty arrays. At least non-whitespace text or one tool effect is required. Content is bounded to 100,000 characters, name to 1,000, each tool array to 256 names and each exact tool name to 128 characters. Tool names cannot contain whitespace, controls, `*` or `?`. Modes support `add` and `remove` only; candidate `only` or mode-level allowlists are not implemented. Unknown and malformed fields fail closed.
 
-Planned Preset field:
+Preset binding field:
 
 ```json
 {
@@ -83,57 +83,62 @@ Planned Preset field:
 }
 ```
 
-This field is **not yet accepted by the live Preset schema** in the current CLI slice. Saving a resource or binding must never activate it.
+The `instructionModes` field is live in the Preset schema and validated by codecs and editors. Saving a resource or binding never activates it.
 
 - Direct library selection of a bare ID uses project-over-global. Invalid or duplicate local definitions do not fall back to global.
-- A bare Preset reference resolves exactly in its owner's scope. A project Preset must explicitly write `global:<id>` to use a global mode; a global Preset cannot use project modes.
+- A bare Preset reference resolves in its owner's scope. A project Preset must explicitly write `global:<id>` to use a global mode; a global Preset cannot use project modes.
 - UI writes qualified references. Binding ID defaults to the referenced ID; duplicate effective binding IDs are rejected, including same-name cross-scope references unless explicitly disambiguated. At most 256 bindings per Preset.
-- Only `modelCallable:true` grants eligibility for the future Agent control path; omission is false. Current tool policy and registration still apply.
-- Overrides allow `content` **or** `appendContent`, never both. Nonempty paragraphs append with two newlines. Each specified `tools.add`/`tools.remove` array replaces that entire field; the other field is preserved. Identity, name, authorization and arbitrary fields cannot be overridden.
+- Only `modelCallable: true` grants eligibility for the Agent control path; omission defaults to `false`. Current tool policy and registration still apply on every call.
+- Overrides allow `content` (replace) **or** `appendContent` (paragraph append with two newlines), never both. Each specified `tools.add`/`tools.remove` array replaces that entire field; the other field is preserved. Identity, name, authorization, and arbitrary fields cannot be overridden.
 - Base resources must validate before applying overrides; an override cannot repair an invalid source silently. Effective results are defensive snapshots.
 
 ## Semantic events and snapshots
 
 The internal schema is persisted through existing `session-adapter`/Pi custom entries, not a new persistence backend. Semantic entries carry validated snapshots; delivery messages carry only a versioned event cursor. Baseline records belong to the existing tool-policy owner.
 
-Common event fields: `schemaVersion:1`, `eventId`, `op`, `actor`, `createdAt` (finite nonnegative milliseconds). Branch order, not timestamps, determines reduction. Opaque event/activation IDs are at most 128 characters. Resource/Preset/binding IDs keep the existing grammar rather than inheriting that opaque-ID bound.
+Common event fields: `schemaVersion: 1`, `eventId`, `op`, `actor`, `createdAt` (finite nonnegative milliseconds). Branch order, not timestamps, determines reduction. Opaque event/activation IDs are at most 128 characters. Resource/Preset/binding IDs keep the existing grammar.
 
-- **activate:** actor `user` or `agent`, with an immutable `snapshot` containing `activationId`, `source`, optional name, content, normalized tool patch and content fingerprint.
+- **activate:** actor `user` or `agent`, with an immutable `snapshot` containing `activationId`, `source`, optional name, content, normalized tool patch, and content fingerprint.
 - **deactivate:** targets an `activationId`; actor `user`, `agent` or `lifecycle`.
 - **reset:** user only. Clears current activity, not historical events.
-- Source is `{kind:"manual"}` or `{kind:"mode",key:{scope,id},binding?:{preset:{scope,id},id}}`.
-- Agent activation requires a bound mode. Agent deactivation cannot close user-owned activations. Lifecycle deactivation is restricted to bound modes; it cannot clear manual or unbound user rules. These are structural/history-ownership checks, **not** verification of current `modelCallable`, registered tools or current Preset policy; the application service must do those checks before committing.
-- Unknown/repeated off is a no-op. Activation IDs cannot be reused within one branch even after reset/off. Repeated identical event IDs are no-ops without moving the latest event marker backwards; conflicting reuse fails closed. Simultaneously active duplicate Preset binding IDs are rejected; the future service deduplicates repeated `use` before appending.
+- Source is `{ kind: "manual" }` or `{ kind: "mode", key: { scope, id }, binding?: { preset: { scope, id }, id } }`.
+- Agent activation requires an authorized bound mode (`modelCallable: true`). Agent deactivation cannot close user-owned activations. Lifecycle deactivation is restricted to bound modes; it cannot clear manual or unbound user rules.
+- Unknown/repeated off is a no-op. Activation IDs cannot be reused within one branch even after reset/off. Repeated identical event IDs are no-ops without moving the latest event marker backwards; conflicting reuse fails closed.
+- Repeated `use` is deduplicated and idempotent; it never performs an automatic owner takeover between user and agent. Takeover requires explicit deactivation and reactivation.
 - Malformed owned event data fails reduction with an index/error, never a partially restored active set. Unrelated Pi entries are filtered by the adapter, not fed as fake instruction events.
-- Fingerprints use Forge's existing canonical `sha256:v1` algorithm, moved into a shared internal helper without changing the subagent wire values. The payload is domain-tagged effective source/name/content/tools, excluding activation ID. It is content identity, **not a signature or protection against someone editing their own session file**.
+- Fingerprints use Forge's canonical `sha256:v1` algorithm. The payload is domain-tagged effective source/name/content/tools, excluding activation ID. It represents content identity, not a cryptographic signature.
 
-Snapshot content never drifts with source edits. Switching Presets must append deactivations for old bound activations while retaining manual/unbound user rules; reloading the same Preset is not a switch. No event undoes file writes, kills running tools or erases historical facts. User takeover of an Agent activation must be explicit off/reapply rather than silently changing ownership on repeated use.
+Snapshot content never drifts with source edits. Switching Presets appends deactivations for old bound activations while retaining manual and unbound user rules; reloading the same Preset retains immutable active snapshots. Revoked authorization does not retroactively erase active snapshots; human recovery via CLI or Web off/reset is the recovery path.
 
-## Delivery, recovery and tools — implemented CLI core
+## Delivery, recovery, tools, and parent safeguards
 
-Derived plain `custom` metadata entries anchor delivery; they do not independently own active state, duplicate authoritative snapshot payloads, or pollute conversation dialogue. One semantic history must support both presentations:
+Derived plain `custom` metadata entries anchor delivery; they do not independently own active state, duplicate authoritative snapshot payloads, or pollute conversation dialogue. One semantic history supports both presentations:
 
 - Native: request-only `SystemMessage.sections` keyed by activation identity; off uses a null patch and Pi's existing removal wording, without an extra duplicate user notice.
-- Unsupported models: an attributed timeline user update/stop notice. Do not silently fold Forge mode updates into the leading prompt. Genuine user/tool content must never be promoted to system authority.
+- Unsupported models: an attributed timeline user update/stop notice. Do not silently fold Forge mode updates into the leading prompt. Genuine user/tool content is never promoted to system authority.
 - Transform only clearly owned Forge rule content, never an entire mixed system message. Preserve unrelated content/sections and `toolsAdded`/`toolsRemoved` for Pi's adapters.
 - Compaction requires an owned current-state checkpoint derived from semantic events; suppress pre-checkpoint anchors, including retained-tail copies, then replay later deltas. Request-only sections are not automatically saved by Pi's raw transcript checkpoint. Checkpoint placement remains unchanged (precedes summary, follows leading system prompt); the upstream Pi metadata chunking bug is an independent issue and remains unfixed.
-- Compaction input characterization: in real SDK compaction, summarizers receive no metadata anchors and no Forge rule bodies (projection is request-only), while user, assistant, and peer dialogue are preserved. Simulated/fake responses in test harnesses characterize request plumbing and harness shape, not remote LLM semantic compaction fidelity or summarizer compliance.
+- Compaction input characterization: in real SDK compaction, summarizers receive no metadata anchors and no Forge rule bodies (projection is request-only), while user, assistant, and peer dialogue are preserved. Simulated responses in test harnesses characterize request plumbing and harness shape, not remote LLM semantic compaction fidelity or summarizer compliance.
 - Backward compatibility: legacy `custom_message` delivery entries can still be read and recovered for backward compatibility, but they are not migrated on disk, and historical compaction summaries are not erased or rewritten. **Warning:** legacy sessions containing old `custom_message` carriers may still contaminate summarizer input if compacted.
-- Admission validates text/reference/authorization/tool effects before commit. Selected, pending and prepared status must be distinct; executable selection synchronizes at activation, while request text/declarations follow at request boundaries. Already running batches are not killed.
-- Compute tools from a recoverable baseline plus all remaining additions minus all remaining removals, subject to top-level policy; removal wins. Additions must be registered/permitted. Off is recomputation, not an inverse patch or restoration of a whole obsolete active-tool list. Preserve identifiable external changes.
-- Restored active tools may already include effects; they cannot simply become the fresh baseline. Same-run changes, restart, branch, compaction and external changes are release gates. No OS-sandbox claim.
-- Human recovery via CLI/Web must remain available; an Agent-owned mode cannot disable its own control path without a safe recovery policy.
+- Immediate tool synchronization vs. next-request prompt projection: admission validates text/reference/authorization/tool effects before commit. Executable tool policy synchronizes *immediately* (`sync()` / `setActiveTools()`), whereas prompt text and native sections or user updates take effect at the *next model request* boundary. Running tool batches are not interrupted.
+- Tool policy calculation: tools are computed from a recoverable baseline plus all remaining additions minus all remaining removals, subject to top-level Preset deny policy; removal wins globally across active modes. Additions must be registered and permitted by the active Preset.
+- Read-only resource discovery and Preview: inspecting modes, calling `GET /api/instructions/available`, or inspecting the Preview dock never mutates tool policies, commits session events, or marks pending instructions prepared.
+- Parent safeguards:
+  - Raw source and revision coherence: GET operations couple editable data and `sourceRevision` from the same raw file bytes.
+  - External new bindings stale save detection: Preset saves enforce `sourceRevision` checks whenever bindings are present or modified, rejecting stale overwrites (409 Conflict) if the file changed on disk (including externally added bindings).
+  - Lifecycle and re-entry fences: explicit `disposed` flag, `lifecycleRevision` increment, and `sameContext` verification prevent cross-session pollution or operations after session disposal.
+- Provider-managed cache warning: prompt caching, tool transport, and KV cache hits are downstream provider-managed. Stable prefixes may help caching, but schema changes, removals, fallback, base recompilation, model switches, and compaction alter cache boundaries; pi-forge provides no guarantees of zero KV invalidation or exact cache hits.
+- Human recovery: human CLI (`/system-update off`, `/system-update reset`) and Web panel controls remain available; an Agent-owned mode cannot disable its own control path without a safe recovery policy.
 
 ## Staged implementation and release gates
 
-Only one coherent lane is active at a time; workers may parallelize isolated parts within it.
+1. **Foundation (verified):** JSON codec, finite overrides, scoped resolution, immutable snapshots, and strict event reduction.
+2. **Human CLI core and metadata anchor projection (implemented):** Pi 0.86 peers/dependencies, request-base bridge, scoped discovery, session event persistence, plain `custom` cursor-only metadata anchors (replacing transcript carriers), ordinal materialization, compaction checkpoints, and executable tool-policy coordination. Real SDK tests cover same-run toggles, native/fallback switches, fake tool execution, disk reopens, branches, crash-window baseline recovery, and legitimate preceding extension rewrite fail-closed safety.
+3. **Session activity UI and compaction characterization (implemented):** read/control view derived from the existing runtime, never a second state owner. Human off/reset carries an exact session/leaf/revision guard with runtime-instance fencing; Web requires trust, pure reads never synchronize or infer, and stale pages cannot retry writes automatically. Real-SDK compaction-input characterization confirms Forge metadata and request-only rules are absent from summarizer history while user, assistant, and peer dialogue remain intact; fake test responses are plumbing characterization, not remote semantic validation.
+4. **Preset authorization and restricted Agent control (implemented):** live Preset binding schema (`instructionModes`), opt-in `modelCallable: true`, and restricted fixed-schema `forge_system_update` (list, status, use, off, ID ≤ 128 chars). Per-call trust, binding identity, authorization, and tool policy checks prevent privilege escalation. CLI additions `/system-update bindings` and `/system-update use-bound <id>` provide human parity. Management operations do not initiate paid inference.
+5. **Modes library CRUD, binding editor, and guarded human Web activation picker (delivered in functional source):** dedicated **Modes** surface for project/global mode CRUD with `sourceRevision` stale-save guards; Preset metadata bindings editor with finite overrides and live source-effective preview; guarded human Web activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`) with pre-activation preview and session/leaf/revision plus content fingerprint validation. Parent safeguards enforce raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
+6. **Release closeout (pending final verification and user authorization):** parent full verification passed (730 Node / 33 browser); package version remains 0.5.4; release, git push, and host reload (`/reload`) are separate user-authorized actions.
 
-1. **Foundation (verified):** JSON codec, finite overrides, scoped resolution, immutable snapshots and strict event reduction.
-2. **Human CLI core and metadata anchor projection (implemented):** Pi 0.86 peers/dependencies, request-base bridge, scoped discovery, session event persistence, plain `custom` cursor-only metadata anchors (replacing transcript carriers), ordinal materialization, compaction checkpoints and one executable-tool-policy owner. Real SDK tests cover same-run toggles, native/fallback switches, actual blocked/restored fake tool execution, disk reopens, branches, crash-window baseline recovery, and legitimate preceding extension rewrite fail-closed safety. No provider HTTP in these tests.
-3. **Session activity UI (user-approved early usability lane):** read/control view derived from the existing runtime, never a second state owner. Human off/reset carries an exact session/leaf/revision guard with runtime-instance fencing; Web requires trust, pure reads never synchronize or infer, and stale pages cannot retry writes automatically. Real-SDK compaction-input tests exercise the summarization request: Forge metadata and request-only rules are absent from summarizer history, while user, assistant, and peer dialogue remain intact; fake test responses are plumbing characterization, not remote semantic validation. Compaction checkpoint placement is unchanged.
-4. **Next — authorized controls:** live Preset binding and current authorization; restricted fixed-schema `forge_system_update` list/status/use/off. CLI and repository/service infrastructure are already present. Management alone must not initiate paid inference; human recovery remains available.
-5. **Editor and release:** mode library, Preset binding/effective override diff, further activity/source-diff inspection; session/branch/revision stale-page checks; bilingual UI, migration/min-Pi notes, accurate README media and release verification. Package remains 0.5.4 until release preparation.
+Acceptance includes old Presets, regex/history filtering, repeated same-run toggles, native/user/native transitions, request abort/retry/concurrency, explicit and automatic compaction, disk resume/branches/crash boundaries, baseline recovery, real tool-call rejection, external tool changes, warming, and payload/usage association.
 
-Acceptance includes old Presets, regex/history filtering, repeated same-run toggles, native/user/native transitions, request abort/retry/concurrency, explicit and automatic compaction, disk resume/branches/crash boundaries, baseline recovery, real tool-call rejection, external tool changes, warming and payload/usage association. JSON round-trips and fake-provider tests alone do not certify these paths.
-
-Stable prefixes may help caching, but schema changes, removals, fallback, base recompilation, model switches and compaction can invalidate it. No universal native support, obedience, zero-KV-invalidation or guaranteed cache-hit claims. Publishing, host upgrades, reloads and deployment remain separate user-authorized actions.
+No universal native support, obedience, zero-KV-invalidation, or guaranteed cache-hit claims. No automatic legacy migration, no old summary rewrites, and no Pi split patch. Publishing, host upgrades, reloads, and deployment remain separate user-authorized actions.

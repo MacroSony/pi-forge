@@ -38,7 +38,12 @@ import {
 	type AgentProfileApplicationResult,
 	type AgentProfileCurrentRuntime,
 } from "./profile-service.ts";
-import { isInstructionStateMutation, type InstructionStateResult } from "./instruction-state.ts";
+import {
+	isInstructionStateMutation,
+	isInstructionUseRequest,
+	type InstructionAvailableResult,
+	type InstructionStateResult,
+} from "./instruction-state.ts";
 import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type {
@@ -83,7 +88,9 @@ export interface WebHostRuntime {
 	clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
 	getContextDiff(): WebEditorOperationResult<ContextDiffView>;
 	readInstructions?(): InstructionStateResult;
+	readInstructionChoices?(): InstructionAvailableResult;
 	mutateInstructions?(input: unknown): InstructionStateResult;
+	useInstruction?(input: unknown): InstructionStateResult;
 }
 
 export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost {
@@ -96,6 +103,12 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 				return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
 			}
 			return runtime.readInstructions();
+		},
+		readInstructionChoices: () => {
+			if (!runtime.readInstructionChoices) {
+				return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+			}
+			return runtime.readInstructionChoices();
 		},
 		mutateInstructions: (input: unknown) => {
 			try {
@@ -112,6 +125,16 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 				return { ok: false, status: 400, error: "Invalid instruction state mutation payload." };
 			}
 			return runtime.mutateInstructions(input);
+		},
+		useInstruction: (input: unknown) => {
+			try {
+				if (!ctx.isProjectTrusted()) return { ok: false, status: 403, error: "Project is not trusted; refusing to activate instructions." };
+			} catch {
+				return { ok: false, status: 503, error: "Instruction session is unavailable." };
+			}
+			if (!runtime.useInstruction) return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+			if (!isInstructionUseRequest(input)) return { ok: false, status: 400, error: "Invalid instruction activation payload." };
+			return runtime.useInstruction(input);
 		},
 		getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
 		setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),

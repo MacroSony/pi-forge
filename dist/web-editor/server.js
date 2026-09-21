@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { AGENT_PROFILE_THINKING_LEVELS, AGENT_PROFILE_TYPE, } from "../agent-profile.js";
-import { isInstructionStateMutation } from "../instruction-state.js";
+import { isInstructionStateMutation, isInstructionUseRequest } from "../instruction-state.js";
 import { ContributionService } from "./contrib-service.js";
 import { renderEditorHtml } from "./page.js";
 // Port 0 asks Node to bind any available localhost port.
@@ -84,6 +84,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "PUT" && parts[1] === "editor-config" && parts.length === 2) {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const locale = isPlainObject(body) ? body.locale : undefined;
         if (locale !== "en" && locale !== "zh-CN" && locale !== "auto") {
             sendJson(res, 400, { error: 'locale must be "en", "zh-CN", or "auto".' });
@@ -120,6 +121,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
             return;
         }
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const patch = isPlainObject(body) && isPlainObject(body.patch)
             ? body.patch
             : isPlainObject(body)
@@ -146,6 +148,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "profiles" && parts[2] === "validate" && parts.length === 3) {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readProfilePayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -162,6 +165,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "profiles" && parts.length === 2) {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readProfilePayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -176,7 +180,9 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
         return;
     }
     if (req.method === "PUT" && parts[1] === "profiles" && parts.length === 3) {
-        const parsed = readProfilePayload(await readJsonBody(req));
+        const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
+        const parsed = readProfilePayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
             return;
@@ -198,6 +204,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "stacks" && parts.length === 2) {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readStackPayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -229,6 +236,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "PUT" && parts[1] === "stacks" && parts.length === 3) {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readStackPayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -251,6 +259,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "validate") {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readStackPayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -261,6 +270,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "stacks" && parts.length === 4 && parts[3] === "preview") {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const parsed = readStackPayload(body);
         if (!parsed.ok) {
             sendJson(res, 400, { error: parsed.error });
@@ -275,6 +285,7 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
     }
     if (req.method === "POST" && parts[1] === "payload" && parts.length === 3 && parts[2] === "arm") {
         const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
         const savePath = isPlainObject(body) && typeof body.savePath === "string" && body.savePath.trim() ? body.savePath.trim() : undefined;
         sendOperation(res, host.armPayload(savePath));
         return;
@@ -316,6 +327,52 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
             }
         }
         sendOperation(res, hostNow.modeOperation(action, parts[2], body));
+        return;
+    }
+    if (req.method === "GET" && parts[1] === "instructions" && parts[2] === "available" && parts.length === 3) {
+        const hostNow = getCurrentHost ? getCurrentHost() : host;
+        if (!hostNow.readInstructionChoices) {
+            sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+            return;
+        }
+        const result = hostNow.readInstructionChoices();
+        if (!result.ok) {
+            sendJson(res, result.status, { ok: false, error: result.error });
+            return;
+        }
+        sendJson(res, 200, { ok: true, state: result.state, choices: result.choices });
+        return;
+    }
+    if (req.method === "POST" && parts[1] === "instructions" && parts[2] === "use" && parts.length === 3) {
+        const body = await readJsonBody(req);
+        host = getCurrentHost ? getCurrentHost() : host;
+        // Resolve the host only after consuming the body: session replacement during
+        // request parsing must never send activation to the retired host.
+        const hostNow = getCurrentHost ? getCurrentHost() : host;
+        try {
+            if (hostNow.isProjectTrusted?.() !== true) {
+                sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to activate instructions." });
+                return;
+            }
+        }
+        catch {
+            sendJson(res, 503, { ok: false, error: "Instruction session is unavailable. Refresh after session replacement." });
+            return;
+        }
+        if (!isInstructionUseRequest(body)) {
+            sendJson(res, 400, { ok: false, error: "Invalid instruction activation payload." });
+            return;
+        }
+        if (!hostNow.useInstruction) {
+            sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+            return;
+        }
+        const result = hostNow.useInstruction(body);
+        if (!result.ok) {
+            sendJson(res, result.status, { ok: false, error: result.error });
+            return;
+        }
+        sendJson(res, 200, { ok: true, state: result.state });
         return;
     }
     if (req.method === "GET" && parts[1] === "instructions" && parts.length === 2) {

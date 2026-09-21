@@ -1,27 +1,13 @@
 # 指令模式 (system-update)
 
-## Web 资源编辑
-
-**模式**页可按明确 project/global 范围新建、编辑、删除定义。保存不等于启用模式。在 **Preset 元数据 → 指令模式绑定** 编辑限定引用、绑定 ID、显式 Agent 授权及有限覆盖（正文替换／追加；工具沿用／显式清空／自定义）。源定义／有效值预览复用服务端同一解析器；源文件改变不更新已启用的冻结快照。
-
-模式写入需携带所见源版本；带绑定的 Preset 保存也会拒绝过期版本（409），冲突保留草稿，不自动重试覆盖。刷新后需重新审查。这不是跨进程事务锁；错误源保持诊断，符号链接目录／目标不可写。会话启用已有 CLI，页面内带守卫的启用另行接入。
-
-
-## Preset 授权的 Agent 控制
-
-Preset 的 `instructionModes` 绑定已接入。只有显式 `modelCallable: true` 才允许 Agent 选择，默认不授权。`forge_system_update` 固定参数为 `{action: "list" | "status" | "use" | "off", id?: string}`（ID最多128字符）。每次调用重新检查信任、当前 Preset 绑定身份、授权及工具策略；use 传绑定 ID，off 传它自己的 Agent 活动项／绑定 ID。不能任意写规则、reset、停用人类规则，也不能选会禁用自身控制工具的模式。
-
-人类可用 `/system-update bindings`、`/system-update use-bound <id>`；直接 `use <[scope:]id>` 仍为非绑定活动项。保存模式／绑定不自动激活，同 Preset reload 不更新冻结快照；切换 Preset 停掉旧绑定项，保留手输／非绑定规则。撤销授权不回写旧快照，人类 CLI/Web 的 off/reset 仍是恢复通道。
-
-
 [中文文档](../README.md) · [English](../../reference/instruction-modes.md)
 
-Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。本文档涵盖模式配置、CLI 操作、投递模型、状态恢复边界与兼容性限制。
+Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。本文档涵盖模式配置、所有权作用域、CLI 操作、Web 资源编辑、Preset 授权与 Agent 控制、投递模型、状态恢复边界与兼容性限制。
 
 ## 环境要求与安装
 
 - **宿主版本：** Pi `>= 0.86.0`。
-- **项目信任：** 激活指令模式或添加手动指令需要项目处于受信任状态（`isProjectTrusted()`）。
+- **项目信任：** 激活指令模式、预设绑定或添加手动指令需要项目处于受信任状态（`isProjectTrusted()`）。
 
 指令模式为 JSON 文件，存放在以下目录之一：
 
@@ -47,7 +33,37 @@ Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词
 
 - **纯字面内容：** `content` 严格按字面文本处理（上限 100,000 字符），非文件路径、脚本或宏，不会展开模板变量。
 - **工具名称：** `add` 与 `remove` 数组中的工具名必须为确切标识符（上限 128 字符，无空白符、控制符或 `*`/`?` 通配符，每个数组限 256 个工具）。
+- **工具补丁约束：** 模式仅支持 `add` 与 `remove`；候选的 `only` 或模式级 allowlist 未实现。
 - **解析与遮蔽：** 裸 ID 采用“项目优先于全局”的查找逻辑。若项目存在损坏或非法的 JSON，解析直接在本地报错（fail-closed），绝不静默回退到全局同名定义。可通过 `project:<id>` 或 `global:<id>` 指定明确 scope。
+
+## 所有权作用域与生命周期
+
+- **所有权划分：** 模式定义（modes）为可复用资源，归属于项目或全局库；绑定与授权归属于预设（Preset 元数据中的 `instructionModes` 数组）；活跃状态与激活项严格归属于会话（Session）。
+- **直接启用 vs 绑定启用：**
+  - 通过 CLI 直接激活（`/system-update use <[scope:]id>`）或 Web 模式库直接启用，创建的是会话中的**未绑定**活动项。
+  - 通过 CLI 绑定激活（`/system-update use-bound <id>`）或 Web 预设绑定启用，创建的是与当前 Preset 关联的**绑定**活动项。
+- **不可变快照语义：** 激活时捕获不可变快照（包括内容、工具策略、内容指纹）。修改或删除磁盘上的 JSON 文件不会引发活跃会话漂移。
+- **同 Preset 重载 vs 切换 Preset：** 重新加载同一 Preset 保持既有的冻结活动快照；切换 Preset 会自动停用（lifecycle 停用）旧 Preset 关联的绑定项，同时保留手动输入与未绑定的用户规则。
+- **授权撤销行为：** 在 Preset 中撤销授权（将 `modelCallable` 设为 `false`）或删除绑定项，不会追溯抹除已激活的快照；用户通过 CLI（`/system-update off` 或 `/system-update reset`）或 Web 面板停用是标准恢复路径。
+- **用户与 Agent 所有权及去重：** 激活项记录归属主体（`user` 或 `agent`）。重复 `use` 已激活的模式具备幂等性，绝不自动在用户与 Agent 之间转移所有权（takeover）。接管必须通过显式关闭后再重新启用。
+
+## Preset 授权的 Agent 控制
+
+Preset 的 `instructionModes` 绑定支持智能体自主选择与启用指令模式：
+
+- **模型工具注册：** `forge_system_update` 以固定 schema 注册一次，可见性遵循普通可执行工具选择；注册本身不授予模式权限。调用要求存在活跃 Preset，use/off 还会重查具体绑定的当前授权。
+- **显式授权机制：** 仅当活跃 Preset 中的绑定显式声明 `modelCallable: true` 时，Agent 才能调用；缺省默认为 `false`。
+- **固定参数契约：** 仅接受 `{ action: "list" | "status" | "use" | "off", id?: string }`（ID 上限 128 字符）。
+  - `list`：列出当前活跃 Preset 中具备调用资格的绑定模式；活动快照由 `status` 查看。
+  - `status`：返回当前会话的激活数量、呈现形式、投递状态及生效工具列表。
+  - `use`：需要提供绑定的 `id`；仅可激活已授权且 `modelCallable: true` 的预设绑定模式。
+  - `off`：需要提供 `id`（绑定 ID 或激活 UUID）；仅可关闭归属于 `agent` 的激活项。
+- **安全与权限边界：**
+  - 每次调用均重新校验项目信任、活跃 Preset 状态、绑定标识、`modelCallable: true` 以及当前工具策略。
+  - Agent 无法关闭用户启用的指令或手动指令。
+  - Agent 无法执行 `reset` 操作，也无法添加任意提示词文本。
+  - Agent 无法激活会移除 `forge_system_update` 工具自身的模式。
+  - 在运行时已注销、正在恢复或会话上下文不一致时，调用直接 fail-closed 报错。
 
 ## 命令行操作
 
@@ -56,52 +72,84 @@ Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词
 | 命令 | 行为 |
 |---|---|
 | `/system-update list` | 列出项目与全局库中可用的指令模式及其校验状态。 |
-| `/system-update use <[scope:]id>` | 激活指定的指令模式（如 `/system-update use project:review` 或裸 ID）。 |
+| `/system-update bindings` | 列出当前活跃 Preset 中声明的指令模式绑定及其授权状态。 |
+| `/system-update use <[scope:]id>` | 激活指定的未绑定指令模式（裸 ID 或限定作用域）。直接 use 保持未绑定。 |
+| `/system-update use-bound <id>` | 按绑定 ID 激活当前 Preset 中已绑定的指令模式。 |
 | `/system-update status` | 显示激活模式数量、投递表现形式、投递状态以及当前选中的工具。 |
 | `/system-update off <activation-or-mode-id>` | 通过激活 UUID 或模式 ID 关闭激活的指令模式。 |
-| `/system-update reset` | 关闭当前会话所有激活的指令模式与手动指令。 |
+| `/system-update reset` | 关闭当前会话所有激活的指令模式与手动指令（仅限用户）。 |
 | `/system-update add <text>` | 向当前会话追加一条手动字面指令（无工具变更）。 |
 
-**零推理成本：** 所有 `/system-update` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态，操作本身不调用模型推理，不消耗付费 token（no inference）。但请注意：活动指令的规则正文仍会在随后的真实模型请求中占用输入 token。投递锚点使用同名投递类型（`pi-forge-instruction-delivery`）下的纯 `custom` 会话条目持久化，仅携带游标元数据（`schemaVersion: 1`, `throughEventId`），彻底取代先前的 `sendMessage` steering 与对话消息型 `custom_message` 载体。空闲时立即落锚；运行中的会话变更则安全推迟到当前工具调用批次全部完成后落锚，或在 `agent_end` 助手回复产生后提交，不额外向模型排入轮次。UI 状态通知（`ctx.ui.setStatus`）完全独立解耦。
+**零推理成本：** 所有 `/system-update` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态并同步工具策略，操作本身不调用模型推理，不消耗付费 token。活动指令的规则正文仅在随后的真实模型请求中占用输入 token。
 
-## 检查规则更新的预览
+## Web 资源编辑
 
-现有 **Preview／预览** 按“选中的 Preset 草稿＋当前会话指令快照”试算，复用正常请求的纯预设／指令投影：显示原生 System 分段或带归属的 user 更新，包括停用通知和压缩检查点。投递标记为纯元数据锚点，不再作为对话消息或通用 custom_message 任务展示。命名分段和工具声明变化可读，不显示为空白 System 卡片。普通历史仍尊重插槽名称，例如插槽叫 `Delegated Task`，普通历史就仍用这个标签。
+### 模式管理界面（Modes CRUD）
 
-System 正文、原生命名分段与历史工具声明分开展示。代码区和分段复制只含正文／分段值，不把展示器生成的 `Added tool`、`Updated system prompt section` 当成原生 System 正文；fallback 用户更新本身包含的文字则原样保留。历史工具声明折叠显示，并明确标注**不是当前选择**。独立的“预览工具选择”采用草稿策略＋当前模式计算出的工具，而非旧转录声明。文本估算不含工具 schema 和检查器标签；只有结构化变更的消息仍可检查，投影后真正空掉的 System 卡片隐藏。空的非 System 消息以及真实正文中的同名短语不删除。草稿差异仍能检测无正文变化的结构化字段／工具选择变更。历史只按连续段分组：中途插入的指令更新保持在前后消息之间，不移到全部历史末尾。
+顶部导航栏的**指令模式**（Modes）页面提供项目与全局模式的完整生命周期管理：
 
-切换模式后刷新预览即可检查新投影。它不是最终 provider payload，也不是送达确认；读取／复制不会推理、改变工具或把 pending 标成 prepared。全文不再受原先消息布局 8,000 字符截断限制。修改源文件不替换活动快照。已有自然语言摘要（包括其中引用的旧通知）保持原样；这次修复不重写历史摘要，也不改变 Pi 的压缩切点。
+- **浏览与审查：** 查看模式 ID、显示名称、描述、指令正文及工具变更（`+add`、`-remove`），并显示校验诊断。
+- **新建：** 在明确的项目作用域（`.pi/forge/instruction-modes/`）或全局作用域（`~/.pi/forge/instruction-modes/`）下创建新模式。
+- **编辑与保存：** 编辑显示名称、描述、指令正文与工具增删项。模式 ID 在保存时不可修改。
+- **删除：** 支持在二次确认后删除磁盘上的模式 JSON 文件。
+- **版本防脏写（`sourceRevision`）：** 保存与删除操作强制校验界面加载时的源文件哈希版本（`sourceRevision`）。并发修改导致版本过期时返回 `409 Conflict` 并完整保留本地编辑草稿。
+- **安全性：** 保存模式仅更新模式库定义，绝不自动将其激活到活跃会话中。非法 JSON fail-closed 本地报错；符号链接目录与目标不可写入。
+
+### Preset 元数据：指令模式绑定
+
+在 Preset 编辑器的 **Preset 元数据 → 指令模式绑定** 中配置预设与模式的关联：
+
+- **限定引用：** 必须使用限定作用域引用（`project:<id>` 或 `global:<id>`）。
+- **绑定 ID：** 在 Preset 内唯一定义的绑定标识符（上限 128 字符）。
+- **Agent 授权：** 勾选 `modelCallable` 开关（默认关闭），允许智能体通过 `forge_system_update` 自主调用。
+- **有限覆盖（Finite Overrides）：**
+  - **正文覆盖：** 可选*无（沿用源内容）*、*替换*（`content`）或*追加*（`appendContent`，以双换行追加）。
+  - **工具覆盖：** `tools.add` 与 `tools.remove` 可独立配置为*缺省（沿用源定义）*、*显式清空 []*（清除源定义该项）或*自定义工具列表*。
+  - 不支持注入任意自定义字段、脚本或继承链。
+- **源定义与有效值对比预览：** 左右对比分栏实时展示源定义的正文/工具与覆盖生效后的有效正文/工具，复用服务端与运行时完全一致的解析器（`resolveInstructionModeBindings`）。
+- **防脏写保护：** 当 Preset 包含或修改绑定时，保存请求强制校验磁盘源版本（`sourceRevision`），防止覆盖外部并发编辑或新增的绑定（409 Conflict）。
 
 ## Web 会话指令面板
 
-除了 `/system-update` 命令行外，Web 编辑器在顶部导航栏下方提供了可展开的**会话指令模式**（Session instructions）活动面板，用于直观查看与管理当前会话的指令状态。
+Web 编辑器在顶部导航栏下方提供了可折叠展开的**会话指令模式**（Session instructions）活动面板。
 
 ### 面板功能与状态展示
 
-- **活动模式列表：** 展示当前会话中处于活动状态的所有指令模式与手动指令。每个卡片呈现：
+- **活动模式列表：** 展示当前会话处于活动状态的所有模式与手动指令。每个卡片呈现：
   - **标识与来源：** 激活 ID、显示名称以及解析来源（如 `project:review`、`global:review` 或 `manual`）。
-  - **开启者：** 标明模式由用户（`user`）还是智能体（`agent`）启用。
+  - **开启者：** 标明由用户（`user`）还是智能体（`agent`）启用。
   - **冻结正文快照：** 可折叠展开查看激活时捕获的规则字面内容（frozen snapshot）。
   - **工具补丁与生效工具：** 单项指令的工具增删补丁（`+add`、`-remove`）以及会话整体的最终生效工具列表（`effectiveTools`）。
 - **投递与呈现状态：**
-  - **投递状态：** 显示 `none`（尚无指令变更记录）、`pending`（等待下次请求生效）或 `prepared`（上下文已为本轮就绪）。面板特别注明：`prepared` 仅表示提示词上下文准备完毕，不代表模型实际遵从或确认送达。
-  - **文本呈现：** 显示当前模型使用 `native` 原生系统消息切片还是 `user` 带来源标记的时间线更新。
+  - **投递状态：** 显示 `none`（无变更记录）、`pending`（等待下次请求生效）或 `prepared`（上下文已为本轮就绪）。面板特别注明：`prepared` 仅表示提示词上下文准备完毕，不代表模型实际遵从或确认送达。
+  - **文本呈现：** 显示当前模型使用 `native` 原生系统消息分段还是 `user` 带标记的时间线更新。
 - **会话操作：**
-  - **单项关闭：** 点击**关闭**按钮，按 `activationId` 停用指定的指令项。
+  - **单项停用：** 点击**停用**按钮，按 `activationId` 关闭指定项。
   - **确认重置：** 点击**重置全部**后提供二次确认按钮（**确认重置** / **取消**），防止误操作清空会话指令。
+
+### 人类启用选择器（带守卫的预览与启用）
+
+面板内置了人类专用的指令模式启用选择器：
+
+- **资源发现（`GET /api/instructions/available`）：** 纯本地只读接口，返回当前会话状态及可用模式选项，清晰分为*指令库模式（未绑定）*与*当前预设（已绑定）*。读取操作绝不修改工具策略或产生会话事件。
+- **即时预选预览：** 在下拉框中选择模式后，立即展开预选卡片呈现：
+  - 标签名称、ID、类别徽标（`指令库` 或 `预设绑定`）及正文指纹摘要（`#<hash>`）。
+  - 工具差异预览（`+add`、`-remove` 或 `无工具变更`）。
+  - 若该模式无法通过工具策略校验，显示异常警示条（Problem banner）。
+  - 完整的字面规则内容预览。
+- **Bodyguard 安全启用（`POST /api/instructions/use`）：**
+  - 提交载荷包含 `{ guard: { sessionId, leafId, revision }, kind, id, fingerprint }`。
+  - 服务端在执行前严格比对会话 Guard 与磁盘定义的最新内容指纹。
+  - 若会话、分支、版本或源文件发生变更，服务端返回 `409 Conflict` 拒绝操作。
+  - 绝不自动猜测或盲目重试。
+  - 启用操作需要项目已受信任（`isProjectTrusted() === true`），未信任会话返回 `403 Forbidden`。
 
 ### 轮询策略、并发保护与安全机制
 
-- **页面可见轮询与零推理开销：** Web 客户端仅在页面处于可见状态（`document.visibilityState === "visible"`）时每 3 秒发起一次 `GET /api/instructions` 轮询，并在窗口重新获焦（focus）或点击**刷新**按钮时请求。所有查询均为本地状态读取，不产生任何模型推理与 API token 开销。
-- **错误与 409 冲突时不盲目重试：** 若请求失败、状态过期或服务端返回 `409 Conflict`，面板会将其标记为 stale（已过期）并提示手动重新核对，绝不盲目进行写操作自动重试。
-- **项目信任要求：** 在 Web 端执行修改操作严格要求项目已受信任（`isProjectTrusted() === true`）。未受信任会话将收到 `403 Forbidden` 并禁用修改，用户仍可使用命令行（`/system-update reset`）进行恢复。
-- **Guard 防旧页与服务生命周期保护：** 每次修改请求均携带由 `sessionId`、`leafId`、版本哈希 `revision` 以及运行时实例代数（`instanceId` / runtime generation）派生的 Guard。若会话、分支或运行时已被重置，请求将返回 `409 Conflict`，防止旧页面覆盖新状态；当指令服务卸载或不可用时，返回 `503 Service Unavailable`。
-
-### 明确能力边界与非目标
-
-- **会话活动面板，而非编辑器：** 该面板是当前 Session 活跃状态的观察与控制面板，**不是**指令模式库编辑器（不支持在磁盘上编写或保存 JSON 模式文件），**不是**源文件 diff 对比工具，**不是**每个工具选择的根因解释器（why-per-tool），也**不是** Preset 绑定界面。
-- **不新增工具 schema 与缓存预警：** 模式仍使用 `add/remove`，面板不新增 `only` 或模式级 allow/deny 字段，也不提供工具 transport 或 prompt 缓存影响预警。
-- **未实现特性：** Preset 的 `instructionModes` 配置绑定与供模型调用的 `forge_system_update` agent tool 在当前阶段仍未实现。
+- **页面可见轮询与零推理开销：** 仅在页面可见（`document.visibilityState === "visible"`）、窗口获焦或点击**刷新**时轮询 `GET /api/instructions`。所有查询均为本地读取，不产生模型推理与 API token 开销。
+- **错误与冲突时不盲目重试：** 遇到请求失败或 409 冲突时标记为 stale，需人工复核，不自动重试写操作。
+- **项目信任要求：** 在 Web 端修改会话指令严格要求项目已受信任（`isProjectTrusted() === true`）。未受信任返回 `403 Forbidden`，命令行恢复通道保留。
+- **Guard 防旧页与服务生命周期保护：** 每次修改均携带会话 Guard（`sessionId`、`leafId`、`revision`）。服务注销或不可用时返回 `503 Service Unavailable`。
 
 ### 本地测试与宿主热加载
 
@@ -111,10 +159,26 @@ System 正文、原生命名分段与历史工具声明分开展示。代码区�
 
 ## 生命周期与工具同步
 
-- **请求边界生效：** 指令内容与工具策略在下一次向模型发起请求时统一生效。运行中的工具批次绝不会被中途终止。
-- **快照语义：** 模式激活时捕获不可变快照。修改磁盘上的 JSON 文件不会引发活跃会话漂移；必须通过 `/system-update off <id>` 后接 `/system-update use <id>` 重新加载生效。
-- **顶层预设策略优先：** 模式不能越权启用已被当前预设（Preset）deny 策略禁用的工具。多个模式并存时，工具移除（remove）在当前会话的活动模式之间优先。
-- **工具基线恢复：** Forge 记录基线工具集以便在关闭模式后正确复原。对缺乏基线记录的旧会话，Forge 采取保守策略恢复，而非盲目授予所有已注册工具。
+- **立即工具同步 vs. 下次请求提示词生效：**
+  - 可执行工具策略在模式激活时**立即同步**（`pi.setActiveTools()`），被策略禁用的工具在执行期立即被拦截。
+  - 提示词文本与原生 System 分段或 fallback 用户更新在**下一次模型请求边界**生效。
+  - 正在执行中的工具调用批次绝不会被中途终止。
+- **顶层预设策略优先：** 模式不能越权启用已被当前预设 deny 策略禁用的工具。多个模式并存时，工具移除（remove）在当前会话的活动模式之间全局优先。
+- **工具基线恢复：** Forge 记录会话初始的工具基线，以便在关闭模式后正确复原。对缺乏记录的旧会话，Forge 采取保守策略恢复，而非盲目授予所有已注册工具。
+- **Parent 生命周期与重入围栏：** 严格维护 `disposed` 标志、`lifecycleRevision` 计数器与 `sameContext` 会话校验，杜绝跨会话串号与注销后的非法重入。
+
+## 检查规则更新的预览
+
+现有 **Preview／预览** 按“选中的 Preset 草稿＋当前会话指令快照”试算：
+
+- 复用正常请求的纯预设／指令投影：显示原生 System 分段或带归属的 user 更新，包括停用通知和压缩检查点。
+- 投递标记为纯元数据锚点，不作为对话消息展示。
+- System 正文、原生命名分段与历史工具声明分开展示。代码区和分段复制只含正文/分段值，不把检查器生成的 `Added tool` 等提示混入原生文本。
+- 历史工具声明折叠显示，并明确标注不是当前选择。
+- 预览工具选择采用草稿策略＋当前模式计算出的工具。
+- 文本估算不含工具 schema 和检查器标签；投影后真正空掉的 System 卡片隐藏。
+- 历史只按连续段分组：中途插入的指令更新保持在前后消息之间，不移到全部历史末尾。
+- 纯只读检查：读取或复制预览内容不会发起推理、不会改变工具状态，也不会将 pending 标记为 prepared。全文不受原先消息布局 8,000 字符限制。
 
 ## 投递模型：Native 与 Fallback
 
@@ -139,12 +203,24 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 
 - **前置扩展上下文改写：** Pi 允许 `context` hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与会话记录有唯一的有序对应，否则中止而非猜测。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突。需审查后调整冲突插件顺序或行为；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
 - **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/payload` 或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
+- **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界；pi-forge 提供保守的 Provider 托管与缓存预警，不保证零 KV 缓存失效，亦不保证特定缓存命中率。
 - **沙盒免责：** 指令模式不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
 
-## 发布状态（0.5.5-core）
+## 交付状态（0.5.5-core）
 
-0.5.5 仍在分阶段实现中，尚未全量完成：
+0.5.5 核心功能源码已在所有规划的开发通道中全量交付：
 
-- 人工 CLI 切片（`/system-update`）、投影运行时、Web 会话指令活动面板以及正式的纯元数据锚点修复已实现。
-- Preset `instructionModes` 字段、运行时权限检查、Agent 工具 `forge_system_update`（list/status/use/off）及完整模式库 Web 编辑界面尚未开发。
-- CLI 人工激活的模式未绑定 Preset（Web 面板只能关闭或重置现有活动项），切换 Preset 时予以保留，但仍受新 Preset 顶层策略约束。完整演示视频与完整媒体尚未发布，版本号维持 0.5.4 直至发布筹备。
+- 模式基础编解码器、多范围解析、会话事件与不可变快照 Reducer。
+- 人工 CLI 操作集（`/system-update` add、list、bindings、use、use-bound、off、status、reset）。
+- 纯元数据锚点投影机制与编译前序数物化。
+- Web 会话指令活动面板与带守卫的人类启用选择器（`GET /api/instructions/available`, `POST /api/instructions/use`）。
+- Preset 绑定的 live 模式支持（`instructionModes`），具备有限覆盖及 `modelCallable: true` 显式授权。
+- 限制级智能体控制工具 `forge_system_update`（list、status、use、off，ID ≤ 128 字符）。
+- Web 模式管理界面（Modes CRUD）与 Preset 元数据绑定编辑器，具备源定义与有效值实时对比预览及 `sourceRevision` 防脏写。
+- Parent 核心防护：源版本一致性保障、外部新增绑定防脏写检测、生命周期与重入安全围栏。
+- 工具补丁仅支持 `add` 与 `remove`；候选的 `only`/allowlist 未实现。
+- 提供保守的 Provider 托管与缓存预警；不进行自动旧数据迁移，不重写历史摘要；无 Pi split patch；不声称 forceprompt、warming、autooverflow 或远程模型验收保证。
+- 父级 build 与完整 verify 已通过：730 个 Node 测试、33 个浏览器测试；软件包版本保持在 0.5.4，发布、代码推送与用户宿主 `/reload` 属于独立的授权操作。
+
+
+文件路径校验会拒绝检查时已存在的符号链接，但不能隔离另一个本地进程并发替换目录的攻击；源版本比较也不是跨进程锁。不要把资源编辑用于不可信进程可竞争修改的共享目录。
