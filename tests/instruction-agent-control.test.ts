@@ -163,7 +163,8 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 					? listToolResult.content.map((c: any) => c.text ?? "").join("\n")
 					: String(listToolResult.content);
 				assert.match(listContent, /id:\s*review/, "list response must include bound review mode");
-				assert.match(listContent, /REVIEW_ONLY_MODE_ACTIVE/, "list response includes mode content");
+				assert.doesNotMatch(listContent, /REVIEW_ONLY_MODE_ACTIVE/, "inactive rule bodies must not be copied into ordinary tool history");
+				assert.match(listContent, /Enforces review-only workflow/, "list retains the authored mode description");
 
 				// 1.2 Model calls forge_system_update action: 'use', id: 'review'
 				harness.setResponses([
@@ -216,6 +217,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 					: String(statusToolResult.content);
 				assert.match(statusContent, /Instruction modes.*:\s*1/i, "status reports 1 mode active");
 				assert.match(statusContent, /agent/i, "status reports agent actor");
+				assert.doesNotMatch(statusContent, /REVIEW_ONLY_MODE_ACTIVE/, "status must not duplicate rule bodies into the transcript");
 
 				// 1.4 Next prompt: model attempts to call blocked fake_write
 				harness.setResponses([
@@ -287,6 +289,16 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 					assert.equal((anchor as any).data?.schemaVersion, 1);
 					assert.equal(typeof (anchor as any).data?.throughEventId, "string");
 				}
+
+				const controls = branch.filter((entry: any) => entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "forge_system_update");
+				assert.ok(controls.length >= 4);
+				assert.doesNotMatch(JSON.stringify(controls), /REVIEW_ONLY_MODE_ACTIVE/);
+				harness.settingsManager.applyOverrides({compaction:{enabled:false,keepRecentTokens:1,reserveTokens:100}});
+				const summaries: any[]=[];
+				harness.setResponses([({context}:any)=>{summaries.push(structuredClone(context)); return "CONTROL_HISTORY_SUMMARY";},({context}:any)=>{summaries.push(structuredClone(context));return "CONTROL_PREFIX_SUMMARY";}]);
+				await harness.session.compact();
+				assert.ok(summaries.length>0, "actual SDK summarizer ran");
+				assert.doesNotMatch(JSON.stringify(summaries), /REVIEW_ONLY_MODE_ACTIVE/);
 
 				assert.equal(harness.fetchAttempts, 0, "no network fetch permitted");
 			} finally {

@@ -42,7 +42,7 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
     commitEndAnchors: (ctx: ExtensionContext) => void;
     setAgentBusy: (busy: boolean) => void;
     library: (ctx: ExtensionContext) => string;
-    status: (ctx: ExtensionContext) => string;
+    status: (ctx: ExtensionContext, includeRuleContent?: boolean) => string;
     change: (ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string, expectedFingerprint?: string, expectedGuard?: InstructionStateGuard) => string;
     readBindings: (ctx: ExtensionContext) => ReadBindingsResult;
     useBound: (ctx: ExtensionContext, id: string, actor?: "user" | "agent", expectedFingerprint?: string, expectedGuard?: InstructionStateGuard) => UseBoundResult;

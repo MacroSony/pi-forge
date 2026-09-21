@@ -65,6 +65,8 @@ Preset `instructionModes` bindings support autonomous Agent activation when expl
   - The Agent cannot activate a mode that removes `forge_system_update`.
   - Disposed, restoring, or cross-session re-entry requests fail closed immediately.
 
+Agent list/status replies intentionally omit full rule bodies: list returns authored descriptions and effects; status reports activity metadata. This avoids duplicating request-only instructions into ordinary tool history and later summaries. Human CLI/Web inspection still displays the complete frozen content. Genuine dialogue and authored descriptions are not scrubbed.
+
 ## Commands
 
 Manage active instructions through `/system-update`:

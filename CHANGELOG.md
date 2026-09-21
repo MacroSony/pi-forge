@@ -27,6 +27,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - **Session event recovery and branch coherence.** Semantic events and derived delivery cursors enable state reconstruction across session reloads, manual compaction checkpoints, and tree branch navigation, verified offline via local SDK test harnesses.
 - **Fail-closed shadowing and literal rule isolation.** Bare mode selectors resolve project-over-global; invalid local mode definitions fail closed rather than falling back to global. Content is evaluated strictly as literal text without macro or script execution.
 
+### Fixed
+
+- **Keep Agent inspection replies out of rule-body history.** `forge_system_update` list/status return identities, authored descriptions, ownership and tool/status metadata, not copies of full instruction bodies. Rules remain request-only projections; human CLI/Web inspection still shows full snapshots. Real SDK control-call and summarizer tests cover the distinction. Genuine dialogue or descriptions quoting rules are not stripped.
+
 ### Changed
 
 - **Preview text/metadata separation.** Keep actual System prose and named-section values separate from historical tool declarations; show draft-relative selected tools independently, hide only genuinely empty projected System cards, and retain structural-only changes in Draft diff. After the final overlay is stopped, tool previews use the restored live selection rather than captured filtered options. Text estimates exclude tool schemas. Group only consecutive history runs so intervening instruction updates retain their chronological position.

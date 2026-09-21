@@ -65,6 +65,8 @@ Preset 的 `instructionModes` 绑定支持智能体自主选择与启用指令�
   - Agent 无法激活会移除 `forge_system_update` 工具自身的模式。
   - 在运行时已注销、正在恢复或会话上下文不一致时，调用直接 fail-closed 报错。
 
+Agent 的 list/status 回复不复制完整规则正文：list 提供作者填写的描述与效果，status 提供活动元数据，避免把仅请求内投影的规则再次塞进普通工具历史和后续摘要。人类 CLI/Web 仍可查看完整冻结正文；真实对话及作者填写的描述不会被过滤。
+
 ## 命令行操作
 
 通过 `/system-update` 管理会话指令：

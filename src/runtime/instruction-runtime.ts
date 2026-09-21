@@ -419,7 +419,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		}
 	}
 
-	function status(ctx: ExtensionContext): string {
+	function status(ctx: ExtensionContext, includeRuleContent = true): string {
 		const { state } = view(ctx);
 		const presentation = (ctx.model?.compat as { supportsMidConvoSystemMessages?: boolean } | undefined)?.supportsMidConvoSystemMessages === true ? "native system sections" : "attributed user updates";
 		const delivery = !state.lastEventId ? "none" : preparedRevision === state.lastEventId && preparedModel === modelKey(ctx) ? "request prepared (not a model-obedience or delivery acknowledgment)" : "pending next request";
@@ -430,7 +430,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			...state.active.flatMap((item) => [
 				`${item.snapshot.activationId} · ${sourceLabel(item)} · ${item.actor}`,
 				`  +tools: ${item.snapshot.tools.add.join(", ") || "(none)"}; -tools: ${item.snapshot.tools.remove.join(", ") || "(none)"}`,
-				item.snapshot.content,
+				...(includeRuleContent ? [item.snapshot.content] : []),
 			]),
 		].join("\n");
 	}
@@ -806,7 +806,6 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 							`id: ${b.id}${b.mode.name ? ` (${b.mode.name})` : ""}`,
 							b.mode.description ? `  description: ${b.mode.description}` : undefined,
 							`  tools: +${b.mode.tools.add.join(", ") || "(none)"}; -${b.mode.tools.remove.join(", ") || "(none)"}`,
-							`  content: ${b.mode.content}`,
 						]
 							.filter(Boolean)
 							.join("\n"),
@@ -824,7 +823,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 
 		if (action === "status") {
 			const { state } = view(ctx);
-			const text = status(ctx);
+			const text = status(ctx, false);
 			return {
 				content: [{ type: "text", text }],
 				details: {
