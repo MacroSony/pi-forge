@@ -26,6 +26,8 @@ const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
 const availableModes = ref<InstructionModeEntry[]>([]);
+const modesLoading = ref(false);
+const modesError = ref("");
 const effectiveBindings = ref<EffectiveInstructionModeBinding[]>([]);
 const previewLoading = ref(false);
 const previewError = ref("");
@@ -61,19 +63,45 @@ const eligibleModes = computed(() => {
 		: availableModes.value;
 	// Do not manufacture or offer bare/malformed refs. Existing invalid raw
 	// values are rendered separately below and remain untouched.
-	return scoped.filter((mode) => isQualifiedRef(mode.selector));
+	return scoped.filter((mode) => isQualifiedRef(mode.selector) && !mode.diagnostics?.some(d => d.level === "error"));
 });
 
 async function loadAvailableModes(): Promise<void> {
 	const reqId = ++modesRequestId;
+	modesLoading.value = true;
+	modesError.value = "";
 	try {
 		const res = await api<InstructionModeCollection>("/api/instruction-modes");
 		if (isUnmounted || reqId !== modesRequestId) return;
 		availableModes.value = res.modes || [];
-	} catch {
-		// Server might not have endpoint active yet in local standalone run
+	} catch (err) {
+		if (isUnmounted || reqId !== modesRequestId) return;
+		modesError.value = err instanceof Error ? err.message : String(err);
+	} finally {
+		if (reqId === modesRequestId && !isUnmounted) {
+			modesLoading.value = false;
+		}
 	}
 }
+
+const canAddBinding = computed(() => editableBindings.value && !modesLoading.value && !modesError.value && eligibleModes.value.length > 0);
+
+async function refreshModes(): Promise<void> {
+	await loadAvailableModes();
+	if (!isUnmounted && !modesError.value) await fetchEffectivePreview();
+}
+
+const addBindingTitle = computed(() => {
+	if (!editableBindings.value) return t("binding.invalidRaw");
+	if (modesLoading.value) return t("binding.addDisabledLoading");
+	if (modesError.value) return t("binding.addDisabledError");
+	if (eligibleModes.value.length === 0) {
+		return props.presetScope === "global"
+			? t("binding.addDisabledGlobalScope")
+			: t("binding.addDisabledEmpty");
+	}
+	return t("binding.addTitle");
+});
 
 async function fetchEffectivePreview(): Promise<void> {
 	// Increment before the empty-list fast path too: removing the last
@@ -139,19 +167,12 @@ function ensureBindingsArray(): InstructionModeBinding[] {
 }
 
 function addBinding(): void {
-	if (!editableBindings.value) return;
+	if (!canAddBinding.value) return;
+	const candidate = eligibleModes.value[0]?.selector;
+	if (!candidate || !isQualifiedRef(candidate)) return;
 	const list = ensureBindingsArray();
-	const scope = props.presetScope === "global" ? "global" : "project";
-	// Never guess a reusable mode name when the catalog is unavailable: that
-	// could accidentally bind a real mode. The UUID is qualified but cannot
-	// collide with a mode the user did not choose.
-	const defaultCandidate = eligibleModes.value[0]?.selector
-		?? `${scope}:unavailable-${crypto.randomUUID()}`;
 	list.push({
-		// Always create a qualified ref and leave modelCallable disabled by
-		// default; an unavailable mode remains visibly invalid rather than
-		// silently granting a different mode.
-		ref: isQualifiedRef(defaultCandidate) ? defaultCandidate : `${scope}:unavailable-${crypto.randomUUID()}`,
+		ref: candidate,
 		modelCallable: false,
 	});
 	emit("change");
@@ -313,9 +334,40 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 				<div class="binding-meta">{{ t("binding.meta") }}</div>
 			</div>
 			<span class="action-spacer"></span>
-			<button id="addBindingBtn" type="button" data-icon="+" :title="t('binding.addTitle')" @click="addBinding">
+			<button
+				id="refreshModesBtn"
+				type="button"
+				data-binding-refresh-btn
+				data-icon="↻"
+				:disabled="modesLoading"
+				:title="t('binding.refreshModesTitle')"
+				@click="refreshModes"
+			>
+				{{ modesLoading ? t("binding.refreshingModes") : t("binding.refreshModes") }}
+			</button>
+			<button
+				id="addBindingBtn"
+				type="button"
+				data-icon="+"
+				:disabled="!canAddBinding"
+				:title="addBindingTitle"
+				@click="addBinding"
+			>
 				{{ t("binding.add") }}
 			</button>
+		</div>
+
+		<div v-if="modesLoading" class="catalog-status-line" data-binding-catalog-loading>
+			{{ t("binding.loadingModes") }}
+		</div>
+		<div v-else-if="modesError" class="catalog-error-line" data-binding-catalog-error>
+			<span>{{ t("binding.loadModesError") }}: {{ modesError }}</span>
+			<button type="button" class="inline-retry-btn" data-binding-retry-btn @click="refreshModes">
+				{{ t("binding.retryLoadModes") }}
+			</button>
+		</div>
+		<div v-else-if="eligibleModes.length === 0" class="catalog-hint-line" data-binding-no-eligible>
+			{{ presetScope === 'global' && availableModes.length > 0 ? t('binding.noGlobalModesHint') : t('binding.noEligibleModesHint') }}
 		</div>
 
 		<div v-if="previewLoading" class="preview-status-line">
@@ -578,6 +630,44 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 .preview-error-line {
 	font-size: 12px;
 	color: var(--error);
+}
+
+.catalog-status-line {
+	font-size: 12px;
+	color: var(--muted);
+	font-style: italic;
+}
+
+.catalog-error-line {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--error);
+}
+
+.inline-retry-btn {
+	padding: 2px 8px;
+	font-size: 11px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--bg);
+	color: var(--fg);
+	cursor: pointer;
+}
+
+.catalog-hint-line {
+	font-size: 12px;
+	color: var(--muted);
+	padding: 4px 8px;
+	background: var(--pane-soft);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+}
+
+.binding-header button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .binding-empty {

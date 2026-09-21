@@ -46,6 +46,7 @@ const TestHarness = defineComponent({
 	setup() {
 		const activeTab = ref<"modes" | "preset">("modes");
 		const presetDirty = ref(false);
+		const presetScope = ref<"project" | "global">("project");
 		const testStack = ref({
 			schemaVersion: 2,
 			type: "pi-forge.prompt-stack",
@@ -66,6 +67,10 @@ const TestHarness = defineComponent({
 		});
 
 		(window as any).__getTestStack = () => testStack.value;
+		(window as any).__setTestStack = (s: any) => { testStack.value = s; presetDirty.value = false; };
+		(window as any).__setPresetScope = (s: "project" | "global") => { presetScope.value = s; };
+		(window as any).__getPresetScope = () => presetScope.value;
+		(window as any).__setActiveTab = (t: "modes" | "preset") => { activeTab.value = t; };
 
 		function onStackChange() {
 			presetDirty.value = true;
@@ -76,10 +81,19 @@ const TestHarness = defineComponent({
 			setEditorLocale(select.value as any);
 		}
 
+		function onScopeChange(e: Event) {
+			const select = e.target as HTMLSelectElement;
+			presetScope.value = select.value as any;
+		}
+
 		return () => h("div", { class: "test-root" }, [
 			h("nav", { class: "test-nav" }, [
 				h("button", { id: "tabModesBtn", onClick: () => { activeTab.value = "modes"; } }, "Modes"),
 				h("button", { id: "tabPresetBtn", onClick: () => { activeTab.value = "preset"; } }, "Preset"),
+				h("select", { id: "scopeSelect", value: presetScope.value, onChange: onScopeChange }, [
+					h("option", { value: "project" }, "project"),
+					h("option", { value: "global" }, "global"),
+				]),
 				h("select", { id: "localeSelect", onChange: onLocaleChange }, [
 					h("option", { value: "en" }, "English"),
 					h("option", { value: "zh-CN" }, "中文"),
@@ -90,9 +104,9 @@ const TestHarness = defineComponent({
 				? h(InstructionModeBrowser, { active: true })
 				: h(StackMetadataEditor, {
 						stack: testStack.value,
-						filePath: "/test/default.json",
-						presetSelector: "project:default",
-						presetScope: "project",
+						filePath: "/test/" + presetScope.value + "/default.json",
+						presetSelector: presetScope.value + ":default",
+						presetScope: presetScope.value,
 						collapsed: false,
 						onChange: onStackChange,
 				  }),
@@ -146,6 +160,14 @@ createApp(TestHarness).mount("#app");
 	}
 }
 
+let cachedBundle: { js: string; css: string } | undefined;
+async function getBundle(root: string): Promise<{ js: string; css: string }> {
+	if (!cachedBundle) {
+		cachedBundle = await bundleFixture(root);
+	}
+	return cachedBundle;
+}
+
 function createInitialModes(): InstructionModeEntry[] {
 	return [
 		{
@@ -197,7 +219,7 @@ test("instruction mode editor: CRUD, 409 dirty preservation, binding edit and pr
 	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
 
 	const root = resolve(import.meta.dirname, "..");
-	const { js, css } = await bundleFixture(root);
+	const { js, css } = await getBundle(root);
 
 	let modes = createInitialModes();
 	let shouldFailPutWith409 = false;
@@ -506,5 +528,373 @@ ${css}
 	} finally {
 		await browser?.close();
 		server.close();
+	}
+});
+
+test("preset binding editor: scope restriction, empty/loading/error/retry, library refresh, invalid ref preservation", { timeout: 35_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+
+	const root = resolve(import.meta.dirname, "..");
+	const { js, css } = await getBundle(root);
+
+	let modes: InstructionModeEntry[] = [
+		{
+			selector: "project:guard",
+			scope: "project",
+			filePath: "/mock/project/guard.json",
+			sourceRevision: "rev-guard-1",
+			mode: {
+				schemaVersion: 1,
+				type: "pi-forge.instruction-mode",
+				id: "guard",
+				name: "Project Guard Mode",
+				description: "Project guard rules",
+				content: "Project guard instruction text.",
+				tools: { add: ["guard_tool"], remove: [] },
+			},
+		},
+	];
+	let simulateModesError = true;
+	let holdModeRead = false;
+	let releaseModeRead: (() => void) | undefined;
+	const effectiveRequests: any[] = [];
+
+	const server = createHttpServer((req, res) => {
+		const url = new URL(req.url || "/", "http://127.0.0.1");
+
+		if (url.pathname === "/") {
+			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+			res.end(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a;
+  --pane: #ffffff;
+  --pane-soft: #f8fafc;
+  --line: #e2e8f0;
+  --muted: #64748b;
+  --accent: #2563eb;
+  --accent-bg: rgba(37, 99, 235, 0.1);
+  --error: #ef4444;
+}
+body { margin: 0; font-family: sans-serif; }
+.test-nav { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); align-items: center; }
+${css}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>${js}</script>
+</body>
+</html>`);
+			return;
+		}
+
+		if (url.pathname === "/api/instruction-modes/effective" && req.method === "POST") {
+			let raw = "";
+			req.on("data", (chunk) => { raw += chunk; });
+			req.on("end", () => {
+				const body = JSON.parse(raw || "{}");
+				effectiveRequests.push(body);
+				const bindings = body.bindings || [];
+				for (const b of bindings) {
+					const match = modes.find((m) => m.selector === b.ref);
+					if (!match) {
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ error: `Instruction mode not found for ref "${b.ref}".` }));
+						return;
+					}
+				}
+				const resp: EffectiveInstructionModesResponse = {
+					bindings: bindings.map((b: any) => {
+						const match = modes.find((m) => m.selector === b.ref)!;
+						return {
+							id: b.id || match.mode.id,
+							ref: b.ref,
+							modelCallable: b.modelCallable === true,
+							source: match.mode,
+							effective: match.mode,
+						};
+					}),
+				};
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify(resp));
+			});
+			return;
+		}
+
+		if (url.pathname === "/api/instruction-modes") {
+			if (req.method === "GET") {
+				if (simulateModesError) {
+					res.writeHead(500, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "Failed to load instruction mode collection." }));
+					return;
+				}
+				const reply = () => {
+					res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+					res.end(JSON.stringify({ trusted: true, modes } satisfies InstructionModeCollection));
+				};
+				if (holdModeRead) releaseModeRead = reply;
+				else reply();
+				return;
+			}
+			if (req.method === "POST") {
+				let raw = "";
+				req.on("data", (chunk) => { raw += chunk; });
+				req.on("end", () => {
+					const body = JSON.parse(raw || "{}");
+					const newEntry: InstructionModeEntry = {
+						selector: `${body.scope}:${body.mode.id}`,
+						scope: body.scope,
+						mode: body.mode,
+						filePath: `/mock/${body.scope}/${body.mode.id}.json`,
+						sourceRevision: "rev-new",
+						diagnostics: [],
+					};
+					modes.push(newEntry);
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ ok: true }));
+				});
+				return;
+			}
+		}
+
+		res.writeHead(404);
+		res.end();
+	});
+
+	await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", () => resolvePromise()));
+	const port = (server.address() as any).port;
+	const url = `http://127.0.0.1:${port}/`;
+
+	let browser: Browser | undefined;
+	try {
+		browser = await chromium.launch({ executablePath, headless: true });
+		const page: Page = await browser.newPage();
+		page.on("dialog", (dialog) => dialog.accept());
+
+		await page.goto(url);
+
+		// Switch preset scope to global and empty bindings initially
+		await page.evaluate(() => {
+			(window as any).__setPresetScope("global");
+			(window as any).__setTestStack({
+				schemaVersion: 2,
+				type: "pi-forge.prompt-stack",
+				id: "global-default",
+				name: "Global Default Preset",
+				mode: "replace",
+				items: [],
+				instructionModes: [],
+			});
+			(window as any).__setActiveTab("preset");
+		});
+
+		// --- 1. Loading / Failure / Retry UX ---
+		// modes load failed with 500
+		await page.locator("[data-binding-catalog-error]").waitFor();
+		assert.match(await page.locator("[data-binding-catalog-error]").textContent() ?? "", /Failed to load/i);
+		const retryBtn = page.locator("[data-binding-retry-btn]");
+		await retryBtn.waitFor();
+		// Add button must be disabled during error state
+		const addBtn = page.locator("#addBindingBtn");
+		assert.equal(await addBtn.isDisabled(), true, "Add button must be disabled when catalog failed to load");
+
+		// Attempting click must not mutate stack
+		await addBtn.click({ force: true });
+		let currentStack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.equal(currentStack.instructionModes?.length ?? 0, 0, "No binding added on catalog failure");
+		assert.equal(effectiveRequests.length, 0, "No fake reference sent to effective resolver on catalog failure");
+
+		// Heal server and retry
+		simulateModesError = false;
+		await retryBtn.click();
+		await page.locator("[data-binding-catalog-error]").waitFor({ state: "detached" });
+
+		// --- 2. Global preset with only project modes (the regression) ---
+		// Now modes has only project:guard, but preset is global!
+		// Add button must remain disabled because global preset cannot bind project modes!
+		assert.equal(await addBtn.isDisabled(), true, "Add button must be disabled on global preset with only project modes");
+		// Bilingual empty/scope hint must be visible
+		const scopeHintLocator = page.locator("[data-binding-no-eligible]");
+		await scopeHintLocator.waitFor();
+		assert.match(await scopeHintLocator.textContent() ?? "", /Global presets can only bind global instruction modes/i);
+
+		// Attempting to click must NOT manufacture a fake UUID or mutate stack
+		await addBtn.click({ force: true });
+		currentStack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.equal(currentStack.instructionModes?.length ?? 0, 0, "Draft must not be mutated when no eligible modes exist");
+		assert.equal(await page.locator("#presetDirtyBadge").isVisible(), false, "Dirty badge must not appear");
+		assert.equal(effectiveRequests.length, 0, "Fake reference must not be sent to effective resolver");
+		assert.equal(await page.locator(".preview-error-line").isVisible(), false, "No resolution failure displayed");
+
+		// Bilingual check in zh-CN
+		await page.locator("#localeSelect").selectOption("zh-CN");
+		assert.match(await scopeHintLocator.textContent() ?? "", /全局预设只能绑定全局指令模式/);
+		await page.locator("#localeSelect").selectOption("en");
+
+		// --- 3. Genuinely empty catalog ---
+		modes = [];
+		await page.locator("#refreshModesBtn").click();
+		await scopeHintLocator.waitFor();
+		assert.match(await scopeHintLocator.textContent() ?? "", /No instruction modes available in the library/i);
+		assert.equal(await addBtn.isDisabled(), true, "Add button must be disabled when catalog is genuinely empty");
+
+		// Bilingual check for genuinely empty in zh-CN
+		await page.locator("#localeSelect").selectOption("zh-CN");
+		assert.match(await scopeHintLocator.textContent() ?? "", /指令库中暂无可用指令模式/);
+		await page.locator("#localeSelect").selectOption("en");
+
+		// --- 4. Creation of available mode via library and refresh bindings ---
+		// Switch to library tab and create a global mode
+		await page.locator("#tabModesBtn").click();
+		await page.locator("#modeNewBtn").click();
+		await page.locator("#modeScope").selectOption("global");
+		await page.locator("#modeId").fill("audit");
+		await page.locator("#modeName").fill("Global Audit");
+		await page.locator("#modeContent").fill("Global audit instructions.");
+		await page.locator("#modeSaveBtn").click();
+		await page.locator("[data-mode-row]").filter({ hasText: "Global Audit" }).waitFor();
+
+		// Switch back to preset tab
+		await page.locator("#tabPresetBtn").click();
+		// Click refresh button in PresetBindingEditor
+		await page.locator("#refreshModesBtn").click();
+
+		// Now global mode is available!
+		await page.locator("#addBindingBtn:not(:disabled)").waitFor();
+		await scopeHintLocator.waitFor({ state: "detached" });
+		assert.equal(await addBtn.isDisabled(), false, "Add button must be enabled once an eligible mode exists");
+
+		// Click Add to add the eligible mode
+		const beforeAddEffectiveCount = effectiveRequests.length;
+		await addBtn.click();
+		await page.locator("[data-binding-row]").waitFor();
+		currentStack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.equal(currentStack.instructionModes?.length, 1);
+		assert.equal(currentStack.instructionModes[0].ref, "global:audit");
+		assert.equal(currentStack.instructionModes[0].modelCallable, false, "modelCallable must be false by default");
+		// Effective preview must succeed
+		await page.locator("[data-binding-preview]").waitFor();
+		assert.equal(await page.locator(".preview-error-line").isVisible(), false);
+		assert.ok(effectiveRequests.length - beforeAddEffectiveCount >= 1);
+		assert.equal(effectiveRequests[effectiveRequests.length - 1].bindings[0].ref, "global:audit");
+
+		// A real held refresh with an already usable cached mode: loading must
+		// disable Add, not just rely on the catalog coincidentally being empty.
+		const beforeRefresh = await page.evaluate(() => (window as any).__getTestStack());
+		holdModeRead = true;
+		modes.find(mode => mode.selector === "global:audit")!.mode.content = "REFRESHED_SOURCE_BODY";
+		await page.locator("#refreshModesBtn").click();
+		await page.locator("[data-binding-catalog-loading]").waitFor();
+		assert.equal(await addBtn.isDisabled(), true);
+		await addBtn.dispatchEvent("click");
+		assert.deepEqual(await page.evaluate(() => (window as any).__getTestStack()), beforeRefresh);
+		assert.ok(releaseModeRead);
+		holdModeRead = false;
+		releaseModeRead();
+		await page.locator("[data-binding-catalog-loading]").waitFor({ state: "detached" });
+		await page.locator("[data-binding-preview]").filter({ hasText: "REFRESHED_SOURCE_BODY" }).waitFor();
+		assert.equal(await addBtn.isDisabled(), false);
+		assert.deepEqual(await page.evaluate(() => (window as any).__getTestStack()), beforeRefresh, "Refreshing source/effective display does not change bindings");
+
+		// --- 5. Preserve existing invalid/missing persisted bindings for explicit recovery ---
+		await page.evaluate(() => {
+			(window as any).__setTestStack({
+				schemaVersion: 2,
+				type: "pi-forge.prompt-stack",
+				id: "global-default",
+				name: "Global Default Preset",
+				mode: "replace",
+				items: [],
+				instructionModes: [
+					{
+						ref: "global:unavailable-stale-recovered-id",
+						modelCallable: false,
+					},
+				],
+			});
+		});
+		await page.locator("[data-binding-row]").first().waitFor();
+		const refSelect = page.locator("[data-binding-ref]").first();
+		assert.equal(await refSelect.inputValue(), "global:unavailable-stale-recovered-id", "Existing invalid persisted binding ref must be preserved");
+
+		// User explicitly deletes the invalid binding
+		await page.locator("[data-binding-delete-btn]").first().click();
+		currentStack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.equal(currentStack.instructionModes?.length ?? 0, 0, "Invalid binding explicitly deleted");
+	} finally {
+		await browser?.close();
+		server.close();
+	}
+});
+
+test("empty global binding add preserves an untouched draft instead of inventing a UUID", async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") { t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1"); return; }
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath);
+	const { js, css } = await getBundle(resolve(import.meta.dirname, ".."));
+	let effectiveCalls = 0;
+	let includeFault = false;
+	const server = createHttpServer((req, res) => {
+		res.setHeader("Cache-Control", "no-store");
+		if (req.url === "/") {
+			res.setHeader("Content-Type", "text/html");
+			res.end(`<style>${css}</style><div id="app"></div><script>${js}</script>`);
+		} else {
+			res.setHeader("Content-Type", "application/json");
+			if (req.url?.startsWith("/api/instruction-modes/effective")) {
+				effectiveCalls++;
+				res.statusCode = 400;
+				res.end(JSON.stringify({ error: "Unknown instruction mode" }));
+			} else res.end(JSON.stringify({ trusted: true, modes: [{
+				selector: "project:review", scope: "project", filePath: "/fixture/review.json",
+				mode: { schemaVersion: 1, type: "pi-forge.instruction-mode", id: "review", content: "Review", tools: { add: [], remove: [] } },
+			}, ...(includeFault ? [{
+				selector: "global:broken", scope: "global", filePath: "/fixture/broken.json",
+				mode: { schemaVersion: 1, type: "pi-forge.instruction-mode", id: "broken", content: "", tools: { add: [], remove: [] } },
+				diagnostics: [{ level: "error", message: "Invalid mode file" }],
+			}] : [])] }));
+		}
+	});
+	await new Promise<void>(done => server.listen(0, "127.0.0.1", done));
+	let browser: Browser | undefined;
+	try {
+		browser = await chromium.launch({ executablePath, headless: true });
+		const page = await browser.newPage();
+		await page.goto(`http://127.0.0.1:${(server.address() as any).port}/`);
+		await page.evaluate(() => {
+			(window as any).__setPresetScope("global");
+			(window as any).__setTestStack({ schemaVersion: 2, type: "pi-forge.prompt-stack", id: "global-default", mode: "replace", items: [] });
+			(window as any).__setActiveTab("preset");
+		});
+		await page.waitForLoadState("networkidle");
+		// Dispatch directly even on a disabled button: cover the handler's own
+		// guard as well as the native disabled-control behavior.
+		await page.locator("#addBindingBtn").dispatchEvent("click");
+		const stack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.equal(stack.instructionModes, undefined, "No synthetic global:unavailable UUID and no empty-array draft mutation");
+		assert.equal(await page.locator("#addBindingBtn").isDisabled(), true);
+		assert.equal(await page.locator("#presetDirtyBadge").count(), 0);
+		assert.equal(effectiveCalls, 0);
+		includeFault = true;
+		await page.locator("#refreshModesBtn").click();
+		await page.waitForLoadState("networkidle");
+		await page.locator("#addBindingBtn").dispatchEvent("click");
+		assert.equal(await page.locator("#addBindingBtn").isDisabled(), true, "A known-invalid global definition is not an add candidate");
+		assert.equal((await page.evaluate(() => (window as any).__getTestStack())).instructionModes, undefined);
+		assert.equal(effectiveCalls, 0);
+	} finally {
+		await browser?.close();
+		await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 	}
 });

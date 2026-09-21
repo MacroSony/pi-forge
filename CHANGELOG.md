@@ -29,6 +29,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- **Empty mode binding catalog.** Adding a Preset binding no longer invents an `unavailable-UUID` reference when no eligible modes exist. Global Presets remain limited to global modes. Loading, catalog errors and known-invalid definitions disable Add without dirtying the draft; bilingual empty-state guidance, retry and refresh support creating a mode in the library and updating source/effective previews. Existing missing references remain visible for explicit repair.
+
 - **Keep Agent inspection replies out of rule-body history.** `forge_system_update` list/status return identities, authored descriptions, ownership and tool/status metadata, not copies of full instruction bodies. Rules remain request-only projections; human CLI/Web inspection still shows full snapshots. Real SDK control-call and summarizer tests cover the distinction. Genuine dialogue or descriptions quoting rules are not stripped.
 
 ### Changed

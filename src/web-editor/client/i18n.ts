@@ -660,6 +660,18 @@ const en = {
 	"binding.toggleDetails": "Toggle details",
 	"binding.previewLoading": "Calculating effective preview…",
 	"binding.previewError": "Failed to load effective preview",
+	"binding.loadingModes": "Loading available instruction modes…",
+	"binding.loadModesError": "Failed to load instruction modes",
+	"binding.retryLoadModes": "Retry",
+	"binding.refreshModes": "Refresh modes",
+	"binding.refreshModesTitle": "Refresh available instruction modes from library",
+	"binding.refreshingModes": "Refreshing…",
+	"binding.noEligibleModesHint": "No instruction modes available in the library. Create or repair a mode in Modes, then refresh.",
+	"binding.noGlobalModesHint": "Global presets can only bind global instruction modes. No global modes available. Create or repair a global mode in Modes, then refresh.",
+	"binding.addDisabledEmpty": "No instruction modes available to bind",
+	"binding.addDisabledGlobalScope": "No global instruction modes available for global preset",
+	"binding.addDisabledLoading": "Instruction modes are loading…",
+	"binding.addDisabledError": "Cannot add binding while catalog failed to load",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1314,6 +1326,18 @@ const zhCN: Record<MessageKey, string> = {
 	"binding.toggleDetails": "展开/收起详情",
 	"binding.previewLoading": "正在计算生效预览…",
 	"binding.previewError": "加载生效预览失败",
+	"binding.loadingModes": "正在加载可用指令模式…",
+	"binding.loadModesError": "加载指令模式失败",
+	"binding.retryLoadModes": "重试",
+	"binding.refreshModes": "刷新模式",
+	"binding.refreshModesTitle": "从指令库重新加载可用指令模式",
+	"binding.refreshingModes": "正在刷新…",
+	"binding.noEligibleModesHint": "指令库中暂无可用指令模式。请到「指令模式」页面创建或修复后刷新。",
+	"binding.noGlobalModesHint": "全局预设只能绑定全局指令模式。当前没有可用的全局模式，请到「指令模式」页面创建或修复后刷新。",
+	"binding.addDisabledEmpty": "暂无可用指令模式可绑定",
+	"binding.addDisabledGlobalScope": "全局预设暂无可用的全局指令模式",
+	"binding.addDisabledLoading": "正在加载指令模式…",
+	"binding.addDisabledError": "模式加载失败，无法添加绑定",
 };
 
 const dictionaries: Record<EditorLocale, Record<MessageKey, string>> = { en, "zh-CN": zhCN };
