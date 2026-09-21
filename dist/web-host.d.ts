@@ -1,3 +1,4 @@
+import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
 import { type AgentProfileApplicationResult, type AgentProfileCurrentRuntime } from "./profile-service.ts";
@@ -6,6 +7,7 @@ import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorLocale, WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
 export interface WebHostRuntime {
+    readInstructionModes?(): readonly LoadedInstructionMode[];
     getStacks(): LoadedPromptStack[];
     getActive(): LoadedPromptStack | undefined;
     getActiveId(): string | undefined;

@@ -283,7 +283,15 @@ async function handleRequest(
 			sendJson(res, 400, { error: parsed.error });
 			return;
 		}
-		sendOperation(res, await host.saveStack(parts[2]!, parsed.stack));
+		const expectedSourceRevision = isPlainObject(body) && body.expectedSourceRevision !== undefined
+			? body.expectedSourceRevision
+			: undefined;
+		if (expectedSourceRevision !== undefined && typeof expectedSourceRevision !== "string") {
+			sendJson(res, 400, { error: "expectedSourceRevision must be a string when provided." });
+			return;
+		}
+		const hostNow = getCurrentHost ? getCurrentHost() : host;
+		sendOperation(res, await hostNow.saveStack(parts[2]!, parsed.stack, expectedSourceRevision));
 		return;
 	}
 
@@ -333,6 +341,25 @@ async function handleRequest(
 
 	if (req.method === "GET" && parts[1] === "context-diff" && parts.length === 2) {
 		sendOperation(res, host.getContextDiff());
+		return;
+	}
+
+	if (parts[1] === "instruction-modes" && (parts.length === 2 || parts.length === 3)) {
+		const action = req.method === "GET" ? (parts.length === 2 ? "list" : "get")
+			: req.method === "POST" && parts.length === 2 ? "create"
+			: req.method === "POST" && parts[2] === "effective" ? "effective"
+			: req.method === "PUT" && parts.length === 3 ? "save"
+			: req.method === "DELETE" && parts.length === 3 ? "delete" : undefined;
+		if (!action) { sendJson(res, 405, {ok: false, error: "Unsupported mode operation."}); return; }
+		const body = req.method === "GET" ? undefined : await readJsonBody(req);
+		const hostNow = getCurrentHost ? getCurrentHost() : host;
+		if (!hostNow.modeOperation) { sendJson(res, 503, {ok: false, error: "Instruction mode resources unavailable."}); return; }
+		if (action === "create" || action === "save" || action === "delete") {
+			try {
+				if (hostNow.isProjectTrusted?.() !== true) { sendJson(res, 403, {ok: false, error: "Project is not trusted."}); return; }
+			} catch { sendJson(res, 503, {ok: false, error: "Session replaced. Refresh before writing."}); return; }
+		}
+		sendOperation(res, hostNow.modeOperation(action, parts[2], body));
 		return;
 	}
 

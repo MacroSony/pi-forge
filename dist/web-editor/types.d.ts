@@ -1,3 +1,4 @@
+import type { InstructionMode, Diagnostic } from "../codecs/instruction-mode.ts";
 import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
@@ -19,7 +20,12 @@ export interface WebEditorStackSummary {
     diagnostics: PromptStackDiagnostic[];
 }
 export type WebEditorLocale = "en" | "zh-CN" | "auto";
+export type WebEditorModeOperation = "list" | "get" | "create" | "save" | "delete" | "effective";
+export type WebEditorModeResult = WebEditorOperationResult<WebEditorInstructionModeCollection | WebEditorInstructionModeEntry | WebEditorEffectiveInstructionModes | {
+    changed: string;
+}>;
 export interface WebEditorHost {
+    modeOperation?(action: WebEditorModeOperation, selector?: string, input?: unknown): WebEditorModeResult;
     cwd: string;
     isProjectTrusted?(): boolean;
     readInstructions?(): InstructionStateResult;
@@ -43,12 +49,13 @@ export interface WebEditorHost {
         stack: PromptStack;
         filePath: string;
         diagnostics: PromptStackDiagnostic[];
+        sourceRevision: string;
     } | undefined;
     createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
         stacks: WebEditorStackSummary[];
     }>>;
-    saveStack(id: string, stack: PromptStack): Promise<WebEditorOperationResult<{
+    saveStack(id: string, stack: PromptStack, expectedSourceRevision?: string): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
         stacks: WebEditorStackSummary[];
     }>>;
@@ -78,6 +85,28 @@ export interface WebEditorHost {
         activeId?: string;
         stacks: WebEditorStackSummary[];
     }>>;
+}
+export interface WebEditorInstructionModeEntry {
+    selector: string;
+    scope: "global" | "project";
+    filePath: string;
+    mode: InstructionMode;
+    sourceRevision: string;
+    diagnostics: Diagnostic[];
+}
+export interface WebEditorInstructionModeCollection {
+    trusted: boolean;
+    modes: WebEditorInstructionModeEntry[];
+}
+export interface WebEditorEffectiveInstructionModeBinding {
+    id: string;
+    ref: string;
+    modelCallable: boolean;
+    source: InstructionMode;
+    effective: InstructionMode;
+}
+export interface WebEditorEffectiveInstructionModes {
+    bindings: WebEditorEffectiveInstructionModeBinding[];
 }
 export interface WebEditorProfileEntry {
     profile: AgentProfile;

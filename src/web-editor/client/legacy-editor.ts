@@ -22,6 +22,7 @@ let cwd = "";
 let selectedId = "";
 let currentStack: EditorPromptStack | null = null;
 let currentFilePath = "";
+let currentSourceRevision = "";
 let selectedItemIndex = -1;
 let dirty = false;
 let dragIndex = -1;
@@ -101,9 +102,27 @@ const vueTabHost = createVueTabHost({
   applyStack: applyStackFromVue,
   copyText: copyTextToClipboard,
 });
+function getCurrentPresetSelector(): string {
+  if (!currentStack) return "";
+  const summary = stacks.find((s: any) => (s.selector || s.id) === selectedId || s.id === currentStack?.id);
+  if (summary?.selector) return summary.selector;
+  const scope = getCurrentPresetScope();
+  return `${scope}:${currentStack.id}`;
+}
+
+function getCurrentPresetScope(): "project" | "global" {
+  const summary = stacks.find((s: any) => (s.selector || s.id) === selectedId || s.id === currentStack?.id);
+  if (summary?.scope === "global" || summary?.scope === "project") return summary.scope;
+  if (selectedId.startsWith("global:")) return "global";
+  if (selectedId.startsWith("project:")) return "project";
+  return "project";
+}
+
 const vueMetadataHost = createVueMetadataHost({
   getStack: () => currentStack,
   getFilePath: () => currentFilePath,
+  getPresetSelector: () => getCurrentPresetSelector(),
+  getPresetScope: () => getCurrentPresetScope(),
   getCollapsed: () => metadataCollapsed,
   setCollapsed: (collapsed) => {
     metadataCollapsed = collapsed;
@@ -198,6 +217,7 @@ async function selectStack(id: any, options: any = {}) {
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
   currentFilePath = data.filePath || "";
+  currentSourceRevision = typeof data.sourceRevision === "string" ? data.sourceRevision : "";
   selectedItemIndex = loadedStack.items.length
     ? typeof options.selectedItemIndex === "number"
       ? Math.min(Math.max(options.selectedItemIndex, 0), loadedStack.items.length - 1)
@@ -586,7 +606,10 @@ async function saveStack() {
   const savedItemIndex = selectedItemIndex;
   const savedItemMode = vueItemHost.getMode();
   const stack = stackForSubmit();
-  const data = await api("/api/stacks/" + encodeURIComponent(selectedId), { method: "PUT", body: { stack } });
+  const data = await api("/api/stacks/" + encodeURIComponent(selectedId), {
+    method: "PUT",
+    body: { stack, expectedSourceRevision: currentSourceRevision },
+  });
   stacks = data.stacks || stacks;
   selectedId = data.stack?.selector || data.stack?.id || stack.id;
   currentStack = structuredClone(stack);
@@ -960,6 +983,7 @@ function renderEmpty() {
   vueTabHost.unmount();
   currentStack = null;
   selectedId = "";
+  currentSourceRevision = "";
   dirty = false;
 	notifyDraftChanged();
   activeTab = "items";

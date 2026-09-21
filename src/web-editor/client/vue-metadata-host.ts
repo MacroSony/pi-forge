@@ -7,6 +7,8 @@ import type { EditorPromptStack } from "./types.ts";
 export interface VueMetadataHostDependencies {
 	getStack(): EditorPromptStack | null;
 	getFilePath(): string;
+	getPresetSelector?(): string;
+	getPresetScope?(): "project" | "global";
 	getCollapsed(): boolean;
 	setCollapsed(collapsed: boolean): void;
 	markDirty(): void;
@@ -23,6 +25,8 @@ export function createVueMetadataHost(deps: VueMetadataHostDependencies) {
 		app = createApp(StackMetadataEditor, {
 			stack,
 			filePath: deps.getFilePath(),
+			presetSelector: deps.getPresetSelector?.() ?? (stack.id ? `project:${stack.id}` : ""),
+			presetScope: deps.getPresetScope?.() ?? (deps.getPresetSelector?.()?.startsWith("global:") ? "global" : "project"),
 			collapsed: deps.getCollapsed(),
 			onChange: deps.markDirty,
 			onToggle: (collapsed: boolean) => {

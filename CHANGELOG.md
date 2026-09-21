@@ -8,6 +8,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- **Mode library and binding editor.** New bilingual Modes surface edits scoped definitions; Preset metadata edits bindings, explicit Agent authorization and finite overrides with source/effective preview. Saves never activate modes. Mode update/delete require raw-source revisions; binding-bearing Preset saves reject stale source revisions, including externally added bindings. GET couples editable data and revisions from the same bytes. Existing unbound Preset clients retain the legacy save contract. These are stale-view checks, not cross-process locking.
+
+
 - **Live Preset instruction bindings and restricted Agent control.** `instructionModes` now validates/round-trips in Presets. `forge_system_update` has a fixed list/status/use/off schema, checks current trust/binding/modelCallable/tool policy per call, and cannot stop human-owned rules or disable its own control path. `/system-update bindings` and `use-bound <id>` expose human bound use; direct `use` remains unbound. Source edits do not mutate active snapshots; switching Presets retires old bound activations, not manual rules. No new package export or session migration. The library/binding editor follows in the next lane.
 
 

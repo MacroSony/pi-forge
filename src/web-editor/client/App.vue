@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
+import InstructionModeBrowser from "./components/InstructionModeBrowser.vue";
 import ProfileBrowser from "./components/ProfileBrowser.vue";
 import SessionInstructions from "./components/SessionInstructions.vue";
 import { startContributionTabs } from "./contrib-tab-host.ts";
@@ -14,7 +15,7 @@ let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let stopContextDiffTabs: (() => void) | undefined;
 let refreshLegacyLocale: (() => void) | undefined;
-const activeSurface = ref<"stacks" | "profiles" | "settings">("stacks");
+const activeSurface = ref<"stacks" | "profiles" | "modes" | "settings">("stacks");
 const hasContributionSettings = ref(false);
 const api = createEditorApi(new URLSearchParams(location.search).get("token") || "");
 type LocaleSetting = EditorLocale | "auto";
@@ -119,6 +120,15 @@ onUnmounted(() => {
 				@click="activeSurface = 'profiles'"
 			>
 				{{ t("nav.profiles") }}
+			</button>
+			<button
+				id="modesSurfaceBtn"
+				type="button"
+				:class="{ active: activeSurface === 'modes' }"
+				:aria-current="activeSurface === 'modes' ? 'page' : undefined"
+				@click="activeSurface = 'modes'"
+			>
+				{{ t("nav.modes") }}
 			</button>
 			<button
 				v-show="hasContributionSettings"
@@ -244,6 +254,7 @@ onUnmounted(() => {
 			</div>
 		</section>
 		<ProfileBrowser v-show="activeSurface === 'profiles'" :active="activeSurface === 'profiles'" />
+		<InstructionModeBrowser v-show="activeSurface === 'modes'" :active="activeSurface === 'modes'" />
 		<section v-show="activeSurface === 'settings'" id="settingsSurface" class="settings-surface">
 			<header class="settings-surface-head">
 				<div>

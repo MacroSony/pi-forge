@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { parsePromptStack } from "./codecs/prompt-stack.ts";
+import { instructionModeOperation } from "./instruction-web-host.ts";
+import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -54,6 +57,7 @@ import type {
 } from "./web-editor/index.ts";
 
 export interface WebHostRuntime {
+	readInstructionModes?(): readonly LoadedInstructionMode[];
 	getStacks(): LoadedPromptStack[];
 	getActive(): LoadedPromptStack | undefined;
 	getActiveId(): string | undefined;
@@ -85,6 +89,7 @@ export interface WebHostRuntime {
 export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost {
 	return {
 		cwd: ctx.cwd,
+		modeOperation: (action, selector, input) => instructionModeOperation(ctx, runtime, action, selector, input),
 		isProjectTrusted: () => ctx.isProjectTrusted(),
 		readInstructions: () => {
 			if (!runtime.readInstructions) {
@@ -124,10 +129,16 @@ export function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRunti
 		listResources: () => editorResources(runtime.getPolicyResources()),
 		getStack: (selector) => {
 			const loaded = resolveStack(runtime, selector);
-			return loaded ? { stack: loaded.stack, filePath: loaded.filePath, diagnostics: loaded.diagnostics } : undefined;
+			if (!loaded) return undefined;
+			// The revision and editable definition must describe the SAME bytes,
+			// not cached authorization paired with a newly-read hash.
+			const source = readFileSync(loaded.filePath);
+			const fresh = parsePromptStack(source.toString("utf8"), loaded.filePath, loaded.scope);
+			return { stack: fresh.stack, filePath: loaded.filePath, diagnostics: fresh.diagnostics,
+				sourceRevision: createHash("sha256").update(source).digest("hex") };
 		},
 		createStack: (stack, options) => createStackFile(ctx, runtime, stack, options),
-		saveStack: (id, stack) => saveStackFile(ctx, runtime, id, stack),
+		saveStack: (id, stack, expectedSourceRevision) => saveStackFile(ctx, runtime, id, stack, expectedSourceRevision),
 		deleteStack: (id) => deleteStackFile(ctx, runtime, id),
 		validateStack: (stack) => validatePromptStack(stack),
 		previewStack: (id, stack) => {
@@ -591,6 +602,7 @@ async function saveStackFile(
 	runtime: WebHostRuntime,
 	id: string,
 	stack: PromptStack,
+	expectedSourceRevision?: string,
 ): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>> {
 	if (!ctx.isProjectTrusted()) {
 		return { ok: false, status: 403, error: "Project is not trusted; refusing to save presets." };
@@ -602,6 +614,25 @@ async function saveStackFile(
 	if (idError) return { ok: false, status: 400, error: idError };
 	if (stack.id !== target.stack.id) {
 		return { ok: false, status: 400, error: "Preset id is immutable during save; fork the preset to create a new id." };
+	}
+
+	// Binding-bearing stacks use a stale-view check because their authorization
+	// can be revoked outside this editor. Keep the check immediately adjacent to
+	// the synchronous write; this is deliberately not a cross-process CAS.
+	let diskHasBindings = false;
+	try { diskHasBindings = JSON.parse(readFileSync(target.filePath, "utf8")).instructionModes !== undefined; }
+	catch { return { ok: false, status: 409, error: "Preset source unavailable or malformed; reload before saving." }; }
+	const requiresSourceRevision = diskHasBindings || target.stack.instructionModes !== undefined || stack.instructionModes !== undefined;
+	if (expectedSourceRevision !== undefined || requiresSourceRevision) {
+		let currentSourceRevision: string;
+		try {
+			currentSourceRevision = promptStackSourceRevision(target.filePath);
+		} catch {
+			return { ok: false, status: 409, error: "Preset source changed and could not be verified; reload before saving." };
+		}
+		if (expectedSourceRevision === undefined || expectedSourceRevision !== currentSourceRevision) {
+			return { ok: false, status: 409, error: "Preset source changed; reload before saving to avoid overwriting instruction bindings." };
+		}
 	}
 	const write = writePromptStackFile(ctx.cwd, target.scope, target.filePath, stack, { overwrite: true });
 	if (!write.ok) {
@@ -696,6 +727,10 @@ export function stackMutationStatus(reason: StackMutationFailureReason): number 
 		default:
 			return 500;
 	}
+}
+
+function promptStackSourceRevision(filePath: string): string {
+	return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
 function validateWebStackId(id: string): string | undefined {

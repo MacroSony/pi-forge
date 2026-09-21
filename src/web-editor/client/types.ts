@@ -1,4 +1,11 @@
 import type {
+	InstructionMode,
+	InstructionModeBinding,
+	InstructionModeOverrides,
+	InstructionToolPatch,
+	Diagnostic,
+} from "../../codecs/instruction-mode.ts";
+import type {
 	PromptRegexRule,
 	PromptResourcePolicy,
 	PromptStack,
@@ -16,6 +23,32 @@ import type {
 	WebEditorProfileValidation,
 	WebEditorStackSummary,
 } from "../types.ts";
+
+export interface InstructionModeEntry {
+	selector: string;
+	scope: "project" | "global";
+	mode: InstructionMode;
+	filePath: string;
+	sourceRevision?: string;
+	diagnostics?: Diagnostic[];
+}
+
+export interface InstructionModeCollection {
+	trusted: boolean;
+	modes: InstructionModeEntry[];
+}
+
+export interface EffectiveInstructionModeBinding {
+	id?: string;
+	ref: string;
+	modelCallable?: boolean;
+	source: InstructionMode;
+	effective: InstructionMode;
+}
+
+export interface EffectiveInstructionModesResponse {
+	bindings: EffectiveInstructionModeBinding[];
+}
 
 export type EditorJsonObject = Record<string, any>;
 export type EditorPromptStackItem = PromptStackItem & EditorJsonObject;
@@ -78,6 +111,11 @@ export interface EditorImportReport {
 }
 
 export type {
+	Diagnostic,
+	InstructionMode,
+	InstructionModeBinding,
+	InstructionModeOverrides,
+	InstructionToolPatch,
 	PromptRegexRule,
 	PromptResourcePolicy,
 	PromptStackDiagnostic,

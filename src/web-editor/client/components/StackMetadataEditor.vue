@@ -3,12 +3,21 @@ import { computed, ref } from "vue";
 
 import { t } from "../i18n.ts";
 import type { EditorPromptStack } from "../types.ts";
+import PresetBindingEditor from "./PresetBindingEditor.vue";
 
-const props = defineProps<{
-	stack: EditorPromptStack;
-	filePath: string;
-	collapsed: boolean;
-}>();
+const props = withDefaults(
+	defineProps<{
+		stack: EditorPromptStack;
+		filePath: string;
+		presetSelector?: string;
+		presetScope?: "project" | "global";
+		collapsed: boolean;
+	}>(),
+	{
+		presetSelector: "",
+		presetScope: "project",
+	},
+);
 const emit = defineEmits<{
 	change: [];
 	toggle: [collapsed: boolean];
@@ -100,6 +109,14 @@ function toggleMetadata(): void {
 		<div class="field wide">
 			<label>{{ t("metadata.file") }}</label>
 			<input :value="filePath" disabled>
+		</div>
+		<div class="field wide">
+			<PresetBindingEditor
+				:stack="stack"
+				:preset-selector="presetSelector"
+				:preset-scope="presetScope"
+				@change="emit('change')"
+			/>
 		</div>
 	</div>
 </template>

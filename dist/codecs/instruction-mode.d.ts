@@ -38,6 +38,8 @@ export interface Diagnostic {
     field?: string;
 }
 export interface LoadedInstructionMode {
+    /** Raw source revision from the same bytes as mode; never persisted into the resource. */
+    sourceRevision?: string;
     mode: InstructionMode;
     filePath: string;
     scope: ResourceScope;

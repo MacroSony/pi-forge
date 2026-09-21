@@ -62,6 +62,7 @@ export default function piForge(pi) {
         updateStatus: stackRuntime.updateStatus,
     });
     const webEditorRuntime = createWebEditorRuntime((ctx, promptOptions) => ({
+        readInstructionModes: () => workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes,
         readInstructions: () => instructions.readState(),
         mutateInstructions: (input) => instructions.mutateState(input),
         getStacks: () => [...workspace.snapshot().stacks],

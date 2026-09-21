@@ -1,5 +1,12 @@
 # Instruction modes (system-update)
 
+## Web resource editing
+
+The **Modes** surface supports explicit project/global creation, editing and deletion. Mode saves are separate from session activation. Edit bindings in **Preset metadata → Instruction mode bindings**: qualified references, binding IDs, opt-in Agent authorization, literal content replace/append and omitted/empty/custom tool overrides. Source/effective previews resolve through the same server resolver as activation. Existing active snapshots do not drift with source changes.
+
+Mode writes require the displayed raw-source revision. Binding-bearing Preset writes likewise reject stale saves (409); refresh and review rather than retrying an old draft automatically. The editor retains drafts on conflicts. These checks do not promise cross-process transaction isolation. Invalid sources remain diagnostic; symlink targets/directories cannot be mutated. Human activation is available via CLI; guarded in-page activation follows separately.
+
+
 ## Preset-authorized Agent controls
 
 Preset `instructionModes` bindings are now live. Use `modelCallable: true` only for modes the Agent may select; it is false by default. `forge_system_update` accepts only `{action: "list" | "status" | "use" | "off", id?: string}` (ID ≤128 chars). It rechecks current trust, Preset binding identity, authorization and tool policy for every call. Use takes a binding ID; off takes its own Agent-owned activation/binding ID. It cannot write arbitrary rules, reset, stop human-owned rules or activate a mode that removes its control tool.
