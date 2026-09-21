@@ -87,7 +87,7 @@ async function openPresetUi(harness: InstructionAgentHarness, cwd: string): Prom
 async function closePresetUi(harness: InstructionAgentHarness): Promise<void> {
 	const origLog = console.log;
 	console.log = () => {};
-	try { await harness.prompt("/preset ui stop"); } catch {} finally { console.log = origLog; }
+	try { await harness.prompt("/preset ui stop"); } catch {} finally { console.log = origLog; await harness.dispose(); }
 }
 
 function createFakeEnv(cwd: string) {
