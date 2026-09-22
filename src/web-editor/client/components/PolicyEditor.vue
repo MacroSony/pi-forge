@@ -18,6 +18,7 @@ interface PolicyRowState {
 
 const props = defineProps<{
 	stack: EditorPromptStack;
+	refreshResources?: () => void;
 	resources: {
 		tools: WebEditorPolicyResource[];
 		skills: WebEditorPolicyResource[];
@@ -372,6 +373,8 @@ defineExpose({
 					<div v-if="kind === 'tools'" class="resource-picker-picker-row">
 						<ToolPicker
 							data-permitted-tools-picker
+							:can-refresh="!!refreshResources"
+							@refresh="refreshResources?.()"
 							:button-label="t('policy.choosePermittedTools')"
 							:resources="props.resources.tools || []"
 							:model-value="selectedPatterns('tools')"
@@ -460,6 +463,8 @@ defineExpose({
 					</div>
 					<ToolPicker
 						data-default-tools-picker
+						:can-refresh="!!refreshResources"
+						@refresh="refreshResources?.()"
 						:button-label="t('policy.chooseDefaultTools')"
 						:resources="permittedToolsForDefaults"
 						v-model="customDefaultTools"
@@ -547,4 +552,6 @@ defineExpose({
 	font-weight: 600;
 	color: var(--text);
 }
+.custom-defaults-toggle-label { white-space: nowrap; flex: 0 0 auto; }
+.custom-defaults-toggle-label input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; padding: 0; margin: 0; flex: 0 0 14px; }
 </style>

@@ -610,6 +610,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 										:resources="catalogTools"
 										:loading="catalogLoading"
 										:error="catalogError"
+							can-refresh
+							@refresh="loadCatalog"
 										:model-value="binding.overrides?.tools?.add || []"
 										@update:model-value="(tools) => setToolsOverrideList(binding, 'add', tools)"
 									/>
@@ -643,6 +645,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 										:resources="catalogTools"
 										:loading="catalogLoading"
 										:error="catalogError"
+							can-refresh
+							@refresh="loadCatalog"
 										:model-value="binding.overrides?.tools?.remove || []"
 										@update:model-value="(tools) => setToolsOverrideList(binding, 'remove', tools)"
 									/>
@@ -1073,4 +1077,6 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	background: var(--pane-soft);
 	border-color: var(--accent);
 }
+.binding-checkbox-label { white-space: nowrap; }
+.binding-checkbox-label input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; padding: 0; margin: 0; flex: 0 0 14px; }
 </style>

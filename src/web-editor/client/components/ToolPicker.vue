@@ -20,6 +20,7 @@ const props = withDefaults(
 		title?: string;
 		disabled?: boolean;
 		allowManualEntry?: boolean;
+		canRefresh?: boolean;
 	}>(),
 	{
 		resources: () => [],
@@ -27,12 +28,14 @@ const props = withDefaults(
 		error: "",
 		disabled: false,
 		allowManualEntry: true,
+		canRefresh: false,
 	},
 );
 
 const emit = defineEmits<{
 	"update:modelValue": [selected: string[]];
 	"change": [selected: string[]];
+	"refresh": [];
 }>();
 
 const isOpen = ref(false);
@@ -218,6 +221,7 @@ function toggleOpen(): void {
 function close(): void {
 	isOpen.value = false;
 	searchQuery.value = "";
+	triggerRef.value?.focus();
 }
 
 function handleDocumentClick(event: MouseEvent): void {
@@ -294,6 +298,7 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 			<header class="tool-picker-header">
 					<span class="tool-picker-title">{{ title || t("tools.chooseTools") }}</span>
 					<span class="tool-picker-spacer"></span>
+					<button v-if="canRefresh" type="button" data-tool-picker-refresh :disabled="loading" @click="emit('refresh')">{{ t("tools.refresh") }}</button>
 					<button
 						type="button"
 						class="tool-picker-close-btn"
@@ -312,6 +317,7 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 						type="text"
 						class="tool-picker-search-input"
 						data-tool-picker-search
+						:aria-label="t('tools.searchPlaceholder')"
 						:placeholder="t('tools.searchPlaceholder')"
 					>
 					<button
@@ -359,7 +365,7 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 									:indeterminate.prop="isGroupPartialSelected(group)"
 									@change="onToggleGroup(group, ($event.target as HTMLInputElement).checked)"
 								>
-								<span class="tool-group-name">{{ group.label }}</span>
+								<span class="tool-group-name" :title="group.label">{{ group.label }}</span>
 							</label>
 							<span class="tool-group-count">
 								({{ groupSelectedCount(group) }}/{{ group.tools.length }})
@@ -447,13 +453,13 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 							type="button"
 							class="tool-picker-manual-btn"
 							data-tool-manual-btn
-							data-icon="+"
 							@click="addManualInput"
 						>
 							+
 						</button>
 					</div>
-					<div class="tool-picker-footer-bar">
+					<div class="tool-picker-batch-hint">{{ t("tools.batchHint") }}</div>
+				<div class="tool-picker-footer-bar">
 						<span class="tool-picker-footer-count" data-tool-footer-count>
 							{{ t("tools.selectedCount", { count: selectedCount }) }}
 						</span>
@@ -667,7 +673,14 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 
 .tool-group-name {
 	color: var(--text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 180px;
 }
+.tool-group-label-row { min-width: 0; }
+.tool-picker-batch-hint { font-size: 11px; color: var(--muted); }
+
 
 .tool-group-count {
 	font-size: 11px;
@@ -824,4 +837,10 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 	border-radius: 4px;
 	cursor: pointer;
 }
+
+/* The shared editor's text-input defaults must not stretch native checkboxes. */
+.tool-picker-root input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; padding: 0; margin: 0; flex: 0 0 14px; }
+.tool-item { min-width: 0; }
+.tool-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-item-source { display: none; } /* Complete provenance remains in the row tooltip. */
 </style>

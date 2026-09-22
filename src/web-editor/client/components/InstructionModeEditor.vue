@@ -298,6 +298,8 @@ async function saveDraft(): Promise<void> {
 							:resources="catalogTools"
 							:loading="catalogLoading"
 							:error="catalogError"
+							can-refresh
+							@refresh="loadCatalog"
 							v-model="draft.toolsAdd"
 						/>
 					</div>
@@ -333,6 +335,8 @@ async function saveDraft(): Promise<void> {
 							:resources="catalogTools"
 							:loading="catalogLoading"
 							:error="catalogError"
+							can-refresh
+							@refresh="loadCatalog"
 							v-model="draft.toolsRemove"
 						/>
 					</div>

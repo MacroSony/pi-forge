@@ -113,7 +113,7 @@ In the Preset editor, instruction mode bindings are configured under the dedicat
   - Arbitrary fields, scripts, or inheritance chains cannot be authored.
 - **Source vs. effective preview:** Side-by-side comparison displays source content/tools alongside effective content/tools, resolved through the same server resolver (`resolveInstructionModeBindings`) as runtime activation.
 - **Stale-save guard:** Preset saves enforce a `sourceRevision` check against disk bytes whenever bindings are present or modified, rejecting stale overwrites (409 Conflict), including when external edits added bindings.
-- **Preset save execution impact:** Saving an inactive Preset updates its definition and does not select or activate it. Crucially, saving the currently active Preset immediately reloads and synchronizes its live tool and mode policy in the session.
+- **Preset save execution impact:** Saving an inactive Preset updates its definition and does not select or activate it. Crucially, saving the currently active Preset immediately reloads and synchronizes its live tool and mode authorization policy in the session, without replacing frozen active mode snapshots.
 
 ## Web session instructions panel
 
@@ -174,7 +174,7 @@ When testing in a local developer harness with local build wiring already config
   - Prompt text and native System sections or fallback user updates apply at the *next model request* boundary.
   - Running tool batches mid-flight are never interrupted.
 - **Top-level policy precedence:** Modes cannot bypass Preset policies. If an active Preset denies a tool (`tools.deny`), a mode's `add` cannot enable it. Conflicting tool removals win globally across all active modes.
-- **Baseline recovery:** Forge tracks a pristine session baseline to restore tools cleanly when modes are deactivated. If a pristine baseline cannot be recovered, Forge does not guess that all registered tools were previously active.
+- **Baseline recovery:** Turning off a mode recomputes Preset defaults plus remaining active modes. When neither Preset tool selection nor mode overlays apply, Forge restores the reconciled session baseline, including preserved external changes. If a baseline cannot be recovered, Forge does not guess that all registered tools were previously active.
 - **Parent lifecycle and re-entry fences:** Parent safeguards maintain `disposed` flags, `lifecycleRevision` counters, and strict `sameContext` verification, preventing cross-session pollution or operations after session disposal.
 
 ## Previewing instruction updates
@@ -233,7 +233,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Preset policy custom default tools editor (`tools.initial?: string[]`) with concrete names, zero-default support (`[]`), and legacy fallback on omission.
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
-- Conservative provider-managed prompt cache warnings; native additional first time only, tool remove/readd still fallback; no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
+- Conservative provider-managed prompt cache warnings; compatible Codex additional-tool delivery can preserve prefixes for new names when retained history has no removals/redeclarations; tool removal/redeclaration falls back to the current full tool list (not guaranteed cache hits); no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
 - Full parent verification is pending across Node and browser test suites; parent updates summary after acceptance. Package version remains 0.5.4 with release version bump pending (0.5.5 or maybe 0.6); min SDK 0.87 unchanged (`>=0.87.0 <0.88.0`); release, git push, and host reload (`/reload`) are separate user-authorized actions.
 
 

@@ -13,6 +13,7 @@ import type {
 export interface VueTabHostDependencies {
 	getStack(): EditorPromptStack | null;
 	getResources(): WebEditorResources;
+	refreshResources?(): void;
 	getPresetSelector?(): string;
 	getPresetScope?(): "project" | "global";
 	markDirty(): void;
@@ -26,6 +27,7 @@ export interface VueTabHostDependencies {
 interface VueTabMountInput {
 	stack: EditorPromptStack;
 	resources: WebEditorResources;
+	refreshResources?: () => void;
 	presetSelector?: string;
 	presetScope?: "project" | "global";
 	onChange(error: string): void;
@@ -56,6 +58,7 @@ const vueTabMounts: Record<string, VueTabMountFactory> = {
 		props: {
 			stack: input.stack,
 			resources: input.resources,
+			refreshResources: input.refreshResources,
 			onChange: input.onChange,
 			onStatus: input.onStatus,
 		},
@@ -99,6 +102,7 @@ export function createVueTabHost(deps: VueTabHostDependencies) {
 		const input: VueTabMountInput = {
 			stack: draft,
 			resources: deps.getResources(),
+			refreshResources: deps.refreshResources,
 			presetSelector: deps.getPresetSelector?.(),
 			presetScope: deps.getPresetScope?.(),
 			onChange: (error: string) => {

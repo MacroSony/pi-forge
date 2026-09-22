@@ -100,6 +100,7 @@ const {
 const vueTabHost = createVueTabHost({
   getStack: () => currentStack,
   getResources: () => editorResources,
+  refreshResources: () => run(refreshStackRuntimeState),
   getPresetSelector: () => currentPresetSelector,
   getPresetScope: () => currentPresetScope,
   markDirty,

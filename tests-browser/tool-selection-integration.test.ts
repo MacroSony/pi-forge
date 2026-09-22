@@ -52,6 +52,7 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		assert.equal(await panel.locator('[data-tool-group="other"]').count(), 0, "real policy catalog retains SDK provenance through client normalization");
 		assert.ok(await panel.locator("[data-tool-group]").count() > 0);
 		await panel.locator("[data-tool-picker-search]").fill("fake_read");
+		assert.ok((await panel.locator('[data-tool-name="fake_read"]').boundingBox())!.width <= 20, "global text-input CSS does not stretch picker checkboxes");
 		await panel.locator('[data-tool-name="fake_read"]').check();
 		await panel.locator("[data-tool-picker-search]").fill("forge_system_update");
 		await panel.locator('[data-tool-name="forge_system_update"]').check();
@@ -81,6 +82,22 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		await panel.locator("[data-tool-picker-search]").fill("fake_write");
 		const group = panel.locator("[data-tool-group]").filter({ has: page.locator('[data-tool-name="fake_write"]') });
 		await group.locator("[data-tool-group-checkbox]").check();
+		const catalog = await page.evaluate(async () => {
+			const token = new URLSearchParams(location.search).get("token") || "";
+			return fetch("/api/resources", { headers: { "x-pi-forge-token": token } }).then(response => response.json());
+		});
+		catalog.tools.push({ ...catalog.tools.find((tool: any) => tool.name === "fake_write"), name: "fake_future", active: false, baselineActive: false });
+		await page.route("**/api/resources", route => route.fulfill({ json: catalog }));
+		await panel.locator("[data-tool-picker-refresh]").click();
+		await panel.locator("[data-tool-picker-search]").fill("fake_");
+		await panel.locator('[data-tool-name="fake_future"]').waitFor();
+		assert.equal(await panel.locator('[data-tool-name="fake_future"]').isChecked(), false, "refresh never auto-grants new package members");
+		assert.equal(await panel.locator('[data-tool-name="fake_write"]').isChecked(), true);
+		await page.unroute("**/api/resources");
+		if (process.env.PI_FORGE_UI_ARTIFACT_DIR) {
+			mkdirSync(process.env.PI_FORGE_UI_ARTIFACT_DIR, { recursive: true });
+			await page.screenshot({ path: join(process.env.PI_FORGE_UI_ARTIFACT_DIR, "tool-picker.png") });
+		}
 		const box = await panel.boundingBox();
 		assert.ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1281 && box.y + box.height <= 851, "picker fits the real app viewport");
 		await panel.locator("[data-tool-picker-close]").click();
@@ -91,6 +108,7 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		assert.equal(savedMode.tools.packages, undefined);
 		assert.ok(!harness.getActiveToolNames().includes("fake_write"));
 		await page.locator("#stacksSurfaceBtn").click();
+		if (process.env.PI_FORGE_UI_ARTIFACT_DIR) await page.screenshot({ path: join(process.env.PI_FORGE_UI_ARTIFACT_DIR, "default-tools.png") });
 		const sessionPanel = page.locator("[data-session-instructions]");
 		await sessionPanel.locator("[data-instructions-toggle]").click();
 		await sessionPanel.locator("[data-instructions-catalog-load]").click();

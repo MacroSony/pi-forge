@@ -17,6 +17,8 @@ export function createInspector(deps: InspectorDependencies) {
 	const selectedId = deps.getSelectedId;
 	let payloadSnapshot: WebEditorPayloadSnapshot = { status: "idle" };
 	let previewCopyTexts: string[] = [];
+	let payloadGeneration = 0;
+	let pendingPayloadMutations = 0;
 
 async function validateStack() {
   const stack = stackForSubmit();
@@ -27,35 +29,49 @@ async function validateStack() {
   setStatus(t("inspector.validationComplete"), "success");
 }
 
-async function refreshPayloadCapture(options: any = {}) {
+async function refreshPayloadCapture(options: EditorPayloadRefreshOptions = {}) {
+  if (pendingPayloadMutations) return false;
+  const generation = ++payloadGeneration;
   const previousCapturedAt = payloadSnapshot.status === "captured" ? payloadSnapshot.capture?.capturedAt : "";
   const data = await api("/api/payload");
+  if (generation !== payloadGeneration) return false;
   payloadSnapshot = data;
   updatePayloadButton();
   const nextCapturedAt = payloadSnapshot.status === "captured" ? payloadSnapshot.capture?.capturedAt : "";
   if (options.open || (options.autoOpen && nextCapturedAt && nextCapturedAt !== previousCapturedAt)) {
     renderPayloadInspector(payloadSnapshot);
   }
+  return true;
 }
 
 async function armPayloadCapture(showInspector: any = false) {
-  const data = await api("/api/payload/arm", { method: "POST" });
-  payloadSnapshot = data;
-  updatePayloadButton();
-  setStatus(t("inspector.armed"));
-  if (showInspector) renderPayloadInspector(payloadSnapshot);
+  const generation = ++payloadGeneration;
+  pendingPayloadMutations++;
+  try {
+    const data = await api("/api/payload/arm", { method: "POST" });
+    if (generation !== payloadGeneration) return;
+    payloadSnapshot = data;
+    updatePayloadButton();
+    setStatus(t("inspector.armed"));
+    if (showInspector) renderPayloadInspector(payloadSnapshot);
+  } finally { pendingPayloadMutations--; }
 }
 
 async function clearPayloadCapture() {
-  const data = await api("/api/payload", { method: "DELETE" });
-  payloadSnapshot = data;
-  updatePayloadButton();
-  hidePreview();
-  setStatus(t("inspector.cleared"), "success");
+  const generation = ++payloadGeneration;
+  pendingPayloadMutations++;
+  try {
+    const data = await api("/api/payload", { method: "DELETE" });
+    if (generation !== payloadGeneration) return;
+    payloadSnapshot = data;
+    updatePayloadButton();
+    hidePreview();
+    setStatus(t("inspector.cleared"), "success");
+  } finally { pendingPayloadMutations--; }
 }
 
 async function openPayloadCapture() {
-  await refreshPayloadCapture();
+  if (!await refreshPayloadCapture()) return;
   if (payloadSnapshot.status === "captured" || payloadSnapshot.status === "armed") {
     renderPayloadInspector(payloadSnapshot);
     return;

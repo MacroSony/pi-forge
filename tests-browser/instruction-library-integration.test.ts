@@ -104,6 +104,10 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		assert.equal(await bindingRow.locator("[data-binding-model-callable]").isChecked(), false);
 		await bindingRow.locator("[data-binding-model-callable]").check();
 		assert.equal(await bindingRow.locator("[data-binding-model-callable]").isChecked(), true);
+		if (process.env.PI_FORGE_UI_ARTIFACT_DIR) {
+			mkdirSync(process.env.PI_FORGE_UI_ARTIFACT_DIR, { recursive: true });
+			await page.screenshot({ path: join(process.env.PI_FORGE_UI_ARTIFACT_DIR, "bindings.png") });
+		}
 		await bindingRow.locator("[data-binding-advanced-toggle]").click();
 		await bindingRow.locator("[data-binding-content-mode]").selectOption("append");
 		await bindingRow.locator("[data-binding-append-content]").fill(" Appended audit note.");
