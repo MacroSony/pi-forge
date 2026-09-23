@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
+import { reactive, ref, useId, watch } from "vue";
 
 import { t } from "../i18n.ts";
 import type { FormSchema, FormValues, SchemaField } from "../../schema-form.ts";
@@ -251,13 +251,41 @@ function setRecordCellBoolean(field: SchemaField, row: RecordRow, rowField: Sche
 function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaField): string {
 	return errors.value[`${field.key}.${row.key}.${rowField.key}`] ?? "";
 }
+
+const baseId = useId();
+
+function fieldId(key: string): string {
+	return `${baseId}-fld-${encodeURIComponent(key)}`;
+}
+
+function errorId(key: string): string {
+	return `${baseId}-err-${encodeURIComponent(key)}`;
+}
+
+function recordRowFieldId(fieldKey: string, rowId: number, rowFieldKey: string): string {
+	return `${baseId}-rec-${encodeURIComponent(JSON.stringify([fieldKey, rowId, rowFieldKey]))}`;
+}
+
+function recordRowErrorId(fieldKey: string, rowId: number, rowFieldKey: string): string {
+	return `${baseId}-rec-err-${encodeURIComponent(JSON.stringify([fieldKey, rowId, rowFieldKey]))}`;
+}
+
+function recordRowKeyId(fieldKey: string, rowId: number): string {
+	return `${baseId}-rec-key-${encodeURIComponent(JSON.stringify([fieldKey, rowId]))}`;
+}
 </script>
 
 <template>
 	<div class="schema-form">
-		<div>
-			<div v-if="props.schema.title" class="tab-section-title">{{ props.schema.title }}</div>
-			<div v-if="props.schema.description" class="tab-section-meta">{{ props.schema.description }}</div>
+		<div class="schema-form-header">
+			<div>
+				<div v-if="props.schema.title" class="tab-section-title">{{ props.schema.title }}</div>
+				<div v-if="props.schema.description" class="tab-section-meta">{{ props.schema.description }}</div>
+			</div>
+			<div class="schema-autosave-note">
+				<span class="schema-autosave-dot">●</span>
+				{{ t("polish.surfaces.settingsAutosaveNotice") }}
+			</div>
 		</div>
 
 		<div
@@ -270,51 +298,64 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 
 			<!-- boolean -->
 			<div v-if="field.type === 'boolean'" class="field">
-				<label class="checkline">
+				<label class="checkline" :for="fieldId(field.key)">
 					<input
+						:id="fieldId(field.key)"
 						type="checkbox"
 						:data-field-input="field.key"
 						:checked="booleanValue(field)"
+						:aria-invalid="errors[field.key] ? 'true' : undefined"
+						:aria-describedby="errors[field.key] ? errorId(field.key) : undefined"
 						@change="setBoolean(field, $event)"
 					>
 					{{ field.label }}
 				</label>
+				<div :id="errorId(field.key)" v-if="errors[field.key]" class="schema-field-error" data-field-error role="alert">{{ errors[field.key] }}</div>
 			</div>
 
 			<!-- string -->
 			<div v-else-if="field.type === 'string'" class="field">
-				<label>{{ field.label }}</label>
+				<label :for="fieldId(field.key)">{{ field.label }}</label>
 				<input
+					:id="fieldId(field.key)"
 					type="text"
 					:data-field-input="field.key"
 					:value="stringValue(field)"
 					:placeholder="placeholder(field)"
+					:aria-invalid="errors[field.key] ? 'true' : undefined"
+					:aria-describedby="errors[field.key] ? errorId(field.key) : undefined"
 					@input="setString(field, $event)"
 				>
-				<div v-if="errors[field.key]" class="schema-field-error" data-field-error>{{ errors[field.key] }}</div>
+				<div :id="errorId(field.key)" v-if="errors[field.key]" class="schema-field-error" data-field-error role="alert">{{ errors[field.key] }}</div>
 			</div>
 
 			<!-- number -->
 			<div v-else-if="field.type === 'number'" class="field">
-				<label>{{ field.label }}</label>
+				<label :for="fieldId(field.key)">{{ field.label }}</label>
 				<input
+					:id="fieldId(field.key)"
 					type="number"
 					:data-field-input="field.key"
 					:value="numberValue(field)"
 					:min="field.min"
 					:max="field.max"
 					:placeholder="placeholder(field)"
+					:aria-invalid="errors[field.key] ? 'true' : undefined"
+					:aria-describedby="errors[field.key] ? errorId(field.key) : undefined"
 					@input="setNumber(field, $event)"
 				>
-				<div v-if="errors[field.key]" class="schema-field-error" data-field-error>{{ errors[field.key] }}</div>
+				<div :id="errorId(field.key)" v-if="errors[field.key]" class="schema-field-error" data-field-error role="alert">{{ errors[field.key] }}</div>
 			</div>
 
 			<!-- enum -->
 			<div v-else-if="field.type === 'enum'" class="field">
-				<label>{{ field.label }}</label>
+				<label :for="fieldId(field.key)">{{ field.label }}</label>
 				<select
+					:id="fieldId(field.key)"
 					:data-field-input="field.key"
 					:value="enumValue(field)"
+					:aria-invalid="errors[field.key] ? 'true' : undefined"
+					:aria-describedby="errors[field.key] ? errorId(field.key) : undefined"
 					@change="setEnum(field, $event)"
 				>
 					<option
@@ -323,7 +364,7 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						:value="option.value"
 					>{{ option.label || option.value }}</option>
 				</select>
-				<div v-if="errors[field.key]" class="schema-field-error" data-field-error>{{ errors[field.key] }}</div>
+				<div :id="errorId(field.key)" v-if="errors[field.key]" class="schema-field-error" data-field-error role="alert">{{ errors[field.key] }}</div>
 			</div>
 
 			<!-- record (per-profile table) -->
@@ -343,7 +384,7 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 					<span class="modal-spacer"></span>
 					<span class="modal-meta">{{ t("schema.oneEntryPer", { key: recordKeyLabel(field).toLowerCase() }) }}</span>
 				</div>
-				<div v-if="errors[field.key]" class="schema-field-error" data-field-error>{{ errors[field.key] }}</div>
+				<div :id="errorId(field.key)" v-if="errors[field.key]" class="schema-field-error" data-field-error role="alert">{{ errors[field.key] }}</div>
 				<div class="data-table" :data-record-table="field.key">
 					<div class="data-row header schema-record-row">
 						<div>{{ recordKeyLabel(field) }}</div>
@@ -362,7 +403,9 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						<div class="field">
 						<select
 							v-if="field.keyOptions !== undefined"
+							:id="recordRowKeyId(field.key, row.__id)"
 							:data-record-key="field.key"
+							:aria-label="recordKeyLabel(field)"
 							:value="row.key"
 							@change="setRecordRowKey(field, index, $event)"
 						>
@@ -375,7 +418,9 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 						<input
 							v-else
 							type="text"
+								:id="recordRowKeyId(field.key, row.__id)"
 								:data-record-key="field.key"
+								:aria-label="recordKeyLabel(field)"
 								:value="row.key"
 								:placeholder="field.keyPlaceholder"
 								@input="setRecordRowKey(field, index, $event)"
@@ -386,20 +431,26 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 							:key="rowField.key"
 							class="field"
 						>
-							<label v-if="rowField.type !== 'boolean'" class="record-cell-label">{{ rowField.label }}</label>
-							<label v-if="rowField.type === 'boolean'" class="checkline">
+							<label v-if="rowField.type !== 'boolean'" class="record-cell-label" :for="recordRowFieldId(field.key, row.__id, rowField.key)">{{ rowField.label }}</label>
+							<label v-if="rowField.type === 'boolean'" class="checkline" :for="recordRowFieldId(field.key, row.__id, rowField.key)">
 								<input
+									:id="recordRowFieldId(field.key, row.__id, rowField.key)"
 									type="checkbox"
 									:data-record-input="`${field.key}.${row.key}.${rowField.key}`"
 									:checked="recordCellBoolean(row, rowField)"
+									:aria-invalid="recordRowError(field, row, rowField) ? 'true' : undefined"
+									:aria-describedby="recordRowError(field, row, rowField) ? recordRowErrorId(field.key, row.__id, rowField.key) : undefined"
 									@change="setRecordCellBoolean(field, row, rowField, $event)"
 								>
 								{{ rowField.label }}
 							</label>
 							<select
 								v-else-if="rowField.type === 'enum'"
+								:id="recordRowFieldId(field.key, row.__id, rowField.key)"
 								:data-record-input="`${field.key}.${row.key}.${rowField.key}`"
 								:value="recordCellEnum(row, rowField)"
+								:aria-invalid="recordRowError(field, row, rowField) ? 'true' : undefined"
+								:aria-describedby="recordRowError(field, row, rowField) ? recordRowErrorId(field.key, row.__id, rowField.key) : undefined"
 								@change="setRecordCellEnum(field, row, rowField, $event)"
 							>
 								<option
@@ -410,25 +461,33 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 							</select>
 							<input
 								v-else-if="rowField.type === 'number'"
+								:id="recordRowFieldId(field.key, row.__id, rowField.key)"
 								type="number"
 								:data-record-input="`${field.key}.${row.key}.${rowField.key}`"
 								:value="recordCellText(row, rowField)"
 								:min="rowField.min"
 								:max="rowField.max"
+								:aria-invalid="recordRowError(field, row, rowField) ? 'true' : undefined"
+								:aria-describedby="recordRowError(field, row, rowField) ? recordRowErrorId(field.key, row.__id, rowField.key) : undefined"
 								@input="setRecordCellNumber(field, row, rowField, $event)"
 							>
 							<input
 								v-else
+								:id="recordRowFieldId(field.key, row.__id, rowField.key)"
 								type="text"
 								:data-record-input="`${field.key}.${row.key}.${rowField.key}`"
 								:value="recordCellText(row, rowField)"
 								:placeholder="rowField.placeholder"
+								:aria-invalid="recordRowError(field, row, rowField) ? 'true' : undefined"
+								:aria-describedby="recordRowError(field, row, rowField) ? recordRowErrorId(field.key, row.__id, rowField.key) : undefined"
 								@input="setRecordCellString(field, row, rowField, $event)"
 							>
 							<div
 								v-if="recordRowError(field, row, rowField)"
+								:id="recordRowErrorId(field.key, row.__id, rowField.key)"
 								class="schema-field-error"
 								data-field-error
+								role="alert"
 							>{{ recordRowError(field, row, rowField) }}</div>
 						</div>
 						<div>
@@ -454,6 +513,31 @@ function recordRowError(field: SchemaField, row: RecordRow, rowField: SchemaFiel
 </template>
 
 <style scoped>
+.schema-form-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
+}
+
+.schema-autosave-note {
+	font-size: 11px;
+	color: var(--muted);
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	white-space: nowrap;
+	padding: 2px 8px;
+	border-radius: 4px;
+	background: var(--pane-soft, rgba(0, 0, 0, 0.03));
+}
+
+.schema-autosave-dot {
+	color: var(--accent);
+	font-size: 8px;
+}
+
 .schema-record-row {
 	grid-template-columns: minmax(150px, 220px) repeat(auto-fit, minmax(150px, 1fr)) 92px;
 }

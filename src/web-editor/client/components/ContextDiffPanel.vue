@@ -23,18 +23,103 @@ import type { LegacyEditorDraft } from "../legacy-editor.ts";
 import { previewSections, previewSectionText, previewToTurnSnapshot } from "../preview-diff.ts";
 import PreviewSectionBody from "./PreviewSectionBody.vue";
 
+export type ReadingState = "side" | "wide" | "focus";
+export type DockMode = "compiled" | "draft" | "run";
+
 const props = defineProps<{
 	getStackDraft?: () => LegacyEditorDraft | undefined;
 	subscribeStackDraft?: (listener: () => void) => () => void;
 	onStatus?: (text: string, tone?: string) => void;
 	onExpandedChanged?: (expanded: boolean) => void;
+	onReadingChanged?: (mode: ReadingState) => void;
 }>();
 
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
-type DockMode = "compiled" | "draft" | "run";
 const mode = ref<DockMode>("compiled");
+const readingByTab = ref<Record<DockMode, ReadingState>>({
+	compiled: "side",
+	draft: "focus",
+	run: "focus",
+});
+
+const readingState = computed<ReadingState>({
+	get: () => readingByTab.value[mode.value],
+	set: (val: ReadingState) => {
+		readingByTab.value[mode.value] = val;
+		notifyReading(val);
+	},
+});
+
+function notifyReading(state: ReadingState): void {
+	props.onReadingChanged?.(state);
+	props.onExpandedChanged?.(state === "focus");
+}
+
+function cycleReadingState(): void {
+	const cycle: Record<ReadingState, ReadingState> = {
+		side: "wide",
+		wide: "focus",
+		focus: "side",
+	};
+	readingState.value = cycle[readingState.value];
+}
+
+function setMode(newMode: DockMode): void {
+	mode.value = newMode;
+	notifyReading(readingByTab.value[newMode]);
+}
+
+function returnToEditing(): void {
+	setMode("compiled");
+	readingState.value = "side";
+}
+
+const cycleActionTitle = computed(() => {
+	switch (readingState.value) {
+		case "side":
+			return t("polish.inspector.widen");
+		case "wide":
+			return t("polish.inspector.focus");
+		case "focus":
+			return t("polish.inspector.restore");
+	}
+});
+
+const cycleActionAria = computed(() => {
+	switch (readingState.value) {
+		case "side":
+			return t("polish.inspector.sideAria");
+		case "wide":
+			return t("polish.inspector.wideAria");
+		case "focus":
+			return t("polish.inspector.focusAria");
+	}
+});
+
+const currentTitle = computed(() => {
+	switch (mode.value) {
+		case "compiled":
+			return t("diff.compiledDraft");
+		case "draft":
+			return t("diff.draftTitle");
+		case "run":
+			return t("diff.runTitle");
+	}
+});
+
+const currentScopeBadge = computed(() => {
+	switch (mode.value) {
+		case "compiled":
+			return t("polish.inspector.draftScope");
+		case "draft":
+			return t("polish.inspector.draftDiffScope");
+		case "run":
+			return t("polish.inspector.runDiffScope");
+	}
+});
+
 const preview = ref<WebEditorPreview | null>(null);
 const savedPreview = ref<WebEditorPreview | null>(null);
 const previewText = ref("");
@@ -49,7 +134,6 @@ const contextDiffLoading = ref(false);
 const showUnchanged = ref(false);
 const diffLayout = ref<"unified" | "split">("unified");
 const lineContext = ref<"0" | "3" | "all">("3");
-const expanded = ref(false);
 
 let previewTimer: number | undefined;
 let pollTimer: number | undefined;
@@ -94,7 +178,6 @@ const previewGroups = computed<PreviewSectionGroup[]>(() => {
 
 		currentSourceKey = key;
 		currentGroup = {
-			// Identify the run without delimiter collisions with another source key.
 			key: JSON.stringify([key, section.id]),
 			label: historySourceLabel(section),
 			history: true,
@@ -130,6 +213,7 @@ const latestUsage = computed(() => contextDiff.value?.latest?.usage ?? null);
 
 onMounted(() => {
 	stopDraftSubscription = props.subscribeStackDraft?.(schedulePreviewRefresh);
+	notifyReading(readingState.value);
 	void refreshPreview();
 	void refreshContextDiff();
 	pollTimer = window.setInterval(() => {
@@ -146,11 +230,6 @@ onUnmounted(() => {
 	invalidateContextDiffRequest();
 	props.onExpandedChanged?.(false);
 });
-
-function toggleExpanded(): void {
-	expanded.value = !expanded.value;
-	props.onExpandedChanged?.(expanded.value);
-}
 
 function schedulePreviewRefresh(): void {
 	invalidatePreviewRequest();
@@ -398,17 +477,43 @@ function turnLabel(): string {
 </script>
 
 <template>
-	<div class="context-diff-dock">
+	<div class="context-diff-dock" :data-reading="readingState">
+		<!-- V4 Inspector Header with Arrow Handle Centered on Pane Boundary -->
+		<div class="context-diff-dock-header">
+			<button
+				id="focus-toggle"
+				data-reading-cycle="true"
+				type="button"
+				class="text-btn reading-arrow preview-reading-arrow context-diff-expand"
+				:aria-label="cycleActionAria"
+				:title="cycleActionTitle"
+				@click="cycleReadingState"
+			>
+				<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<path :d="readingState === 'focus' ? 'M7 4l6 6-6 6' : 'M13 4l-6 6 6 6'" />
+				</svg>
+			</button>
+			<strong class="inspect-title">{{ currentTitle }}</strong>
+			<span class="preview-state scope-badge">{{ currentScopeBadge }}</span>
+			<button
+				v-if="mode !== 'compiled'"
+				id="return-editing"
+				type="button"
+				class="text-btn return-editing-btn"
+				@click="returnToEditing"
+			>
+				{{ t("polish.inspector.returnEditing") }}
+			</button>
+		</div>
+
 		<div class="context-diff-mode-tabs" role="tablist" :aria-label="t('diff.dockAria')">
-			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="mode = 'compiled'">{{ t("tab.preview") }}</button>
-			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="mode = 'draft'">{{ t("diff.draftTab") }}</button>
-			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="mode = 'run'">{{ t("diff.runTab") }}</button>
-			<button type="button" class="context-diff-expand" :title="expanded ? t('diff.splitTitle') : t('diff.focusTitle')" @click="toggleExpanded">{{ expanded ? t("diff.split") : t("diff.focus") }}</button>
+			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="setMode('compiled')">{{ t("tab.preview") }}</button>
+			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="setMode('draft')">{{ t("diff.draftTab") }}</button>
+			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="setMode('run')">{{ t("diff.runTab") }}</button>
 		</div>
 
 		<div v-show="mode === 'compiled'" class="context-diff-compiled" role="tabpanel">
 			<div class="context-diff-panel-head">
-				<div class="context-diff-title">{{ t("diff.compiledDraft") }}</div>
 				<div class="context-diff-meta">
 					<span v-if="preview" :title="t('diff.compiledMeta', { tokens: preview.approxTokens, chars: preview.totalChars })">{{ t("diff.compiledMeta", { tokens: preview.approxTokens, chars: preview.totalChars }) }}</span>
 					<span v-else-if="previewLoading">{{ t("diff.refreshing") }}</span>
@@ -605,11 +710,13 @@ function turnLabel(): string {
 	</div>
 </template>
 
+<style src="../inspector-layout.css"></style>
+
 <style scoped>
-.context-diff-dock { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.context-diff-dock { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; position: static; }
 .context-diff-mode-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
-.context-diff-expand { margin-left: auto; }
-.context-diff-mode-tabs button.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.context-diff-mode-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 4px 2px; margin-right: 10px; font-size: 12px; }
+.context-diff-mode-tabs button.active { border-bottom-color: var(--accent); background: transparent; color: var(--accent); }
 .context-diff-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; }
 .context-diff-panel-head button { flex-shrink: 0; white-space: nowrap; }
 .context-diff-title { font-weight: 700; flex-shrink: 0; white-space: nowrap; }
@@ -627,7 +734,7 @@ function turnLabel(): string {
 .selected-tools-count.muted { color: var(--muted); }
 .selected-tools-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .selected-tools-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-.selected-tool-chip { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--code-bg); color: var(--code-text); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.selected-tool-chip { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--control-muted); color: var(--text); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .context-diff-diagnostics { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); font-size: 12px; }
 .context-diff-diagnostic.error { color: var(--error); }
 .context-diff-diagnostic.warning { color: var(--warning); }
@@ -719,5 +826,4 @@ function turnLabel(): string {
 .context-diff-empty.compact { padding: 12px; }
 .context-diff-error { padding: 10px; border: 1px solid var(--error); border-radius: 6px; background: var(--error-bg); }
 @media (max-width: 1100px) { .diff-view-controls { order: 3; margin-left: 0; width: 100%; } }
-@media (max-width: 900px) { .context-diff-expand { display: none; } }
 </style>

@@ -168,30 +168,36 @@ onUnmounted(() => {
 			<div v-once class="legacy-editor-root">
 		<header class="topbar">
 			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle presets sidebar" aria-label="Toggle presets sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
-			<div class="brand" data-i18n="chrome.brand">pi-forge preset editor</div>
-			<div id="status" class="status" data-i18n="chrome.loading">Loading</div>
-			<span id="dirtyBadge" class="dirty-badge" title="The current preset has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span>
-			<button id="reloadBtn" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
+			<div class="brand" aria-hidden="true" data-i18n="chrome.brand">pi-forge preset editor</div>
+			<div id="status" class="status">Loading</div>
 			<button id="disableBtn" data-icon="■" title="Disable the active preset" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable preset</button>
 		</header>
 		<div id="shell" class="shell">
 			<aside class="sidebar">
 				<div class="side-head">
-					<div class="side-title" data-i18n="nav.stacks">Presets</div>
-					<div id="cwd" class="cwd"></div>
-				</div>
-				<div id="stackList" class="stack-list"></div>
-			</aside>
-			<main class="main">
-				<div class="main-actions">
-					<div class="new-stack-control">
+					<div class="side-head-title">
+						<div class="side-title" data-i18n="nav.stacks">Presets</div>
+						<div id="cwd" class="cwd"></div>
+					</div>
+					<div class="library-actions">
 						<select id="stackCreateScope" aria-label="Preset scope" title="Scope for new presets, imports, and forks" data-i18n-title="chrome.scopeTitle" data-i18n-aria="chrome.scopeAria">
 							<option value="project" data-i18n="chrome.scopeProject">Project</option>
 							<option value="global" data-i18n="chrome.scopeGlobal">Global</option>
 						</select>
 						<button id="newStackBtn" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
+						<button id="reloadBtn" class="icon" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
 					</div>
-					<button id="activateBtn" class="primary" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
+				</div>
+				<div id="stackList" class="stack-list"></div>
+			</aside>
+			<main class="main">
+				<header id="resourceHeader" class="resource-header">
+					<div class="resource-identity">
+						<div class="resource-title-line"><h1 id="resourceName">Preset</h1><span id="dirtyBadge" class="dirty-badge" title="The current preset has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span><span id="runtimeBadge" class="runtime-badge"></span></div>
+						<div class="resource-subline"><code id="resourceSelector"></code><span id="resourceMode"></span></div>
+					</div>
+					<div class="main-actions">
+					<button id="activateBtn" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
 					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited preset JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
 					<button id="validateBtn" data-icon="!" title="Validate the edited preset without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
 					<span class="action-spacer"></span>
@@ -206,7 +212,9 @@ onUnmounted(() => {
 						</div>
 					</details>
 					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
-				</div>
+					</div>
+					<span class="resource-editing-label" data-i18n="polish.workspace.editing">Editing</span>
+				</header>
 				<section id="metadataPanel" class="metadata-panel">
 					<div id="metadataHost"></div>
 				</section>

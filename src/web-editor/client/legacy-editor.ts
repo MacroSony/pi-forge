@@ -7,7 +7,7 @@ import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import { activateEditorView, currentEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
-import { t } from "./i18n.ts";
+import { t, type MessageKey } from "./i18n.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
@@ -41,6 +41,9 @@ let stackLoadGeneration = 0;
 let resourceLoadGeneration = 0;
 let currentPresetScope: "project" | "global" = "project";
 let metadataCollapsed = true;
+let statusKey: MessageKey | undefined;
+let statusParams: Record<string, string | number> = {};
+let statusTone = "";
 let editorStarted = false;
 let editorIsActive = () => true;
 const draftListeners = new Set<() => void>();
@@ -141,30 +144,65 @@ const vueItemHost = createVueItemHost({
   setStatus,
 });
 
-function setStatus(text: string, tone: any = "") {
-  el("status").textContent = text;
-  el("status").style.color = tone === "error" ? "var(--error)" : tone === "success" ? "var(--success)" : "var(--muted)";
+function setStatus(text: string, tone: any = "", semantic?: { key: MessageKey; params?: Record<string, string | number> }) {
+  statusKey = semantic?.key;
+  statusParams = semantic?.params || {};
+  statusTone = tone;
+  const status = el("status");
+  status.textContent = text;
+  status.style.color = tone === "error" ? "var(--error)" : tone === "success" ? "var(--success)" : "var(--muted)";
+}
+
+function setSemanticStatus(key: MessageKey, params: Record<string, string | number> = {}, tone: any = "") {
+  setStatus(t(key, params), tone, { key, params });
+}
+
+function renderResourceHeader() {
+  const name = el("resourceName");
+  const selector = el("resourceSelector");
+  const mode = el("resourceMode");
+  const runtime = el("runtimeBadge");
+  if (!name || !selector || !mode || !runtime) return;
+  if (!currentStack) {
+    name.textContent = t("nav.stacks");
+    selector.textContent = "";
+    mode.textContent = "";
+    runtime.textContent = "";
+    runtime.className = "runtime-badge";
+    return;
+  }
+  const summary = stacks.find((stack: any) => (stack.selector || stack.id) === selectedId);
+  name.textContent = currentStack.name || currentStack.id || t("stackList.unnamed");
+  selector.textContent = currentPresetSelector;
+  mode.textContent = ` · ${currentStack.mode || "replace"}`;
+  runtime.textContent = summary?.active ? t("polish.workspace.runtimeActive") : t("polish.workspace.savedVersion");
+  runtime.className = "runtime-badge" + (summary?.active ? " active" : "");
 }
 
 function markDirty() {
   dirty = true;
   renderDirtyState();
-  setStatus(t("status.unsavedChanges"));
+  setSemanticStatus("status.unsavedChanges");
   notifyDraftChanged();
 }
 
 function renderDirtyState() {
   const badge = el("dirtyBadge");
-  if (!badge) return;
-  badge.classList.toggle("visible", dirty);
+  if (badge) badge.classList.toggle("visible", dirty);
+  renderResourceHeader();
   updateActionState();
 }
 
 function updateActionState() {
   const hasStack = !!currentStack;
-  for (const id of ["activateBtn", "saveBtn", "validateBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
+  for (const id of ["saveBtn", "validateBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
     const button = el(id);
     if (button) button.disabled = !hasStack;
+  }
+  const activateButton = el("activateBtn");
+  if (activateButton) {
+    activateButton.disabled = !hasStack || dirty;
+    activateButton.title = dirty ? t("polish.workspace.activateSavedFirst") : t("chrome.activateTitle");
   }
   const deleteItemButton = el("deleteItemBtn");
   if (deleteItemButton) deleteItemButton.disabled = !hasStack || selectedItemIndex < 0;
@@ -204,6 +242,7 @@ async function refreshStackRuntimeState() {
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
   renderStackList();
+  renderResourceHeader();
   updateActionState();
   if (activeTab !== "items") renderActiveTab();
 }
@@ -244,12 +283,13 @@ async function selectStack(id: any, options: any = {}) {
   vueItemHost.reset(options.itemMode);
   renderDirtyState();
   renderAll(data.diagnostics || []);
-  setStatus(t("status.loaded", { id: loadedStack.id }));
+  setSemanticStatus("status.loaded", { id: loadedStack.id });
   notifyDraftChanged();
 }
 
 function renderAll(diagnostics: any = []) {
   latestDiagnostics = diagnostics;
+  renderResourceHeader();
   renderStackList();
   renderSettings();
   renderActiveTab();
@@ -354,6 +394,8 @@ function renderSettings() {
 function renderItemList() {
   const list = el("itemList");
   list.innerHTML = "";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", t("chrome.items"));
   list.classList.toggle("drag-active", dragIndex !== -1);
   if (!currentStack) return;
   el("itemCount").textContent = t("itemList.total", { count: currentStack.items.length });
@@ -364,6 +406,10 @@ function renderItemList() {
     const row = document.createElement("div");
     row.className = "item-row kind-" + (item.kind === "slot" ? "slot" : "block") + (index === selectedItemIndex ? " selected" : "") + (item.enabled === false ? " disabled" : "");
     row.dataset.itemIndex = String(index);
+    row.tabIndex = 0;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(index === selectedItemIndex));
+    row.setAttribute("aria-label", displayItemName(item));
     row.draggable = true;
     const enabled = item.enabled !== false;
     const itemDiagnostics = diagnosticsByItem[item.id] || [];
@@ -382,11 +428,23 @@ function renderItemList() {
       '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + diagBadge + '</div>' +
       '<div class="item-meta">' + kindBadge + slotBadge + ' <span>id: ' + escapeHtml(item.id) + (item.role ? " · " + escapeHtml(item.role) : "") + '</span></div></div>' +
       '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>';
-    row.onclick = (event: any) => {
-      if (event.target?.classList?.contains("item-toggle")) return;
+    const selectRow = (event?: any) => {
+      if (event?.target?.classList?.contains("item-toggle")) return;
+      const retainFocus = event?.type === "keydown" && document.activeElement === row;
       selectedItemIndex = index;
       renderItemList();
       renderItemEditor();
+      if (retainFocus) {
+        const selectedRow = query<HTMLElement>(el("itemList"), `[data-item-index="${index}"]`);
+        selectedRow?.focus();
+      }
+    };
+    row.onclick = selectRow;
+    row.onkeydown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if ((event.target as HTMLElement)?.classList?.contains("item-toggle")) return;
+      event.preventDefault();
+      selectRow(event);
     };
     query<EditorElement>(row, ".item-toggle")!.onclick = (event: any) => {
       event.stopPropagation();
@@ -583,7 +641,7 @@ function applyStackFromVue(stack: EditorPromptStack) {
   vueTabHost.resetErrors();
   markDirty();
   renderAll(latestDiagnostics);
-  setStatus(t("status.appliedStack"), "success");
+  setSemanticStatus("status.appliedStack", {}, "success");
 }
 
 function addItem(kind: any) {
@@ -633,7 +691,7 @@ async function saveStack() {
   dirty = false;
   renderDirtyState();
   renderAll(data.stack?.diagnostics || []);
-  setStatus(t("status.saved", { id: selectedId }), "success");
+  setSemanticStatus("status.saved", { id: selectedId }, "success");
   await selectStack(selectedId, {
     keepDirty: true,
     selectedItemIndex: savedItemIndex,
@@ -665,7 +723,7 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
   renderDirtyState();
   await selectStack(selectedId, { keepDirty: true });
   const displayId = data.stack?.id || stack.id;
-  setStatus(t(actionLabel, { id: displayId }), "success");
+  setSemanticStatus(actionLabel, { id: displayId }, "success");
 }
 
 async function createNewStack() {
@@ -850,11 +908,11 @@ async function exportStackJson() {
   const json = JSON.stringify(stack, null, 2) + "\n";
   const downloaded = downloadTextFile(sanitizeStackId(stack.id || "preset") + ".json", json, "application/json");
   if (downloaded) {
-    setStatus(t("status.exported", { id: stack.id || "preset" }), "success");
+    setSemanticStatus("status.exported", { id: stack.id || "preset" }, "success");
     return;
   }
   await copyTextToClipboard(json);
-  setStatus(t("status.copiedJson", { id: stack.id || "preset" }), "success");
+  setSemanticStatus("status.copiedJson", { id: stack.id || "preset" }, "success");
 }
 
 function downloadTextFile(filename: any, text: any, type: any) {
@@ -904,11 +962,16 @@ function sanitizeStackId(value: any) {
 
 async function activateStack() {
   if (!currentStack) return;
+  if (dirty) {
+    setSemanticStatus("polish.workspace.activateSavedFirst", {}, "error");
+    updateActionState();
+    return;
+  }
   const data = await api("/api/stacks/" + encodeURIComponent(selectedId) + "/activate", { method: "POST" });
   stacks = data.stacks || stacks;
   renderStackList();
   await refreshStackRuntimeState();
-  setStatus(t("status.activated", { id: selectedId }), "success");
+  setSemanticStatus("status.activated", { id: selectedId }, "success");
 }
 
 async function disableStacks() {
@@ -916,7 +979,7 @@ async function disableStacks() {
   stacks = data.stacks || stacks;
   renderStackList();
   await refreshStackRuntimeState();
-  setStatus(t("status.stackDisabled"), "success");
+  setSemanticStatus("status.stackDisabled", {}, "success");
 }
 
 async function deleteCurrentStack() {
@@ -932,11 +995,11 @@ async function deleteCurrentStack() {
   const next = stacks.find((stack: any) => stack.active) || stacks[0];
   if (next) {
     await selectStack(next.selector || next.id, { keepDirty: true });
-    setStatus(t("status.deleted", { id: displayId }), "success");
+    setSemanticStatus("status.deleted", { id: displayId }, "success");
   } else {
     renderStackList();
     renderEmpty();
-    setStatus(t("status.deletedNoneRemain", { id: displayId }), "success");
+    setSemanticStatus("status.deletedNoneRemain", { id: displayId }, "success");
   }
 }
 
@@ -946,7 +1009,7 @@ async function reloadFromDisk() {
   stacks = data.stacks || [];
   renderStackList();
   await loadStacks(selectedId);
-  setStatus(t("status.reloaded"), "success");
+  setSemanticStatus("status.reloaded", {}, "success");
 }
 
 function stackForSubmit() {
@@ -999,7 +1062,9 @@ function renderDiagnostics(diagnostics: any) {
 }
 
 function renderEmpty() {
+  activateEditorView("items");
   vueTabHost.unmount();
+  vueItemHost.unmount();
   currentStack = null;
   selectedId = "";
   currentSourceRevision = "";
@@ -1012,6 +1077,7 @@ function renderEmpty() {
     button.classList.toggle("active", button.dataset.tab === activeTab);
   });
   el("workspace").style.display = "";
+  renderResourceHeader();
   el("metadataPanel").style.display = "none";
   vueMetadataHost.unmount();
   el("itemCount").textContent = "";
@@ -1030,7 +1096,7 @@ function renderEmpty() {
   renderDiagnostics([]);
   el("emptyNewStackBtn").onclick = () => run(createNewStack);
   el("emptyImportBtn").onclick = () => run(importStackJson);
-  setStatus(t("status.noStacks"));
+  setSemanticStatus("status.noStacks");
   updateActionState();
 }
 
@@ -1057,7 +1123,7 @@ function toggleSidebar() {
   sidebarCollapsed = !sidebarCollapsed;
   el("shell").classList.toggle("sidebar-collapsed", sidebarCollapsed);
   el("sidebarToggleBtn").title = sidebarCollapsed ? t("chrome.showSidebar") : t("chrome.hideSidebar");
-  setStatus(sidebarCollapsed ? t("status.sidebarHidden") : t("status.sidebarShown"));
+  setSemanticStatus(sidebarCollapsed ? "status.sidebarHidden" : "status.sidebarShown");
 }
 
 function handleStackModalClick(event: any) {
@@ -1133,6 +1199,7 @@ export function refreshLegacyEditorLocale(): void {
   el("sidebarToggleBtn").title = sidebarCollapsed ? t("chrome.showSidebar") : t("chrome.hideSidebar");
   if (currentStack) {
     renderAll(latestDiagnostics);
+    if (statusKey) setStatus(t(statusKey, statusParams), statusTone, { key: statusKey, params: statusParams });
   } else if (!stacks.length) {
     renderEmpty();
   } else {
@@ -1243,6 +1310,9 @@ function resetEditorState(): void {
   vueItemHost.reset();
   editorResources = { tools: [], skills: [], macros: [], slots: [] };
   latestDiagnostics = [];
+  statusKey = undefined;
+  statusParams = {};
+  statusTone = "";
   activeTab = "items";
   currentPresetSelector = "";
   currentPresetScope = "project";

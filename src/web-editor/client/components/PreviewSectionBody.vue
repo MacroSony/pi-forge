@@ -116,8 +116,8 @@ function onCopyNamed(value: string | null): void {
 .section-text {
 	margin: 0;
 	padding: 10px;
-	background: var(--code-bg);
-	color: var(--code-text);
+	background: var(--pane);
+	color: var(--text);
 	white-space: pre-wrap;
 	overflow: auto;
 	font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

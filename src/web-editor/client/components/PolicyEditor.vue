@@ -297,33 +297,215 @@ defineExpose({
 </script>
 
 <template>
-	<div class="tab-section">
-		<div class="tab-section-title">{{ t("policy.title") }}</div>
-		<div class="tab-section-meta">
-			{{ t("policy.meta") }}
+	<div class="tab-section policy-container">
+		<div class="policy-intro">
+			<div class="tab-section-title">{{ t("policy.title") }}</div>
+			<p class="tab-section-meta help">
+				{{ t("policy.meta") }}
+			</p>
 		</div>
-		<div id="policyRows" class="data-table">
-			<div class="data-row header policy-row">
-				<div>{{ t("policy.resource") }}</div>
-				<div>{{ t("policy.mode") }}</div>
-				<div>{{ t("policy.patterns") }}</div>
-				<div>{{ t("policy.available") }}</div>
-				<div>{{ t("policy.status") }}</div>
-			</div>
-			<div
-				v-for="{ kind } in policyKinds"
-				:key="kind"
-				class="data-row policy-row"
-				data-policy-row
-				:data-policy-kind="kind"
-				:data-policy-mode="rows[kind].mode"
-			>
-				<div>
-					<div class="policy-title">{{ kindLabel(kind) }}</div>
-					<div class="modal-meta">{{ kind }}</div>
+
+		<!-- Card 1: Permission Ceiling (Tools) -->
+		<div
+			class="data-row policy-card policy-row"
+			data-policy-row
+			data-policy-kind="tools"
+			:data-policy-mode="rows.tools.mode"
+		>
+			<div class="card-head">
+				<div class="card-title">
+					<h3>{{ t("polish.forms.policy.cardCeilingTitle") }}</h3>
+					<span class="policy-summary count" data-policy-summary>{{ policySummary("tools") }}</span>
 				</div>
-				<div class="field">
-					<label>{{ t("policy.mode") }}</label>
+				<div class="segmented policy-mode">
+					<button
+						v-for="option in [
+							{ value: 'none', labelKey: 'policy.unrestrictedOption' },
+							{ value: 'allow', labelKey: 'policy.allow' },
+							{ value: 'deny', labelKey: 'policy.deny' },
+						] as const"
+						:key="option.value"
+						type="button"
+						:data-policy-mode-option="option.value"
+						:class="{ active: rows.tools.mode === option.value, chosen: rows.tools.mode === option.value }"
+						@click="setMode('tools', option.value)"
+					>
+						{{ t(option.labelKey) }}
+					</button>
+				</div>
+			</div>
+			<p class="card-description">{{ t("polish.forms.policy.cardCeilingDesc") }}</p>
+
+			<div class="selection-row">
+				<div class="chips selected-patterns" data-selected-patterns>
+					<span v-if="!selectedPatterns('tools').length" class="selected-pattern-empty">
+						{{ t("policy.noPatterns") }}
+					</span>
+					<button
+						v-for="(pattern, index) in selectedPatterns('tools')"
+						v-else
+						:key="`${pattern}-${index}`"
+						type="button"
+						class="chip selected-pattern-chip"
+						:data-remove-policy-pattern="pattern"
+						:title="t('policy.removePatternTitle')"
+						@click="removePolicyPattern('tools', pattern)"
+					>
+						{{ pattern }}<span class="chip-remove" aria-hidden="true">×</span>
+					</button>
+				</div>
+				<div class="picker-action">
+					<ToolPicker
+						data-permitted-tools-picker
+						:can-refresh="!!refreshResources"
+						@refresh="refreshResources?.()"
+						:button-label="rows.tools.mode === 'deny' ? t('polish.forms.policy.chooseDeniedTools') : t('policy.choosePermittedTools')"
+						:resources="props.resources.tools || []"
+						:model-value="selectedPatterns('tools')"
+						@update:model-value="onPermittedToolsPickerChange"
+					/>
+				</div>
+			</div>
+
+			<details class="advanced">
+				<summary>
+					{{ t("polish.forms.policy.rawRulesAdvanced") }}
+					<span class="advanced-sub">{{ t("polish.forms.policy.rawRulesHint") }}</span>
+				</summary>
+				<div class="advanced-body">
+					<textarea
+						class="policy-patterns"
+						data-policy-patterns
+						spellcheck="false"
+						:placeholder="policyPatternPlaceholder(rows.tools.mode)"
+						:disabled="rows.tools.mode === 'none'"
+						:value="rows.tools.patternsText"
+						@input="onPatternsInput('tools', $event)"
+					></textarea>
+
+					<div v-if="props.resources.tools?.length" class="resource-picker">
+						<details class="resource-flat-list-details" :open="false">
+							<summary class="resource-flat-list-summary">{{ t("policy.allCatalogTools") }}</summary>
+							<input
+								class="resource-filter"
+								data-resource-filter
+								:list="'resource-options-tools'"
+								:placeholder="t('policy.filterPlaceholder')"
+								:value="rows.tools.filter"
+								@input="onFilterInput('tools', $event)"
+								@keydown.enter.prevent="addAutocompletePattern('tools')"
+							>
+							<datalist id="resource-options-tools" data-resource-options>
+								<option
+									v-for="resource in availableResources('tools', '')"
+									:key="resource.name"
+									:value="resource.name"
+								></option>
+							</datalist>
+							<div class="resource-list" data-resource-list>
+								<div v-if="!availableResources('tools').length" class="resource-empty">
+									{{ t("policy.noMatching", { kind: kindLabel('tools') }) }}
+								</div>
+								<button
+									v-for="resource in availableResources('tools')"
+									v-else
+									:key="resource.name"
+									type="button"
+									class="resource-chip"
+									:class="{ active: resource.active, hidden: resource.hidden }"
+									:data-resource-name="resource.name"
+									:title="resourceTitle(resource)"
+									@click="addPolicyPattern('tools', resource.name)"
+								>
+									{{ resourceLabel(resource) }}
+								</button>
+							</div>
+						</details>
+					</div>
+				</div>
+			</details>
+		</div>
+
+		<!-- Card 2: Custom Default Base Opt-in Card -->
+		<div class="policy-card custom-defaults-container" data-custom-defaults-section>
+			<div class="card-head custom-defaults-header">
+				<div class="card-title">
+					<h3>{{ t("polish.forms.policy.cardDefaultsTitle") }}</h3>
+					<span v-if="customDefaultsEnabled" class="count">
+						{{ customDefaultTools.length }}
+					</span>
+				</div>
+				<label class="switch-label custom-defaults-toggle-label">
+					<input
+						type="checkbox"
+						data-custom-defaults-toggle
+						:checked="customDefaultsEnabled"
+						@change="onToggleCustomDefaults"
+					>
+					<span class="custom-defaults-title">{{ t("policy.customDefaultsLabel") }}</span>
+				</label>
+			</div>
+			<p class="card-description custom-defaults-help" data-custom-defaults-help>
+				{{ t("polish.forms.policy.cardDefaultsDesc") }}
+			</p>
+
+			<div v-if="customDefaultsEnabled" class="custom-defaults-body" data-custom-defaults-body>
+				<div class="custom-defaults-note" data-save-never-activates>
+					{{ t("policy.saveNeverActivates") }}
+				</div>
+				<div class="selection-row custom-defaults-controls">
+					<div class="chips selected-patterns" data-selected-default-tools>
+						<span v-if="!customDefaultTools.length" class="selected-pattern-empty" data-no-default-tools>
+							{{ t("policy.noDefaultTools") }}
+						</span>
+						<button
+							v-for="name in customDefaultTools"
+							:key="name"
+							type="button"
+							class="chip selected-pattern-chip"
+							:data-remove-default-tool="name"
+							:title="t('policy.removePatternTitle')"
+							@click="removeDefaultTool(name)"
+						>
+							{{ name }}<span class="chip-remove" aria-hidden="true">×</span>
+						</button>
+					</div>
+					<div class="picker-action">
+						<ToolPicker
+							data-default-tools-picker
+							:can-refresh="!!refreshResources"
+							@refresh="refreshResources?.()"
+							:button-label="t('policy.chooseDefaultTools')"
+							:resources="permittedToolsForDefaults"
+							v-model="customDefaultTools"
+							@update:model-value="onCustomDefaultToolsChange"
+						/>
+					</div>
+				</div>
+			</div>
+
+			<details class="advanced">
+				<summary>{{ t("polish.forms.policy.defaultsRulesAdvanced") }}</summary>
+				<p class="advanced-desc">{{ t("polish.forms.policy.defaultsRulesHint") }}</p>
+			</details>
+		</div>
+
+		<!-- Skill listing visibility section (explicitly not sandbox/execution guard) -->
+		<details
+			class="skills policy-card data-row policy-row"
+			data-policy-row
+			data-policy-kind="skills"
+			:data-policy-mode="rows.skills.mode"
+		>
+			<summary class="skills-summary">
+				<span class="skills-title">{{ t("polish.forms.policy.skillsSectionTitle") }}</span>
+				<span class="skills-sub">{{ t("polish.forms.policy.skillsSectionHint") }}</span>
+			</summary>
+			<div class="skills-body">
+				<div class="card-head">
+					<div class="card-title">
+						<span class="policy-summary count" data-policy-summary>{{ policySummary("skills") }}</span>
+					</div>
 					<div class="segmented policy-mode">
 						<button
 							v-for="option in [
@@ -334,151 +516,275 @@ defineExpose({
 							:key="option.value"
 							type="button"
 							:data-policy-mode-option="option.value"
-							:class="{ active: rows[kind].mode === option.value }"
-							@click="setMode(kind, option.value)"
+							:class="{ active: rows.skills.mode === option.value, chosen: rows.skills.mode === option.value }"
+							@click="setMode('skills', option.value)"
 						>
 							{{ t(option.labelKey) }}
 						</button>
 					</div>
 				</div>
-				<div class="field">
-					<label>{{ t("policy.patterns") }}</label>
-					<div class="selected-patterns" data-selected-patterns>
-						<span v-if="!selectedPatterns(kind).length" class="selected-pattern-empty">{{ t("policy.noPatterns") }}</span>
+
+				<div class="selection-row">
+					<div class="chips selected-patterns" data-selected-patterns>
+						<span v-if="!selectedPatterns('skills').length" class="selected-pattern-empty">
+							{{ t("policy.noPatterns") }}
+						</span>
 						<button
-							v-for="(pattern, index) in selectedPatterns(kind)"
+							v-for="(pattern, index) in selectedPatterns('skills')"
 							v-else
 							:key="`${pattern}-${index}`"
 							type="button"
-							class="selected-pattern-chip"
+							class="chip selected-pattern-chip"
 							:data-remove-policy-pattern="pattern"
 							:title="t('policy.removePatternTitle')"
-							@click="removePolicyPattern(kind, pattern)"
+							@click="removePolicyPattern('skills', pattern)"
 						>
-							{{ pattern }}<span aria-hidden="true">x</span>
+							{{ pattern }}<span class="chip-remove" aria-hidden="true">×</span>
 						</button>
 					</div>
+				</div>
+
+				<div class="advanced-body">
 					<textarea
 						class="policy-patterns"
 						data-policy-patterns
 						spellcheck="false"
-						:placeholder="policyPatternPlaceholder(rows[kind].mode)"
-						:disabled="rows[kind].mode === 'none'"
-						:value="rows[kind].patternsText"
-						@input="onPatternsInput(kind, $event)"
+						:placeholder="policyPatternPlaceholder(rows.skills.mode)"
+						:disabled="rows.skills.mode === 'none'"
+						:value="rows.skills.patternsText"
+						@input="onPatternsInput('skills', $event)"
 					></textarea>
-				</div>
-				<div class="resource-picker">
-					<label>{{ t("policy.availableKind", { kind: kindLabel(kind) }) }}</label>
-					<div v-if="kind === 'tools'" class="resource-picker-picker-row">
-						<ToolPicker
-							data-permitted-tools-picker
-							:can-refresh="!!refreshResources"
-							@refresh="refreshResources?.()"
-							:button-label="t('policy.choosePermittedTools')"
-							:resources="props.resources.tools || []"
-							:model-value="selectedPatterns('tools')"
-							@update:model-value="onPermittedToolsPickerChange"
-						/>
-					</div>
-					<div v-if="props.resources[kind]?.length">
-						<details class="resource-flat-list-details" :open="kind !== 'tools'">
-							<summary class="resource-flat-list-summary">{{ t("policy.allCatalogTools") }}</summary>
-							<input
-								class="resource-filter"
-								data-resource-filter
-								:list="`resource-options-${kind}`"
-								:placeholder="t('policy.filterPlaceholder')"
-								:value="rows[kind].filter"
-								@input="onFilterInput(kind, $event)"
-								@keydown.enter.prevent="addAutocompletePattern(kind)"
-							>
-							<datalist :id="`resource-options-${kind}`" data-resource-options>
-								<option
-									v-for="resource in availableResources(kind, '')"
-									:key="resource.name"
-									:value="resource.name"
-								></option>
-							</datalist>
-							<div class="resource-list" data-resource-list>
-								<div v-if="!availableResources(kind).length" class="resource-empty">
-									{{ t("policy.noMatching", { kind: kindLabel(kind) }) }}
-								</div>
-								<button
-									v-for="resource in availableResources(kind)"
-									v-else
-									:key="resource.name"
-									type="button"
-									class="resource-chip"
-									:class="{ active: resource.active, hidden: resource.hidden }"
-									:data-resource-name="resource.name"
-									:title="resourceTitle(resource)"
-									@click="addPolicyPattern(kind, resource.name)"
-								>
-									{{ resourceLabel(resource) }}
-								</button>
-							</div>
-						</details>
-					</div>
-					<div v-else class="resource-empty">{{ t("policy.noRegistered", { kind: kindLabel(kind) }) }}</div>
-				</div>
-				<div class="policy-summary" data-policy-summary>{{ policySummary(kind) }}</div>
-			</div>
-		</div>
 
-		<div class="custom-defaults-container" data-custom-defaults-section>
-			<div class="custom-defaults-header">
-				<label class="custom-defaults-toggle-label">
-					<input
-						type="checkbox"
-						data-custom-defaults-toggle
-						:checked="customDefaultsEnabled"
-						@change="onToggleCustomDefaults"
-					>
-					<span class="custom-defaults-title">{{ t("policy.customDefaultsLabel") }}</span>
-				</label>
-				<span class="custom-defaults-help" data-custom-defaults-help>{{ t("policy.customDefaultsHelp") }}</span>
-			</div>
-			<div v-if="customDefaultsEnabled" class="custom-defaults-body" data-custom-defaults-body>
-				<div class="custom-defaults-note" data-save-never-activates>
-					{{ t("policy.saveNeverActivates") }}
-				</div>
-				<div class="custom-defaults-controls">
-					<label class="compact-label">{{ t("policy.defaultTools") }}:</label>
-					<div class="selected-patterns" data-selected-default-tools>
-						<span v-if="!customDefaultTools.length" class="selected-pattern-empty" data-no-default-tools>
-							{{ t("policy.noDefaultTools") }}
-						</span>
-						<button
-							v-for="name in customDefaultTools"
-							:key="name"
-							type="button"
-							class="selected-pattern-chip"
-							:data-remove-default-tool="name"
-							:title="t('policy.removePatternTitle')"
-							@click="removeDefaultTool(name)"
+					<div v-if="props.resources.skills?.length" class="resource-picker">
+						<input
+							class="resource-filter"
+							data-resource-filter
+							:list="'resource-options-skills'"
+							:placeholder="t('policy.filterPlaceholder')"
+							:value="rows.skills.filter"
+							@input="onFilterInput('skills', $event)"
+							@keydown.enter.prevent="addAutocompletePattern('skills')"
 						>
-							{{ name }}<span aria-hidden="true">x</span>
-						</button>
+						<datalist id="resource-options-skills" data-resource-options>
+							<option
+								v-for="resource in availableResources('skills', '')"
+								:key="resource.name"
+								:value="resource.name"
+							></option>
+						</datalist>
+						<div class="resource-list" data-resource-list>
+							<div v-if="!availableResources('skills').length" class="resource-empty">
+								{{ t("policy.noMatching", { kind: kindLabel('skills') }) }}
+							</div>
+							<button
+								v-for="resource in availableResources('skills')"
+								v-else
+								:key="resource.name"
+								type="button"
+								class="resource-chip"
+								:class="{ active: resource.active, hidden: resource.hidden }"
+								:data-resource-name="resource.name"
+								:title="resourceTitle(resource)"
+								@click="addPolicyPattern('skills', resource.name)"
+							>
+								{{ resourceLabel(resource) }}
+							</button>
+						</div>
 					</div>
-					<ToolPicker
-						data-default-tools-picker
-						:can-refresh="!!refreshResources"
-						@refresh="refreshResources?.()"
-						:button-label="t('policy.chooseDefaultTools')"
-						:resources="permittedToolsForDefaults"
-						v-model="customDefaultTools"
-						@update:model-value="onCustomDefaultToolsChange"
-					/>
+					<div v-else class="resource-empty">{{ t("policy.noRegistered", { kind: kindLabel('skills') }) }}</div>
 				</div>
 			</div>
-		</div>
+		</details>
 	</div>
 </template>
 
 <style scoped>
-.resource-picker-picker-row {
-	margin-bottom: 6px;
+.policy-container {
+	max-width: 1050px;
+	margin-inline: auto;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 8px 4px;
+}
+
+.policy-intro {
+	margin-bottom: 4px;
+}
+
+.policy-card {
+	display: block;
+	background: var(--pane, #ffffff);
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 8px;
+	padding: 16px 20px;
+	box-sizing: border-box;
+}
+
+.card-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 14px;
+	flex-wrap: wrap;
+}
+
+.card-title {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+
+.card-title h3 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 650;
+	color: var(--text, #20312f);
+}
+
+.count {
+	font-size: 11px;
+	color: var(--muted, #657774);
+	border: 1px solid var(--line, #dfe7e4);
+	padding: 1px 7px;
+	border-radius: 10px;
+	background: var(--bg, #f5f7f6);
+}
+
+.segmented {
+	display: flex;
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 6px;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.segmented button {
+	border: 0;
+	border-right: 1px solid var(--line, #dfe7e4);
+	border-radius: 0;
+	font-size: 12px;
+	padding: 5px 10px;
+	background: var(--pane, #fff);
+	color: var(--text, #20312f);
+	cursor: pointer;
+}
+
+.segmented button:last-child {
+	border-right: 0;
+}
+
+.segmented button.chosen,
+.segmented button.active {
+	background: var(--accent-bg, #edf6f2);
+	color: var(--accent, #176c5b);
+	font-weight: 600;
+}
+
+.card-description {
+	font-size: 12px;
+	color: var(--muted, #657774);
+	margin: 8px 0 14px;
+	line-height: 1.5;
+}
+
+.selection-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+	flex: 1;
+	min-width: 0;
+}
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	background: var(--accent-bg, #edf6f2);
+	border: 1px solid #d5e3db;
+	color: var(--accent, #176c5b);
+	border-radius: 5px;
+	padding: 3px 8px;
+	font: 12px ui-monospace, Consolas, monospace;
+	cursor: pointer;
+}
+
+.chip-remove {
+	color: var(--muted, #8a9b93);
+	font-family: system-ui, sans-serif;
+	font-size: 12px;
+}
+
+.chip:hover .chip-remove {
+	color: var(--text, #20312f);
+}
+
+.selected-pattern-empty {
+	font-size: 12px;
+	color: var(--muted, #657774);
+	font-style: italic;
+}
+
+.picker-action {
+	flex-shrink: 0;
+}
+
+.advanced {
+	border-top: 1px solid var(--line, #dfe7e4);
+	padding-top: 12px;
+	margin-top: 16px;
+	color: var(--muted, #657774);
+	font-size: 12px;
+}
+
+.advanced summary {
+	cursor: pointer;
+	user-select: none;
+	font-weight: 500;
+}
+
+.advanced-sub {
+	font-size: 11px;
+	margin-left: 8px;
+	color: var(--muted, #8a9690);
+}
+
+.advanced-desc {
+	margin: 8px 0 0;
+	font-size: 11px;
+	line-height: 1.6;
+}
+
+.advanced-body {
+	margin-top: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.policy-patterns {
+	width: 100%;
+	min-height: 80px;
+	border: 1px solid var(--line, #dfe7e4);
+	padding: 10px;
+	border-radius: 5px;
+	font: 12px/1.6 ui-monospace, monospace;
+	box-sizing: border-box;
+	background: var(--pane, #ffffff);
+	color: var(--text, #20312f);
+}
+
+.policy-patterns:disabled {
+	background: var(--bg, #f5f7f6);
+	cursor: not-allowed;
 }
 
 .resource-flat-list-details {
@@ -487,71 +793,108 @@ defineExpose({
 
 .resource-flat-list-summary {
 	font-size: 11px;
-	color: var(--muted);
+	color: var(--muted, #657774);
 	cursor: pointer;
-	margin-bottom: 4px;
 	user-select: none;
 }
 
-.resource-flat-list-summary:hover {
-	color: var(--text);
+.resource-filter {
+	width: 100%;
+	height: 32px;
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 4px;
+	padding: 4px 8px;
+	margin-top: 6px;
+	font-size: 12px;
+	box-sizing: border-box;
 }
 
-.custom-defaults-container {
-	margin-top: 16px;
-	padding: 12px 16px;
-	border: 1px solid var(--line);
-	border-radius: 6px;
-	background: var(--pane-soft);
-}
-
-.custom-defaults-header {
+.resource-list {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
-	gap: 12px;
+	gap: 6px;
+	margin-top: 8px;
+	max-height: 160px;
+	overflow-y: auto;
 }
 
-.custom-defaults-toggle-label {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	font-weight: 600;
-	font-size: 13px;
+.resource-chip {
+	font-size: 11px;
+	padding: 3px 6px;
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 4px;
+	background: var(--pane, #ffffff);
+	color: var(--text, #20312f);
 	cursor: pointer;
 }
 
-.custom-defaults-help {
+.resource-chip.active {
+	border-color: var(--accent, #176c5b);
+	font-weight: 600;
+}
+
+.resource-chip.hidden {
+	opacity: 0.6;
+}
+
+.resource-empty {
+	font-size: 11px;
+	color: var(--muted, #657774);
+	font-style: italic;
+	margin-top: 6px;
+}
+
+.switch-label input[type="checkbox"] { width: 14px; height: 14px; min-height: 14px; flex: 0 0 14px; }
+
+.switch-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
 	font-size: 12px;
-	color: var(--muted);
+	cursor: pointer;
+	user-select: none;
+}
+
+.custom-defaults-container {
+	border-color: var(--line, #dfe7e4);
 }
 
 .custom-defaults-body {
 	margin-top: 10px;
 	padding-top: 10px;
-	border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+	border-top: 1px solid color-mix(in srgb, var(--line, #dfe7e4) 60%, transparent);
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 10px;
 }
 
 .custom-defaults-note {
 	font-size: 11px;
-	color: var(--muted);
+	color: var(--muted, #657774);
 }
 
-.custom-defaults-controls {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 10px;
+.skills {
+	padding: 14px 20px;
 }
 
-.compact-label {
-	font-size: 12px;
+.skills-summary {
+	cursor: pointer;
+	user-select: none;
+	font-size: 13px;
 	font-weight: 600;
-	color: var(--text);
 }
-.custom-defaults-toggle-label { white-space: nowrap; flex: 0 0 auto; }
-.custom-defaults-toggle-label input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; padding: 0; margin: 0; flex: 0 0 14px; }
+
+.skills-sub {
+	font-size: 12px;
+	font-weight: normal;
+	color: var(--muted, #657774);
+	margin-left: 12px;
+}
+
+.skills-body {
+	margin-top: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
 </style>

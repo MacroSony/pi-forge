@@ -1,6 +1,6 @@
 import { createApp, type App } from "vue";
 
-import ContextDiffPanel from "./components/ContextDiffPanel.vue";
+import ContextDiffPanel, { type ReadingState } from "./components/ContextDiffPanel.vue";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
 
 export interface VueContextDiffHostDependencies {
@@ -8,6 +8,7 @@ export interface VueContextDiffHostDependencies {
 	subscribeStackDraft(listener: () => void): () => void;
 	setStatus(text: string, tone?: string): void;
 	setExpanded(expanded: boolean): void;
+	setReadingMode?(mode: ReadingState): void;
 }
 
 /** Mounts the self-contained preview/diff dock component into a root element. */
@@ -21,6 +22,10 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 			subscribeStackDraft: deps.subscribeStackDraft,
 			onStatus: deps.setStatus,
 			onExpandedChanged: deps.setExpanded,
+			onReadingChanged: (mode: ReadingState) => {
+				deps.setReadingMode?.(mode);
+				deps.setExpanded(mode === "focus");
+			},
 		});
 		app.mount(root);
 	}

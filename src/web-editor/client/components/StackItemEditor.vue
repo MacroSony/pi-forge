@@ -113,39 +113,48 @@ function optionHelp(key: string): string {
 
 <template>
 	<div class="item-form">
-		<div class="item-fields">
-			<div class="field">
-				<label>{{ t("item.kind") }}</label>
-				<select id="itemKind" :value="item.kind" @change="setKind(($event.target as HTMLSelectElement).value as 'block' | 'slot')">
-					<option value="block">block</option>
-					<option value="slot">slot</option>
-				</select>
-			</div>
-			<div class="field">
-				<label>{{ t("item.id") }}</label>
-				<input id="itemId" :value="item.id" @input="setString('id', ($event.target as HTMLInputElement).value, false, true)">
-			</div>
-			<div class="field">
-				<label>{{ t("item.name") }}</label>
-				<input id="itemName" :value="item.name || ''" @input="setString('name', ($event.target as HTMLInputElement).value, true, true)">
-			</div>
-			<div class="field">
-				<label>{{ t("item.role") }}</label>
+		<div class="item-primary-field field">
+			<label for="itemName">{{ t("item.name") }}</label>
+			<input id="itemName" :value="item.name || ''" @input="setString('name', ($event.target as HTMLInputElement).value, true, true)">
+		</div>
+
+		<div class="item-technical-row">
+			<span class="item-kind-badge" :class="item.kind">{{ item.kind }}</span>
+			<label class="role-control">
+				<span>{{ t("polish.workspace.itemRole") }}</span>
 				<select id="itemRole" :value="item.role || ''" @change="setString('role', ($event.target as HTMLSelectElement).value, true, true)">
 					<option v-for="role in roles" :key="role" :value="role">{{ role || t("item.roleNone") }}</option>
 				</select>
-			</div>
-			<div v-if="item.kind === 'slot'" class="field">
-				<label>{{ t("item.slot") }}</label>
-				<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
-					<option v-for="slot in slotOptions" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
-				</select>
-			</div>
+			</label>
+			<span v-if="item.kind === 'slot'" class="slot-inline-label">{{ item.slot || t("item.slot") }}</span>
+			<details id="itemProperties" class="item-properties">
+				<summary :title="t('polish.workspace.propertiesTitle')">{{ t("polish.workspace.properties") }}</summary>
+				<div class="item-properties-popover">
+					<div class="field">
+						<label>{{ t("polish.workspace.itemKind") }}</label>
+						<select id="itemKind" :value="item.kind" @change="setKind(($event.target as HTMLSelectElement).value as 'block' | 'slot')">
+							<option value="block">block</option>
+							<option value="slot">slot</option>
+						</select>
+					</div>
+					<div class="field">
+						<label>{{ t("polish.workspace.itemIdentifier") }}</label>
+						<input id="itemId" :value="item.id" @input="setString('id', ($event.target as HTMLInputElement).value, false, true)">
+					</div>
+					<div v-if="item.kind === 'slot'" class="field">
+						<label>{{ t("polish.workspace.slotControl") }}</label>
+						<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
+							<option v-for="slot in slotOptions" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
+						</select>
+					</div>
+				</div>
+			</details>
+			<span class="item-technical-id">{{ item.id }}</span>
 		</div>
 
 		<div class="item-body">
 			<div v-if="item.kind === 'block'" class="field content-field">
-				<label>{{ t("item.content") }}</label>
+				<label for="itemContent">{{ t("item.content") }}</label>
 				<textarea id="itemContent" :value="item.content || ''" @input="setString('content', ($event.target as HTMLTextAreaElement).value)"></textarea>
 			</div>
 

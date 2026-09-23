@@ -76,9 +76,20 @@ function bindingProblem(binding: InstructionModeBinding): string {
 }
 
 let isUnmounted = false;
+let previewGeneration = 0;
 let previewRequestId = 0;
 let modesRequestId = 0;
 let catalogRequestId = 0;
+
+function teardown(): void {
+	isUnmounted = true;
+	previewGeneration++;
+	previewRequestId++;
+	modesRequestId++;
+	catalogRequestId++;
+}
+
+onBeforeUnmount(teardown);
 
 async function loadCatalog(): Promise<void> {
 	const reqId = ++catalogRequestId;
@@ -97,10 +108,6 @@ async function loadCatalog(): Promise<void> {
 		}
 	}
 }
-
-onBeforeUnmount(() => {
-	isUnmounted = true;
-});
 
 function isQualifiedRef(ref: string): boolean {
 	return /^(project|global):[A-Za-z0-9][A-Za-z0-9._-]*$/.test(ref);
@@ -148,9 +155,24 @@ async function loadAvailableModes(): Promise<void> {
 
 const canAddBinding = computed(() => editableBindings.value && !modesLoading.value && !modesError.value && eligibleModes.value.length > 0);
 
+let previewCoalescePending = false;
+
+function scheduleEffectivePreview(): void {
+	if (isUnmounted) return;
+	if (previewCoalescePending) return;
+	previewCoalescePending = true;
+	const scheduledGen = previewGeneration;
+	queueMicrotask(() => {
+		previewCoalescePending = false;
+		if (!isUnmounted && scheduledGen === previewGeneration) {
+			void fetchEffectivePreview();
+		}
+	});
+}
+
 async function refreshModes(): Promise<void> {
 	await loadAvailableModes();
-	if (!isUnmounted && !modesError.value) await fetchEffectivePreview();
+	if (!isUnmounted && !modesError.value) scheduleEffectivePreview();
 }
 
 const addBindingTitle = computed(() => {
@@ -166,9 +188,11 @@ const addBindingTitle = computed(() => {
 });
 
 async function fetchEffectivePreview(): Promise<void> {
+	if (isUnmounted) return;
 	// Increment before the empty-list fast path too: removing the last
 	// binding must invalidate an older in-flight response.
 	const reqId = ++previewRequestId;
+	const currentGen = previewGeneration;
 	const bindings = props.stack.instructionModes;
 	if (!editableBindings.value) { effectiveBindings.value = []; previewLoading.value = false; previewError.value = t("binding.invalidRaw"); return; }
 	if (!bindings || bindings.length === 0) {
@@ -189,13 +213,13 @@ async function fetchEffectivePreview(): Promise<void> {
 				bindings,
 			},
 		});
-		if (reqId !== previewRequestId || isUnmounted) return;
+		if (reqId !== previewRequestId || isUnmounted || currentGen !== previewGeneration) return;
 		effectiveBindings.value = res.bindings || [];
 	} catch (err) {
-		if (reqId !== previewRequestId || isUnmounted) return;
+		if (reqId !== previewRequestId || isUnmounted || currentGen !== previewGeneration) return;
 		previewError.value = err instanceof Error ? err.message : String(err);
 	} finally {
-		if (reqId === previewRequestId && !isUnmounted) {
+		if (reqId === previewRequestId && !isUnmounted && currentGen === previewGeneration) {
 			previewLoading.value = false;
 		}
 	}
@@ -204,13 +228,13 @@ async function fetchEffectivePreview(): Promise<void> {
 onMounted(() => {
 	void loadAvailableModes();
 	void loadCatalog();
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 });
 
 watch(
 	() => props.stack.instructionModes,
 	() => {
-		void fetchEffectivePreview();
+		scheduleEffectivePreview();
 	},
 	{ deep: true },
 );
@@ -218,7 +242,7 @@ watch(
 watch(
 	() => props.presetSelector,
 	() => {
-		void fetchEffectivePreview();
+		scheduleEffectivePreview();
 	},
 );
 
@@ -239,14 +263,14 @@ function addBinding(): void {
 		modelCallable: false,
 	});
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function removeBinding(index: number): void {
 	const list = ensureBindingsArray();
 	list.splice(index, 1);
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function moveBinding(index: number, delta: number): void {
@@ -256,7 +280,7 @@ function moveBinding(index: number, delta: number): void {
 	const [item] = list.splice(index, 1);
 	list.splice(target, 0, item);
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function setBindingRef(binding: InstructionModeBinding, value: string): void {
@@ -265,7 +289,7 @@ function setBindingRef(binding: InstructionModeBinding, value: string): void {
 	if (!isQualifiedRef(value) || !eligibleModes.value.some((mode) => mode.selector === value)) return;
 	binding.ref = value;
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function setBindingId(binding: InstructionModeBinding, value: string): void {
@@ -276,7 +300,7 @@ function setBindingId(binding: InstructionModeBinding, value: string): void {
 		delete binding.id;
 	}
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function setModelCallable(binding: InstructionModeBinding, value: boolean): void {
@@ -286,7 +310,7 @@ function setModelCallable(binding: InstructionModeBinding, value: boolean): void
 		delete binding.modelCallable;
 	}
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function cleanOverrides(binding: InstructionModeBinding): void {
@@ -332,7 +356,7 @@ function setContentOverrideMode(binding: InstructionModeBinding, mode: "none" | 
 		}
 	}
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function setContentOverrideText(binding: InstructionModeBinding, text: string): void {
@@ -343,7 +367,7 @@ function setContentOverrideText(binding: InstructionModeBinding, text: string): 
 		binding.overrides.appendContent = text;
 	}
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function toolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove"): "omitted" | "explicitEmpty" | "custom" {
@@ -371,7 +395,7 @@ function setToolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "re
 		}
 	}
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function toolsListString(binding: InstructionModeBinding, kind: "add" | "remove"): string {
@@ -385,7 +409,7 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 	const parts = text.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
 	binding.overrides.tools[kind] = parts;
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 
 function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "remove", list: string[]): void {
@@ -393,7 +417,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	binding.overrides.tools = binding.overrides.tools || {};
 	binding.overrides.tools[kind] = [...list];
 	emit("change");
-	void fetchEffectivePreview();
+	scheduleEffectivePreview();
 }
 </script>
 

@@ -219,7 +219,10 @@ async function saveDraft(): Promise<void> {
 		<header class="mode-editor-head">
 			<div>
 				<div class="mode-editor-title">
-					{{ mode === "create" ? t("modes.editorTitleNew") : t("modes.editorTitleEdit", { selector: editTarget.selector || draft.id }) }}
+					{{ mode === "create" ? t("modes.editorTitleNew") : (draft.name || draft.id || editTarget.selector) }}
+				</div>
+				<div v-if="mode === 'edit'" class="mode-editor-selector">
+					<code>{{ editTarget.selector }}</code>
 				</div>
 				<div class="mode-save-note">
 					{{ t("modes.saveNeverActivates") }}
@@ -250,8 +253,8 @@ async function saveDraft(): Promise<void> {
 					>
 				</label>
 				<label class="mode-field">
-					<span>{{ t("chrome.scopeAria") }}</span>
-					<select id="modeScope" v-model="draft.scope" :disabled="mode === 'edit'">
+					<span>{{ t("polish.surfaces.modeScope") }}</span>
+					<select id="modeScope" v-model="draft.scope" :disabled="mode === 'edit'" :aria-label="t('polish.surfaces.modeScopeAria')">
 						<option value="project">{{ t("modes.scopeProject") }}</option>
 						<option value="global">{{ t("modes.scopeGlobal") }}</option>
 					</select>
@@ -382,14 +385,27 @@ async function saveDraft(): Promise<void> {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 12px 16px;
+	padding: 10px 16px;
 	border-bottom: 1px solid var(--line);
 	background: var(--pane-soft);
 }
 
 .mode-editor-title {
-	font-weight: 700;
+	font-weight: 600;
 	font-size: 15px;
+}
+
+.mode-editor-selector {
+	margin-top: 2px;
+}
+
+.mode-editor-selector code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	background: var(--code, rgba(0, 0, 0, 0.04));
+	padding: 1px 4px;
+	border-radius: 3px;
 }
 
 .mode-save-note {

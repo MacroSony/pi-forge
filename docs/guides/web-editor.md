@@ -50,6 +50,17 @@ The Preset workspace provides:
 - payload arming and redacted captured-payload inspection;
 - light and dark themes.
 
+### Editing and inspecting
+
+The resource header identifies the Preset being edited separately from whether it is active in the session. The global Session instructions strip stays available when switching surfaces. Expanding metadata, item properties, rule cards, or binding details does not modify the draft.
+
+- **Stack:** Name and content take priority. Role remains a compact, keyboard-accessible selector; Kind, ID, and slot selection are under **Properties**. Item rows support Enter/Space selection as well as dragging.
+- **Regex:** Scan rule names, enable state, stage/effect, and pattern excerpts before expanding a rule. Pattern/replacement editing stays prominent; frequency, targets, roles, and limits are under the rule's advanced section. Use the Preset's **Save** action to persist changes.
+- **Policy:** Permission ceiling and default tools are separate cards. Literal/wildcard editing is advanced; skill-list visibility has its own section and is not an execution sandbox.
+- **Preview / Draft diff / Run diff:** The boundary chevron cycles sidebar → wide → focused reading → sidebar without replacing the draft. Preview initially uses the sidebar; each diff initially uses focused reading, then remembers manual layout choices while mounted. Narrow windows stack work areas or show the inspector alone instead of squeezing four columns. Draft diff compares draft compilation with the saved definition; Run diff compares captured provider-turn snapshots. Inspection itself does not send a model request or establish cache hits.
+
+Contributed **Settings** pages auto-save and show pending/saving/saved/error feedback. Failed edits remain in the form. Presets, Modes, and Profiles retain their explicit save controls.
+
 ### Tool selection and default tools editor
 
 The **Policy** tab includes an opt-in default tools editor (`tools.initial?: string[]`):
@@ -70,6 +81,8 @@ Instruction mode bindings are managed in the peer **Mode bindings** tab:
 
 ### Save behavior and execution impact
 
+**Activate** uses the saved Preset. It is unavailable while the editor has unsaved changes; save explicitly first. Saving and activating are not a combined transaction.
+
 - **Modes surface:** Saving an instruction mode updates its library definition only and never activates it into the current session.
 - **Presets:** Saving an **inactive** Preset updates its configuration file without selecting or activating it. Crucially, saving the **currently active** Preset reloads and synchronizes its live tool and mode authorization policy immediately in the active session, without replacing frozen active mode snapshots.
 
@@ -79,7 +92,7 @@ Saves, imports, forks, and deletes reload Preset state into the current Pi sessi
 
 ### Compatibility
 
-Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). The codebase remains in the 0.5.4 tree with a release version bump decision pending (0.5.5 or maybe 0.6); host requirement remains Pi `>=0.87.0 <0.88.0`.
+Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). These changes target the upcoming 0.5.5 release; the development package version is still 0.5.4 pending release preparation. The host requirement remains Pi `>=0.87.0 <0.88.0`.
 
 ## Agent-profile workspace
 

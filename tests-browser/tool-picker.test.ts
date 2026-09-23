@@ -496,6 +496,7 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		assert.match(await page.locator("[data-no-default-tools]").textContent() ?? "", /0 default tools/);
 
 		// Edit allow/deny patterns: add bash_exec to patternsText
+		await page.locator('[data-policy-row][data-policy-kind="tools"] details.advanced > summary').click();
 		await page.locator('[data-policy-row][data-policy-kind="tools"] [data-policy-patterns]').fill("read\nwrite\nbash_exec");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
 		assert.deepEqual(currentStack.tools.allow, ["read", "write", "bash_exec"]);
@@ -613,7 +614,7 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 
 		// Chinese translations
 		assert.match(await page.locator("[data-custom-defaults-toggle]").locator("..").textContent() ?? "", /自定义默认激活工具/);
-		assert.match(await page.locator("[data-custom-defaults-help]").textContent() ?? "", /允许工具定义了允许调用的工具上限/);
+		assert.match(await page.locator("[data-custom-defaults-help]").textContent() ?? "", /许可工具定义了上限；这组工具是当前预设的基础/);
 		assert.match(await page.locator('[data-permitted-tools-picker] [data-tool-picker-trigger]').textContent() ?? "", /选择允许工具…/);
 
 		// Open picker in Chinese

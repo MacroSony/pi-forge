@@ -209,9 +209,14 @@ async function saveDraft(): Promise<void> {
 	<section class="profile-editor profile-card">
 		<header class="profile-editor-head">
 			<div>
-				<div class="profile-editor-title">{{ mode === "create" ? t("profileEditor.newTitle") : t("profileEditor.editTitle", { id: sourceSelector || source?.id || "" }) }}</div>
+				<div class="profile-editor-title">
+					{{ mode === "create" ? t("profileEditor.newTitle") : (draft.name || draft.id || sourceSelector || source?.id || "") }}
+				</div>
+				<div v-if="mode === 'edit'" class="profile-editor-selector">
+					<code>{{ sourceSelector || `${editScope}:${draft.id}` }}</code>
+				</div>
 				<div class="profile-editor-note">
-					{{ t("profileEditor.note", { scope: scopeLabel }) }}
+					{{ t("polish.surfaces.profileEditNotice") }}
 				</div>
 			</div>
 			<span class="action-spacer"></span>
@@ -241,10 +246,6 @@ async function saveDraft(): Promise<void> {
 				<span>{{ t("metadata.name") }}</span>
 				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
 			</label>
-			<label class="profile-field profile-field-wide">
-				<span>{{ t("metadata.description") }}</span>
-				<textarea id="profileDescription" v-model="draft.description" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
-			</label>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.modelProvider") }}</span>
 				<input id="profileModelProvider" v-model="draft.provider" list="profileProviderOptions" autocomplete="off">
@@ -267,30 +268,40 @@ async function saveDraft(): Promise<void> {
 					{{ t("profileEditor.authWarning") }}
 				</small>
 			</label>
-			<label class="profile-field">
+			<label class="profile-field profile-field-wide">
 				<span>{{ t("profileEditor.thinkingLevel") }}</span>
 				<select id="profileThinkingLevel" v-model="draft.thinkingLevel">
 					<option v-for="level in thinkingLevels" :key="level" :value="level">{{ level }}</option>
 				</select>
 			</label>
-			<label class="profile-field">
-				<span>{{ t("profiles.promptStack") }}</span>
-				<select id="profilePromptStack" v-model="draft.promptStack">
-					<option value="">{{ t("common.none") }}</option>
-					<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
-						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
-					</option>
-				</select>
-				<small v-if="editScope === 'global'">{{ t("profileEditor.globalStackHint") }}</small>
-				<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
-			</label>
-			<label class="profile-check profile-field-wide">
-				<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
-				<span>
-					<strong>{{ t("profileEditor.autoActivate") }}</strong>
-					<small>{{ t("profileEditor.autoActivateHint", { scope: editScope }) }}</small>
-				</span>
-			</label>
+
+			<details open class="profile-advanced-group profile-field-wide">
+				<summary class="profile-advanced-summary">{{ t("polish.surfaces.profileAdvanced") }}</summary>
+				<div class="profile-advanced-content">
+					<label class="profile-field profile-field-wide">
+						<span>{{ t("metadata.description") }}</span>
+						<textarea id="profileDescription" v-model="draft.description" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
+					</label>
+					<label class="profile-field profile-field-wide">
+						<span>{{ t("profiles.promptStack") }}</span>
+						<select id="profilePromptStack" v-model="draft.promptStack">
+							<option value="">{{ t("common.none") }}</option>
+							<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
+								{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
+							</option>
+						</select>
+						<small v-if="editScope === 'global'">{{ t("profileEditor.globalStackHint") }}</small>
+						<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
+					</label>
+					<label class="profile-check profile-field-wide">
+						<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
+						<span>
+							<strong>{{ t("profileEditor.autoActivate") }}</strong>
+							<small>{{ t("profileEditor.autoActivateHint", { scope: editScope }) }}</small>
+						</span>
+					</label>
+				</div>
+			</details>
 		</div>
 
 		<div v-if="status || error" id="profileEditorStatus" class="profile-editor-status" :class="{ error: !!error }">
@@ -332,8 +343,21 @@ async function saveDraft(): Promise<void> {
 }
 
 .profile-editor-title {
-	font-size: 18px;
-	font-weight: 700;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.profile-editor-selector {
+	margin-top: 2px;
+}
+
+.profile-editor-selector code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	background: var(--code, rgba(0, 0, 0, 0.04));
+	padding: 1px 4px;
+	border-radius: 3px;
 }
 
 .profile-editor-note,
@@ -341,6 +365,29 @@ async function saveDraft(): Promise<void> {
 	display: block;
 	color: var(--muted);
 	font-size: 12px;
+}
+
+.profile-advanced-group {
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--pane-soft);
+	padding: 10px 14px;
+}
+
+.profile-advanced-summary {
+	cursor: pointer;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ink);
+	user-select: none;
+	outline: none;
+}
+
+.profile-advanced-content {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 12px;
+	margin-top: 12px;
 }
 
 .profile-form {

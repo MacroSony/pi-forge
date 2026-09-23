@@ -1,0 +1,36 @@
+// Workspace-specific copy; consumed by the single editor i18n owner.
+export const workspaceEn = {
+	"polish.workspace.editing": "Editing",
+	"polish.workspace.runtimeActive": "Active in session",
+	"polish.workspace.savedVersion": "Not active in session",
+	"polish.workspace.unsaved": "Unsaved",
+	"polish.workspace.activateSavedFirst": "Save this preset before activating it.",
+	"polish.workspace.properties": "Properties",
+	"polish.workspace.propertiesTitle": "Show item properties",
+	"polish.workspace.itemKind": "Kind",
+	"polish.workspace.itemIdentifier": "Item ID",
+	"polish.workspace.itemRole": "Message role",
+	"polish.workspace.slotControl": "Runtime slot",
+	"polish.workspace.libraryReload": "Reload",
+	"polish.workspace.libraryReloadTitle": "Reload presets from disk",
+	"polish.workspace.sessionSummary": "Current session",
+	"polish.workspace.sessionDetails": "View session details",
+} as const;
+
+export const workspaceZhCN: Record<keyof typeof workspaceEn, string> = {
+	"polish.workspace.editing": "正在编辑",
+	"polish.workspace.runtimeActive": "会话中启用",
+	"polish.workspace.savedVersion": "未在会话中启用",
+	"polish.workspace.unsaved": "未保存",
+	"polish.workspace.activateSavedFirst": "请先保存此预设，再启用它。",
+	"polish.workspace.properties": "属性",
+	"polish.workspace.propertiesTitle": "显示条目属性",
+	"polish.workspace.itemKind": "类型",
+	"polish.workspace.itemIdentifier": "条目 ID",
+	"polish.workspace.itemRole": "消息角色",
+	"polish.workspace.slotControl": "运行时插槽",
+	"polish.workspace.libraryReload": "重新加载",
+	"polish.workspace.libraryReloadTitle": "从磁盘重新加载预设",
+	"polish.workspace.sessionSummary": "当前会话",
+	"polish.workspace.sessionDetails": "查看会话详情",
+};

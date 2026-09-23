@@ -9,6 +9,7 @@ import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
 import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
+import type { ReadingState } from "./components/ContextDiffPanel.vue";
 
 export interface ContextDiffTabsDependencies {
 	getStackDraft(): LegacyEditorDraft | undefined;
@@ -58,12 +59,22 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		}
 	}
 
+	function applyReadingMode(mode: ReadingState): void {
+		dockAreaElement.dataset.reading = mode;
+		dockAreaElement.classList.toggle("dock-side", mode === "side");
+		dockAreaElement.classList.toggle("dock-wide", mode === "wide");
+		dockAreaElement.classList.toggle("dock-focus", mode === "focus");
+	}
+
 	function clearActiveState(): void {
 		if (!active) return;
 		active = false;
 		setActiveButton(false);
 		dockAreaElement.classList.remove("dock-open");
+		dockAreaElement.classList.remove("dock-side");
+		dockAreaElement.classList.remove("dock-wide");
 		dockAreaElement.classList.remove("dock-focus");
+		delete dockAreaElement.dataset.reading;
 		panelElement.classList.remove("open");
 		contextDiffHost?.unmount();
 		contextDiffHost = undefined;
@@ -83,7 +94,14 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 				getStackDraft: deps.getStackDraft,
 				subscribeStackDraft: deps.subscribeStackDraft,
 				setStatus,
-				setExpanded: (expanded) => dockAreaElement.classList.toggle("dock-focus", expanded),
+				setExpanded: (expanded) => {
+					if (expanded) {
+						applyReadingMode("focus");
+					} else if (dockAreaElement.dataset.reading === "focus") {
+						applyReadingMode("side");
+					}
+				},
+				setReadingMode: (mode) => applyReadingMode(mode),
 			});
 		}
 		contextDiffHost.mount(panelElement);
@@ -106,6 +124,5 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		buttonElement.onclick = null;
 		stopEditorView();
 		clearActiveState();
-		dockAreaElement.classList.remove("dock-focus");
 	};
 }

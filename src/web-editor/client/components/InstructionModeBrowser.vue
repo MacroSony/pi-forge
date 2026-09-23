@@ -248,6 +248,7 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 				id="modeCreateScope"
 				v-model="createScope"
 				:title="t('modes.scopeTitle')"
+				:aria-label="t('polish.surfaces.modeScopeAria')"
 				:disabled="loading || actionBusy || !!editorMode"
 			>
 				<option value="project">{{ t("modes.scopeProject") }}</option>
@@ -329,7 +330,7 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 									{{ selected.scope === "global" ? t("chrome.scopeGlobal") : t("chrome.scopeProject") }}
 								</span>
 							</div>
-							<div class="mode-detail-selector">{{ selected.selector }}</div>
+							<div class="mode-detail-selector"><code>{{ selected.selector }}</code></div>
 							<div class="mode-save-note">{{ t("modes.saveNeverActivates") }}</div>
 						</div>
 						<span class="action-spacer"></span>
@@ -399,9 +400,11 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 	background: var(--bg);
 }
 
+.mode-toolbar select { width: auto; min-width: 110px; flex: none; }
+.mode-toolbar button { flex: none; white-space: nowrap; }
 .mode-toolbar {
-	min-height: 64px;
-	padding: 10px 12px;
+	min-height: 48px;
+	padding: 8px 16px;
 	border-bottom: 1px solid var(--line);
 	background: var(--pane);
 	display: flex;
@@ -410,8 +413,8 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 }
 
 .mode-heading {
-	font-size: 17px;
-	font-weight: 700;
+	font-size: 15px;
+	font-weight: 600;
 }
 
 .mode-subheading {
@@ -443,7 +446,7 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 	flex: 1;
 	min-height: 0;
 	display: grid;
-	grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+	grid-template-columns: minmax(212px, 260px) minmax(0, 1fr);
 }
 
 .mode-sidebar {
@@ -496,6 +499,7 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 
 .mode-row-meta {
 	font-size: 11px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	color: var(--muted);
 	margin-top: 2px;
 }
@@ -562,8 +566,16 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 
 .mode-detail-selector {
 	font-size: 12px;
-	color: var(--muted);
 	margin-top: 2px;
+}
+
+.mode-detail-selector code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	background: var(--code, rgba(0, 0, 0, 0.04));
+	padding: 1px 4px;
+	border-radius: 3px;
 }
 
 .mode-save-note {

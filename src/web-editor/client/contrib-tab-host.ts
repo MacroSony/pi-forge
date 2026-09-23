@@ -5,8 +5,9 @@
 // plugin Settings surface, and mounts SchemaForm.vue through the generic host.
 // It never reaches into stack-editor layout or imperative state.
 
+import { watch } from "vue";
 import { createEditorApi } from "./api.ts";
-import { t } from "./i18n.ts";
+import { editorLocale, t } from "./i18n.ts";
 import { cloneJson, type FormValues } from "../schema-form.ts";
 import { createVueSchemaFormHost } from "./vue-schema-form-host.ts";
 import {
@@ -26,10 +27,14 @@ interface ContributionSaveJob {
 	revision: number;
 }
 
-interface ContributionTabStatus {
-	text: string;
-	tone: string;
-}
+type TabSaveState =
+	| { phase: "ready" }
+	| { phase: "queued" }
+	| { phase: "saving" }
+	| { phase: "saved" }
+	| { phase: "retrying" }
+	| { phase: "error"; message: string }
+	| { phase: "custom"; text: string; tone?: string };
 
 export interface ContributionSettingsHostOptions {
 	onAvailabilityChanged?(available: boolean): void;
@@ -52,7 +57,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	const editRevisions = new Map<string, number>();
 	const savedRevisions = new Map<string, number>();
 	const draftValues = new Map<string, FormValues>();
-	const tabStatuses = new Map<string, ContributionTabStatus>();
+	const tabStates = new Map<string, TabSaveState>();
 	const queuedSaves = new Map<string, ContributionSaveJob>();
 	const saveOrder: string[] = [];
 	let saveInFlight = false;
@@ -62,27 +67,63 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	let schemaFormHost: ReturnType<typeof createVueSchemaFormHost> | undefined;
 
 	const statusElement = document.getElementById("settingsStatus");
+	// Strip static data-i18n loading marker immediately so translateDom
+	// does not overwrite dynamic settings status on locale switches.
+	statusElement?.removeAttribute("data-i18n");
+
 	// Tracks whether the settings status still shows its initial loading
 	// placeholder, without comparing localized text.
 	let placeholderActive = true;
 
-	function setStatus(text: string, tone = ""): void {
+	function renderTabState(state: TabSaveState): { text: string; tone: string } {
+		switch (state.phase) {
+			case "ready":
+				return { text: t("settings.ready"), tone: "" };
+			case "queued":
+				return { text: t("status.unsavedChanges"), tone: "" };
+			case "saving":
+				return { text: t("settings.saving"), tone: "" };
+			case "saved":
+				return { text: t("settings.saved"), tone: "success" };
+			case "retrying":
+				return { text: t("settings.providerRetrying"), tone: "" };
+			case "error":
+				return { text: state.message, tone: "error" };
+			case "custom":
+				return { text: state.text, tone: state.tone ?? "" };
+		}
+	}
+
+	function setStatus(text: string, tone = "", phase = ""): void {
 		if (!statusElement) return;
 		placeholderActive = false;
+		statusElement.removeAttribute("data-i18n");
 		statusElement.textContent = text;
 		statusElement.style.color = tone === "error" ? "var(--error)" : tone === "success" ? "var(--success)" : "var(--muted)";
+		statusElement.dataset.autosaveState = phase || (tone === "error" ? "error" : "ready");
+		statusElement.title = t("polish.surfaces.settingsAutosaveNotice");
+	}
+
+	function setTabSaveState(tabId: string, state: TabSaveState): void {
+		tabStates.set(tabId, state);
+		const { text, tone } = renderTabState(state);
+		if (activeTabId === tabId) setStatus(text, tone, state.phase);
 	}
 
 	function setTabStatus(tabId: string, text: string, tone = ""): void {
-		tabStatuses.set(tabId, { text, tone });
-		if (activeTabId === tabId) setStatus(text, tone);
+		setTabSaveState(tabId, { phase: "custom", text, tone });
 	}
 
 	function showActiveStatus(): void {
 		if (!activeTabId) return;
-		const status = tabStatuses.get(activeTabId);
-		if (status) setStatus(status.text, status.tone);
-		else setStatus(t("settings.ready"));
+		statusElement?.removeAttribute("data-i18n");
+		const state = tabStates.get(activeTabId);
+		if (state) {
+			const { text, tone } = renderTabState(state);
+			setStatus(text, tone, state.phase);
+		} else {
+			setStatus(t("settings.ready"), "", "ready");
+		}
 	}
 
 	function isDirty(tabId: string): boolean {
@@ -124,10 +165,10 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 				cancelQueuedSave(tab.tabId);
 				if (error) {
 					clearSaveTimer(tab.tabId);
-					setTabStatus(tab.tabId, error, "error");
+					setTabSaveState(tab.tabId, { phase: "error", message: error });
 					return;
 				}
-				setTabStatus(tab.tabId, t("status.unsavedChanges"));
+				setTabSaveState(tab.tabId, { phase: "queued" });
 				clearSaveTimer(tab.tabId);
 				const timer = window.setTimeout(() => {
 					saveTimers.delete(tab.tabId);
@@ -175,7 +216,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 	async function save(job: ContributionSaveJob): Promise<void> {
 		const { tabId, values, revision } = job;
 		const requestProviderKey = providerKey;
-		if (revision === editRevisions.get(tabId)) setTabStatus(tabId, t("settings.saving"));
+		if (revision === editRevisions.get(tabId)) setTabSaveState(tabId, { phase: "saving" });
 		try {
 			const response = await api<{ ok: true; values?: FormValues }>(`/api/contrib/${encodeURIComponent(tabId)}`, {
 				method: "PUT",
@@ -184,7 +225,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			if (disposed || revision !== editRevisions.get(tabId)) return;
 			if (requestProviderKey !== providerKey) {
 				const latestValues = draftValues.get(tabId) ?? values;
-				setTabStatus(tabId, t("settings.providerRetrying"));
+				setTabSaveState(tabId, { phase: "retrying" });
 				enqueueSave({ tabId, values: cloneJson(latestValues), revision });
 				return;
 			}
@@ -196,10 +237,10 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 			const current = descriptors.find((candidate) => candidate.tabId === tabId);
 			if (current) current.values = canonicalValues;
 			if (current && mountedValues && JSON.stringify(mountedValues) !== JSON.stringify(canonicalValues)) mount(current);
-			setTabStatus(tabId, t("settings.saved"), "success");
+			setTabSaveState(tabId, { phase: "saved" });
 		} catch (error) {
 			if (!disposed && revision === editRevisions.get(tabId)) {
-				setTabStatus(tabId, error instanceof Error ? error.message : String(error), "error");
+				setTabSaveState(tabId, { phase: "error", message: error instanceof Error ? error.message : String(error) });
 			}
 		}
 	}
@@ -242,7 +283,7 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 					if (providerChanged) {
 						editRevisions.set(descriptor.tabId, 0);
 						savedRevisions.set(descriptor.tabId, 0);
-						tabStatuses.delete(descriptor.tabId);
+						tabStates.delete(descriptor.tabId);
 					}
 				}
 			}
@@ -278,10 +319,17 @@ export function startContributionTabs(options: ContributionSettingsHostOptions =
 		void refresh();
 	}, 1000);
 
+	const stopLocaleWatch = watch(editorLocale, () => {
+		statusElement?.removeAttribute("data-i18n");
+		showActiveStatus();
+		renderButtons();
+	});
+
 	return () => {
 		disposed = true;
-		refreshSequence += 1;
+		stopLocaleWatch();
 		if (refreshTimer !== undefined) window.clearInterval(refreshTimer);
+		refreshSequence += 1;
 		for (const timer of saveTimers.values()) window.clearTimeout(timer);
 		saveTimers.clear();
 		queuedSaves.clear();

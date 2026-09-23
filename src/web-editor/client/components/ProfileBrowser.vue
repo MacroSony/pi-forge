@@ -234,13 +234,15 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 						@click="selectProfile(entry)"
 					>
 						<span class="profile-row-title">
-							{{ profileSelectorLabel(entry) }}
+							{{ entry.profile.name || entry.profile.id }}
 							<span class="badge scope" :class="entry.scope">{{ entry.scope === "global" ? t("chrome.scopeGlobal") : t("chrome.scopeProject") }}</span>
 							<span v-if="shadowRelationship(entry)" class="badge shadow">{{ shadowRelationship(entry) }}</span>
 							<span v-if="entry.profile.autoActivate" class="badge">{{ t("profiles.autoBadge") }}</span>
 							<span v-if="entry.lastApplied" class="badge">{{ t("profiles.lastAppliedBadge") }}</span>
 						</span>
-						<span class="profile-row-name">{{ entry.profile.name || t("stackList.unnamed") }}</span>
+						<span class="profile-row-selector">
+							<code>{{ profileSelectorLabel(entry) }}</code>
+						</span>
 						<span class="profile-row-meta">
 							{{ modelLabel(entry.profile.model) }} · {{ entry.profile.thinkingLevel }}
 						</span>
@@ -399,9 +401,11 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	background: var(--bg);
 }
 
+.profile-toolbar select { width: auto; min-width: 110px; flex: none; }
+.profile-toolbar button { flex: none; white-space: nowrap; }
 .profile-toolbar {
-	min-height: 64px;
-	padding: 10px 12px;
+	min-height: 48px;
+	padding: 8px 16px;
 	border-bottom: 1px solid var(--line);
 	background: var(--pane);
 	display: flex;
@@ -419,8 +423,8 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 }
 
 .profile-heading {
-	font-size: 17px;
-	font-weight: 700;
+	font-size: 15px;
+	font-weight: 600;
 }
 
 .profile-subheading {
@@ -432,7 +436,7 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	flex: 1;
 	min-height: 0;
 	display: grid;
-	grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+	grid-template-columns: minmax(212px, 260px) minmax(0, 1fr);
 }
 
 .profile-sidebar {
@@ -474,7 +478,25 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 }
 
 .profile-row-title {
-	font-weight: 700;
+	font-weight: 600;
+	font-size: 13px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.profile-row-selector {
+	margin-top: 2px;
+}
+
+.profile-row-selector code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	background: var(--code, rgba(0, 0, 0, 0.04));
+	padding: 1px 4px;
+	border-radius: 3px;
 }
 
 .profile-row-name,

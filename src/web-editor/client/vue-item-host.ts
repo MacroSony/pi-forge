@@ -1,4 +1,4 @@
-import { t } from "./i18n.ts";
+import { t, type MessageKey } from "./i18n.ts";
 import { createApp, type App } from "vue";
 
 import StackItemEditor from "./components/StackItemEditor.vue";
@@ -11,7 +11,7 @@ export interface VueItemHostDependencies {
 	roles: string[];
 	markDirty(): void;
 	renderItemList(): void;
-	setStatus(text: string, tone?: string): void;
+	setStatus(text: string, tone?: string, semantic?: { key: MessageKey; params?: Record<string, string | number> }): void;
 }
 
 export function createVueItemHost(deps: VueItemHostDependencies) {
@@ -39,7 +39,7 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 			},
 			onError: (message: string) => {
 				error = message;
-				if (message) deps.setStatus(t("error.invalidItemOptionsShort"), "error");
+				if (message) deps.setStatus(t("error.invalidItemOptionsShort"), "error", { key: "error.invalidItemOptionsShort" });
 			},
 			onMode: (next: "form" | "json") => {
 				mode = next;

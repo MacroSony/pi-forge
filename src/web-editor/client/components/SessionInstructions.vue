@@ -332,7 +332,7 @@ onUnmounted(() => {
 		:aria-label="t('instructions.title')"
 		data-session-instructions
 	>
-		<header class="instructions-header">
+		<header class="instructions-header" data-session-summary aria-live="polite">
 			<button
 				type="button"
 				class="instructions-toggle-btn"
@@ -346,7 +346,11 @@ onUnmounted(() => {
 				<span v-if="unavailable" class="instructions-badge unavailable-badge" data-instructions-unavailable>{{ t("instructions.unavailable") }}</span>
 				<span v-else-if="state" class="instructions-badge active-badge" data-instructions-active-badge>{{ t(activeCount === 1 ? "instructions.activeCountOne" : "instructions.activeCount", { count: activeCount }) }}</span>
 				<span v-if="state?.delivery" class="instructions-badge delivery-badge" :class="state.delivery" data-instructions-delivery-badge>{{ deliveryLabel(state.delivery) }}</span>
+				<span v-if="state" class="session-context" :title="`${state.guard.sessionId}${state.guard.leafId ? ` · ${state.guard.leafId}` : ''}`" data-session-context>
+					{{ t("instructions.session") }} {{ shortId(state.guard.sessionId) }}<template v-if="state.guard.leafId"> · {{ shortId(state.guard.leafId) }}</template>
+				</span>
 				<span v-if="state?.problem" class="instructions-badge problem-badge" :title="state.problem" data-instructions-problem-badge>⚠</span>
+				<span v-if="errorMessage" class="instructions-badge error-badge" :title="errorMessage" data-instructions-error-badge>⚠</span>
 				<span v-if="state?.restoring" class="instructions-badge restoring-badge" data-instructions-restoring-badge>⟳</span>
 				<span v-if="state && !state.trusted" class="instructions-badge untrusted-badge" data-instructions-untrusted-badge>{{ t("instructions.untrustedBadge") }}</span>
 				<span v-if="isStale" class="instructions-badge stale-badge" data-instructions-stale-badge>{{ t("instructions.staleBadge") }}</span>
@@ -671,6 +675,20 @@ onUnmounted(() => {
 	border-radius: 10px;
 	background: var(--pane-soft);
 	border: 1px solid var(--line);
+}
+
+.session-context {
+	color: var(--muted);
+	font-size: 11px;
+	font-weight: 400;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	white-space: nowrap;
+}
+
+.error-badge {
+	background: color-mix(in srgb, var(--error, #ef4444) 15%, var(--pane));
+	border-color: var(--error, #ef4444);
+	color: var(--error, #ef4444);
 }
 
 .active-badge {

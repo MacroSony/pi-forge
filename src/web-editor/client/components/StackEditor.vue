@@ -279,171 +279,240 @@ defineExpose({
 </script>
 
 <template>
-	<div class="tab-section">
-		<div class="tab-section-title">{{ t("stackTab.contextOptions") }}</div>
-		<div class="tab-section-meta">
-			{{ t("stackTab.contextMeta") }}
-		</div>
-		<label
-			class="checkline"
-			:title="t('stackTab.allowDuplicateTitle')"
-		>
-			<input
-				id="allowDuplicateChatHistoryInput"
-				type="checkbox"
-				:checked="props.stack.context?.allowDuplicateChatHistory === true"
-				@change="setAllowDuplicateChatHistory"
-			>
-			{{ t("stackTab.allowDuplicate") }}
-		</label>
-		<div class="option-note">
-			{{ t("stackTab.allowDuplicateNote") }}
-		</div>
-		<label
-			class="checkline"
-			:title="t('stackTab.mergeTitle')"
-		>
-			<input
-				id="mergeConsecutiveRolesInput"
-				type="checkbox"
-				:checked="props.stack.context?.mergeConsecutiveRoles === true"
-				@change="setMergeConsecutiveRoles"
-			>
-			{{ t("stackTab.merge") }}
-		</label>
-		<div class="option-note">
-			{{ t("stackTab.mergeNote") }}
-		</div>
-		<template v-if="mergeEnabled">
+	<div class="advanced-container">
+		<!-- Section 1: Context options -->
+		<div class="advanced-card tab-section">
+			<div class="tab-section-title">{{ t("stackTab.contextOptions") }}</div>
+			<div class="tab-section-meta">
+				{{ t("stackTab.contextMeta") }}
+			</div>
 			<label
 				class="checkline"
-				:title="t('stackTab.customMergeSeparatorTitle')"
+				:title="t('stackTab.allowDuplicateTitle')"
 			>
 				<input
-					id="customMergeSeparatorInput"
+					id="allowDuplicateChatHistoryInput"
 					type="checkbox"
-					:checked="customSeparatorEnabled"
-					@change="setCustomMergeSeparator"
+					:checked="props.stack.context?.allowDuplicateChatHistory === true"
+					@change="setAllowDuplicateChatHistory"
 				>
-				{{ t("stackTab.customMergeSeparator") }}
-			</label>
-			<label class="field" for="mergeSeparatorInput">
-				<span class="field-label">{{ t("stackTab.mergeSeparator") }}</span>
-				<textarea
-					id="mergeSeparatorInput"
-					rows="2"
-					:placeholder="t('stackTab.mergeSeparatorPlaceholder')"
-					:value="props.stack.context?.mergeSeparator ?? '\n\n'"
-					:disabled="!customSeparatorEnabled"
-					@change="setMergeSeparator"
-				></textarea>
+				{{ t("stackTab.allowDuplicate") }}
 			</label>
 			<div class="option-note">
-				{{ t("stackTab.mergeSeparatorNote") }}
+				{{ t("stackTab.allowDuplicateNote") }}
 			</div>
-		</template>
-	</div>
-
-	<div class="tab-section">
-		<div class="tab-section-title">{{ t("stackTab.extensions") }}</div>
-		<div class="tab-section-meta">{{ t("stackTab.extensionsMeta") }}</div>
-		<div class="extension-catalog-grid">
-			<div id="macroCatalog" class="extension-catalog">
-				<strong>{{ t("stackTab.registeredMacros") }}</strong>
-				<div v-if="props.resources.macros.length === 0" class="option-note">{{ t("common.none") }}</div>
-				<div v-for="macro in props.resources.macros" :key="macro.name" class="extension-catalog-entry">
-					<code v-text="`{{ extensions.${macro.name} }}`"></code>
-					<span>{{ macro.description || macro.source || "" }}</span>
-				</div>
-			</div>
-			<div id="slotCatalog" class="extension-catalog">
-				<strong>{{ t("stackTab.availableSlots") }}</strong>
-				<div v-if="props.resources.slots.length === 0" class="option-note">{{ t("common.none") }}</div>
-				<div v-for="slot in props.resources.slots" :key="slot.name" class="extension-catalog-entry">
-					<code>{{ slot.name }}</code>
-					<span>{{ slot.description || slot.source || "" }}</span>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<div class="tab-section">
-		<div class="tab-section-title">{{ t("stackTab.parameters") }}</div>
-		<div class="tab-section-meta">
-			{{ t("stackTab.parametersMetaPre") }}<code>parameters</code>{{ t("stackTab.parametersMetaMid") }}<code>variables</code>{{ t("stackTab.parametersMetaPost") }}
-		</div>
-		<div class="modal-toolbar">
-			<button id="addVariableBtn" data-icon="+" :title="t('stackTab.addVariableTitle')" type="button" @click="addVariable">
-				{{ t("stackTab.addVariable") }}
-			</button>
-			<span class="modal-spacer"></span>
-			<span class="modal-meta">{{ t("stackTab.variablesSavedNote") }}</span>
-		</div>
-		<div id="variablesRows" class="data-table">
-			<div :class="['data-row', 'header', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]">
-				<div>{{ t("item.name") }}</div>
-				<div>{{ t("stackTab.value") }}</div>
-				<div v-if="props.stack.schemaVersion === 2">{{ t("stackTab.valueType") }}</div>
-				<div></div>
-			</div>
-			<div
-				v-for="(row, index) in variableRows"
-				:key="row.key"
-				:class="['data-row', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]"
-				data-var-row
+			<label
+				class="checkline"
+				:title="t('stackTab.mergeTitle')"
 			>
-				<input v-model="row.name" data-var-name placeholder="char" @input="syncVariables">
-				<input v-model="row.value" data-var-value placeholder="泉此方" @input="syncVariables">
-				<select
-					v-if="props.stack.schemaVersion === 2"
-					data-var-format
-					:value="row.format"
-					@change="setVariableFormat(row, ($event.target as HTMLSelectElement).value as 'text' | 'json')"
+				<input
+					id="mergeConsecutiveRolesInput"
+					type="checkbox"
+					:checked="props.stack.context?.mergeConsecutiveRoles === true"
+					@change="setMergeConsecutiveRoles"
 				>
-					<option value="text">{{ t("stackTab.textValue") }}</option>
-					<option value="json">JSON</option>
-				</select>
-				<button
-					type="button"
-					class="danger"
-					data-delete-row="true"
-					data-icon="×"
-					:title="t('stackTab.deleteVariableTitle')"
-					@click="deleteVariable(index)"
+				{{ t("stackTab.merge") }}
+			</label>
+			<div class="option-note">
+				{{ t("stackTab.mergeNote") }}
+			</div>
+			<template v-if="mergeEnabled">
+				<label
+					class="checkline"
+					:title="t('stackTab.customMergeSeparatorTitle')"
 				>
-					{{ t("stackTab.deleteVariable") }}
+					<input
+						id="customMergeSeparatorInput"
+						type="checkbox"
+						:checked="customSeparatorEnabled"
+						@change="setCustomMergeSeparator"
+					>
+					{{ t("stackTab.customMergeSeparator") }}
+				</label>
+				<label class="field" for="mergeSeparatorInput">
+					<span class="field-label">{{ t("stackTab.mergeSeparator") }}</span>
+					<textarea
+						id="mergeSeparatorInput"
+						rows="2"
+						:placeholder="t('stackTab.mergeSeparatorPlaceholder')"
+						:value="props.stack.context?.mergeSeparator ?? '\n\n'"
+						:disabled="!customSeparatorEnabled"
+						@change="setMergeSeparator"
+					></textarea>
+				</label>
+				<div class="option-note">
+					{{ t("stackTab.mergeSeparatorNote") }}
+				</div>
+			</template>
+		</div>
+
+		<!-- Section 2: Extensions & Slots catalog -->
+		<div class="advanced-card tab-section">
+			<div class="tab-section-title">{{ t("stackTab.extensions") }}</div>
+			<div class="tab-section-meta">{{ t("stackTab.extensionsMeta") }}</div>
+			<div class="extension-catalog-grid">
+				<div id="macroCatalog" class="extension-catalog">
+					<strong>{{ t("stackTab.registeredMacros") }}</strong>
+					<div v-if="props.resources.macros.length === 0" class="option-note">{{ t("common.none") }}</div>
+					<div v-for="macro in props.resources.macros" :key="macro.name" class="extension-catalog-entry">
+						<code v-text="`{{ extensions.${macro.name} }}`"></code>
+						<span>{{ macro.description || macro.source || "" }}</span>
+					</div>
+				</div>
+				<div id="slotCatalog" class="extension-catalog">
+					<strong>{{ t("stackTab.availableSlots") }}</strong>
+					<div v-if="props.resources.slots.length === 0" class="option-note">{{ t("common.none") }}</div>
+					<div v-for="slot in props.resources.slots" :key="slot.name" class="extension-catalog-entry">
+						<code>{{ slot.name }}</code>
+						<span>{{ slot.description || slot.source || "" }}</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Section 3: Parameters / Variables -->
+		<div class="advanced-card tab-section">
+			<div class="tab-section-title">{{ t("stackTab.parameters") }}</div>
+			<div class="tab-section-meta">
+				{{ t("stackTab.parametersMetaPre") }}<code>parameters</code>{{ t("stackTab.parametersMetaMid") }}<code>variables</code>{{ t("stackTab.parametersMetaPost") }}
+			</div>
+			<div class="modal-toolbar">
+				<button id="addVariableBtn" data-icon="+" :title="t('stackTab.addVariableTitle')" type="button" @click="addVariable">
+					{{ t("stackTab.addVariable") }}
 				</button>
+				<span class="modal-spacer"></span>
+				<span class="modal-meta">{{ t("stackTab.variablesSavedNote") }}</span>
+			</div>
+			<div id="variablesRows" class="data-table">
+				<div :class="['data-row', 'header', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]">
+					<div>{{ t("item.name") }}</div>
+					<div>{{ t("stackTab.value") }}</div>
+					<div v-if="props.stack.schemaVersion === 2">{{ t("stackTab.valueType") }}</div>
+					<div></div>
+				</div>
+				<div
+					v-for="(row, index) in variableRows"
+					:key="row.key"
+					:class="['data-row', 'variable-row', { 'parameter-row': props.stack.schemaVersion === 2 }]"
+					data-var-row
+				>
+					<input v-model="row.name" data-var-name placeholder="char" @input="syncVariables">
+					<input v-model="row.value" data-var-value placeholder="泉此方" @input="syncVariables">
+					<select
+						v-if="props.stack.schemaVersion === 2"
+						data-var-format
+						:value="row.format"
+						@change="setVariableFormat(row, ($event.target as HTMLSelectElement).value as 'text' | 'json')"
+					>
+						<option value="text">{{ t("stackTab.textValue") }}</option>
+						<option value="json">JSON</option>
+					</select>
+					<button
+						type="button"
+						class="danger"
+						data-delete-row="true"
+						data-icon="×"
+						:title="t('stackTab.deleteVariableTitle')"
+						@click="deleteVariable(index)"
+					>
+						{{ t("stackTab.deleteVariable") }}
+					</button>
+				</div>
 			</div>
 		</div>
-	</div>
 
-	<div class="tab-section">
-		<div class="tab-section-title">{{ t("stackTab.stackJson") }}</div>
-		<div class="tab-section-meta">
-			{{ t("stackTab.stackJsonMeta") }}
+		<!-- Section 4: Raw preset JSON (clearly separated) -->
+		<div class="advanced-card raw-json-card tab-section">
+			<div class="tab-section-title">{{ t("stackTab.stackJson") }}</div>
+			<div class="tab-section-meta">
+				{{ t("stackTab.stackJsonMeta") }}
+			</div>
+			<div class="modal-toolbar">
+				<button id="copyStackJsonBtn" data-icon="□" :title="t('stackTab.copyJsonTitle')" type="button" @click="copyRawJson">
+					{{ t("inspector.copy") }}
+				</button>
+				<button
+					id="applyStackJsonBtn"
+					class="primary"
+					data-icon="✓"
+					:title="t('stackTab.applyJsonTitle')"
+					type="button"
+					@click="applyRawJson"
+				>
+					{{ t("stackTab.applyJson") }}
+				</button>
+				<span class="modal-spacer"></span>
+				<span id="stackJsonStatus" class="modal-meta">{{ rawJsonStatus }}</span>
+			</div>
+			<textarea
+				id="stackJsonText"
+				v-model="rawJsonText"
+				class="raw-json-editor"
+				spellcheck="false"
+			></textarea>
 		</div>
-		<div class="modal-toolbar">
-			<button id="copyStackJsonBtn" data-icon="□" :title="t('stackTab.copyJsonTitle')" type="button" @click="copyRawJson">
-				{{ t("inspector.copy") }}
-			</button>
-			<button
-				id="applyStackJsonBtn"
-				class="primary"
-				data-icon="✓"
-				:title="t('stackTab.applyJsonTitle')"
-				type="button"
-				@click="applyRawJson"
-			>
-				{{ t("stackTab.applyJson") }}
-			</button>
-			<span class="modal-spacer"></span>
-			<span id="stackJsonStatus" class="modal-meta">{{ rawJsonStatus }}</span>
-		</div>
-		<textarea
-			id="stackJsonText"
-			v-model="rawJsonText"
-			class="raw-json-editor"
-			spellcheck="false"
-		></textarea>
 	</div>
 </template>
+
+<style scoped>
+.advanced-container {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 8px 4px;
+}
+
+.advanced-card {
+	background: var(--pane, #ffffff);
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 8px;
+	padding: 16px 20px;
+	box-sizing: border-box;
+}
+
+.raw-json-card {
+	border-top: 2px solid var(--line, #dfe7e4);
+	background: var(--pane, #ffffff);
+}
+
+.raw-json-editor {
+	width: 100%;
+	min-height: 220px;
+	font: 12px/1.6 ui-monospace, Consolas, monospace;
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 6px;
+	padding: 12px;
+	box-sizing: border-box;
+	background: var(--pane, #ffffff);
+	color: var(--text, #20312f);
+	resize: vertical;
+}
+
+.extension-catalog-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 16px;
+	margin-top: 10px;
+}
+
+.extension-catalog {
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 6px;
+	padding: 12px;
+	background: var(--bg, #f5f7f6);
+}
+
+.extension-catalog-entry {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-top: 8px;
+	font-size: 12px;
+}
+
+@media (max-width: 700px) {
+	.extension-catalog-grid {
+		grid-template-columns: 1fr;
+	}
+}
+</style>

@@ -7,10 +7,18 @@
  * navigator.language when booting without a server hint.
  */
 import { ref } from "vue";
+import { surfacesEn, surfacesZhCN } from "./i18n-surfaces.ts";
+import { workspaceEn, workspaceZhCN } from "./i18n-workspace.ts";
+import { formsEn, formsZhCN } from "./i18n-forms.ts";
+import { inspectorEn, inspectorZhCN } from "./i18n-inspector.ts";
 
 export type EditorLocale = "en" | "zh-CN";
 
 const en = {
+	...surfacesEn,
+	...workspaceEn,
+	...formsEn,
+	...inspectorEn,
 	"nav.stacks": "Presets",
 	"nav.profiles": "Agent profiles",
 	"nav.settings": "Settings",
@@ -713,6 +721,10 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const zhCN: Record<MessageKey, string> = {
+	...surfacesZhCN,
+	...workspaceZhCN,
+	...formsZhCN,
+	...inspectorZhCN,
 	"nav.stacks": "预设",
 	"nav.profiles": "代理配置",
 	"nav.settings": "设置",

@@ -47,26 +47,20 @@ function setAutoActivate(value: boolean): void {
 	emit("change");
 }
 
-function toggleMetadata(): void {
-	collapsed.value = !collapsed.value;
+function onMetadataToggle(event: Event): void {
+	const open = (event.currentTarget as HTMLDetailsElement).open;
+	if (collapsed.value === !open) return;
+	collapsed.value = !open;
 	emit("toggle", collapsed.value);
 }
 </script>
 
 <template>
-	<div class="metadata-head">
-		<button
-			id="metadataToggleBtn"
-			:data-icon="collapsed ? '▸' : '▾'"
-			:aria-expanded="!collapsed"
-			type="button"
-			:title="t('metadata.toggleTitle')"
-			@click="toggleMetadata"
-		>
-			{{ t("metadata.title") }}
-		</button>
-		<div id="metadataSummary" class="metadata-summary">{{ summary }}</div>
-	</div>
+	<details id="metadataDetails" class="metadata-details" :open="!collapsed" @toggle="onMetadataToggle">
+		<summary id="metadataToggleBtn" :aria-expanded="!collapsed" :title="t('metadata.toggleTitle')">
+			<span class="metadata-summary-title">{{ t("metadata.title") }}</span>
+			<span id="metadataSummary" class="metadata-summary">{{ summary }}</span>
+		</summary>
 	<div id="settings" v-show="!collapsed" class="settings">
 		<div class="field">
 			<label>{{ t("metadata.stackId") }}</label>
@@ -110,4 +104,5 @@ function toggleMetadata(): void {
 			<input :value="filePath" disabled>
 		</div>
 	</div>
+	</details>
 </template>

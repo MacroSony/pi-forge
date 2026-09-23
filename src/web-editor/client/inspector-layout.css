@@ -1,0 +1,156 @@
+/* Scoped Inspector Dock & Reading Layout (V4 Lane C) */
+
+/* Dock area grid overrides based on reading state */
+.editor-dock-area.dock-open {
+	grid-template-columns: minmax(0, 1fr) minmax(330px, 350px);
+}
+
+.editor-dock-area.dock-open.dock-side,
+.editor-dock-area.dock-open[data-reading="side"] {
+	grid-template-columns: minmax(0, 1fr) minmax(330px, 350px);
+}
+
+.editor-dock-area.dock-open.dock-wide,
+.editor-dock-area.dock-open[data-reading="wide"] {
+	grid-template-columns: minmax(0, 1fr) minmax(500px, 50%);
+}
+
+.editor-dock-area.dock-open.dock-focus,
+.editor-dock-area.dock-open[data-reading="focus"] {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-dock-area.dock-open.dock-focus .workspace,
+.editor-dock-area.dock-open[data-reading="focus"] .workspace {
+	display: none;
+}
+
+.editor-dock-area.dock-open.dock-focus .context-diff-panel,
+.editor-dock-area.dock-open[data-reading="focus"] .context-diff-panel {
+	border-left: 0;
+	padding-left: 16px;
+}
+
+/* Ensure context-diff-panel is positioned relative for absolute boundary arrow placement */
+.context-diff-panel {
+	position: relative;
+	overflow: visible;
+}
+
+/* Arrow handle placed right on the left pane boundary */
+.preview-reading-arrow {
+	position: absolute;
+	left: -15px;
+	top: 14px;
+	width: 30px;
+	height: 30px;
+	min-width: 30px;
+	min-height: 30px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--pane);
+	color: var(--muted);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	cursor: pointer;
+	z-index: 5;
+	transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.preview-reading-arrow:hover {
+	background: var(--accent-bg);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.preview-reading-arrow:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+/* In focus mode, boundary moves to screen edge; keep handle accessible and inside viewport */
+.editor-dock-area.dock-open.dock-focus .preview-reading-arrow,
+.editor-dock-area.dock-open[data-reading="focus"] .preview-reading-arrow {
+	left: 12px;
+	top: 14px;
+}
+
+/* Dock header layout */
+.context-diff-dock-header {
+	position: static;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-left: 18px;
+	min-height: 32px;
+	flex: 0 0 auto;
+}
+
+.editor-dock-area.dock-open.dock-focus .context-diff-dock-header,
+.editor-dock-area.dock-open[data-reading="focus"] .context-diff-dock-header {
+	padding-left: 48px;
+}
+
+.context-diff-dock-header strong {
+	font-size: 14px;
+	font-weight: 650;
+	color: var(--text);
+}
+
+.scope-badge {
+	font-size: 11px;
+	font-weight: 500;
+	padding: 1px 6px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	color: var(--accent);
+	background: var(--accent-bg);
+}
+
+/* Hide scope badge in side mode to save horizontal space, show in wide/focus */
+.context-diff-dock[data-reading="side"] .scope-badge,
+.editor-dock-area.dock-open.dock-side .scope-badge,
+.editor-dock-area.dock-open[data-reading="side"] .scope-badge {
+	display: none;
+}
+
+.return-editing-btn {
+	margin-left: auto;
+	font-size: 11px;
+	color: var(--muted);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 2px 8px;
+	background: var(--pane);
+	cursor: pointer;
+}
+
+.return-editing-btn:hover {
+	color: var(--text);
+	border-color: var(--line-strong);
+}
+
+/* Narrow desktops stack the two work areas rather than squeezing the editor. */
+@media (min-width: 801px) and (max-width: 1150px) {
+ .editor-dock-area.dock-open:not(.dock-focus) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(260px, 1fr) minmax(290px, 1fr);
+  overflow-y: auto;
+ }
+ .editor-dock-area.dock-open.dock-wide {
+  grid-template-rows: minmax(220px, .6fr) minmax(350px, 1.4fr);
+ }
+ .editor-dock-area.dock-open .preview-reading-arrow { left: 6px; }
+ .editor-dock-area.dock-open .context-diff-dock-header { padding-left: 36px; }
+}
+@media (max-width: 800px) {
+ .editor-dock-area.dock-open, .editor-dock-area.dock-open[data-reading] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+ }
+ .editor-dock-area.dock-open .workspace { display: none; }
+ .preview-reading-arrow { left: 8px !important; }
+ .context-diff-dock-header { padding-left: 44px !important; }
+}

@@ -75,6 +75,7 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		await page.locator("#tabPanel").filter({ hasText: "do not block explicit skill invocation" }).waitFor();
 		const toolPolicyRow = page.locator('[data-policy-row][data-policy-kind="tools"]');
 		await toolPolicyRow.locator('[data-policy-mode-option="allow"]').click();
+		await toolPolicyRow.locator("details.advanced > summary").click();
 		await toolPolicyRow.locator(".resource-flat-list-summary").click();
 		await toolPolicyRow.locator('[data-resource-name="read"]').click();
 		await toolPolicyRow.locator('[data-remove-policy-pattern="read"]').waitFor();
@@ -260,10 +261,9 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".diff-layout-buttons button", { hasText: "Split" }).click();
 		assert.equal(await draftBlock.locator(".git-diff.split .split-header").count(), 1);
 		await page.locator(".diff-layout-buttons button", { hasText: "Unified" }).click();
-		await page.locator(".context-diff-expand", { hasText: "Focus" }).click();
-		await page.locator("#editorDockArea.dock-focus").waitFor();
+		await page.locator("#editorDockArea.dock-focus").waitFor(); // Draft diff initially uses focus.
 		assert.equal(await page.locator("#workspace").isVisible(), false);
-		await page.locator(".context-diff-expand", { hasText: "Split" }).click();
+		await page.locator("[data-reading-cycle]").click();
 		await page.locator("#workspace").waitFor({ state: "visible" });
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Run diff" }).click();

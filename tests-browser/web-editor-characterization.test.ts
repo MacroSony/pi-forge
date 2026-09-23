@@ -896,6 +896,8 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 
 		await page.locator("#regexTabBtn").click();
 		const regexRow = page.locator("[data-regex-row]").first();
+		await regexRow.locator("[data-regex-toggle]").click();
+		await regexRow.locator(".regex-advanced > summary").click();
 		await regexRow.locator("[data-regex-frequency]").selectOption("request");
 		await regexRow.locator("[data-regex-max-messages]").fill("0");
 		assert.match(
@@ -911,9 +913,12 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 		await page.locator("#dirtyBadge.visible").waitFor();
 
 		await page.locator("#regexTabBtn").click();
-		await page.locator("[data-regex-row]").first().locator("[data-regex-max-messages]").fill("2");
+		if (!(await regexRow.locator("[data-regex-body]").isVisible())) await regexRow.locator("[data-regex-toggle]").click();
+		if (!(await regexRow.locator("[data-regex-max-messages]").isVisible())) await regexRow.locator(".regex-advanced > summary").click();
+		await regexRow.locator("[data-regex-max-messages]").fill("2");
 		await page.locator("#policyTabBtn").click();
 		const toolsPolicy = page.locator('[data-policy-row][data-policy-kind="tools"]');
+		await toolsPolicy.locator("details.advanced > summary").click();
 		await toolsPolicy.locator("[data-policy-patterns]").fill("read\nread");
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#saveBtn").click();
@@ -922,6 +927,7 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 			.waitFor();
 
 		await page.locator("#policyTabBtn").click();
+		await toolsPolicy.locator("details.advanced > summary").click();
 		await page.locator('[data-policy-row][data-policy-kind="tools"] [data-policy-patterns]').fill("read");
 		await page.locator("#regexTabBtn").click();
 		await page.locator("#policyTabBtn").click();
@@ -983,7 +989,7 @@ test("profile editor preserves and displays a global profile selector after save
 			await row.click();
 			assert.equal(await page.locator(".profile-selector code").textContent(), "global:reviewer");
 			await page.locator("#profileEditBtn").click();
-			assert.match(await page.locator(".profile-editor-title").textContent() ?? "", /global:reviewer/);
+			assert.match(await page.locator(".profile-editor-selector code").textContent() ?? "", /global:reviewer/);
 			await page.locator("#profileName").fill("Global Reviewer Saved");
 			await page.locator("#profileSaveBtn").click();
 			await page.locator("#profilesStatus").filter({ hasText: "Saved global:reviewer" }).waitFor();
