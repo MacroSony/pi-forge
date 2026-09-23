@@ -6,7 +6,7 @@ import { createVueItemHost } from "./vue-item-host.ts";
 import { createVueMetadataHost } from "./vue-metadata-host.ts";
 import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
-import { activateEditorView, currentEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
+import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import { t, type MessageKey } from "./i18n.ts";
 import type {
   EditorPromptStack,
@@ -36,6 +36,7 @@ let latestDiagnostics: PromptStackDiagnostic[] = [];
 // null = automatic: expand when errors or warnings exist, collapse when clean.
 let diagnosticsCollapsed: boolean | null = null;
 let activeTab: "items" | "regex" | "policy" | "bindings" | "stack" = "items";
+let addContentMenuOpen = false;
 let currentPresetSelector = "";
 let stackLoadGeneration = 0;
 let resourceLoadGeneration = 0;
@@ -46,6 +47,8 @@ let statusParams: Record<string, string | number> = {};
 let statusTone = "";
 let editorStarted = false;
 let editorIsActive = () => true;
+let stackModalResolver: ((value: any) => void) | null = null;
+let stackModalRestoreFocus: HTMLElement | null = null;
 const draftListeners = new Set<() => void>();
 
 export interface LegacyEditorDraft {
@@ -195,7 +198,7 @@ function renderDirtyState() {
 
 function updateActionState() {
   const hasStack = !!currentStack;
-  for (const id of ["saveBtn", "validateBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addItemBtn", "addSlotBtn"]) {
+  for (const id of ["saveBtn", "validateBtn", "forkBtn", "exportBtn", "deleteStackBtn", "addContentBtn", "addItemBtn", "addSlotBtn"]) {
     const button = el(id);
     if (button) button.disabled = !hasStack;
   }
@@ -223,6 +226,7 @@ async function loadStacks(preferId: any = selectedId) {
   editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
   el("cwd").textContent = cwd;
+  el("cwd").title = cwd;
   renderStackList();
   const next = stacks.find((stack: any) => (stack.selector || stack.id) === preferId) || stacks.find((stack: any) => stack.active) || stacks[0];
   if (selectionGeneration !== stackLoadGeneration) return;
@@ -299,11 +303,6 @@ function renderAll(diagnostics: any = []) {
 }
 
 function renderActiveTab() {
-  if (currentEditorView() === "preview") {
-    renderItemList();
-    renderItemEditor();
-    return;
-  }
   vueTabHost.unmount();
   document.querySelectorAll("[data-tab]").forEach((button: any) => {
     button.classList.toggle("active", button.dataset.tab === activeTab);
@@ -617,19 +616,64 @@ function renderItemEditor() {
   el("deleteItemBtn").disabled = false;
 }
 
-function showStackModal(title: any, meta: any, body: any, options: any = {}) {
+function showStackModal(title: any, meta: any, body: any, options: any = {}): Promise<any> {
   const pane = el("stackModal");
-  pane.innerHTML = '<div class="modal-dialog" role="dialog" aria-modal="true" aria-label="' + attr(title) + '">' +
-    '<div class="modal-head"><div><div class="modal-title">' + escapeHtml(title) + '</div><div class="modal-meta">' + escapeHtml(meta || "") + '</div></div>' +
-    '<div class="modal-actions"><button data-modal-close="true" data-icon="×" title="' + attr(t("modal.closeTitle")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
+  closeStackModal();
+  stackModalRestoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  pane.innerHTML = '<div class="modal-dialog ' + attr(options.dialogClass || "") + '" role="dialog" aria-modal="true" aria-labelledby="stackModalTitle">' +
+    '<div class="modal-head"><div><div id="stackModalTitle" class="modal-title">' + escapeHtml(title) + '</div><div class="modal-meta">' + escapeHtml(meta || "") + '</div></div>' +
+    '<div class="modal-actions"><button type="button" data-modal-close="true" data-icon="×" title="' + attr(t("modal.closeTitle")) + '">' + escapeHtml(t("modal.close")) + '</button></div></div>' +
     '<div class="modal-body ' + attr(options.bodyClass || "") + '">' + body + '</div></div>';
   pane.classList.add("open");
+  pane.onkeydown = handleStackModalKeydown;
+  pane.onsubmit = (event: SubmitEvent) => {
+    event.preventDefault();
+    const result = options.onSubmit?.(event.target as HTMLFormElement);
+    closeStackModal(result);
+  };
+  const promise = new Promise((resolve) => {
+    stackModalResolver = resolve;
+  });
+  const focusTarget = pane.querySelector<HTMLElement>(options.initialFocus || "input, button, select, textarea");
+  focusTarget?.focus({ preventScroll: true });
+  return promise;
 }
 
-function closeStackModal() {
+function closeStackModal(result: any = null) {
   const pane = el("stackModal");
+  const resolver = stackModalResolver;
+  const restoreFocus = stackModalRestoreFocus;
+  stackModalResolver = null;
+  stackModalRestoreFocus = null;
+  pane.onsubmit = null;
+  pane.onkeydown = null;
   pane.classList.remove("open");
   pane.innerHTML = "";
+  if (restoreFocus?.isConnected) restoreFocus.focus({ preventScroll: true });
+  resolver?.(result);
+}
+
+function handleStackModalKeydown(event: KeyboardEvent): void {
+  const pane = el("stackModal");
+  if (!pane.classList.contains("open")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeStackModal();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = [...pane.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (event.shiftKey ? active === first || !pane.contains(active) : active === last || !pane.contains(active)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
 }
 
 function applyStackFromVue(stack: EditorPromptStack) {
@@ -644,8 +688,27 @@ function applyStackFromVue(stack: EditorPromptStack) {
   setSemanticStatus("status.appliedStack", {}, "success");
 }
 
+function setAddContentMenu(open: boolean): void {
+  addContentMenuOpen = open;
+  const menu = document.getElementById("addContentMenu");
+  const button = document.getElementById("addContentBtn") as HTMLButtonElement | null;
+  if (menu) menu.hidden = !open;
+  button?.setAttribute("aria-expanded", String(open));
+}
+
+function toggleAddContentMenu(): void {
+  if (!currentStack) return;
+  setAddContentMenu(!addContentMenuOpen);
+}
+
+function closeAddContentMenuOnDocumentClick(event: MouseEvent): void {
+  const wrapper = document.querySelector<HTMLElement>(".item-add-wrap");
+  if (addContentMenuOpen && wrapper && !wrapper.contains(event.target as Node)) setAddContentMenu(false);
+}
+
 function addItem(kind: any) {
   if (!currentStack) return;
+  setAddContentMenu(false);
   const id = nextNumericItemId();
   const insertIndex = selectedItemIndex >= 0 && selectedItemIndex < currentStack.items.length
     ? selectedItemIndex + 1
@@ -710,11 +773,6 @@ async function createStackRemote(stack: any, options: any = {}) {
   }
 }
 
-function chooseCreateScope(): "global" | "project" {
-  const select = el("stackCreateScope") as HTMLSelectElement | null;
-  return select?.value === "global" ? "global" : "project";
-}
-
 async function createAndOpenStack(stack: any, activate: any, actionLabel: any, extraOptions: any = {}) {
   const data = await createStackRemote(stack, { ...extraOptions, activate });
   stacks = data.stacks || stacks;
@@ -726,19 +784,62 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
   setSemanticStatus(actionLabel, { id: displayId }, "success");
 }
 
+function resourceFormHtml(kind: "new" | "import" | "fork", id: string, name: string, firstPreset: boolean): string {
+  const submitKey = kind === "import" ? "polish.workspace.resourceImportSubmit" : kind === "fork" ? "polish.workspace.resourceForkSubmit" : "polish.workspace.resourceSubmit";
+  return '<form id="stackResourceForm" class="resource-form">' +
+    '<label for="stackResourceName">' + escapeHtml(t("polish.workspace.resourceName")) + '</label>' +
+    '<input id="stackResourceName" name="name" type="text" value="' + attr(name) + '" autocomplete="off" required>' +
+    '<label for="stackResourceId">' + escapeHtml(t("polish.workspace.resourceId")) + '</label>' +
+    '<input id="stackResourceId" name="id" type="text" value="' + attr(id) + '" autocomplete="off" spellcheck="false" required>' +
+    '<label for="stackResourceScope">' + escapeHtml(t("polish.workspace.resourceScope")) + '</label>' +
+    '<select id="stackResourceScope" name="scope">' +
+    '<option value="project">' + escapeHtml(t("chrome.scopeProject")) + '</option>' +
+    '<option value="global">' + escapeHtml(t("chrome.scopeGlobal")) + '</option>' +
+    '</select>' +
+    (firstPreset ? '<p class="resource-form-note">' + escapeHtml(t("polish.workspace.firstPresetActivation")) + '</p>' : "") +
+    '<div class="resource-form-actions">' +
+    '<button type="button" data-modal-close="true">' + escapeHtml(t("polish.workspace.resourceCancel")) + '</button>' +
+    '<button type="submit" class="primary">' + escapeHtml(t(submitKey)) + '</button>' +
+    '</div></form>';
+}
+
+async function collectResourceTarget(kind: "new" | "import" | "fork", id: string, name: string): Promise<{ id: string; name: string; scope: "project" | "global" } | null> {
+  const result = await showStackModal(
+    t(kind === "new" ? "polish.workspace.newResourceTitle" : kind === "import" ? "polish.workspace.importResourceTitle" : "polish.workspace.forkResourceTitle"),
+    t("polish.workspace.resourceMeta"),
+    resourceFormHtml(kind, id, name, kind === "new" && stacks.length === 0),
+    {
+      dialogClass: "resource-modal",
+      initialFocus: "#stackResourceName",
+      onSubmit: (form: HTMLFormElement) => {
+        const fields = new FormData(form);
+        return {
+          id: String(fields.get("id") || ""),
+          name: String(fields.get("name") || ""),
+          scope: fields.get("scope") === "global" ? "global" : "project",
+        };
+      },
+    },
+  );
+  return result;
+}
+
+function normalizeResourceId(value: string): string | null {
+  const id = sanitizeStackId(value);
+  if (!id) throw new Error(t("error.stackIdEmpty"));
+  if (id !== value.trim() && !confirm(t("confirm.useStackId", { id }))) return null;
+  return id;
+}
+
 async function createNewStack() {
   if (dirty && !confirm(t("confirm.discardChanges"))) return;
-  const promptedId = prompt(t("prompt.newStackId"), uniqueStackId("new-preset"));
-  if (promptedId === null) return;
-  const id = sanitizeStackId(promptedId);
-  if (!id) throw new Error(t("error.stackIdEmpty"));
-  if (id !== promptedId.trim() && !confirm(t("confirm.useStackId", { id }))) return;
-  const promptedName = prompt(t("prompt.stackDisplayName"), "Default Pi Prompt Mirror");
-  if (promptedName === null) return;
-  const stack = defaultNewStack(id, promptedName.trim() || id);
-  const scope = chooseCreateScope();
+  const target = await collectResourceTarget("new", uniqueStackId("new-preset"), "Default Pi Prompt Mirror");
+  if (!target) return;
+  const id = normalizeResourceId(target.id);
+  if (!id) return;
+  const stack = defaultNewStack(id, target.name.trim() || id);
   const activate = stacks.length === 0 || confirm(t("confirm.activateNewStack"));
-  await createAndOpenStack(stack, activate, "status.created", { scope });
+  await createAndOpenStack(stack, activate, "status.created", { scope: target.scope });
 }
 
 function defaultNewStack(id: any, name: any) {
@@ -875,32 +976,37 @@ async function handleImportFile(event: any) {
   const text = await file.text();
   const imported = JSON.parse(text);
   if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error(t("error.importNotObject"));
-  const stack = imported;
-  if (!stack.id || typeof stack.id !== "string") {
-    const promptedId = prompt(t("prompt.stackId"), sanitizeStackId(file.name.replace(/\.json$/i, "")));
-    if (!promptedId) return;
-    stack.id = promptedId.trim();
-  }
-  if (!Array.isArray(stack.items)) throw new Error(t("error.importNoItems"));
+  if (!Array.isArray(imported.items)) throw new Error(t("error.importNoItems"));
+  // Keep the parsed object untouched until the resource form is submitted;
+  // unknown imported fields travel through the clone unchanged.
+  const stack = structuredClone(imported);
+  const fallbackId = sanitizeStackId(file.name.replace(/\.json$/i, "")) || uniqueStackId("imported-preset");
+  const initialId = typeof stack.id === "string" ? stack.id : fallbackId;
+  const initialName = typeof stack.name === "string" ? stack.name : initialId;
+  const target = await collectResourceTarget("import", initialId, initialName);
+  if (!target) return;
+  const id = normalizeResourceId(target.id);
+  if (!id) return;
+  stack.id = id;
+  stack.name = target.name.trim() || id;
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
-  const scope = chooseCreateScope();
   const activate = confirm(t("confirm.activateImportedStack"));
-  await createAndOpenStack(stack, activate, "status.imported", { scope });
+  await createAndOpenStack(stack, activate, "status.imported", { scope: target.scope });
 }
 
 async function forkStack() {
   const source = stackForSubmit();
-  const forkId = prompt(t("prompt.forkStackId"), uniqueForkId(source.id || "preset"));
-  if (!forkId) return;
-  const forkName = prompt(t("prompt.forkDisplayName"), ((source.name || source.id || "Preset") + " fork"));
+  const target = await collectResourceTarget("fork", uniqueForkId(source.id || "preset"), ((source.name || source.id || "Preset") + " fork"));
+  if (!target) return;
+  const id = normalizeResourceId(target.id);
+  if (!id) return;
   const fork = structuredClone(source);
-  fork.id = forkId.trim();
-  if (forkName && forkName.trim()) fork.name = forkName;
+  fork.id = id;
+  fork.name = target.name.trim() || id;
   fork.autoActivate = false;
-  const scope = chooseCreateScope();
   const activate = confirm(t("confirm.activateFork"));
-  await createAndOpenStack(fork, activate, "status.forked", { scope });
+  await createAndOpenStack(fork, activate, "status.forked", { scope: target.scope });
 }
 
 async function exportStackJson() {
@@ -1062,6 +1168,7 @@ function renderDiagnostics(diagnostics: any) {
 }
 
 function renderEmpty() {
+  setAddContentMenu(false);
   activateEditorView("items");
   vueTabHost.unmount();
   vueItemHost.unmount();
@@ -1159,9 +1266,22 @@ function handlePreviewClick(event: any) {
 function handleEditorShortcut(event: any) {
   if (!editorIsActive()) return;
 
+  if (el("stackModal").classList.contains("open")) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeStackModal();
+    }
+    // Do not let editor shortcuts save or trigger actions behind the form.
+    if ((event.ctrlKey || event.metaKey) && ["s", "n", "enter"].includes(event.key.toLowerCase())) event.preventDefault();
+    return;
+  }
+
   if (event.key === "Escape") {
-    if (el("preview").classList.contains("open")) hidePreview();
-    else if (el("stackModal").classList.contains("open")) closeStackModal();
+    if (addContentMenuOpen) {
+      setAddContentMenu(false);
+      el("addContentBtn").focus();
+    }
+    else if (el("preview").classList.contains("open")) hidePreview();
     return;
   }
 
@@ -1243,6 +1363,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("deleteStackBtn").onclick = () => run(deleteCurrentStack);
   el("stackModal").onclick = handleStackModalClick;
   el("preview").onclick = handlePreviewClick;
+  el("addContentBtn").onclick = toggleAddContentMenu;
   el("addItemBtn").onclick = () => addItem("block");
   el("addSlotBtn").onclick = () => addItem("slot");
   el("deleteItemBtn").onclick = deleteSelectedItem;
@@ -1250,6 +1371,7 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   document.addEventListener("dragover", handleDocumentItemDragOver);
   document.addEventListener("drop", handleDocumentItemDrop);
   document.addEventListener("click", closeMoreActions);
+  document.addEventListener("click", closeAddContentMenuOnDocumentClick);
   window.addEventListener("keydown", handleEditorShortcut);
   window.addEventListener("pi-forge:profile-applied", handleProfileApplied);
   const stopEditorView = subscribeEditorView((viewId) => {
@@ -1271,12 +1393,14 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
 
   return () => {
     if (!editorStarted) return;
+    closeStackModal();
     editorStarted = false;
     if (payloadPoll !== undefined) window.clearInterval(payloadPoll);
     finishItemDrag();
     document.removeEventListener("dragover", handleDocumentItemDragOver);
     document.removeEventListener("drop", handleDocumentItemDrop);
     document.removeEventListener("click", closeMoreActions);
+    document.removeEventListener("click", closeAddContentMenuOnDocumentClick);
     window.removeEventListener("keydown", handleEditorShortcut);
     window.removeEventListener("pi-forge:profile-applied", handleProfileApplied);
     moreActions.onclick = null;
@@ -1314,6 +1438,7 @@ function resetEditorState(): void {
   statusParams = {};
   statusTone = "";
   activeTab = "items";
+  addContentMenuOpen = false;
   currentPresetSelector = "";
   currentPresetScope = "project";
   metadataCollapsed = true;

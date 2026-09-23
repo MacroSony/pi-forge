@@ -44,12 +44,10 @@ const readingByTab = ref<Record<DockMode, ReadingState>>({
 	run: "focus",
 });
 
-const readingState = computed<ReadingState>({
-	get: () => readingByTab.value[mode.value],
-	set: (val: ReadingState) => {
-		readingByTab.value[mode.value] = val;
-		notifyReading(val);
-	},
+const lastNonFocusByTab = ref<Record<DockMode, "side" | "wide">>({
+	compiled: "side",
+	draft: "wide",
+	run: "wide",
 });
 
 function notifyReading(state: ReadingState): void {
@@ -57,13 +55,38 @@ function notifyReading(state: ReadingState): void {
 	props.onExpandedChanged?.(state === "focus");
 }
 
-function cycleReadingState(): void {
-	const cycle: Record<ReadingState, ReadingState> = {
-		side: "wide",
-		wide: "focus",
-		focus: "side",
-	};
-	readingState.value = cycle[readingState.value];
+function setReadingState(state: ReadingState): void {
+	if (state !== "focus") {
+		lastNonFocusByTab.value[mode.value] = state;
+	}
+	readingByTab.value[mode.value] = state;
+	notifyReading(state);
+}
+
+const readingState = computed<ReadingState>({
+	get: () => readingByTab.value[mode.value],
+	set: (val: ReadingState) => {
+		setReadingState(val);
+	},
+});
+
+function handlePrimaryBoundaryClick(): void {
+	if (readingState.value === "side") {
+		setReadingState("wide");
+	} else if (readingState.value === "wide") {
+		setReadingState("side");
+	} else {
+		exitFocus();
+	}
+}
+
+function enterFocus(): void {
+	setReadingState("focus");
+}
+
+function exitFocus(): void {
+	const fallback = lastNonFocusByTab.value[mode.value] ?? "wide";
+	setReadingState(fallback);
 }
 
 function setMode(newMode: DockMode): void {
@@ -72,27 +95,30 @@ function setMode(newMode: DockMode): void {
 }
 
 function returnToEditing(): void {
-	setMode("compiled");
-	readingState.value = "side";
+	if (readingState.value === "focus") {
+		exitFocus();
+	} else {
+		setReadingState("side");
+	}
 }
 
-const cycleActionTitle = computed(() => {
+const primaryBoundaryTitle = computed(() => {
 	switch (readingState.value) {
 		case "side":
 			return t("polish.inspector.widen");
 		case "wide":
-			return t("polish.inspector.focus");
+			return t("polish.inspector.shrink");
 		case "focus":
 			return t("polish.inspector.restore");
 	}
 });
 
-const cycleActionAria = computed(() => {
+const primaryBoundaryAria = computed(() => {
 	switch (readingState.value) {
 		case "side":
 			return t("polish.inspector.sideAria");
 		case "wide":
-			return t("polish.inspector.wideAria");
+			return t("polish.inspector.wideShrinkAria");
 		case "focus":
 			return t("polish.inspector.focusAria");
 	}
@@ -478,19 +504,31 @@ function turnLabel(): string {
 
 <template>
 	<div class="context-diff-dock" :data-reading="readingState">
-		<!-- V4 Inspector Header with Arrow Handle Centered on Pane Boundary -->
+		<!-- V4 Inspector Header with Boundary Buttons -->
 		<div class="context-diff-dock-header">
 			<button
 				id="focus-toggle"
-				data-reading-cycle="true"
 				type="button"
 				class="text-btn reading-arrow preview-reading-arrow context-diff-expand"
-				:aria-label="cycleActionAria"
-				:title="cycleActionTitle"
-				@click="cycleReadingState"
+				:aria-label="primaryBoundaryAria"
+				:title="primaryBoundaryTitle"
+				@click="handlePrimaryBoundaryClick"
 			>
 				<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<path :d="readingState === 'focus' ? 'M7 4l6 6-6 6' : 'M13 4l-6 6 6 6'" />
+					<path :d="readingState === 'side' ? 'M13 4l-6 6 6 6' : 'M7 4l6 6-6 6'" />
+				</svg>
+			</button>
+			<button
+				v-if="readingState === 'wide'"
+				id="reading-focus-btn"
+				type="button"
+				class="text-btn preview-focus-button"
+				:aria-label="t('polish.inspector.wideFocusAria')"
+				:title="t('polish.inspector.focus')"
+				@click="enterFocus"
+			>
+				<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" />
 				</svg>
 			</button>
 			<strong class="inspect-title">{{ currentTitle }}</strong>
@@ -825,5 +863,40 @@ function turnLabel(): string {
 .context-diff-empty { color: var(--muted); padding: 20px; border: 1px dashed var(--line); border-radius: 6px; }
 .context-diff-empty.compact { padding: 12px; }
 .context-diff-error { padding: 10px; border: 1px solid var(--error); border-radius: 6px; background: var(--error-bg); }
+.preview-focus-button {
+	position: absolute;
+	left: -15px;
+	top: 50px;
+	width: 30px;
+	height: 30px;
+	min-width: 30px;
+	min-height: 30px;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--pane);
+	color: var(--muted);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	cursor: pointer;
+	z-index: 5;
+	transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.preview-focus-button:hover {
+	background: var(--accent-bg);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.preview-focus-button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+@media (min-width: 801px) and (max-width: 1150px) {
+	.preview-focus-button { left: 6px; }
+}
+@media (max-width: 800px) {
+	.preview-focus-button { left: 8px !important; }
+}
 @media (max-width: 1100px) { .diff-view-controls { order: 3; margin-left: 0; width: 100%; } }
 </style>

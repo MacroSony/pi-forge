@@ -1,4 +1,4 @@
-// Internal dock host for the preview/context-diff tab.
+// Independent inspector dock for the selected Preset, alongside any editor tab.
 //
 // This is intentionally separate from legacy-editor.ts. It uses the data-driven
 // tab registry's built-in "preview" entry, renders through a dock-specific data
@@ -7,7 +7,6 @@
 
 import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
-import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
 import type { ReadingState } from "./components/ContextDiffPanel.vue";
 
@@ -17,25 +16,17 @@ export interface ContextDiffTabsDependencies {
 }
 
 export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => void {
-	const nav = document.querySelector<HTMLElement>(".view-tabs");
 	const dockArea = document.getElementById("editorDockArea");
-	const workspace = document.getElementById("workspace");
-	const legacyPanel = document.getElementById("tabPanel");
 	const panel = document.getElementById("contextDiffPanel");
 	const status = document.getElementById("status");
-	if (!nav || !dockArea || !workspace || !legacyPanel || !panel) return () => {};
+	if (!dockArea || !panel) return () => {};
 
 	const definition = getEditorTab("preview");
 	if (!definition?.internalDock) return () => {};
-	const definitionId = definition.id;
-
-	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definitionId}"]`);
+	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definition.id}"]`);
 	if (!button) return () => {};
 
-	const navElement: HTMLElement = nav;
 	const dockAreaElement: HTMLElement = dockArea;
-	const workspaceElement: HTMLElement = workspace;
-	const legacyPanelElement: HTMLElement = legacyPanel;
 	const panelElement: HTMLElement = panel;
 	const buttonElement: HTMLButtonElement = button;
 	const statusElement: HTMLElement | null = status;
@@ -51,12 +42,7 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 
 	function setActiveButton(activeState: boolean): void {
 		buttonElement.classList.toggle("active", activeState);
-	}
-
-	function clearLegacyActive(): void {
-		for (const element of navElement.querySelectorAll<HTMLButtonElement>("[data-tab]")) {
-			element.classList.remove("active");
-		}
+		buttonElement.setAttribute("aria-pressed", String(activeState));
 	}
 
 	function applyReadingMode(mode: ReadingState): void {
@@ -81,26 +67,28 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 	}
 
 	function activate(): void {
-		activateEditorView(definitionId);
+		if (!deps.getStackDraft()) return;
 		active = true;
-		clearLegacyActive();
 		setActiveButton(true);
-		workspaceElement.style.display = "";
-		legacyPanelElement.classList.remove("open");
 		dockAreaElement.classList.add("dock-open");
 		panelElement.classList.add("open");
 		if (!contextDiffHost) {
 			contextDiffHost = createVueContextDiffHost({
 				getStackDraft: deps.getStackDraft,
-				subscribeStackDraft: deps.subscribeStackDraft,
-				setStatus,
-				setExpanded: (expanded) => {
-					if (expanded) {
-						applyReadingMode("focus");
-					} else if (dockAreaElement.dataset.reading === "focus") {
-						applyReadingMode("side");
+				subscribeStackDraft: (listener) => deps.subscribeStackDraft(() => {
+					// A deleted final preset invalidates the inspector draft. Close the
+					// pane through this existing subscription rather than inventing a
+					// second source of selection state.
+					if (!deps.getStackDraft()) {
+						clearActiveState();
+						return;
 					}
-				},
+					listener();
+				}),
+				setStatus,
+				// ReadingState is owned by ContextDiffPanel; the host only reflects
+				// its event in dock CSS through setReadingMode below.
+				setExpanded: () => {},
 				setReadingMode: (mode) => applyReadingMode(mode),
 			});
 		}
@@ -111,18 +99,14 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		event.preventDefault();
 		event.stopPropagation();
 		if (active) {
-			document.querySelector<HTMLButtonElement>('[data-tab="items"]')?.click();
+			clearActiveState();
 			return;
 		}
 		activate();
 	};
-	const stopEditorView = subscribeEditorView((viewId) => {
-		if (viewId !== definitionId) clearActiveState();
-	});
 
 	return () => {
 		buttonElement.onclick = null;
-		stopEditorView();
 		clearActiveState();
 	};
 }

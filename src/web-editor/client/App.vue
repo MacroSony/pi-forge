@@ -180,15 +180,13 @@ onUnmounted(() => {
 						<div id="cwd" class="cwd"></div>
 					</div>
 					<div class="library-actions">
-						<select id="stackCreateScope" aria-label="Preset scope" title="Scope for new presets, imports, and forks" data-i18n-title="chrome.scopeTitle" data-i18n-aria="chrome.scopeAria">
-							<option value="project" data-i18n="chrome.scopeProject">Project</option>
-							<option value="global" data-i18n="chrome.scopeGlobal">Global</option>
-						</select>
-						<button id="newStackBtn" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
 						<button id="reloadBtn" class="icon" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
 					</div>
 				</div>
 				<div id="stackList" class="stack-list"></div>
+				<div class="library-create">
+					<button id="newStackBtn" class="outline-add" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
+				</div>
 			</aside>
 			<main class="main">
 				<header id="resourceHeader" class="resource-header">
@@ -226,6 +224,7 @@ onUnmounted(() => {
 						:data-tab="tab.internalDock ? undefined : tab.id"
 						:data-dock-tab="tab.internalDock ? tab.id : undefined"
 						:class="{ active: tab.id === 'items' }"
+						:aria-pressed="tab.internalDock ? 'false' : undefined"
 						:data-icon="tab.icon"
 						:title="t(tab.titleKey)"
 						:data-i18n="tab.labelKey"
@@ -239,16 +238,26 @@ onUnmounted(() => {
 								<span data-i18n="chrome.items">Stack items</span>
 								<span id="itemCount" class="stack-meta"></span>
 							</div>
-							<div class="item-tools">
-								<button id="addItemBtn" data-icon="+" title="Add a prompt block item" data-i18n="chrome.addBlock" data-i18n-title="chrome.addBlockTitle">Add block</button>
-								<button id="addSlotBtn" data-icon="+" title="Add a runtime slot item" data-i18n="chrome.addSlot" data-i18n-title="chrome.addSlotTitle">Add slot</button>
-								<span class="item-tools-spacer"></span>
-								<button id="deleteItemBtn" class="danger" data-icon="×" title="Delete the selected Stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
-							</div>
 							<div id="itemList" class="item-list"></div>
+							<div class="item-add-wrap">
+								<button id="addContentBtn" class="outline-add" type="button" data-icon="+" aria-expanded="false" aria-controls="addContentMenu" title="Add content or slot" data-i18n="polish.workspace.addContent" data-i18n-title="polish.workspace.addContentTitle">Add content / slot</button>
+								<div id="addContentMenu" class="add-content-menu" hidden>
+									<button id="addItemBtn" type="button" data-icon="+" title="Add a prompt block item" data-i18n-title="chrome.addBlockTitle">
+										<span data-i18n="chrome.addBlock">Add block</span>
+										<small data-i18n="polish.workspace.addBlockHelp">A written prompt section.</small>
+									</button>
+									<button id="addSlotBtn" type="button" data-icon="+" title="Add a runtime slot item" data-i18n-title="chrome.addSlotTitle">
+										<span data-i18n="chrome.addSlot">Add slot</span>
+										<small data-i18n="polish.workspace.addSlotHelp">A value filled by Pi at runtime.</small>
+									</button>
+								</div>
+							</div>
 						</div>
 						<div class="editor-pane">
 							<div id="itemEditor" class="item-editor"></div>
+							<div class="item-editor-actions">
+								<button id="deleteItemBtn" class="danger" type="button" data-icon="×" title="Delete the selected Stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
+							</div>
 							<div id="diagnostics" class="diagnostics"></div>
 						</div>
 					</section>

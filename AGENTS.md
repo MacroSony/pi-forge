@@ -24,8 +24,8 @@ Prefer removal and simplification. Move code when splitting packages; do not rew
 ## Working rules
 
 1. One implementation lane at a time, in the order listed in the lean plan and [roadmap](docs/development/roadmap.md).
-2. Add characterization tests before changing behavior that is not already isolated by tests.
-3. Each lane ends in a coherent, verified state: `npm run verify` for release-sized or cross-cutting work.
+2. Normally add characterization tests before changing behavior that is not already isolated by tests. **User-directed 9/23 UI trial exception:** implement the agreed interface first, build/typecheck and try actual UI interactions, then add/consolidate automated regression tests after user trial. Do not accumulate source-string/CSS-detail tests around an unsettled layout; do not delete safety coverage or report deferred/outdated tests as passing.
+3. Each lane ends in a coherent, verified state: `npm run verify` for release-sized or cross-cutting work. During the current UI trial exception above, report the narrower build/types/actual-interaction evidence explicitly; full verification and affected test updates are deferred until UI behavior is agreed, not waived for release.
 4. Breaking changes require a changelog entry and migration note in the same change; do not create compatibility layers without a named consumer.
 5. New public exports must be intentional package entry points. Do not add `src/*` compatibility exports.
 6. Do not introduce a new framework, state owner, registry, package boundary, or persistent format as an incidental detail. If the lean plan is insufficient, pause and propose an amendment.

@@ -1012,6 +1012,38 @@ html, body {
   padding: 12px;
   background: var(--pane-soft);
 }
+.modal-dialog.resource-modal {
+  align-self: center;
+  width: min(560px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100vh - 32px);
+}
+.resource-form {
+  display: grid;
+  gap: 6px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.resource-form label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.resource-form-note {
+  margin: 6px 0 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  font-size: 12px;
+}
+.resource-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
 .modal-toolbar {
   display: flex;
   gap: 8px;
@@ -1701,9 +1733,107 @@ html, body {
 .view-tabs button[data-icon]::before { display: none; }
 .view-tabs button.active { background: transparent; color: var(--accent); }
 .view-tabs button.active::after { content: ""; position: absolute; bottom: 0; height: 2px; left: 0; right: 0; background: var(--accent); }
-.library-actions #newStackBtn { flex: 1 1 auto; padding-inline: 3px; }
-.library-actions select { min-width: 65px; padding-inline: 3px; }
 .library-actions { flex-wrap: nowrap; }
 @media(max-width:520px) { .view-tabs { gap: 14px; } }
+
+.stack-list, .item-list { flex: 0 1 auto; }
+.side-head { flex-direction: row; align-items: flex-start; }
+.side-head .library-actions { flex: 0 0 auto; }
+.side-head .cwd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Second-pass workspace polish: keep creation and item operations close to their
+   owning list/editor, while the preview remains a separate dock column. */
+.library-create {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 5px;
+  padding: 10px 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--pane-soft);
+}
+.library-create #newStackBtn {
+  width: 100%;
+  margin-top: 2px;
+  border-style: dashed;
+  justify-content: center;
+}
+.item-add-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--pane);
+}
+.item-add-wrap > .outline-add {
+  width: 100%;
+  border-style: dashed;
+  color: var(--muted);
+}
+.add-content-menu {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% - 4px);
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--pane);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.add-content-menu[hidden] {
+  display: none;
+}
+.add-content-menu button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  text-align: left;
+  border-color: transparent;
+}
+.add-content-menu button small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+}
+.item-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--pane);
+}
+.item-editor-actions button {
+  min-height: 28px;
+  font-size: 12px;
+}
+.view-tabs [data-dock-tab] {
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--pane-soft);
+  padding-inline: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.view-tabs [data-dock-tab].active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.view-tabs [data-dock-tab].active::after {
+  display: none;
+}
+.editor-dock-area.dock-open .tab-panel.open {
+  display: block;
+  border-right: 1px solid var(--line);
+}
+.editor-dock-area.dock-open.dock-focus .tab-panel.open {
+  display: none;
+}
+
 
 `;

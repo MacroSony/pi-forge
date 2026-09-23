@@ -1,4 +1,4 @@
-/* Scoped Inspector Dock & Reading Layout (V4 Lane C) */
+/* Independent inspector dock beside the active Preset editing surface. */
 
 /* Dock area grid overrides based on reading state */
 .editor-dock-area.dock-open {
@@ -20,6 +20,8 @@
 	grid-template-columns: minmax(0, 1fr);
 }
 
+.editor-dock-area.dock-open.dock-focus .tab-panel.open,
+.editor-dock-area.dock-open[data-reading="focus"] .tab-panel.open,
 .editor-dock-area.dock-open.dock-focus .workspace,
 .editor-dock-area.dock-open[data-reading="focus"] .workspace {
 	display: none;
@@ -150,7 +152,8 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
  }
- .editor-dock-area.dock-open .workspace { display: none; }
+ .editor-dock-area.dock-open .workspace,
+ .editor-dock-area.dock-open .tab-panel.open { display: none; }
  .preview-reading-arrow { left: 8px !important; }
  .context-diff-dock-header { padding-left: 44px !important; }
 }
