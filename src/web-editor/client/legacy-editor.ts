@@ -145,6 +145,8 @@ const vueItemHost = createVueItemHost({
   markDirty,
   renderItemList,
   setStatus,
+  deleteSelectedItem,
+  copyText: copyTextToClipboard,
 });
 
 function setStatus(text: string, tone: any = "", semantic?: { key: MessageKey; params?: Record<string, string | number> }) {
@@ -207,7 +209,7 @@ function updateActionState() {
     activateButton.disabled = !hasStack || dirty;
     activateButton.title = dirty ? t("polish.workspace.activateSavedFirst") : t("chrome.activateTitle");
   }
-  const deleteItemButton = el("deleteItemBtn");
+  const deleteItemButton = document.querySelector<HTMLButtonElement>("#deleteItemBtn");
   if (deleteItemButton) deleteItemButton.disabled = !hasStack || selectedItemIndex < 0;
   document.querySelectorAll("[data-tab], [data-dock-tab]").forEach((button: any) => {
     button.disabled = !hasStack;
@@ -425,8 +427,9 @@ function renderItemList() {
       : "";
     row.innerHTML = '<div class="drag-handle" title="' + attr(t("itemList.dragToReorder")) + '">≡</div>' +
       '<div><div class="item-title">' + escapeHtml(displayItemName(item)) + diagBadge + '</div>' +
-      '<div class="item-meta">' + kindBadge + slotBadge + ' <span>id: ' + escapeHtml(item.id) + (item.role ? " · " + escapeHtml(item.role) : "") + '</span></div></div>' +
-      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>';
+      '<div class="item-meta">' + kindBadge + slotBadge + (item.role ? ' <span>' + escapeHtml(item.role) + '</span>' : '') + '</div></div>' +
+      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>' +
+      '<code class="item-row-id" title="' + attr(item.id) + '">' + escapeHtml(item.id) + '</code>';
     const selectRow = (event?: any) => {
       if (event?.target?.classList?.contains("item-toggle")) return;
       const retainFocus = event?.type === "keydown" && document.activeElement === row;
@@ -610,10 +613,8 @@ function renderItemEditor() {
   const editor = el("itemEditor");
   if (!vueItemHost.mount(editor)) {
     editor.innerHTML = '<div class="empty">' + escapeHtml(t("itemEditor.none")) + '</div>';
-    el("deleteItemBtn").disabled = true;
     return;
   }
-  el("deleteItemBtn").disabled = false;
 }
 
 function showStackModal(title: any, meta: any, body: any, options: any = {}): Promise<any> {
@@ -732,7 +733,7 @@ function nextNumericItemId() {
 function deleteSelectedItem() {
   if (!currentStack || selectedItemIndex < 0) return;
   const item = currentStack.items[selectedItemIndex];
-  if (!confirm(t("confirm.deleteItem", { id: item.id }))) return;
+  if (!confirm(t("polish.workspace.deleteItemConfirm", { id: item.id, name: displayItemName(item) }))) return;
   currentStack.items.splice(selectedItemIndex, 1);
   selectedItemIndex = Math.min(selectedItemIndex, currentStack.items.length - 1);
   markDirty();
@@ -1265,6 +1266,12 @@ function handlePreviewClick(event: any) {
 
 function handleEditorShortcut(event: any) {
   if (!editorIsActive()) return;
+  // Native properties/session dialogs own focus; never save the background draft.
+  if (document.querySelector("dialog[open]")) {
+    if ((event.ctrlKey || event.metaKey) && ["s", "n", "enter"].includes(event.key.toLowerCase())) event.preventDefault();
+    return;
+  }
+
 
   if (el("stackModal").classList.contains("open")) {
     if (event.key === "Escape") {
@@ -1366,7 +1373,6 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
   el("addContentBtn").onclick = toggleAddContentMenu;
   el("addItemBtn").onclick = () => addItem("block");
   el("addSlotBtn").onclick = () => addItem("slot");
-  el("deleteItemBtn").onclick = deleteSelectedItem;
 
   document.addEventListener("dragover", handleDocumentItemDragOver);
   document.addEventListener("drop", handleDocumentItemDrop);

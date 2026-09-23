@@ -18,7 +18,6 @@ const selectedSelector = ref("");
 const loadError = ref("");
 const loading = ref(false);
 const editorMode = ref<"create" | "edit">();
-const createScope = ref<"project" | "global">("project");
 const actionStatus = ref("");
 const actionError = ref("");
 const actionBusy = ref(false);
@@ -244,34 +243,6 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 			<span id="modesStatus" class="status">
 				{{ loading || actionBusy ? t("modes.working") : actionError || loadError || actionStatus || t("modes.count", { count: collection?.modes.length || 0 }) }}
 			</span>
-			<select
-				id="modeCreateScope"
-				v-model="createScope"
-				:title="t('modes.scopeTitle')"
-				:aria-label="t('polish.surfaces.modeScopeAria')"
-				:disabled="loading || actionBusy || !!editorMode"
-			>
-				<option value="project">{{ t("modes.scopeProject") }}</option>
-				<option value="global">{{ t("modes.scopeGlobal") }}</option>
-			</select>
-			<button
-				id="modeNewBtn"
-				data-icon="+"
-				type="button"
-				:disabled="loading || actionBusy || !!editorMode || collection?.trusted === false"
-				@click="startCreate"
-			>
-				{{ t("modes.newMode") }}
-			</button>
-			<button
-				id="modeRefreshBtn"
-				data-icon="↻"
-				type="button"
-				:disabled="loading || actionBusy"
-				@click="loadModes(true)"
-			>
-				{{ t("modes.refresh") }}
-			</button>
 		</header>
 
 		<div v-if="loadError" class="mode-message error">{{ loadError }}</div>
@@ -281,6 +252,12 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 
 		<div v-if="collection" class="mode-layout">
 			<aside class="mode-sidebar">
+				<div class="mode-list-head">
+					<strong>{{ t("modes.heading") }}</strong>
+					<button id="modeRefreshBtn" class="icon" :title="t('modes.refresh')" :aria-label="t('modes.refresh')" data-icon="↻" type="button" :disabled="loading || actionBusy" @click="loadModes(true)">
+						{{ t("modes.refresh") }}
+					</button>
+				</div>
 				<div class="mode-list" role="list" :aria-label="t('modes.listAria')">
 					<button
 						v-for="entry in collection.modes"
@@ -308,6 +285,16 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 					<div v-if="collection.modes.length === 0" class="mode-empty-note">
 						{{ t("modes.empty") }}
 					</div>
+					<button
+						id="modeNewBtn"
+						class="resource-add-row"
+						data-icon="+"
+						type="button"
+						:disabled="loading || actionBusy || !!editorMode || collection.trusted === false"
+						@click="startCreate"
+					>
+						{{ t("modes.newMode") }}
+					</button>
 				</div>
 			</aside>
 
@@ -316,7 +303,6 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 					v-if="editorMode"
 					:mode="editorMode"
 					:source-entry="editorMode === 'create' ? undefined : selected"
-					:create-scope="createScope"
 					@cancel="handleEditorCancel"
 					@saved="handleEditorSaved"
 					@dirty-change="(isDirty) => { isEditorDirty = isDirty; }"
@@ -458,11 +444,39 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 	background: var(--pane);
 }
 
+.mode-list-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--line);
+	color: var(--muted);
+	font-size: 12px;
+}
+
 .mode-list {
 	flex: 1;
 	min-height: 0;
 	padding: 8px;
 	overflow-y: auto;
+}
+
+.resource-add-row {
+	display: block;
+	width: 100%;
+	margin-top: 8px;
+	padding: 10px;
+	border: 1px dashed var(--accent);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--accent);
+	text-align: center;
+	font-weight: 650;
+}
+
+.resource-add-row:hover:not(:disabled) {
+	background: var(--accent-bg);
 }
 
 .mode-row {

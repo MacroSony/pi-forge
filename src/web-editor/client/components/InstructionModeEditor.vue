@@ -9,7 +9,6 @@ import ToolPicker from "./ToolPicker.vue";
 const props = defineProps<{
 	mode: "create" | "edit";
 	sourceEntry?: InstructionModeEntry;
-	createScope?: "project" | "global";
 }>();
 
 const emit = defineEmits<{
@@ -23,7 +22,7 @@ const api = createEditorApi(token);
 
 const initialScope: "project" | "global" = props.mode === "edit"
 	? (props.sourceEntry?.scope ?? "project")
-	: (props.createScope ?? "project");
+	: "project";
 
 // Capture the edit target once. The browser may refresh its collection while
 // this component is dirty; a new prop object must not change the PUT target or
@@ -32,9 +31,10 @@ const editTarget = {
 	selector: props.sourceEntry?.selector ?? "",
 	sourceRevision: props.sourceEntry?.sourceRevision,
 };
+const editSource = props.mode === "edit" ? props.sourceEntry?.mode : undefined;
 
-const initial = (props.mode === "edit" && props.sourceEntry?.mode)
-	? props.sourceEntry.mode
+const initial = editSource
+	? editSource
 	: {
 		schemaVersion: 1,
 		type: "pi-forge.instruction-mode",
@@ -143,7 +143,9 @@ function removeTool(kind: "add" | "remove", index: number): void {
 }
 
 function modeFromDraft(): InstructionMode {
+	const original = editSource;
 	return {
+		...original,
 		schemaVersion: 1,
 		type: "pi-forge.instruction-mode",
 		id: draft.id.trim(),
@@ -151,6 +153,7 @@ function modeFromDraft(): InstructionMode {
 		description: draft.description.trim() || undefined,
 		content: draft.content,
 		tools: {
+			...(original?.tools || {}),
 			add: [...draft.toolsAdd],
 			remove: [...draft.toolsRemove],
 		},
@@ -241,6 +244,16 @@ async function saveDraft(): Promise<void> {
 		<div v-if="error" class="mode-message error">{{ error }}</div>
 
 		<div class="mode-form">
+			<label class="mode-field">
+				<span>{{ t("modes.editorName") }}</span>
+				<input
+					id="modeName"
+					v-model="draft.name"
+					:placeholder="t('modes.editorNamePlaceholder')"
+					autocomplete="off"
+				>
+			</label>
+
 			<div class="mode-form-row">
 				<label class="mode-field">
 					<span>{{ t("modes.editorId") }}</span>
@@ -258,18 +271,9 @@ async function saveDraft(): Promise<void> {
 						<option value="project">{{ t("modes.scopeProject") }}</option>
 						<option value="global">{{ t("modes.scopeGlobal") }}</option>
 					</select>
+					<small v-if="mode === 'edit'" class="mode-scope-note">{{ editTarget.selector }}</small>
 				</label>
 			</div>
-
-			<label class="mode-field">
-				<span>{{ t("modes.editorName") }}</span>
-				<input
-					id="modeName"
-					v-model="draft.name"
-					:placeholder="t('modes.editorNamePlaceholder')"
-					autocomplete="off"
-				>
-			</label>
 
 			<label class="mode-field">
 				<span>{{ t("modes.editorDescription") }}</span>
@@ -458,6 +462,13 @@ async function saveDraft(): Promise<void> {
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--muted);
+}
+
+.mode-scope-note {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: var(--muted);
+	overflow-wrap: anywhere;
 }
 
 .mode-field input,

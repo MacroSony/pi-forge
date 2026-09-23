@@ -5,6 +5,7 @@
 // attribute so the legacy tab click handler does not claim it, and mounts the
 // self-contained ContextDiffPanel Vue component into the right-side dock.
 
+import { subscribeEditorView } from "./editor-view-coordinator.ts";
 import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
@@ -105,7 +106,14 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		activate();
 	};
 
+	const stopEditorNavigation = subscribeEditorView((viewId) => {
+		if (active && ["items", "regex", "policy", "bindings", "stack"].includes(viewId)) {
+			contextDiffHost?.revealEditor();
+		}
+	});
+
 	return () => {
+		stopEditorNavigation();
 		buttonElement.onclick = null;
 		clearActiveState();
 	};

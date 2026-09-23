@@ -195,6 +195,7 @@ onUnmounted(() => {
 						<div class="resource-subline"><code id="resourceSelector"></code><span id="resourceMode"></span></div>
 					</div>
 					<div class="main-actions">
+					<section id="metadataPanel" class="preset-properties-entry"><div id="metadataHost"></div></section>
 					<button id="activateBtn" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
 					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited preset JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
 					<button id="validateBtn" data-icon="!" title="Validate the edited preset without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
@@ -213,9 +214,6 @@ onUnmounted(() => {
 					</div>
 					<span class="resource-editing-label" data-i18n="polish.workspace.editing">Editing</span>
 				</header>
-				<section id="metadataPanel" class="metadata-panel">
-					<div id="metadataHost"></div>
-				</section>
 				<nav class="view-tabs" aria-label="Preset editor sections" data-i18n-aria="nav.stackSectionsAria">
 					<button
 						v-for="tab in EDITOR_TABS"
@@ -255,9 +253,7 @@ onUnmounted(() => {
 						</div>
 						<div class="editor-pane">
 							<div id="itemEditor" class="item-editor"></div>
-							<div class="item-editor-actions">
-								<button id="deleteItemBtn" class="danger" type="button" data-icon="×" title="Delete the selected Stack item" data-i18n="chrome.deleteItem" data-i18n-title="chrome.deleteItemTitle">Delete item</button>
-							</div>
+
 							<div id="diagnostics" class="diagnostics"></div>
 						</div>
 					</section>

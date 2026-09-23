@@ -11,6 +11,8 @@ export interface VueItemHostDependencies {
 	roles: string[];
 	markDirty(): void;
 	renderItemList(): void;
+	deleteSelectedItem(): void;
+	copyText(text: string): Promise<void>;
 	setStatus(text: string, tone?: string, semantic?: { key: MessageKey; params?: Record<string, string | number> }): void;
 }
 
@@ -36,6 +38,15 @@ export function createVueItemHost(deps: VueItemHostDependencies) {
 				error = "";
 				deps.markDirty();
 				if (refreshList) deps.renderItemList();
+			},
+			onDelete: () => {
+				if (deps.getStack() === stack && deps.getSelectedIndex() === index) deps.deleteSelectedItem();
+			},
+			onCopyId: async () => {
+				try {
+					await deps.copyText(item.id);
+					deps.setStatus(t("polish.workspace.idCopied"), "success", { key: "polish.workspace.idCopied" });
+				} catch (caught) { deps.setStatus(String(caught), "error"); }
 			},
 			onError: (message: string) => {
 				error = message;

@@ -102,6 +102,13 @@ function returnToEditing(): void {
 	}
 }
 
+// Editor navigation asks this owner to reveal the editor; the host does not
+// manufacture a second reading state or reset the selected inspection tab.
+function revealEditor(): void {
+	if (readingState.value === "focus") exitFocus();
+}
+defineExpose({ revealEditor });
+
 const primaryBoundaryTitle = computed(() => {
 	switch (readingState.value) {
 		case "side":

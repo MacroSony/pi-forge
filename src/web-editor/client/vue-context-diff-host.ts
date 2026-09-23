@@ -14,6 +14,7 @@ export interface VueContextDiffHostDependencies {
 /** Mounts the self-contained preview/diff dock component into a root element. */
 export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 	let app: App<Element> | undefined;
+	let panel: { revealEditor(): void } | undefined;
 
 	function mount(root: Element): void {
 		unmount();
@@ -27,13 +28,14 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 				deps.setExpanded(mode === "focus");
 			},
 		});
-		app.mount(root);
+		panel = app.mount(root) as unknown as { revealEditor(): void };
 	}
 
 	function unmount(): void {
 		app?.unmount();
 		app = undefined;
+		panel = undefined;
 	}
 
-	return { mount, unmount };
+	return { mount, unmount, revealEditor: () => panel?.revealEditor() };
 }

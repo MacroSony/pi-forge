@@ -1798,18 +1798,6 @@ html, body {
   color: var(--muted);
   font-size: 11px;
 }
-.item-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-  padding: 7px 12px;
-  border-top: 1px solid var(--line);
-  background: var(--pane);
-}
-.item-editor-actions button {
-  min-height: 28px;
-  font-size: 12px;
-}
 .view-tabs [data-dock-tab] {
   margin-left: auto;
   border: 1px solid var(--line);
@@ -1836,5 +1824,10 @@ html, body {
 }
 
 
+/* Third-pass identity readability: tags and roles do not consume the ID line. */
+.item-row .item-meta { white-space:normal; overflow:visible; display:flex; flex-wrap:wrap; gap:3px; align-items:center; }
+.item-row .item-slot-badge { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+.item-row-id { grid-column:1 / -1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; user-select:text; }
+.preset-properties-entry { flex:0 0 auto; }
 `;
 //# sourceMappingURL=styles.js.map

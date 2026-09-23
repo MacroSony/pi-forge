@@ -1,5 +1,12 @@
 // Workspace-specific copy; consumed by the single editor i18n owner.
 export const workspaceEn = {
+	"polish.workspace.presetProperties": "Preset properties",
+	"polish.workspace.propertiesDraftHint": "Changes stay in this preset draft. Close and Save the preset to apply them.",
+	"polish.workspace.itemActions": "Item actions",
+	"polish.workspace.deleteItemConfirm": "Remove “{name}” ({id}) from this preset draft? Save the preset to apply this removal.",
+	"polish.workspace.copyId": "Copy ID",
+	"polish.workspace.idCopied": "ID copied",
+
 	"polish.workspace.editing": "Editing",
 	"polish.workspace.runtimeActive": "Active in session",
 	"polish.workspace.savedVersion": "Not active in session",
@@ -35,6 +42,13 @@ export const workspaceEn = {
 } as const;
 
 export const workspaceZhCN: Record<keyof typeof workspaceEn, string> = {
+	"polish.workspace.presetProperties": "预设属性",
+	"polish.workspace.propertiesDraftHint": "修改保留在当前预设草稿中。关闭后保存预设，才会应用修改。",
+	"polish.workspace.itemActions": "条目操作",
+	"polish.workspace.deleteItemConfirm": "从预设草稿移除“{name}”（{id}）？保存预设后才会应用移除。",
+	"polish.workspace.copyId": "复制 ID",
+	"polish.workspace.idCopied": "ID 已复制",
+
 	"polish.workspace.editing": "正在编辑",
 	"polish.workspace.runtimeActive": "会话中启用",
 	"polish.workspace.savedVersion": "未在会话中启用",

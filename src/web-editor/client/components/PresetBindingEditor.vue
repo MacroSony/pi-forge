@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
@@ -20,6 +20,8 @@ const props = defineProps<{
 	presetSelector: string;
 	presetScope: "project" | "global";
 }>();
+
+const bindingRoot = ref<HTMLElement>();
 
 const emit = defineEmits<{
 	change: [];
@@ -89,7 +91,24 @@ function teardown(): void {
 	catalogRequestId++;
 }
 
-onBeforeUnmount(teardown);
+function closeActionMenus(): void {
+	bindingRoot.value?.querySelectorAll<HTMLDetailsElement>("details.binding-actions-menu[open]").forEach((menu) => { menu.open = false; });
+}
+
+function handleActionMenuPointerDown(event: PointerEvent): void {
+	if (!(event.target instanceof Element) || !event.target.closest(".binding-actions-menu")) closeActionMenus();
+}
+
+function handleActionMenuKeydown(event: KeyboardEvent): void {
+	if (event.key !== "Escape") return;
+	closeActionMenus();
+}
+
+onBeforeUnmount(() => {
+	document.removeEventListener("pointerdown", handleActionMenuPointerDown);
+	document.removeEventListener("keydown", handleActionMenuKeydown);
+	teardown();
+});
 
 async function loadCatalog(): Promise<void> {
 	const reqId = ++catalogRequestId;
@@ -226,6 +245,8 @@ async function fetchEffectivePreview(): Promise<void> {
 }
 
 onMounted(() => {
+	document.addEventListener("pointerdown", handleActionMenuPointerDown);
+	document.addEventListener("keydown", handleActionMenuKeydown);
 	void loadAvailableModes();
 	void loadCatalog();
 	scheduleEffectivePreview();
@@ -264,10 +285,17 @@ function addBinding(): void {
 	});
 	emit("change");
 	scheduleEffectivePreview();
+	void nextTick(() => {
+		bindingRoot.value?.querySelector<HTMLSelectElement>("[data-binding-row]:last-child [data-binding-ref]")?.focus();
+	});
 }
 
 function removeBinding(index: number): void {
 	const list = ensureBindingsArray();
+	const binding = list[index];
+	if (!binding) return;
+	const label = modeName(binding.ref) || binding.ref || binding.id || `#${index + 1}`;
+	if (!window.confirm(t("polish.forms.binding.confirmDelete", { name: label }))) return;
 	list.splice(index, 1);
 	emit("change");
 	scheduleEffectivePreview();
@@ -422,11 +450,11 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 </script>
 
 <template>
-	<div class="preset-binding-editor">
+	<div ref="bindingRoot" class="preset-binding-editor">
 		<div class="binding-header">
 			<div>
 				<span class="binding-title">{{ t("binding.title") }}</span>
-				<div class="binding-meta">{{ t("binding.meta") }}</div>
+				<div class="binding-meta">{{ t("polish.forms.binding.saveHint") }}</div>
 			</div>
 			<span class="action-spacer"></span>
 			<button
@@ -439,16 +467,6 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 				@click="refreshModes"
 			>
 				{{ modesLoading ? t("binding.refreshingModes") : t("binding.refreshModes") }}
-			</button>
-			<button
-				id="addBindingBtn"
-				type="button"
-				data-icon="+"
-				:disabled="!canAddBinding"
-				:title="addBindingTitle"
-				@click="addBinding"
-			>
-				{{ t("binding.add") }}
 			</button>
 		</div>
 
@@ -571,15 +589,19 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 					>
 						↓
 					</button>
-					<button
-						type="button"
-						class="danger"
-						data-binding-delete-btn
-						:title="t('binding.deleteTitle')"
-						@click="removeBinding(index)"
-					>
-						×
-					</button>
+					<details class="binding-actions-menu">
+						<summary>{{ t("polish.forms.binding.actions") }}</summary>
+						<button
+							type="button"
+							class="danger"
+							data-binding-delete-btn
+							:title="t('binding.deleteTitle')"
+							@click="removeBinding(index)"
+						>
+							{{ t("polish.forms.binding.delete") }}
+						</button>
+					</details>
+
 				</div>
 
 				<div v-if="isRowAdvancedOpen(index)" class="binding-card-body" data-binding-advanced-body>
@@ -734,6 +756,17 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 				</div>
 			</div>
 		</div>
+		<button
+			id="addBindingBtn"
+			class="binding-add-row"
+			data-icon="+"
+			type="button"
+			:disabled="!canAddBinding"
+			:title="addBindingTitle"
+			@click="addBinding"
+		>
+			{{ t("binding.add") }}
+		</button>
 	</div>
 </template>
 
@@ -830,6 +863,20 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	gap: 12px;
 }
 
+.binding-add-row {
+	width: 100%;
+	padding: 9px;
+	border: 1px dashed var(--accent);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--accent);
+	font-weight: 650;
+}
+
+.binding-add-row:hover:not(:disabled) {
+	background: var(--accent-bg);
+}
+
 .binding-card {
 	border: 1px solid var(--line);
 	border-radius: 6px;
@@ -889,6 +936,32 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	padding: 2px 8px;
 	min-height: 24px;
 	font-size: 12px;
+}
+
+.binding-actions-menu {
+	position: relative;
+}
+
+.binding-actions-menu summary {
+	padding: 3px 8px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--pane);
+	color: var(--muted);
+	font-size: 11px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.binding-actions-menu summary::-webkit-details-marker {
+	display: none;
+}
+
+.binding-actions-menu > button {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	white-space: nowrap;
 }
 
 .binding-card-body {

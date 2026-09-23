@@ -21,7 +21,6 @@ const selectedPath = ref("");
 const loadError = ref("");
 const loading = ref(false);
 const editorMode = ref<"create" | "edit">();
-const createScope = ref<"project" | "global">("project");
 const profileActionStatus = ref("");
 const profileActionError = ref("");
 const profileActionBusy = ref(false);
@@ -192,22 +191,6 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 			<span id="profilesStatus" class="status">
 				{{ loading || profileActionBusy ? t("profiles.working") : loadError || profileActionError || profileActionStatus || t("profiles.count", { count: collection?.profiles.length || 0 }) }}
 			</span>
-			<select id="profileCreateScope" v-model="createScope" :title="t('profiles.scopeTitle')" :disabled="loading || profileActionBusy || !!editorMode">
-				<option value="project">{{ t("profiles.scopeProject") }}</option>
-				<option value="global">{{ t("profiles.scopeGlobal") }}</option>
-			</select>
-			<button
-				id="profileNewBtn"
-				data-icon="+"
-				type="button"
-				:disabled="loading || profileActionBusy || !!editorMode || !collection?.trusted"
-				@click="startEditor('create')"
-			>
-				{{ t("profiles.newProfile") }}
-			</button>
-			<button id="profileRefreshBtn" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="refreshProfiles">
-				{{ t("profiles.refresh") }}
-			</button>
 		</header>
 
 		<div v-if="loadError" class="profile-message error">{{ loadError }}</div>
@@ -217,8 +200,13 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 		<div v-if="collection" class="profile-layout">
 			<aside class="profile-sidebar">
 				<div class="side-head">
-					<div class="side-title">{{ t("nav.profiles") }}</div>
-					<div class="cwd">{{ collection.profileDirectory }}</div>
+					<div>
+						<div class="side-title">{{ t("nav.profiles") }}</div>
+						<div class="cwd" :title="collection.profileDirectory">{{ collection.profileDirectory }}</div>
+					</div>
+					<button id="profileRefreshBtn" class="icon" :title="t('profiles.refresh')" :aria-label="t('profiles.refresh')" data-icon="↻" type="button" :disabled="loading || profileActionBusy || !!editorMode" @click="refreshProfiles">
+						{{ t("profiles.refresh") }}
+					</button>
 				</div>
 				<div class="profile-list">
 					<button
@@ -256,6 +244,16 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					<div v-if="!collection.profiles.length" class="profile-empty">
 						{{ t("profiles.empty") }}
 					</div>
+					<button
+						id="profileNewBtn"
+						class="resource-add-row"
+						data-icon="+"
+						type="button"
+						:disabled="loading || profileActionBusy || !!editorMode || !collection.trusted"
+						@click="startEditor('create')"
+					>
+						{{ t("profiles.newProfile") }}
+					</button>
 				</div>
 			</aside>
 
@@ -267,7 +265,6 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 					:collection="collection"
 					:source="editorMode === 'edit' ? selected?.profile : undefined"
 					:source-selector="editorMode === 'edit' ? selected?.selector : undefined"
-					:create-scope="createScope"
 					@cancel="editorMode = undefined"
 					@saved="handleProfileSaved"
 				/>
@@ -393,6 +390,10 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 </template>
 
 <style scoped>
+.profile-sidebar .side-head > div { flex: 1 1 auto; min-width: 0; }
+.profile-sidebar .side-head .cwd { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-sidebar .side-head > button { flex: 0 0 auto; }
+
 .profile-surface {
 	flex: 1;
 	min-height: 0;
@@ -448,11 +449,37 @@ function shadowRelationship(entry: WebEditorProfileEntry): string {
 	background: var(--pane);
 }
 
+.profile-sidebar :deep(.side-head) {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--line);
+}
+
 .profile-list {
 	flex: 1;
 	min-height: 0;
 	padding: 8px;
 	overflow: auto;
+}
+
+.resource-add-row {
+	display: block;
+	width: 100%;
+	margin-top: 8px;
+	padding: 10px;
+	border: 1px dashed var(--accent);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--accent);
+	text-align: center;
+	font-weight: 650;
+}
+
+.resource-add-row:hover:not(:disabled) {
+	background: var(--accent-bg);
 }
 
 .profile-row {

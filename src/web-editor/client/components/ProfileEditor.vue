@@ -15,7 +15,6 @@ const props = defineProps<{
 	collection: WebEditorProfileCollection;
 	source?: AgentProfile;
 	sourceSelector?: string;
-	createScope?: "project" | "global";
 }>();
 const emit = defineEmits<{
 	cancel: [];
@@ -25,9 +24,13 @@ const emit = defineEmits<{
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
-const initial = props.source ?? defaultProfile();
+const initialScope: "project" | "global" = props.mode === "edit"
+	? ((props.sourceSelector ?? "").startsWith("global:") ? "global" : "project")
+	: "project";
+const initial = props.source ?? defaultProfile(initialScope);
 const draft = reactive({
 	id: initial.id,
+	scope: initialScope,
 	name: initial.name ?? "",
 	description: initial.description ?? "",
 	autoActivate: initial.autoActivate === true,
@@ -40,13 +43,12 @@ const validation = ref<WebEditorProfileValidation>();
 const status = ref("");
 const error = ref("");
 const busy = ref(false);
+const scopeNotice = ref("");
 
 const editScope = computed<"project" | "global">(() => {
-	if (props.mode !== "edit") return props.createScope ?? "project";
-	return (props.sourceSelector ?? "").startsWith("global:") ? "global" : "project";
+	if (props.mode !== "edit") return draft.scope;
+	return initialScope;
 });
-const scopeLabel = computed(() => t(editScope.value === "global" ? "profileEditor.scopeGlobal" : "profileEditor.scopeProject"));
-
 const providerOptions = computed(() => {
 	return [...new Set(props.collection.models.map((model) => model.provider))].sort();
 });
@@ -92,7 +94,7 @@ watch(draft, () => {
 	error.value = "";
 }, { deep: true });
 
-function defaultProfile(): AgentProfile {
+function defaultProfile(scope: "project" | "global"): AgentProfile {
 	const current = props.collection.status.current;
 	const fallbackModel = current.model ?? props.collection.models.find((model) => model.available) ?? props.collection.models[0];
 	return {
@@ -104,7 +106,7 @@ function defaultProfile(): AgentProfile {
 			id: fallbackModel?.id ?? "",
 		},
 		thinkingLevel: current.thinkingLevel,
-		promptStack: normalizeProfilePromptStackReference(current.promptStack, props.createScope ?? "project"),
+		promptStack: normalizeProfilePromptStackReference(current.promptStack, scope),
 	};
 }
 
@@ -119,6 +121,21 @@ function normalizeProfilePromptStackReference(reference: string | null, targetSc
 		return targetScope === "global" ? reference.slice("global:".length) : reference;
 	}
 	return reference;
+}
+
+function changeCreateScope(nextScope: "project" | "global"): void {
+	if (props.mode !== "create" || nextScope === draft.scope) return;
+	const previousScope = draft.scope;
+	const reference = draft.promptStack.trim();
+	if (reference && !reference.includes(":")) {
+		// Keep the selected preset's canonical identity when scope changes. A
+		// bare project preset must never become a same-ID global preset by accident.
+		draft.promptStack = `${previousScope}:${reference}`;
+		scopeNotice.value = t("polish.surfaces.profileScopeReferencePreserved", {
+			selector: draft.promptStack,
+		});
+	}
+	draft.scope = nextScope;
 }
 
 function profileFromDraft(): AgentProfile {
@@ -138,8 +155,8 @@ function profileFromDraft(): AgentProfile {
 	};
 }
 
-const initialSnapshot = JSON.stringify(profileFromDraft());
-const dirty = computed(() => JSON.stringify(profileFromDraft()) !== initialSnapshot);
+const initialSnapshot = JSON.stringify({ profile: profileFromDraft(), scope: draft.scope });
+const dirty = computed(() => JSON.stringify({ profile: profileFromDraft(), scope: draft.scope }) !== initialSnapshot);
 
 function handleBeforeUnload(event: BeforeUnloadEvent): void {
 	if (!dirty.value) return;
@@ -232,6 +249,10 @@ async function saveDraft(): Promise<void> {
 
 		<div class="profile-form">
 			<label class="profile-field">
+				<span>{{ t("metadata.name") }}</span>
+				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
+			</label>
+			<label class="profile-field">
 				<span>{{ t("profileEditor.id") }}</span>
 				<input
 					id="profileId"
@@ -242,10 +263,22 @@ async function saveDraft(): Promise<void> {
 				>
 				<small>{{ t("profileEditor.idHint", { scope: editScope, id: draft.id || "<id>" }) }}</small>
 			</label>
-			<label class="profile-field">
-				<span>{{ t("metadata.name") }}</span>
-				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
+			<label v-if="mode === 'create'" class="profile-field">
+				<span>{{ t("polish.surfaces.profileScope") }}</span>
+				<select
+					id="profileScope"
+					:value="draft.scope"
+					:title="t('profiles.scopeTitle')"
+					@change="changeCreateScope(($event.target as HTMLSelectElement).value as 'project' | 'global')"
+				>
+					<option value="project">{{ t("profiles.scopeProject") }}</option>
+					<option value="global">{{ t("profiles.scopeGlobal") }}</option>
+				</select>
 			</label>
+			<div v-else class="profile-field profile-scope-readonly">
+				<span>{{ t("polish.surfaces.profileScope") }}</span>
+				<code>{{ sourceSelector || `${editScope}:${draft.id}` }}</code>
+			</div>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.modelProvider") }}</span>
 				<input id="profileModelProvider" v-model="draft.provider" list="profileProviderOptions" autocomplete="off">
@@ -268,11 +301,22 @@ async function saveDraft(): Promise<void> {
 					{{ t("profileEditor.authWarning") }}
 				</small>
 			</label>
-			<label class="profile-field profile-field-wide">
+			<label class="profile-field">
 				<span>{{ t("profileEditor.thinkingLevel") }}</span>
 				<select id="profileThinkingLevel" v-model="draft.thinkingLevel">
 					<option v-for="level in thinkingLevels" :key="level" :value="level">{{ level }}</option>
 				</select>
+			</label>
+			<label class="profile-field">
+				<span>{{ t("profiles.promptStack") }}</span>
+				<select id="profilePromptStack" v-model="draft.promptStack">
+					<option value="">{{ t("common.none") }}</option>
+					<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
+						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
+					</option>
+				</select>
+				<small v-if="editScope === 'global'">{{ t("profileEditor.globalStackHint") }}</small>
+				<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
 			</label>
 
 			<details open class="profile-advanced-group profile-field-wide">
@@ -281,17 +325,6 @@ async function saveDraft(): Promise<void> {
 					<label class="profile-field profile-field-wide">
 						<span>{{ t("metadata.description") }}</span>
 						<textarea id="profileDescription" v-model="draft.description" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
-					</label>
-					<label class="profile-field profile-field-wide">
-						<span>{{ t("profiles.promptStack") }}</span>
-						<select id="profilePromptStack" v-model="draft.promptStack">
-							<option value="">{{ t("common.none") }}</option>
-							<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
-								{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
-							</option>
-						</select>
-						<small v-if="editScope === 'global'">{{ t("profileEditor.globalStackHint") }}</small>
-						<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
 					</label>
 					<label class="profile-check profile-field-wide">
 						<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
@@ -304,6 +337,7 @@ async function saveDraft(): Promise<void> {
 			</details>
 		</div>
 
+		<div v-if="scopeNotice" class="profile-editor-scope-notice">{{ scopeNotice }}</div>
 		<div v-if="status || error" id="profileEditorStatus" class="profile-editor-status" :class="{ error: !!error }">
 			{{ error || status }}
 		</div>
@@ -418,6 +452,26 @@ async function saveDraft(): Promise<void> {
 
 .profile-field-warning {
 	color: var(--warning) !important;
+}
+
+.profile-scope-readonly code {
+	display: block;
+	padding: 7px 8px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--pane-soft);
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+.profile-editor-scope-notice {
+	margin-top: 12px;
+	padding: 8px 10px;
+	border: 1px solid var(--warning);
+	border-radius: 5px;
+	background: var(--warning-bg);
+	color: var(--warning);
+	font-size: 12px;
 }
 
 .profile-check {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { t } from "../i18n.ts";
 import type {
@@ -39,6 +39,8 @@ interface RegexRuleForm {
 const props = defineProps<{
 	stack: EditorPromptStack;
 }>();
+
+const regexRoot = ref<HTMLElement>();
 
 const emit = defineEmits<{
 	change: [error: string];
@@ -172,16 +174,20 @@ function addRule(): void {
 	next.add(newForm.key);
 	expandedKeys.value = next;
 	rows.value = [...rows.value, newForm];
+	void nextTick(() => {
+		regexRoot.value?.querySelector<HTMLInputElement>("[data-regex-row]:last-child [data-regex-name]")?.focus();
+	});
 }
 
 function deleteRule(index: number): void {
 	const row = rows.value[index];
-	if (row) {
-		editedLimits.delete(row.key);
-		const next = new Set(expandedKeys.value);
-		next.delete(row.key);
-		expandedKeys.value = next;
-	}
+	if (!row) return;
+	const label = row.name.trim() || row.id.trim() || t("polish.forms.regex.unnamedRule");
+	if (!window.confirm(t("polish.forms.regex.confirmDelete", { name: label }))) return;
+	editedLimits.delete(row.key);
+	const next = new Set(expandedKeys.value);
+	next.delete(row.key);
+	expandedKeys.value = next;
 	rows.value = rows.value.filter((_, rowIndex) => rowIndex !== index);
 }
 
@@ -365,39 +371,41 @@ function truncate(text: string, maxLen: number): string {
 	return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
 }
 
+function closeActionMenus(): void {
+	regexRoot.value?.querySelectorAll<HTMLDetailsElement>("details.regex-actions-menu[open]").forEach((menu) => { menu.open = false; });
+}
+
+function handleActionMenuPointerDown(event: PointerEvent): void {
+	if (!(event.target instanceof Element) || !event.target.closest(".regex-actions-menu")) closeActionMenus();
+}
+
+function handleActionMenuKeydown(event: KeyboardEvent): void {
+	if (event.key !== "Escape") return;
+	closeActionMenus();
+}
+
+onMounted(() => {
+	document.addEventListener("pointerdown", handleActionMenuPointerDown);
+	document.addEventListener("keydown", handleActionMenuKeydown);
+});
+
+onBeforeUnmount(() => {
+	document.removeEventListener("pointerdown", handleActionMenuPointerDown);
+	document.removeEventListener("keydown", handleActionMenuKeydown);
+});
+
 defineExpose({
 	getError: () => regexError.value,
 });
 </script>
 
 <template>
-	<div class="tab-section regex-container">
+	<div ref="regexRoot" class="tab-section regex-container">
 		<div class="tab-section-title">{{ t("regex.title") }}</div>
 		<div class="tab-section-meta">
 			{{ t("regex.meta") }}
 		</div>
-		<div class="modal-toolbar">
-			<button
-				id="addRegexRuleBtn"
-				data-icon="+"
-				:title="t('regex.addRuleTitle')"
-				type="button"
-				@click="addRule"
-			>
-				{{ t("regex.addRule") }}
-			</button>
-			<button
-				id="validateRegexRulesBtn"
-				data-icon="!"
-				:title="t('regex.validateTitle')"
-				type="button"
-				@click="emit('validate')"
-			>
-				{{ t("regex.validate") }}
-			</button>
-			<span class="modal-spacer"></span>
-			<span class="modal-meta">{{ t("regex.saveNote") }}</span>
-		</div>
+		<div class="regex-save-note">{{ t("polish.forms.regex.saveHint") }}</div>
 
 		<div id="regexRows" class="regex-cards-list">
 			<div
@@ -458,16 +466,19 @@ defineExpose({
 						>
 							{{ t("regex.down") }}
 						</button>
-						<button
-							type="button"
-							class="text-btn icon-btn danger"
-							data-delete-row="true"
-							data-icon="×"
-							:title="t('regex.deleteTitle')"
-							@click="deleteRule(index)"
-						>
-							{{ t("stackTab.deleteVariable") }}
-						</button>
+						<details class="regex-actions-menu">
+							<summary>{{ t("polish.forms.regex.actions") }}</summary>
+							<button
+								type="button"
+								class="text-btn danger"
+								data-delete-row="true"
+								data-icon="×"
+								:title="t('regex.deleteTitle')"
+								@click="deleteRule(index)"
+							>
+								{{ t("polish.forms.regex.delete") }}
+							</button>
+						</details>
 						<button
 							type="button"
 							class="regex-toggle-btn"
@@ -647,6 +658,16 @@ defineExpose({
 				</div>
 			</div>
 		</div>
+		<button
+			id="addRegexRuleBtn"
+			class="regex-add-row"
+			data-icon="+"
+			:title="t('regex.addRuleTitle')"
+			type="button"
+			@click="addRule"
+		>
+			{{ t("regex.addRule") }}
+		</button>
 	</div>
 </template>
 
@@ -658,11 +679,31 @@ defineExpose({
 	padding: 8px 4px;
 }
 
+.regex-save-note {
+	font-size: 12px;
+	color: var(--muted, #657774);
+}
+
 .regex-cards-list {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 	margin-top: 8px;
+}
+
+.regex-add-row {
+	width: 100%;
+	margin-top: 2px;
+	padding: 9px;
+	border: 1px dashed var(--accent);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--accent);
+	font-weight: 650;
+}
+
+.regex-add-row:hover {
+	background: var(--accent-bg);
 }
 
 .regex-card {
@@ -747,6 +788,36 @@ defineExpose({
 	align-items: center;
 	gap: 6px;
 	flex-shrink: 0;
+}
+
+.regex-actions-menu {
+	position: relative;
+}
+
+.regex-actions-menu summary {
+	padding: 4px 8px;
+	border: 1px solid var(--line, #dfe7e4);
+	border-radius: 4px;
+	background: var(--pane, #ffffff);
+	color: var(--muted, #657774);
+	font-size: 11px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.regex-actions-menu summary::-webkit-details-marker {
+	display: none;
+}
+
+.regex-actions-menu[open] {
+	z-index: 2;
+}
+
+.regex-actions-menu > button {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+	white-space: nowrap;
 }
 
 .regex-toggle-btn {
