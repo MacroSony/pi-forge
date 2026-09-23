@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
@@ -39,14 +39,30 @@ const previewError = ref("");
 const catalogTools = ref<WebEditorPolicyResource[]>([]);
 const catalogLoading = ref(false);
 const catalogError = ref("");
-const expandedRows = ref<Record<number, boolean>>({});
+// The host draft is plain: do not proxy stored identities when filtering this view state.
+const expandedBindings = shallowRef<InstructionModeBinding[]>([]);
+const bindingKeys = new WeakMap<InstructionModeBinding, string>();
+let nextBindingKey = 0;
 
-function toggleRowAdvanced(index: number): void {
-	expandedRows.value[index] = !expandedRows.value[index];
+function bindingKey(binding: InstructionModeBinding): string {
+	let key = bindingKeys.get(binding);
+	if (!key) {
+		key = `binding-${++nextBindingKey}`;
+		bindingKeys.set(binding, key);
+	}
+	return key;
 }
 
-function isRowAdvancedOpen(index: number): boolean {
-	return !!expandedRows.value[index];
+function toggleRowAdvanced(binding: InstructionModeBinding): void {
+	if (expandedBindings.value.includes(binding)) {
+		expandedBindings.value = expandedBindings.value.filter((item) => item !== binding);
+	} else {
+		expandedBindings.value = [...expandedBindings.value, binding];
+	}
+}
+
+function isRowAdvancedOpen(binding: InstructionModeBinding): boolean {
+	return expandedBindings.value.includes(binding);
 }
 
 function modeForRef(ref: string): InstructionModeEntry | undefined {
@@ -91,22 +107,7 @@ function teardown(): void {
 	catalogRequestId++;
 }
 
-function closeActionMenus(): void {
-	bindingRoot.value?.querySelectorAll<HTMLDetailsElement>("details.binding-actions-menu[open]").forEach((menu) => { menu.open = false; });
-}
-
-function handleActionMenuPointerDown(event: PointerEvent): void {
-	if (!(event.target instanceof Element) || !event.target.closest(".binding-actions-menu")) closeActionMenus();
-}
-
-function handleActionMenuKeydown(event: KeyboardEvent): void {
-	if (event.key !== "Escape") return;
-	closeActionMenus();
-}
-
 onBeforeUnmount(() => {
-	document.removeEventListener("pointerdown", handleActionMenuPointerDown);
-	document.removeEventListener("keydown", handleActionMenuKeydown);
 	teardown();
 });
 
@@ -245,8 +246,6 @@ async function fetchEffectivePreview(): Promise<void> {
 }
 
 onMounted(() => {
-	document.addEventListener("pointerdown", handleActionMenuPointerDown);
-	document.addEventListener("keydown", handleActionMenuKeydown);
 	void loadAvailableModes();
 	void loadCatalog();
 	scheduleEffectivePreview();
@@ -290,23 +289,14 @@ function addBinding(): void {
 	});
 }
 
-function removeBinding(index: number): void {
+function removeBinding(binding: InstructionModeBinding): void {
 	const list = ensureBindingsArray();
-	const binding = list[index];
-	if (!binding) return;
+	const index = list.indexOf(binding);
+	if (index < 0) return;
 	const label = modeName(binding.ref) || binding.ref || binding.id || `#${index + 1}`;
 	if (!window.confirm(t("polish.forms.binding.confirmDelete", { name: label }))) return;
 	list.splice(index, 1);
-	emit("change");
-	scheduleEffectivePreview();
-}
-
-function moveBinding(index: number, delta: number): void {
-	const list = ensureBindingsArray();
-	const target = index + delta;
-	if (target < 0 || target >= list.length) return;
-	const [item] = list.splice(index, 1);
-	list.splice(target, 0, item);
+	expandedBindings.value = expandedBindings.value.filter((item) => item !== binding);
 	emit("change");
 	scheduleEffectivePreview();
 }
@@ -344,7 +334,11 @@ function setModelCallable(binding: InstructionModeBinding, value: boolean): void
 function cleanOverrides(binding: InstructionModeBinding): void {
 	if (!binding.overrides) return;
 	if (binding.overrides.tools) {
-		if (binding.overrides.tools.add === undefined && binding.overrides.tools.remove === undefined) {
+		if (
+			binding.overrides.tools.add === undefined
+			&& binding.overrides.tools.remove === undefined
+			&& !Object.keys(binding.overrides.tools).some((key) => key !== "add" && key !== "remove")
+		) {
 			delete binding.overrides.tools;
 		}
 	}
@@ -352,6 +346,7 @@ function cleanOverrides(binding: InstructionModeBinding): void {
 		binding.overrides.content === undefined
 		&& binding.overrides.appendContent === undefined
 		&& binding.overrides.tools === undefined
+		&& !Object.keys(binding.overrides).some((key) => key !== "content" && key !== "appendContent" && key !== "tools")
 	) {
 		delete binding.overrides;
 	}
@@ -398,27 +393,25 @@ function setContentOverrideText(binding: InstructionModeBinding, text: string): 
 	scheduleEffectivePreview();
 }
 
-function toolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove"): "omitted" | "explicitEmpty" | "custom" {
-	const list = binding.overrides?.tools?.[kind];
-	if (list === undefined) return "omitted";
-	if (Array.isArray(list) && list.length === 0) return "explicitEmpty";
-	return "custom";
+function toolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove"): "omitted" | "custom" {
+	return binding.overrides?.tools?.[kind] === undefined ? "omitted" : "custom";
 }
 
-function setToolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove", mode: "omitted" | "explicitEmpty" | "custom"): void {
+function toolsOverrideIsEmpty(binding: InstructionModeBinding, kind: "add" | "remove"): boolean {
+	return binding.overrides?.tools?.[kind]?.length === 0;
+}
+
+function setToolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove", mode: "omitted" | "custom"): void {
 	if (mode === "omitted") {
 		if (binding.overrides?.tools) {
 			delete binding.overrides.tools[kind];
 			cleanOverrides(binding);
 		}
-	} else if (mode === "explicitEmpty") {
+	} else {
 		binding.overrides = binding.overrides || {};
 		binding.overrides.tools = binding.overrides.tools || {};
-		binding.overrides.tools[kind] = [];
-	} else if (mode === "custom") {
-		binding.overrides = binding.overrides || {};
-		binding.overrides.tools = binding.overrides.tools || {};
-		if (!Array.isArray(binding.overrides.tools[kind])) {
+		// [] is a meaningful custom override: preserve it as an explicit wire value.
+		if (binding.overrides.tools[kind] === undefined) {
 			binding.overrides.tools[kind] = [];
 		}
 	}
@@ -499,7 +492,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 		<div v-else class="binding-list">
 			<div
 				v-for="(binding, index) in stack.instructionModes"
-				:key="index"
+				:key="bindingKey(binding)"
 				class="binding-card"
 				data-binding-row
 				:data-binding-index="index"
@@ -565,46 +558,26 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 						class="binding-advanced-toggle-btn"
 						data-binding-advanced-toggle
 						:data-binding-index="index"
-						:aria-expanded="isRowAdvancedOpen(index)"
-						@click="toggleRowAdvanced(index)"
+						:aria-expanded="isRowAdvancedOpen(binding)"
+						@click="toggleRowAdvanced(binding)"
 					>
-						{{ isRowAdvancedOpen(index) ? t("binding.hideAdvanced") : t("binding.showAdvanced") }}
+						{{ isRowAdvancedOpen(binding) ? t("binding.hideAdvanced") : t("binding.showAdvanced") }}
 					</button>
 
 					<button
 						type="button"
-						data-binding-up-btn
-						:disabled="index === 0"
-						:title="t('binding.up')"
-						@click="moveBinding(index, -1)"
+						class="binding-remove-btn"
+						data-binding-delete-btn
+						:title="t('binding.deleteTitle')"
+						:aria-label="t('binding.deleteTitle')"
+						@click="removeBinding(binding)"
 					>
-						↑
+						×
 					</button>
-					<button
-						type="button"
-						data-binding-down-btn
-						:disabled="index === stack.instructionModes.length - 1"
-						:title="t('binding.down')"
-						@click="moveBinding(index, 1)"
-					>
-						↓
-					</button>
-					<details class="binding-actions-menu">
-						<summary>{{ t("polish.forms.binding.actions") }}</summary>
-						<button
-							type="button"
-							class="danger"
-							data-binding-delete-btn
-							:title="t('binding.deleteTitle')"
-							@click="removeBinding(index)"
-						>
-							{{ t("polish.forms.binding.delete") }}
-						</button>
-					</details>
 
 				</div>
 
-				<div v-if="isRowAdvancedOpen(index)" class="binding-card-body" data-binding-advanced-body>
+				<div v-if="isRowAdvancedOpen(binding)" class="binding-card-body" data-binding-advanced-body>
 					<!-- Overrides Section -->
 					<div class="overrides-section">
 						<span class="overrides-title">{{ t("binding.overrides") }}</span>
@@ -668,7 +641,6 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 									@change="setToolsOverrideMode(binding, 'add', ($event.target as HTMLSelectElement).value as any)"
 								>
 									<option value="omitted">{{ t("binding.toolsOmitted") }}</option>
-									<option value="explicitEmpty">{{ t("binding.toolsExplicitEmpty") }}</option>
 									<option value="custom">{{ t("binding.toolsCustom") }}</option>
 								</select>
 								<input
@@ -679,6 +651,9 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 									placeholder="tool1, tool2"
 									@input="setToolsListString(binding, 'add', ($event.target as HTMLInputElement).value)"
 								>
+								<div v-if="toolsOverrideIsEmpty(binding, 'add')" class="override-empty-hint" data-binding-tools-add-empty>
+									{{ t("binding.toolsAddEmptyHint") }}
+								</div>
 							</div>
 
 							<div class="override-tool-col">
@@ -703,7 +678,6 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 									@change="setToolsOverrideMode(binding, 'remove', ($event.target as HTMLSelectElement).value as any)"
 								>
 									<option value="omitted">{{ t("binding.toolsOmitted") }}</option>
-									<option value="explicitEmpty">{{ t("binding.toolsExplicitEmpty") }}</option>
 									<option value="custom">{{ t("binding.toolsCustom") }}</option>
 								</select>
 								<input
@@ -714,13 +688,16 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 									placeholder="tool1, tool2"
 									@input="setToolsListString(binding, 'remove', ($event.target as HTMLInputElement).value)"
 								>
+								<div v-if="toolsOverrideIsEmpty(binding, 'remove')" class="override-empty-hint" data-binding-tools-remove-empty>
+									{{ t("binding.toolsRemoveEmptyHint") }}
+								</div>
 							</div>
 						</div>
 					</div>
 
 					<!-- Server Effective Preview -->
 					<div
-						v-if="effectiveBindings[index]"
+						v-if="effectiveBindings[index] && !previewLoading && !previewError"
 						class="effective-preview-box"
 						data-binding-preview
 					>
@@ -938,30 +915,20 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	font-size: 12px;
 }
 
-.binding-actions-menu {
-	position: relative;
-}
-
-.binding-actions-menu summary {
-	padding: 3px 8px;
-	border: 1px solid var(--line);
+.binding-remove-btn {
+	min-width: 24px;
+	padding: 2px 6px;
+	border: 1px solid color-mix(in srgb, var(--error, #dc3545) 45%, var(--line));
 	border-radius: 4px;
-	background: var(--pane);
-	color: var(--muted);
-	font-size: 11px;
+	background: transparent;
+	color: var(--error, #dc3545);
+	font-size: 15px;
+	line-height: 18px;
 	cursor: pointer;
-	list-style: none;
 }
 
-.binding-actions-menu summary::-webkit-details-marker {
-	display: none;
-}
-
-.binding-actions-menu > button {
-	position: absolute;
-	top: calc(100% + 4px);
-	right: 0;
-	white-space: nowrap;
+.binding-remove-btn:hover {
+	background: color-mix(in srgb, var(--error, #dc3545) 10%, transparent);
 }
 
 .binding-card-body {
@@ -1033,6 +1000,12 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
+}
+
+.override-empty-hint {
+	font-size: 11px;
+	color: var(--muted);
+	line-height: 1.35;
 }
 
 .override-tool-col select,

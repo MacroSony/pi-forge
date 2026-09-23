@@ -1719,6 +1719,8 @@ html, body {
 .item-row .item-toggle { width: 30px; min-height: 24px; padding: 1px 0; font-size: 10px; border-radius: 5px; }
 .item-row .item-toggle.enabled { background: var(--accent-bg); color: var(--accent); border-color: var(--line); }
 .item-row > div:not(.drag-handle) { min-width: 0; }
+.item-row .item-title { grid-column: 1 / -1; }
+.item-row .item-toggle { grid-column: 2; grid-row: 2; }
 .item-tools { gap: 4px; padding: 6px; }
 .item-tools-spacer { display: none; }
 .item-tools button { min-height: 28px; font-size: 11px; padding: 3px 4px; }
@@ -1824,10 +1826,12 @@ html, body {
 }
 
 
-/* Third-pass identity readability: tags and roles do not consume the ID line. */
-.item-row .item-meta { white-space:normal; overflow:visible; display:flex; flex-wrap:wrap; gap:3px; align-items:center; }
-.item-row .item-slot-badge { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
-.item-row-id { grid-column:1 / -1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; user-select:text; }
+/* Full-width names and identities; only the short type/role row shares a toggle. */
+.item-row .item-meta { grid-column:1; grid-row:2; display:flex; gap:5px; align-items:center; white-space:nowrap; overflow:hidden; }
+.item-row .item-kind-badge { flex:0 0 auto; }
+.item-row .item-role { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.item-row > .item-slot-badge { grid-column:1 / -1; justify-self:start; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item-row-id { grid-column:1 / -1; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:11px; user-select:text; }
 .preset-properties-entry { flex:0 0 auto; }
 `;
 //# sourceMappingURL=styles.js.map

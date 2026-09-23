@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 
 import { t } from "../i18n.ts";
 import type {
@@ -371,29 +371,6 @@ function truncate(text: string, maxLen: number): string {
 	return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
 }
 
-function closeActionMenus(): void {
-	regexRoot.value?.querySelectorAll<HTMLDetailsElement>("details.regex-actions-menu[open]").forEach((menu) => { menu.open = false; });
-}
-
-function handleActionMenuPointerDown(event: PointerEvent): void {
-	if (!(event.target instanceof Element) || !event.target.closest(".regex-actions-menu")) closeActionMenus();
-}
-
-function handleActionMenuKeydown(event: KeyboardEvent): void {
-	if (event.key !== "Escape") return;
-	closeActionMenus();
-}
-
-onMounted(() => {
-	document.addEventListener("pointerdown", handleActionMenuPointerDown);
-	document.addEventListener("keydown", handleActionMenuKeydown);
-});
-
-onBeforeUnmount(() => {
-	document.removeEventListener("pointerdown", handleActionMenuPointerDown);
-	document.removeEventListener("keydown", handleActionMenuKeydown);
-});
-
 defineExpose({
 	getError: () => regexError.value,
 });
@@ -466,19 +443,16 @@ defineExpose({
 						>
 							{{ t("regex.down") }}
 						</button>
-						<details class="regex-actions-menu">
-							<summary>{{ t("polish.forms.regex.actions") }}</summary>
-							<button
-								type="button"
-								class="text-btn danger"
-								data-delete-row="true"
-								data-icon="×"
-								:title="t('regex.deleteTitle')"
-								@click="deleteRule(index)"
-							>
-								{{ t("polish.forms.regex.delete") }}
-							</button>
-						</details>
+						<button
+							type="button"
+							class="text-btn danger icon-btn"
+							data-delete-row="true"
+							data-icon="×"
+							:title="t('regex.deleteTitle')"
+							@click="deleteRule(index)"
+						>
+							{{ t("polish.forms.regex.delete") }}
+						</button>
 						<button
 							type="button"
 							class="regex-toggle-btn"
@@ -788,36 +762,6 @@ defineExpose({
 	align-items: center;
 	gap: 6px;
 	flex-shrink: 0;
-}
-
-.regex-actions-menu {
-	position: relative;
-}
-
-.regex-actions-menu summary {
-	padding: 4px 8px;
-	border: 1px solid var(--line, #dfe7e4);
-	border-radius: 4px;
-	background: var(--pane, #ffffff);
-	color: var(--muted, #657774);
-	font-size: 11px;
-	cursor: pointer;
-	list-style: none;
-}
-
-.regex-actions-menu summary::-webkit-details-marker {
-	display: none;
-}
-
-.regex-actions-menu[open] {
-	z-index: 2;
-}
-
-.regex-actions-menu > button {
-	position: absolute;
-	top: calc(100% + 4px);
-	right: 0;
-	white-space: nowrap;
 }
 
 .regex-toggle-btn {

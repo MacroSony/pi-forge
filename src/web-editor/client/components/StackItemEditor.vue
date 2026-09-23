@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 
 import { t, type MessageKey } from "../i18n.ts";
 import type { EditorPromptStackItem } from "../types.ts";
@@ -20,18 +20,7 @@ const emit = defineEmits<{
 }>();
 
 
-const actions = ref<HTMLDetailsElement>();
-function closeActions(event: Event): void {
-	if (!actions.value?.open) return;
-	if (event instanceof KeyboardEvent) {
-		if (event.key !== "Escape") return;
-		actions.value.open = false;
-		actions.value.querySelector("summary")?.focus();
-	} else if (!actions.value.contains(event.target as Node)) actions.value.open = false;
-}
-onMounted(() => { document.addEventListener("click", closeActions); document.addEventListener("keydown", closeActions); });
-onBeforeUnmount(() => { document.removeEventListener("click", closeActions); document.removeEventListener("keydown", closeActions); });
-function removeItem(): void { if (actions.value) actions.value.open = false; emit("delete"); }
+function removeItem(): void { emit("delete"); }
 const item = reactive(props.item);
 const mode = ref(props.mode);
 const optionsText = ref(JSON.stringify(item.options || {}, null, 2));
@@ -129,8 +118,10 @@ function optionHelp(key: string): string {
 <template>
 	<div class="item-form">
 		<div class="item-primary-field field">
-			<div class="item-heading"><label for="itemName">{{ t("item.name") }}</label>
-			<details ref="actions" id="itemActions" class="item-actions"><summary>{{ t("polish.workspace.itemActions") }} ⋯</summary><div class="item-actions-popover"><button id="deleteItemBtn" type="button" class="danger" @click="removeItem">{{ t("chrome.deleteItem") }}</button></div></details></div>
+			<div class="item-heading">
+				<label for="itemName">{{ t("item.name") }}</label>
+				<button id="deleteItemBtn" type="button" class="danger" :title="t('chrome.deleteItemTitle')" @click="removeItem">{{ t("chrome.deleteItem") }}</button>
+			</div>
 			<input id="itemName" :value="item.name || ''" @input="setString('name', ($event.target as HTMLInputElement).value, true, true)">
 		</div>
 
@@ -251,10 +242,6 @@ function optionHelp(key: string): string {
 <style scoped>
 .item-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .item-heading label { margin:0; }
-.item-actions { position:relative; color:var(--muted); font-size:12px; }
-.item-actions summary { cursor:pointer; list-style:none; padding:4px; border-radius:4px; }
-.item-actions summary:hover { background:var(--accent-bg); }
-.item-actions-popover { position:absolute; right:0; top:100%; z-index:10; padding:8px; border:1px solid var(--line); border-radius:6px; background:var(--pane); box-shadow:0 6px 20px var(--shadow); white-space:nowrap; }
 .item-id-display { display:flex; align-items:flex-start; gap:8px; flex:0 0 auto; font-size:11px; color:var(--muted); }
 .item-full-id { flex:1; min-width:0; max-height:4.5em; overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; user-select:text; }
 .copy-id { flex:0 0 auto; min-height:22px; padding:1px 5px; font-size:11px; background:transparent; }
