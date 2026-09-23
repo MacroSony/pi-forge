@@ -26,10 +26,19 @@ Replace Pi's base system prompt, append to it, or prepend to it. History options
 
 ### Choose tools and transform text
 
-- Set per-Preset tool `allow` or `deny` patterns instead of relying on an instruction to avoid a tool.
+- Set per-Preset tool `allow` or `deny` patterns instead of relying on an instruction to avoid a tool. These remain the ceiling for tools a Mode may enable.
+- Choose a smaller default active tool set with `tools.initial`, then enable other permitted, registered tools through Modes when needed. Leave it unset to keep the existing selection behavior.
 - Filter the skill listing rendered by Forge.
 - Reuse immutable parameters through templates such as `{{ parameters.style }}`, alongside runtime values and custom macros.
 - Apply deterministic Regex rules to outgoing text or completed assistant/tool-result text in the transcript.
+
+### Change instructions during a session
+
+Use **Instruction modes** to add or stop session rules and enable or disable tools without switching the whole Preset. For example, start with a small tool set and enable search tools when you need to explore the codebase. This changes the executable tool set, not just a sentence telling the model what to avoid.
+
+Create reusable definitions in **Modes**, bind them to a Preset in **Bindings**, and activate them from **Session instructions** or `/system-update`. You can explicitly authorize individual bindings for Agent control with `modelCallable`; adding a mode to the library does not grant that permission.
+
+Saving a Mode does not activate it, and editing its definition does not replace an already-active snapshot. Turning it off recomputes tools from the Preset's base selection and remaining Modes; it does not erase history, undo file changes, or interrupt running tools. See [Instruction modes](docs/reference/instruction-modes.md) for setup and lifecycle details.
 
 ### Inspect changes
 
@@ -38,7 +47,7 @@ Replace Pi's base system prompt, append to it, or prepend to it. History options
 - **Run diff** compares successive provider turns, with size estimates kept separate from reported token/cache usage when available.
 - **Payload capture** shows a redacted view of the next provider request through the editor or `/payload next`.
 
-Cache notices also flag timestamp-sensitive macros and estimate the prompt-cache impact of Preset/Profile switches.
+Cache notices also flag timestamp-sensitive macros and estimate the possible prompt-cache impact of Preset/Profile switches. Cache reuse belongs to the SDK/provider, so Mode or tool changes never guarantee a cache hit.
 
 <!-- MEDIA: draft-diff — PNG candidate. A readable instruction change, shown as additions/removals against the saved preset. -->
 
@@ -50,7 +59,11 @@ Use different setups for coding, reviewing, writing, or roleplay—not just diff
 
 ## Install and first run
 
-Requires Node.js **22.19 or newer** and Pi.
+Requires Node.js **22.19 or newer**. The 0.5.5 line supports Pi **0.87.x** (`>=0.87.0 <0.88.0`), tested with **0.87.0**.
+
+<!-- RELEASE NOTE: remove this block when 0.5.5 is published; keep the install command below. -->
+> **0.5.5 is not published yet.** Instruction modes and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ.
+<!-- END RELEASE NOTE -->
 
 ```bash
 pi install npm:@zihanw/pi-forge
@@ -63,7 +76,7 @@ Restart Pi after installing or updating. In a trusted project:
 3. Edit a block or policy and check **Preview**.
 4. **Save** your changes, then **Activate** the Preset for the current session.
 
-Saving an inactive Preset does not select it. Saving the active Preset reloads its changes.
+Saving an inactive Preset does not select it. Saving the active Preset reloads its changes; active Mode snapshots remain unchanged.
 
 You can also select one with `/preset use <id>`, or disable the current Preset with `/preset use none`. To reuse your current model, thinking level, and Preset together:
 
@@ -72,11 +85,12 @@ You can also select one with `/preset use <id>`, or disable the current Preset w
 /profile use reviewer
 ```
 
-## Presets and profiles
+## Presets, modes and profiles
 
 | Resource | What it holds |
 |---|---|
-| **Preset** | Context layout, tool policy, skill-list filtering, Regex rules, and parameters |
+| **Preset** | Context layout, tool defaults and policy, Mode bindings and Agent authorization, skill-list filtering, Regex rules, and parameters |
+| **Instruction mode** | Reusable session instructions and/or tool additions/removals; activated as a snapshot in a Session |
 | **Agent Profile** | Model, thinking level, and a reference to a Preset |
 
 The **Stack** is the ordered Block/Slot composition inside a Preset. Ordering works within two channels: system items form the system prompt; non-system items form messages. Moving a system block below chat history does not inject it into that history.
