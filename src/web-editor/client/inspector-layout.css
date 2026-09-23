@@ -152,8 +152,16 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
  }
- .editor-dock-area.dock-open .workspace,
- .editor-dock-area.dock-open .tab-panel.open { display: none; }
+ /* Explicit editor navigation must reveal an editor at phone widths too.
+    Outside focus, use a vertical composition rather than an inspector-only trap. */
+ .editor-dock-area.dock-open:not(.dock-focus) {
+  grid-template-rows: minmax(240px, auto) minmax(300px, auto);
+  overflow-y: auto;
+ }
+ .editor-dock-area.dock-open:not(.dock-focus) .workspace { display: grid; }
+ .editor-dock-area.dock-open:not(.dock-focus) .tab-panel.open { display: block; }
+ .editor-dock-area.dock-open.dock-focus .workspace,
+ .editor-dock-area.dock-open.dock-focus .tab-panel.open { display: none; }
  .preview-reading-arrow { left: 8px !important; }
  .context-diff-dock-header { padding-left: 44px !important; }
 }
