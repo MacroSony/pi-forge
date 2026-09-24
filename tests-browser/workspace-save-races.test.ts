@@ -10,7 +10,13 @@ import { promptStacksDir } from "../src/loader.ts";
 
 test("late preset saves preserve newer edits, selection generations and source revisions", { timeout: 30_000 }, async (t) => {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") { t.skip("browser tests explicitly disabled"); return; }
-	const executablePath = [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find((p): p is string => !!p && existsSync(p));
+	const executablePath = [
+        process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        process.env.PROGRAMFILES && join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+        process.env["PROGRAMFILES(X86)"] && join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+        process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+    ].find((p): p is string => !!p && existsSync(p));
 	assert.ok(executablePath);
 	const cwd = mkdtempSync(join(tmpdir(), "forge-save-race-"));
 	for (const id of ["alpha", "beta"]) writeStack(cwd, id + ".json", { schemaVersion: 2, type: "pi-forge.prompt-stack", id, autoActivate: id === "alpha", mode: "replace", items: [{kind:"block", id:"body", role:"system", content:id}] });
