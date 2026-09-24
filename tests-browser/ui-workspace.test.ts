@@ -86,8 +86,10 @@ test("workspace V4 keeps activation guarded and state distinct", { timeout: 30_0
 		assert.equal(await page.locator(".stack-row.active").count(), 1);
 
 		await page.locator("#metadataToggleBtn").click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor();
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), true);
-		await page.locator("#metadataToggleBtn").click();
+		await page.locator("#presetPropertiesDialog button").first().click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor({ state: "hidden" });
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), true);
 
 		await page.locator("#itemsTabBtn").click();

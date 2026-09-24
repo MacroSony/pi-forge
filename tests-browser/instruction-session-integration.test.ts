@@ -82,6 +82,7 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.match(await panel.locator("[data-item-content-text]").first().textContent() || "", /<img/);
 		assert.equal(await panel.locator("[data-item-content-text] img").count(), 0, "snapshot body is text, not executable HTML");
 		const entriesBeforePreview = JSON.stringify(harness.manager.getEntries());
+		await panel.locator("[data-instructions-drawer-close]").click();
 		await page.locator("#previewTabBtn").click();
 		const compiled = page.locator(".context-diff-compiled");
 		await page.waitForFunction(() => document.querySelector(".context-diff-compiled")?.textContent?.includes("只读检查，不修改文件。"));
@@ -142,8 +143,9 @@ test(`built editor uses projected text and separate tools without management inf
 			await panel.locator("[data-instructions-toggle]").click();
 			await compiled.evaluate(el => { el.scrollTop = 0; });
 			await page.screenshot({ path: join(shots, `session-panel-${native ? "native" : "fallback"}.png`), fullPage: true });
-			await panel.locator("[data-instructions-toggle]").click();
+			await panel.locator("[data-instructions-drawer-close]").click();
 		}
+		await panel.locator("[data-instructions-toggle]").click();
 		await panel.locator("[data-item-deactivate-btn]").first().click();
 		await page.waitForFunction(() => document.querySelectorAll("[data-session-instructions] .active-item-card").length === 1);
 		assert.ok(harness.getActiveToolNames().includes("fake_write"), "browser off reaches the real tool owner");
@@ -156,6 +158,7 @@ test(`built editor uses projected text and separate tools without management inf
 		);
 		const anchors = branch.filter((e: any) => e.type === "custom" && e.customType === "pi-forge-instruction-delivery");
 		assert.ok(anchors.length >= 2, "instruction modes produce plain metadata anchors");
+		await panel.locator("[data-instructions-drawer-close]").click();
 		await compiled.locator(".context-diff-refresh").click();
 		await page.waitForFunction((isNative) => isNative
 			? !!document.querySelector(".context-diff-compiled .op-removed")
@@ -163,7 +166,7 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.match(await selectedTools.textContent() || "", /fake_write/);
 		assert.equal(harness.beforeAgentStartEvents.length, 3, "only the intentional dialogue turns; preview/controls add none");
 
-
+		await panel.locator("[data-instructions-toggle]").click();
 		await panel.locator("[data-instructions-reset-btn]").click();
 		await panel.locator("[data-instructions-reset-confirm-group]").waitFor();
 		await quietPrompt("/system-update add NEW_RULE_WHILE_CONFIRMING");
@@ -174,6 +177,7 @@ test(`built editor uses projected text and separate tools without management inf
 		await panel.locator("[data-instructions-confirm-reset-btn]").click();
 		await panel.locator("[data-instructions-empty]").waitFor();
 		assert.ok(harness.getActiveToolNames().includes("fake_write"));
+		await panel.locator("[data-instructions-drawer-close]").click();
 		assert.equal(harness.streamContexts.length, 3);
 		assert.equal(harness.fetchAttempts, 0);
 		assert.deepEqual(errors, []);

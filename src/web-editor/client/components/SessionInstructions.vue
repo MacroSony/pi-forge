@@ -185,6 +185,7 @@ async function executeMutation(mutation: InstructionStateMutation): Promise<void
 	isMutating.value = true;
 	errorMessage.value = "";
 	let hasError = false;
+	const refreshChoices = availableLoaded.value;
 	try {
 		const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions", {
 			method: "POST",
@@ -202,7 +203,10 @@ async function executeMutation(mutation: InstructionStateMutation): Promise<void
 	} finally {
 		isMutating.value = false;
 	}
-	if (isMounted && hasError) void fetchInstructions();
+	if (isMounted && reqId === requestIdSeq) {
+		if (hasError) void fetchInstructions(refreshChoices);
+		else if (refreshChoices) void fetchAvailable(true);
+	}
 }
 
 async function handleUse(): Promise<void> {
@@ -223,6 +227,7 @@ async function handleUse(): Promise<void> {
 	isUsing.value = true;
 	errorMessage.value = "";
 	let hasError = false;
+	const refreshChoices = availableLoaded.value;
 
 	try {
 		const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions/use", {
@@ -233,9 +238,6 @@ async function handleUse(): Promise<void> {
 		if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
 		applyState(res.state, reqId);
 		selectedKey.value = "";
-		if (availableLoaded.value) {
-			void fetchAvailable(true);
-		}
 	} catch (error) {
 		if (!isMounted) return;
 		hasError = true;
@@ -247,8 +249,11 @@ async function handleUse(): Promise<void> {
 		isUsing.value = false;
 	}
 
-	if (isMounted && hasError) {
-		void fetchInstructions();
+	// applyState invalidates old guarded choices. Refresh only after releasing
+	// the mutation fence, remembering whether this drawer had loaded them.
+	if (isMounted && reqId === requestIdSeq) {
+		if (hasError) void fetchInstructions(refreshChoices);
+		else if (refreshChoices) void fetchAvailable(true);
 	}
 }
 

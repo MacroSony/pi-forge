@@ -33,18 +33,15 @@ test("web editor preserves its shell and guarded editing state", { timeout: 30_0
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
 		assert.equal(await page.title(), "pi-forge editor");
-		assert.equal(await page.locator(".brand").textContent(), "pi-forge preset editor");
+		assert.equal(await page.locator(".surface-brand").textContent(), "Pi Forge");
 		assert.equal(await page.locator(".stack-row").count(), 2);
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
 		assert.equal(await page.locator("#itemContent").inputValue(), "Content for default.");
 		assert.equal(await page.locator("#settings").isVisible(), false);
-		const scopeBox = await page.locator("#stackCreateScope").boundingBox();
 		const newStackBox = await page.locator("#newStackBtn").boundingBox();
 		const actionsBox = await page.locator(".main-actions").boundingBox();
 		const workspaceBox = await page.locator("#workspace").boundingBox();
-		assert.ok(scopeBox && newStackBox && actionsBox && workspaceBox);
-		assert.ok(Math.abs(scopeBox.y - newStackBox.y) < 2, "scope and New stack should remain one compact control");
-		assert.ok(scopeBox.width < 120, "stack scope should not consume a full toolbar row");
+		assert.ok(newStackBox && actionsBox && workspaceBox);
 		assert.ok(actionsBox.height <= 44, "primary stack actions should fit on one compact row");
 		assert.ok(workspaceBox.y <= 225, `stack editing should begin near the top of the viewport (y=${workspaceBox.y})`);
 		assert.equal(await page.locator("#deleteStackBtn").isVisible(), false);
@@ -152,20 +149,17 @@ test("web editor transitions between populated and empty stack states", { timeou
 		assert.equal(await page.locator("#metadataPanel").isVisible(), false);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "only.json")), false);
 
-		const promptAnswers = ["replacement", "Replacement stack"];
-		page.on("dialog", async (dialog) => {
-			assert.equal(dialog.type(), "prompt");
-			const answer = promptAnswers.shift();
-			assert.notEqual(answer, undefined);
-			await dialog.accept(answer);
-		});
 		await page.locator("#emptyNewStackBtn").click();
+		await page.locator("#stackResourceForm").waitFor();
+		assert.equal(await page.locator("#stackResourceScope").inputValue(), "project");
+		await page.locator("#stackResourceId").fill("replacement");
+		await page.locator("#stackResourceName").fill("Replacement stack");
+		await page.locator("#stackResourceForm button[type='submit']").click();
 		await page.locator("#status").filter({ hasText: "Created replacement" }).waitFor();
 		assert.equal(await page.locator(".stack-row.selected .stack-name").textContent(), "replacementactive");
 		assert.equal(await page.locator("#saveBtn").isEnabled(), true);
 		assert.equal(existsSync(join(promptStacksDir(cwd), "replacement.json")), true);
 		assert.equal(JSON.parse(readFileSync(join(promptStacksDir(cwd), "replacement.json"), "utf8")).schemaVersion, 2);
-		assert.deepEqual(promptAnswers, []);
 		await page.locator("#profilesSurfaceBtn").click();
 		await page.locator(".profile-empty").filter({ hasText: "No agent profiles found." }).waitFor();
 	});
@@ -334,7 +328,9 @@ test("web editor navigates project profile resolution without losing stack state
 		await page.locator("#profileNewBtn").click();
 		await page.locator("#profileId").fill("scout");
 		assert.equal(await page.locator("#profilePromptStack").inputValue(), "default");
+		assert.equal(await page.locator("#profileScope").inputValue(), "project");
 		await page.locator("#profileName").fill("Scout");
+		await page.locator(".profile-advanced-summary").click();
 		await page.locator("#profileDescription").fill("Explore a focused change.");
 		await page.locator("#profileModelProvider").fill("test");
 		await page.locator("#profileModelId").fill("target");
@@ -352,7 +348,8 @@ test("web editor navigates project profile resolution without losing stack state
 		);
 
 		await page.locator("#profileEditBtn").click();
-		assert.equal(await page.locator("#profileId").isEditable(), false);
+		assert.equal(await page.locator("#profileId").count(), 0);
+		assert.equal(await page.locator(".profile-editor-selector code").textContent(), "project:scout");
 		await page.locator("#profileName").fill("Scout updated");
 		await page.locator("#profileSaveBtn").click();
 		await page.locator("#profilesStatus").filter({ hasText: "Saved scout" }).waitFor();
@@ -384,11 +381,16 @@ test("web editor navigates project profile resolution without losing stack state
 			/last applied/,
 		);
 
-		await page.locator("#profileCreateScope").selectOption("global");
 		await page.locator("#profileNewBtn").click();
-		assert.equal(await page.locator("#profilePromptStack").inputValue(), "");
+		assert.equal(await page.locator("#profileScope").inputValue(), "project");
+		await page.locator("#profileScope").selectOption("global");
+		assert.equal(await page.locator("#profileScope").inputValue(), "global");
+		assert.equal(await page.locator("#profilePromptStack").inputValue(), "project:alternate");
+		page.once("dialog", async (dialog) => {
+			assert.match(dialog.message(), /Discard unsaved agent-profile changes/);
+			await dialog.accept();
+		});
 		await page.locator("#profileCancelBtn").click();
-		await page.locator("#profileCreateScope").selectOption("project");
 
 		page.once("dialog", async (dialog) => {
 			await dialog.dismiss();
@@ -552,9 +554,11 @@ test("web editor enforces a single auto-activation profile", { timeout: 20_000 }
 		assert.deepEqual(modelOptions, ["current", "target"]);
 
 		await page.locator("#profileId").fill("second");
+		assert.equal(await page.locator("#profileScope").inputValue(), "project");
 		await page.locator("#profileModelId").fill("target");
 		await page.locator("#profileThinkingLevel").selectOption("medium");
 		await page.locator("#profilePromptStack").selectOption("default");
+		await page.locator(".profile-advanced-summary").click();
 		await page.locator("#profileAutoActivate").check();
 		await page.locator("#profileValidateBtn").click();
 		await page.locator("#profileEditorStatus").filter({ hasText: "validation error" }).waitFor();
@@ -732,7 +736,7 @@ test("Vue item editor preserves structured and advanced slot options", { timeout
 		assert.match(await page.locator("#itemOptions").inputValue(), /"futureOption"/);
 
 		await page.locator("#saveBtn").click();
-		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
+		await page.locator("#status").filter({ hasText: /Saved (project:)?default/ }).waitFor();
 		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"));
 		assert.deepEqual(saved.items[1].options, {
 			futureOption: { preserve: true },
@@ -776,6 +780,7 @@ export default function register(api: any) {
 		assert.ok((await page.locator("#itemSlot option").allTextContents()).includes("web-ui-slot"));
 
 		await page.locator("#stackTabBtn").click();
+		await page.locator("details.tab-section summary").first().click();
 		await page.locator("#macroCatalog").filter({ hasText: "webUiMacro" }).waitFor();
 		await page.locator("#slotCatalog").filter({ hasText: "web-ui-slot" }).waitFor();
 		const rows = page.locator("[data-var-row]");
@@ -863,7 +868,10 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 
 		await page.locator("#stackTabBtn").click();
 		await page.locator("#metadataToggleBtn").click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor();
 		await page.locator("#stackName").fill("Vue tabs edited");
+		await page.locator("#presetPropertiesDialog button").first().click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor({ state: "hidden" });
 		await page.locator("#allowDuplicateChatHistoryInput").check();
 		await page.locator("#addVariableBtn").click();
 		await page.locator("#addVariableBtn").click();
@@ -934,7 +942,7 @@ test("Vue tabs preserve drafts, errors, and unknown fields", { timeout: 20_000 }
 		await page.locator("#itemsTabBtn").click();
 		await page.locator("#regexTabBtn").click();
 		await page.locator("#saveBtn").click();
-		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
+		await page.locator("#status").filter({ hasText: /Saved (project:)?default/ }).waitFor();
 
 		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
 			context?: Record<string, unknown>;

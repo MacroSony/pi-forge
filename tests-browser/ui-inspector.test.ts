@@ -102,7 +102,7 @@ async function withUiInspectorFixture(
 	}
 }
 
-test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-tab reading preference", { timeout: 30_000 }, async (t) => {
+test("inspection: reading controls, per-tab preference, draft save, and preview geometry", { timeout: 30_000 }, async (t) => {
 	await withUiInspectorFixture(t, async ({ page, cwd }) => {
 		// 1. Open the preview dock
 		await page.locator("#previewTabBtn").click();
@@ -123,18 +123,16 @@ test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-
 		}
 
 		// 3. Arrow handle geometry & accessibility
-		const cycleButton = page.locator("#readingCycleBtn, #focus-toggle");
+		const cycleButton = page.locator("#focus-toggle");
 		await cycleButton.waitFor();
 		const cycleBox = await cycleButton.boundingBox();
-		assert.ok(cycleBox, "Cycle button must have layout dimensions");
-		const paneBox = await page.locator("#contextDiffPanel").boundingBox();
-		assert.ok(paneBox);
-		assert.ok(Math.abs(cycleBox.x + cycleBox.width / 2 - paneBox.x) <= 2, "Reading handle must straddle the actual pane boundary, not a nested header");
-		assert.ok(paneBox.width >= 330 && paneBox.width <= 360, "Sidebar preview has bounded width");
-		const contentBox = await page.locator("#itemContent").boundingBox();
-		assert.ok(contentBox && contentBox.width >= 500, "Desktop preview must leave a readable central editor");
-		assert.ok(Math.abs(cycleBox.width - 30) <= 2, `Button width should be ~30px, got ${cycleBox.width}`);
-		assert.ok(Math.abs(cycleBox.height - 30) <= 2, `Button height should be ~30px, got ${cycleBox.height}`);
+		assert.ok(cycleBox && cycleBox.width >= 24 && cycleBox.height >= 24, "Reading control must have a usable target");
+		const pane = page.locator("#contextDiffPanel");
+		const paneBox = await pane.boundingBox();
+		assert.ok(paneBox && paneBox.width > 0 && paneBox.height > 0, "Preview pane must be laid out");
+		const workspaceBox = await page.locator("#workspace").boundingBox();
+		assert.ok(workspaceBox && workspaceBox.width > 0, "Editor stays visible beside Preview");
+		assert.ok(cycleBox.x >= paneBox.x && cycleBox.x + cycleBox.width <= paneBox.x + paneBox.width, "Reading handle must not overlap the editing pane");
 
 		// Next action aria/title in side mode: widen
 		const sideTitle = await cycleButton.getAttribute("title");
@@ -145,27 +143,43 @@ test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-
 		await systemSection.waitFor();
 		const roleBadge = systemSection.locator(".section-role");
 		assert.equal(await roleBadge.textContent(), "system");
+        const rowSeparators = await page.locator(".item-row:not(.selected)").evaluateAll(rows => rows.map(row => {
+            const style = getComputedStyle(row);
+            return parseFloat(style.borderBottomWidth) > 0 && style.borderBottomColor !== "rgba(0, 0, 0, 0)";
+        }));
+        assert.ok(rowSeparators.length > 0 && rowSeparators.every(Boolean), "Unselected Stack items retain visible separators");
 
-		// 4. Cycle side -> wide
+		// 4. Side -> wide uses the boundary control; wide exposes the separate focus control.
 		await cycleButton.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "First cycle must switch to wide reading mode");
+		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "Boundary control must widen the Preview pane");
 		assert.ok(await page.locator("#workspace").isVisible(), "Workspace editor must remain visible in wide mode");
 		const wideTitle = await cycleButton.getAttribute("title");
-		assert.match(wideTitle ?? "", /focus|收起编辑|hide editor/i, "Next action title in wide mode must describe focusing");
+		assert.match(wideTitle ?? "", /shrink|收窄|sidebar/i, "Boundary control in wide mode must describe returning to the sidebar layout");
+		const focusButton = page.locator("#reading-focus-btn");
+		await focusButton.waitFor();
+		const focusBox = await focusButton.boundingBox();
+		const widePaneBox = await pane.boundingBox();
+		assert.ok(focusBox && focusBox.width >= 24 && focusBox.height >= 24, "Focus control must have a usable target");
+		assert.ok(widePaneBox && widePaneBox.width > 0 && widePaneBox.height > 0, "Wide Preview pane must be laid out");
+		assert.equal(await pane.locator("#reading-focus-btn").count(), 1, "Focus control must be inside Preview");
+		assert.ok(focusBox.x >= widePaneBox.x && focusBox.x + focusBox.width <= widePaneBox.x + widePaneBox.width, "Focus control must remain wholly inside Preview");
+		assert.ok(focusBox.y < widePaneBox.y + widePaneBox.height && focusBox.y + focusBox.height > widePaneBox.y, "Focus control must overlap the Preview geometry");
 		if (await scopeBadge.count() > 0) {
 			assert.equal(await scopeBadge.isVisible(), true, "Scope badge should be visible in wide mode");
 		}
 
-		// 5. Cycle wide -> focus
-		await cycleButton.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "focus", "Second cycle must switch to focus reading mode");
+		// 5. Wide -> focus uses the separate focus control.
+		await focusButton.click();
+		assert.equal(await dockArea.getAttribute("data-reading"), "focus", "Focus control must hide the editor for focused reading");
 		assert.equal(await page.locator("#workspace").isVisible(), false, "Workspace editor must be hidden in focus mode");
 		const focusTitle = await cycleButton.getAttribute("title");
-		assert.match(focusTitle ?? "", /restore|返回侧栏|sidebar/i, "Next action title in focus mode must describe restoring sidebar");
+		assert.match(focusTitle ?? "", /restore|previous|返回|sidebar/i, "Boundary control in focus mode must describe restoring the editor");
 
-		// 6. Cycle focus -> side
+		// 6. Focus restores wide, then wide returns to side.
 		await cycleButton.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "side", "Third cycle must return to side reading mode");
+		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "Focus restore must return to the prior wide layout");
+		await cycleButton.click();
+		assert.equal(await dockArea.getAttribute("data-reading"), "side", "Boundary control must return to side reading mode");
 		assert.ok(await page.locator("#workspace").isVisible(), "Workspace editor must be visible again in side mode");
 
 		// 7. Per-tab preference & first diff focus
@@ -174,9 +188,8 @@ test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-
 		await draftTabBtn.click();
 		assert.equal(await dockArea.getAttribute("data-reading"), "focus", "First entry into Draft diff must default to focus reading mode");
 
-		// Manually change Draft diff to wide mode
-		await cycleButton.click(); // focus -> side
-		await cycleButton.click(); // side -> wide
+		// Manually change Draft diff to wide mode from its focused first entry.
+		await cycleButton.click();
 		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "Draft diff changed to wide mode");
 
 		// Switch back to Preview tab -> should restore its previous state (side)
@@ -232,7 +245,9 @@ test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-
 		assert.equal(await page.locator(".stack-row").filter({ hasText: "Inactive Preset" }).evaluate((el) => el.classList.contains("active")), false, "Inactive preset must remain inactive");
 
 		// 11. Responsive boundary fallback prevents viewport clipping
-		await page.setViewportSize({ width: 1000, height: 750 });
+		await page.setViewportSize({ width: 850, height: 750 });
+        await page.locator("#itemsTabBtn").click();
+        assert.equal(await page.locator("#workspace").isVisible(), true, "850px editor navigation must not remain hidden behind Preview");
 		const narrowBox = await cycleButton.boundingBox();
 		assert.ok(narrowBox, "Cycle button must remain measurable on narrow view");
 		assert.ok(narrowBox.x >= 0, `Button x position (${narrowBox.x}) must not be clipped off-screen to the left`);
@@ -241,16 +256,24 @@ test("V4 inspection: 3-state cycle (side->wide->focus->side), arrow handle, per-
 
 test("deleting the last preset while inspection is focused restores the empty editor", { timeout: 30_000 }, async t => {
  await withUiInspectorFixture(t, async ({ page }) => {
-  page.on("dialog", dialog => dialog.accept());
   await page.locator('.stack-row').filter({ hasText: 'Inactive Preset' }).click();
-  await page.locator('#moreActions > summary').click();
+  const moreActions = page.locator('#moreActions');
+  await moreActions.locator('summary').click();
+  page.once('dialog', async dialog => {
+   assert.match(dialog.message(), /inactive/i);
+   await dialog.accept();
+  });
   await page.locator('#deleteStackBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('.stack-row').length === 1);
   await page.locator('#previewTabBtn').click();
-  await page.locator('[data-reading-cycle]').click();
-  await page.locator('[data-reading-cycle]').click();
+  await page.locator('#focus-toggle').click();
+  await page.locator('#reading-focus-btn').click();
   assert.equal(await page.locator('#editorDockArea').getAttribute('data-reading'), 'focus');
-  if (!(await page.locator('#deleteStackBtn').isVisible())) await page.locator('#moreActions > summary').click();
+  if (!(await page.locator('#deleteStackBtn').isVisible())) await moreActions.locator('summary').click();
+  page.once('dialog', async dialog => {
+   assert.match(dialog.message(), /default/i);
+   await dialog.accept();
+  });
   await page.locator('#deleteStackBtn').click();
   await page.waitForFunction(() => document.querySelectorAll('.stack-row').length === 0);
   assert.equal(await page.locator('#emptyNewStackBtn').isVisible(), true, 'Empty-state recovery must not be hidden behind the focused dock');

@@ -412,11 +412,24 @@ ${css}
 		await page.locator("#modeContent").fill("Strictly verify permissions and inputs.");
 
 		// Add tool to add list
-		await page.locator("#modeToolAddInput").fill("guard_verify");
-		await page.locator("#modeToolAddBtn").click();
+		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-trigger]").click();
+		const addPickerPanel = page.locator("[data-mode-tools-add-picker] [data-tool-picker-panel]");
+		await addPickerPanel.waitFor();
+		await addPickerPanel.locator(".tool-picker-manual summary").click();
+		await addPickerPanel.locator("[data-tool-manual-input]").fill("guard_verify");
+		await addPickerPanel.locator("[data-tool-manual-btn]").click();
+		await addPickerPanel.locator("[data-tool-picker-done]").click();
+		await page.locator(".mode-tag.add").filter({ hasText: "guard_verify" }).waitFor();
+
 		// Add tool to remove list
-		await page.locator("#modeToolRemoveInput").fill("unsafe_exec");
-		await page.locator("#modeToolRemoveBtn").click();
+		await page.locator("[data-mode-tools-remove-picker] [data-tool-picker-trigger]").click();
+		const removePickerPanel = page.locator("[data-mode-tools-remove-picker] [data-tool-picker-panel]");
+		await removePickerPanel.waitFor();
+		await removePickerPanel.locator(".tool-picker-manual summary").click();
+		await removePickerPanel.locator("[data-tool-manual-input]").fill("unsafe_exec");
+		await removePickerPanel.locator("[data-tool-manual-btn]").click();
+		await removePickerPanel.locator("[data-tool-picker-done]").click();
+		await page.locator(".mode-tag.remove").filter({ hasText: "unsafe_exec" }).waitFor();
 
 		// Save new mode
 		await page.locator("#modeSaveBtn").click();
@@ -476,12 +489,13 @@ ${css}
 		await page.locator("[data-binding-row]").first().waitFor();
 		await page.locator("[data-binding-advanced-toggle]").first().click();
 		await page.locator("[data-binding-preview]").first().waitFor();
+		await page.locator("[data-binding-preview] summary").first().click();
 		assert.ok(effectiveRequests.length > 0);
 		assert.match(await page.locator("[data-binding-source-content]").first().textContent() ?? "", /Review all diffs carefully/);
 		assert.match(await page.locator("[data-binding-effective-content]").first().textContent() ?? "", /Binding overridden review instructions/);
 
-		// Edit tool overrides: set add tools override to explicit empty
-		await page.locator("[data-binding-tools-add-mode]").first().selectOption("explicitEmpty");
+		// Edit tool overrides: set add tools override to custom (initiates explicit [])
+		await page.locator("[data-binding-tools-add-mode]").first().selectOption("custom");
 		// Verify preset dirty event fired
 		await page.locator("#presetDirtyBadge").waitFor();
 

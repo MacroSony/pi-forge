@@ -78,8 +78,14 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		await page.locator("#modeDescription").fill("Safety checks");
 		const xssContent = "Read-only inspection rules.<img src=x onerror=alert(1)>";
 		await page.locator("#modeContent").fill(xssContent);
-		await page.locator("#modeToolRemoveInput").fill("fake_write");
-		await page.locator("#modeToolRemoveBtn").click();
+		await page.locator("[data-mode-tools-remove-picker] [data-tool-picker-trigger]").click();
+		const removePanel = page.locator("[data-mode-tools-remove-picker] [data-tool-picker-panel]");
+		await removePanel.waitFor();
+		await removePanel.locator(".tool-picker-manual summary").click();
+		await removePanel.locator("[data-tool-manual-input]").fill("fake_write");
+		await removePanel.locator("[data-tool-manual-btn]").click();
+		await removePanel.locator("[data-tool-picker-done]").click();
+		await page.locator(".mode-tag.remove").filter({ hasText: "fake_write" }).waitFor();
 		await page.locator("#modeSaveBtn").click();
 		await page.locator("[data-mode-row]").filter({ hasText: "Guard Mode" }).waitFor();
 		const modePath = join(root, "instruction-modes", "guard.json");
@@ -96,6 +102,7 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		const bindingRow = page.locator("[data-binding-row]").first();
 		await bindingRow.waitFor();
 		await bindingRow.locator("[data-binding-ref]").selectOption("project:guard");
+		await bindingRow.locator("[data-binding-advanced-toggle]").click();
 		await bindingRow.locator("[data-binding-id]").fill("guard-bind");
 		assert.equal(await bindingRow.locator("[data-binding-model-callable]").isChecked(), false);
 		await bindingRow.locator("[data-binding-model-callable]").check();
@@ -108,10 +115,10 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 			mkdirSync(process.env.PI_FORGE_UI_ARTIFACT_DIR, { recursive: true });
 			await page.screenshot({ path: join(process.env.PI_FORGE_UI_ARTIFACT_DIR, "bindings.png") });
 		}
-		await bindingRow.locator("[data-binding-advanced-toggle]").click();
 		await bindingRow.locator("[data-binding-content-mode]").selectOption("append");
 		await bindingRow.locator("[data-binding-append-content]").fill(" Appended audit note.");
 		await bindingRow.locator("[data-binding-preview]").waitFor();
+		await bindingRow.locator("[data-binding-preview] summary").click();
 		assert.match(await bindingRow.locator("[data-binding-source-content]").textContent() || "", /Read-only inspection rules/);
 		assert.match(await bindingRow.locator("[data-binding-effective-content]").textContent() || "", /Appended audit note/);
 		assert.equal(await bindingRow.locator(".preview-pre img").count(), 0, "preview escapes literal XSS tags");
@@ -122,9 +129,9 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		await page.locator("#bindingsTabBtn").click();
 		const restoredRow = page.locator("[data-binding-row]").first();
 		await restoredRow.waitFor();
+		await restoredRow.locator("[data-binding-advanced-toggle]").click();
 		assert.equal(await restoredRow.locator("[data-binding-id]").inputValue(), "guard-bind");
 		assert.equal(await restoredRow.locator("[data-binding-model-callable]").isChecked(), true);
-		await restoredRow.locator("[data-binding-advanced-toggle]").click();
 		assert.equal(await restoredRow.locator("[data-binding-content-mode]").inputValue(), "append");
 		assert.equal(await restoredRow.locator("[data-binding-append-content]").inputValue(), " Appended audit note.");
 
@@ -133,6 +140,7 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		const baseJson = JSON.parse(readFileSync(join(root, "prompt-stacks", "base.json"), "utf8"));
 		assert.equal(baseJson.instructionModes?.[0]?.ref, "project:guard");
 		assert.equal(baseJson.instructionModes?.[0]?.modelCallable, true);
+		assert.equal(baseJson.instructionModes?.[0]?.overrides?.appendContent, " Appended audit note.");
 		assert.ok(harness.getActiveToolNames().includes("fake_write"), "preset save must not activate instructions");
 		assert.equal(harness.streamContexts.length, 1);
 
@@ -141,8 +149,10 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		await page.locator("#bindingsTabBtn").click();
 		const reloadedRow = page.locator("[data-binding-row]").first();
 		await reloadedRow.waitFor();
-		assert.equal(await reloadedRow.locator("[data-binding-id]").inputValue(), "guard-bind");
 		assert.equal(await reloadedRow.locator("[data-binding-model-callable]").isChecked(), true);
+		await reloadedRow.locator("[data-binding-advanced-toggle]").click();
+		assert.equal(await reloadedRow.locator("[data-binding-id]").inputValue(), "guard-bind");
+		assert.equal(await reloadedRow.locator("[data-binding-append-content]").inputValue(), " Appended audit note.");
 
 		// 3. Expanded Session panel: load guarded choices, use bound instruction, observe tool removal
 		const panel = page.locator("[data-session-instructions]");
@@ -208,6 +218,9 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		await panel.locator("[data-instructions-confirm-reset-btn]").click();
 		await panel.locator("[data-instructions-empty]").waitFor();
 		assert.ok(harness.getActiveToolNames().includes("fake_write"), "reset restores fake_write");
+
+		// Close modal drawer before interacting with background chrome
+		await panel.locator("[data-instructions-drawer-close]").click();
 
 		// 7. Locale switching verifies bilingual chrome
 		await page.locator("#localeSelect").selectOption("zh-CN");

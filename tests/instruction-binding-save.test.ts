@@ -137,3 +137,27 @@ test("legacy no-revision save cannot erase bindings added after the cached Prese
   assert.equal(result.ok,false); if(!result.ok) assert.equal(result.status,409);
  });
 });
+
+
+test("save receipt identifies this write even if an external writer changes the file during reload", async () => {
+	await withWorkspace(async (cwd) => {
+		writeStack(cwd, stack("receipt"));
+		const runtime = testRuntime(cwd);
+		const reload = runtime.reloadStacks;
+		runtime.reloadStacks = async (...args) => {
+			writeStack(cwd, { ...stack("receipt"), description: "external newer version" });
+			await reload(...args);
+		};
+		const host = createWebEditorHost(trustedContext(cwd), runtime);
+		const before = host.getStack("project:receipt")!;
+		const submitted = { ...stack("receipt"), description: "my save" };
+		const result = await host.saveStack("project:receipt", submitted, before.sourceRevision);
+		assert.ok(result.ok);
+		if (!result.ok) return;
+		assert.equal(result.sourceRevision, createHash("sha256").update(serializePromptStack(submitted)).digest("hex"));
+		assert.notEqual(result.sourceRevision, sourceRevision(cwd, "receipt"));
+		const retry = await host.saveStack("project:receipt", { ...submitted, description: "next edit" }, result.sourceRevision);
+		assert.equal(retry.ok, false);
+		if (!retry.ok) assert.equal(retry.status, 409);
+	});
+});

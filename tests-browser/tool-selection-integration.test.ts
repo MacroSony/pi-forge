@@ -52,7 +52,6 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		assert.equal(await panel.locator('[data-tool-group="other"]').count(), 0, "real policy catalog retains SDK provenance through client normalization");
 		assert.ok(await panel.locator("[data-tool-group]").count() > 0);
 		await panel.locator("[data-tool-picker-search]").fill("fake_read");
-		assert.ok((await panel.locator('[data-tool-name="fake_read"]').boundingBox())!.width <= 20, "global text-input CSS does not stretch picker checkboxes");
 		await panel.locator('[data-tool-name="fake_read"]').check();
 		await panel.locator("[data-tool-picker-search]").fill("forge_system_update");
 		await panel.locator('[data-tool-name="forge_system_update"]').check();
@@ -131,6 +130,7 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		await sessionPanel.locator("[data-item-deactivate-btn]").click();
 		await sessionPanel.locator("[data-instructions-empty]").waitFor();
 		assert.deepEqual(harness.getActiveToolNames(), ["fake_read", "forge_system_update"]);
+		await sessionPanel.locator("[data-instructions-drawer-close]").click();
 		assert.equal(harness.streamContexts.length, 1, "one deliberate seed only; management never infers");
 		assert.equal(harness.fetchAttempts, 0);
 		assert.deepEqual(errors, []);

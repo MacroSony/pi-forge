@@ -285,6 +285,9 @@ ${css}
 		await body.waitFor();
 		assert.equal(await body.isVisible(), true);
 
+		// Expand technical diagnostics
+		await page.locator(".instructions-diagnostics summary").click();
+
 		// Check short IDs
 		const sessionElem = page.locator("[data-instructions-session-id]");
 		assert.equal(await sessionElem.textContent(), "sess-alp");
@@ -608,6 +611,8 @@ test("session instructions panel confirms reset all with guard without auto-star
 		const page = await browser.newPage();
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
+		// Open drawer
+		await page.locator("[data-instructions-toggle]").click();
 		const resetBtn = page.locator("[data-instructions-reset-btn]");
 		await resetBtn.waitFor();
 
@@ -640,6 +645,9 @@ test("session instructions panel confirms reset all with guard without auto-star
 				revision: "rev-001-opaque",
 			},
 		});
+
+		// Close drawer
+		await page.locator("[data-instructions-drawer-close]").click();
 	} finally {
 		await browser?.close();
 		await new Promise<void>((closeResolve) => server.close(() => closeResolve()));
@@ -867,11 +875,12 @@ test("session instructions panel: delayed POST with focus/poll race, guard chang
 		const refreshBtn = page.locator("[data-instructions-refresh]");
 		await refreshBtn.click();
 
-		// Wait for branch ID to update to new leaf
+		// Wait for branch ID to update to new leaf (assert full title rather than short id prefix)
 		const branchElem = page.locator("[data-instructions-branch-id]");
 		await page.waitForFunction(
-			() => document.querySelector("[data-instructions-branch-id]")?.textContent === "leaf-bet",
+			() => document.querySelector("[data-instructions-branch-id]")?.getAttribute("title") === "leaf-beta-switched",
 		);
+		assert.equal(await branchElem.getAttribute("title"), "leaf-beta-switched");
 
 		// Confirmation prompt MUST have been cancelled automatically because guard changed!
 		await confirmGroup.waitFor({ state: "detached" });
@@ -1009,6 +1018,7 @@ test("session instructions panel: zh-CN localization for badges and warnings", {
 		// Expand panel
 		await page.locator("[data-instructions-toggle]").click();
 		await page.locator("[data-instructions-body]").waitFor();
+		await page.locator(".instructions-diagnostics summary").click();
 
 		// Check localized badges
 		const deliveryBadge = page.locator("[data-instructions-delivery-badge]");

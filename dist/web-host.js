@@ -1,4 +1,4 @@
-import { parsePromptStack } from "./codecs/prompt-stack.js";
+import { parsePromptStack, serializePromptStack } from "./codecs/prompt-stack.js";
 import { instructionModeOperation } from "./instruction-web-host.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -534,13 +534,15 @@ async function saveStackFile(ctx, runtime, id, stack, expectedSourceRevision) {
         const status = stackMutationStatus(write.reason);
         return { ok: false, status, error: write.error };
     }
+    // Receipt for precisely this write, not a later read after the asynchronous reload.
+    const sourceRevision = createHash("sha256").update(serializePromptStack(stack)).digest("hex");
     const preferredId = runtime.getActive() === target ? formatResourceKey(target.key) : runtime.getSelectedActiveId();
     await runtime.reloadStacks(preferredId);
     const saved = runtime.getStacks().find((candidate) => candidate.scope === target.scope && candidate.stack.id === target.stack.id)
         ?? runtime.getStacks().find((candidate) => candidate.filePath === target.filePath);
     if (!saved)
         return { ok: false, status: 500, error: "Saved preset could not be reloaded." };
-    return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
+    return { ok: true, stack: stackSummary(saved, runtime.getActive()), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()), sourceRevision };
 }
 async function createStackFile(ctx, runtime, stack, options) {
     if (!ctx.isProjectTrusted()) {

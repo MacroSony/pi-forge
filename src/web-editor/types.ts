@@ -47,7 +47,7 @@ export interface WebEditorHost {
 	listResources(): WebEditorResources;
 	getStack(id: string): { stack: PromptStack; filePath: string; diagnostics: PromptStackDiagnostic[]; sourceRevision: string; selector?: string; scope?: "global" | "project" } | undefined;
 	createStack(stack: PromptStack, options: WebEditorCreateStackOptions): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
-	saveStack(id: string, stack: PromptStack, expectedSourceRevision?: string): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[] }>>;
+	saveStack(id: string, stack: PromptStack, expectedSourceRevision?: string): Promise<WebEditorOperationResult<{ stack: WebEditorStackSummary; stacks: WebEditorStackSummary[]; sourceRevision: string }>>;
 	deleteStack(id: string): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
 	validateStack(stack: PromptStack): PromptStackDiagnostic[];
 	previewStack(id: string, stack: PromptStack): WebEditorOperationResult<{ text: string; preview?: WebEditorPreview; diagnostics: PromptStackDiagnostic[] }>;

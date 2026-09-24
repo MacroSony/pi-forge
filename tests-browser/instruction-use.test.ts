@@ -346,10 +346,9 @@ ${css}
 		// 4. Successful use: human explicit click sends exact captured guard and fingerprint
 		const useBtn = page.locator("[data-instructions-use-btn]");
 		assert.equal(await useBtn.isEnabled(), true);
+		const used = page.waitForResponse((r) => r.url().includes("/api/instructions/use") && r.status() === 200);
 		await useBtn.click();
-
-		// Wait for server to process POST /api/instructions/use
-		await page.waitForResponse((r) => r.url().includes("/api/instructions/use") && r.status() === 200);
+		await used;
 		assert.equal(postUseRequests.length, 1);
 		assert.deepEqual(postUseRequests[0], {
 			guard: {
@@ -369,8 +368,11 @@ ${css}
 		assert.equal(await selectElem.inputValue(), "");
 
 		// 5. Stale source / guard 409 conflict: error banner retains explanation, no auto-retry
+		// The mutation invalidates old choices, then reloads them without a second click.
+		await countBadge.waitFor();
+		assert.equal(await countBadge.textContent(), "3");
+		assert.ok(catalogReadCount >= 2);
 		shouldConflictUse = true;
-		await loadBtn.click(); // Successful mutation invalidated the old guarded choices.
 		await selectElem.selectOption("binding:preset-security");
 		await previewCard.waitFor();
 		assert.equal(await page.locator("[data-picker-preview-kind]").textContent(), "preset binding");
@@ -415,7 +417,8 @@ ${css}
 		await useBtn.click({ force: true }).catch(() => {});
 		assert.equal(postUseRequests.length, postCountBeforeDisabled, "Disabled Use button must NOT send any POST");
 
-		// 7. Permission / no inference: untrusted session disables mutation
+		// 7. Test the trust guard with a valid choice, not the preceding broken source.
+		await selectElem.selectOption("mode:review");
 		currentState = {
 			...currentState,
 			trusted: false,
@@ -424,6 +427,9 @@ ${css}
 		const untrustedBanner = page.locator("[data-instructions-untrusted-banner]");
 		await untrustedBanner.waitFor();
 		assert.equal(await useBtn.isDisabled(), true, "Untrusted session must disable activation Use button");
+		const beforeUntrusted = postUseRequests.length;
+		await useBtn.evaluate((button: HTMLButtonElement) => { button.disabled = false; button.click(); });
+		assert.equal(postUseRequests.length, beforeUntrusted, "handler rejects untrusted use even if the DOM is force-enabled");
 
 		// 8. Collapse / unmount: no late mutation UI overwrite
 		currentState = {
@@ -433,8 +439,8 @@ ${css}
 		await refreshBtn.click();
 		await untrustedBanner.waitFor({ state: "detached" });
 
-		// Collapse panel
-		await toggleBtn.click();
+		// Native drawer is closed from its own controls, not the inert background.
+		await page.locator("[data-instructions-drawer-close]").click();
 		assert.equal(await body.isVisible(), false);
 		// Header retains active badge and layout
 		assert.equal(await activeBadge.textContent(), "2 active");

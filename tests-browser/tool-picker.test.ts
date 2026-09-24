@@ -562,15 +562,18 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 
 		// Simulate catalog 500 error: manual entry remains intact
 		shouldFailResources = true;
-		await page.locator("#modeToolAddInput").fill("manual_offline_tool");
-		await page.locator("#modeToolAddBtn").click();
+		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-trigger]").click();
+		const failPickerPanel = page.locator("[data-mode-tools-add-picker] [data-tool-picker-panel]");
+		await failPickerPanel.waitFor();
+		await failPickerPanel.locator("[data-tool-picker-refresh]").click();
+		await failPickerPanel.locator("[data-tool-picker-error]").waitFor();
+		assert.equal(await failPickerPanel.locator("[data-tool-picker-error]").isVisible(), true);
+		await failPickerPanel.locator(".tool-picker-manual summary").click();
+		await failPickerPanel.locator("[data-tool-manual-input]").fill("manual_offline_tool");
+		await failPickerPanel.locator("[data-tool-manual-btn]").click();
+		await failPickerPanel.locator("[data-tool-picker-done]").click();
 		const updatedTags = await page.locator(".mode-tag.add").allTextContents();
 		assert.ok(updatedTags.some((t) => t.includes("manual_offline_tool")));
-
-		// Open picker with failed catalog: doesn't crash, shows error message, preserves drafted tools
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-trigger]").click();
-		assert.equal(await page.locator("[data-mode-tools-add-picker] [data-tool-picker-panel]").isVisible(), true);
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-close]").click();
 		shouldFailResources = false;
 
 		// =========================================================================
@@ -596,8 +599,8 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
 		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, ["lint", "read"]);
 
-		// Switch to explicit empty
-		await page.locator("[data-binding-tools-add-mode]").first().selectOption("explicitEmpty");
+		// Clear tools via custom text input to explicit empty []
+		await page.locator("[data-binding-tools-add-input]").first().fill("");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
 		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, []);
 
@@ -605,6 +608,11 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		await page.locator("[data-binding-tools-add-mode]").first().selectOption("omitted");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
 		assert.equal(currentStack.instructionModes[0].overrides?.tools?.add, undefined);
+
+		// Switch back to custom initiates explicit empty []
+		await page.locator("[data-binding-tools-add-mode]").first().selectOption("custom");
+		currentStack = await page.evaluate(() => (window as any).__getTestStack());
+		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, []);
 
 		// =========================================================================
 		// 8. BILINGUAL LOCALIZATION (en vs zh-CN)
@@ -619,10 +627,9 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 
 		// Open picker in Chinese
 		await page.locator('[data-permitted-tools-picker] [data-tool-picker-trigger]').click();
-		await page.locator("[data-tool-group-deselect-all]").first().waitFor();
+		await page.locator('[data-tool-group="other"]').waitFor();
 		assert.equal(await page.locator('[data-tool-group="other"] .tool-group-name').textContent(), "其它");
-		assert.equal(await page.locator("[data-tool-group-select-all]").first().textContent(), "全选");
-		assert.equal(await page.locator("[data-tool-group-deselect-all]").first().textContent(), "取消全选");
+		assert.equal(await page.locator("[data-tool-picker-done]").textContent(), "完成");
 		await page.locator("[data-tool-picker-done]").click();
 
 		// Switch back to English

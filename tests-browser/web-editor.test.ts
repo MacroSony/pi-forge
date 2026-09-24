@@ -64,9 +64,12 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		assert.equal(await page.locator("#status").textContent(), "Loaded default");
 
 		await page.locator("#metadataToggleBtn").click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor();
 		assert.equal(await page.locator("#stackId").isEditable(), false);
 		await page.locator("#stackName").fill("Browser Smoke Edited");
 		await page.locator("#dirtyBadge.visible").waitFor();
+		await page.locator("#presetPropertiesDialog button").first().click();
+		await page.locator("#presetPropertiesDialog[open]").waitFor({ state: "hidden" });
 
 		await page.locator("#validateBtn").click();
 		await page.locator("#status").filter({ hasText: "Validation complete" }).waitFor();
@@ -85,12 +88,12 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 		const regexRow = page.locator("[data-regex-row]").last();
 		await regexRow.locator("[data-regex-pattern]").fill("Browser");
 		await regexRow.locator("[data-regex-replace]").fill("Typed");
-		await page.locator("#validateRegexRulesBtn").click();
+		await page.locator("#validateBtn").click();
 		await page.locator("#status").filter({ hasText: "Validation complete" }).waitFor();
 
 		await page.locator("#saveBtn").click();
 		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
-		await page.locator("#status").filter({ hasText: "Loaded default" }).waitFor();
+		await page.locator("#status").filter({ hasText: /Saved (project:)?default/ }).waitFor();
 
 		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8")) as {
 			name?: string;
@@ -123,6 +126,8 @@ test("web editor completes a stack workflow in a real browser", { timeout: 20_00
 				items: [{ kind: "block", id: "system", role: "system", content: "Imported in browser." }],
 			})),
 		});
+		await page.locator("#stackResourceForm").waitFor();
+		await page.locator("#stackResourceForm button[type='submit']").click();
 		await page.locator("#status").filter({ hasText: "Imported imported-browser" }).waitFor();
 		assert.equal(existsSync(join(promptStacksDir(cwd), "imported-browser.json")), true);
 		assert.deepEqual(browserErrors, []);
@@ -263,7 +268,7 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".diff-layout-buttons button", { hasText: "Unified" }).click();
 		await page.locator("#editorDockArea.dock-focus").waitFor(); // Draft diff initially uses focus.
 		assert.equal(await page.locator("#workspace").isVisible(), false);
-		await page.locator("[data-reading-cycle]").click();
+		await page.locator("#focus-toggle").click();
 		await page.locator("#workspace").waitFor({ state: "visible" });
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Run diff" }).click();
@@ -302,15 +307,17 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 
 		await page.setViewportSize({ width: 390, height: 844 });
 		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
-		assert.equal(await page.locator("#workspace").isVisible(), false);
+		assert.equal(await page.locator("#workspace").isVisible(), true);
 		assert.equal(await page.locator("#contextDiffPanel").isVisible(), true);
 		await page.setViewportSize({ width: 1280, height: 720 });
 
-		await page.locator("#itemsTabBtn").click();
-		await page.locator("#workspace").waitFor({ state: "visible" });
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor({ state: "detached" });
 		assert.equal(await page.locator("#editorDockArea").getAttribute("class"), "editor-dock-area");
 		await page.locator("#previewTabBtn").click();
 		await page.locator("#editorDockArea.dock-open").waitFor();
+		await page.locator("#itemsTabBtn").click();
+		await page.locator("#workspace").waitFor({ state: "visible" });
 		await page.locator("#previewTabBtn").click();
 		await page.locator("#editorDockArea.dock-open").waitFor({ state: "detached" });
 		await page.locator("#workspace").waitFor({ state: "visible" });
@@ -382,6 +389,7 @@ test("web editor switches between English and Chinese", { timeout: 20_000 }, asy
 		await page.locator("#saveBtn").filter({ hasText: "保存" }).waitFor();
 		await page.locator("#itemsTabBtn").filter({ hasText: "堆栈" }).waitFor();
 		await page.locator(".sidebar .side-title").filter({ hasText: "预设" }).waitFor();
+		await page.locator("#addContentBtn").click();
 		await page.locator("#addItemBtn").filter({ hasText: "添加块" }).waitFor();
 		await page.locator("#diagnostics").filter({ hasText: "诊断" }).waitFor();
 		await page.locator("#profilesSurfaceBtn").click();

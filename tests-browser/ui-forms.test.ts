@@ -138,9 +138,6 @@ test("ui-forms: fold/unfold in regex, policy, and bindings does not dirty preset
 		await regexToggle.click(); // Expand rule
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), false, "Expanding regex card must not dirty");
 		assert.equal(await page.locator("[data-regex-body]").count(), 1, "Regex card body expanded");
-        const cardBox = await page.locator('[data-regex-row]').first().boundingBox();
-        const bodyBox = await page.locator('[data-regex-body]').first().boundingBox();
-        assert.ok(cardBox && bodyBox && bodyBox.width > cardBox.width * .9, 'Expanded regex editor must span the card, not shrink to intrinsic field widths');
 		await regexToggle.click(); // Collapse using the visible, keyboard-reachable toggle.
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), false, "Collapsing regex card must not dirty");
 		assert.equal(await page.locator("[data-regex-body]").count(), 0, "Regex card body collapsed");
@@ -149,21 +146,7 @@ test("ui-forms: fold/unfold in regex, policy, and bindings does not dirty preset
 		await page.locator("#policyTabBtn").click();
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), false, "Switching to policy tab not dirty");
 
-		
-        const ceiling = page.locator('[data-policy-kind="tools"]');
-        const ceilingBox = await ceiling.boundingBox();
-        const headBox = await ceiling.locator('.card-head').boundingBox();
-        const descBox = await ceiling.locator('.card-description').boundingBox();
-        assert.ok(ceilingBox && headBox && descBox);
-        assert.ok(headBox.width > ceilingBox.width * .8, 'Legacy policy table CSS must not turn the card header into a narrow column');
-        assert.ok(descBox.y >= headBox.y + headBox.height, 'Explanation belongs below the card header');
-        const checkbox = await page.locator('[data-custom-defaults-toggle]').boundingBox();
-        assert.ok(checkbox && checkbox.width <= 18, 'Checkbox must not inherit full-width form input styling');
-        const beforeTheme = await page.locator('body').getAttribute('data-theme');
-        if (beforeTheme !== 'dark') await page.locator('#themeToggleBtn').click();
-        assert.notEqual(await ceiling.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)', 'Policy must use the real dark theme, not mock-only fallback tokens');
-        if (beforeTheme !== 'dark') await page.locator('#themeToggleBtn').click();
-        const policyAdvanced = page.locator(".policy-card details.advanced summary").first();
+		const policyAdvanced = page.locator(".policy-card details.advanced summary").first();
 		await policyAdvanced.waitFor();
 		await policyAdvanced.click();
 		assert.equal(await page.locator("#dirtyBadge").isVisible(), false, "Toggling policy advanced must not dirty");

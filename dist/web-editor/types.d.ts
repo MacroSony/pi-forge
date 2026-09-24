@@ -62,6 +62,7 @@ export interface WebEditorHost {
     saveStack(id: string, stack: PromptStack, expectedSourceRevision?: string): Promise<WebEditorOperationResult<{
         stack: WebEditorStackSummary;
         stacks: WebEditorStackSummary[];
+        sourceRevision: string;
     }>>;
     deleteStack(id: string): Promise<WebEditorOperationResult<{
         activeId?: string;

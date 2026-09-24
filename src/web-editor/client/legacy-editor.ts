@@ -25,6 +25,8 @@ let currentFilePath = "";
 let currentSourceRevision = "";
 let selectedItemIndex = -1;
 let dirty = false;
+let draftRevision = 0;
+let pendingSave: object | null = null;
 let dragIndex = -1;
 let dragDropIndex = -1;
 let dragScrollFrame = 0;
@@ -178,6 +180,7 @@ function renderResourceHeader() {
 }
 
 function markDirty() {
+  draftRevision++;
   dirty = true;
   renderDirtyState();
   setSemanticStatus("status.unsavedChanges");
@@ -197,6 +200,7 @@ function updateActionState() {
     const button = el(id);
     if (button) button.disabled = !hasStack;
   }
+  el("saveBtn").disabled = !hasStack || pendingSave !== null;
   const activateButton = el("activateBtn");
   if (activateButton) {
     activateButton.disabled = !hasStack || dirty;
@@ -253,8 +257,11 @@ function handleProfileApplied() {
 async function selectStack(id: any, options: any = {}) {
   if (dirty && !options.keepDirty && !confirm(t("confirm.discardChanges"))) return;
   const generation = ++stackLoadGeneration;
+  const revision = draftRevision;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
-  if (!editorStarted || generation !== stackLoadGeneration) return;
+  // The old editor remains usable while loading. Typing after navigation was
+  // requested is new work, not covered by the earlier discard confirmation.
+  if (!editorStarted || generation !== stackLoadGeneration || revision !== draftRevision) return;
   selectedId = id;
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
@@ -735,25 +742,44 @@ function deleteSelectedItem() {
 }
 
 async function saveStack() {
-  const savedItemIndex = selectedItemIndex;
-  const savedItemMode = vueItemHost.getMode();
+  if (!currentStack || pendingSave) return;
+  const request = {};
+  const selector = selectedId;
+  const generation = stackLoadGeneration;
+  const revision = draftRevision;
   const stack = stackForSubmit();
-  const data = await api("/api/stacks/" + encodeURIComponent(selectedId), {
-    method: "PUT",
-    body: { stack, expectedSourceRevision: currentSourceRevision },
-  });
-  stacks = data.stacks || stacks;
-  selectedId = data.stack?.selector || data.stack?.id || stack.id;
-  currentStack = structuredClone(stack);
-  dirty = false;
-  renderDirtyState();
-  renderAll(data.stack?.diagnostics || []);
-  setSemanticStatus("status.saved", { id: selectedId }, "success");
-  await selectStack(selectedId, {
-    keepDirty: true,
-    selectedItemIndex: savedItemIndex,
-    itemMode: savedItemMode,
-  });
+  const stillSelected = () => editorStarted && generation === stackLoadGeneration && selector === selectedId;
+  pendingSave = request;
+  updateActionState();
+  try {
+    const data = await api("/api/stacks/" + encodeURIComponent(selector), {
+      method: "PUT",
+      body: { stack, expectedSourceRevision: currentSourceRevision },
+    });
+    if (!stillSelected()) return;
+    // Do not replace the live draft or reselect after the write: either would
+    // discard typing performed while the response was in flight. The receipt
+    // advances only our own write's baseline, never a later external revision.
+    if (typeof data.sourceRevision !== "string" || !/^[a-f0-9]{64}$/.test(data.sourceRevision)) {
+      throw new Error(t("error.saveRevisionMissing"));
+    }
+    currentSourceRevision = data.sourceRevision;
+    stacks = data.stacks || stacks;
+    dirty = draftRevision !== revision;
+    renderStackList();
+    renderDirtyState();
+    if (!dirty) renderDiagnostics(data.stack?.diagnostics || []);
+    if (dirty) setSemanticStatus("status.unsavedChanges");
+    else setSemanticStatus("status.saved", { id: selector }, "success");
+    notifyDraftChanged();
+  } catch (error) {
+    if (stillSelected()) throw error;
+  } finally {
+    if (pendingSave === request) {
+      pendingSave = null;
+      if (editorStarted) updateActionState();
+    }
+  }
 }
 
 async function createStackRemote(stack: any, options: any = {}) {
@@ -1414,6 +1440,8 @@ export function startLegacyEditor(options: { isActive?: () => boolean } = {}): (
 }
 
 function resetEditorState(): void {
+  pendingSave = null;
+  draftRevision = 0;
   stackLoadGeneration++;
   resourceLoadGeneration++;
   if (dragScrollFrame) cancelAnimationFrame(dragScrollFrame);
