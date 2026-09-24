@@ -430,6 +430,7 @@ function takeRecentMessagesWithinChars(messages: AgentMessage[], maxChars: numbe
 	const keepIndices = new Set<number>();
 	let ordinaryChars = 0;
 	let ordinaryCount = 0;
+	let ordinaryExceeded = false;
 
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index]!;
@@ -438,14 +439,22 @@ function takeRecentMessagesWithinChars(messages: AgentMessage[], maxChars: numbe
 			continue;
 		}
 
+		if (ordinaryExceeded) {
+			continue;
+		}
+
 		const messageChars = agentMessageToPreviewText(message).length;
 		if (ordinaryCount > 0 && ordinaryChars + messageChars > maxChars) {
+			ordinaryExceeded = true;
 			continue;
 		}
 
 		keepIndices.add(index);
 		ordinaryCount++;
 		ordinaryChars += messageChars;
+		if (ordinaryChars >= maxChars) {
+			ordinaryExceeded = true;
+		}
 	}
 
 	if (keepIndices.size === messages.length) return messages;

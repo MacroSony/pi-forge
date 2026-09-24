@@ -337,19 +337,27 @@ function takeRecentMessagesWithinChars(messages, maxChars) {
     const keepIndices = new Set();
     let ordinaryChars = 0;
     let ordinaryCount = 0;
+    let ordinaryExceeded = false;
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
         if (isInstructionControlMessage(message)) {
             keepIndices.add(index);
             continue;
         }
+        if (ordinaryExceeded) {
+            continue;
+        }
         const messageChars = agentMessageToPreviewText(message).length;
         if (ordinaryCount > 0 && ordinaryChars + messageChars > maxChars) {
+            ordinaryExceeded = true;
             continue;
         }
         keepIndices.add(index);
         ordinaryCount++;
         ordinaryChars += messageChars;
+        if (ordinaryChars >= maxChars) {
+            ordinaryExceeded = true;
+        }
     }
     if (keepIndices.size === messages.length)
         return messages;

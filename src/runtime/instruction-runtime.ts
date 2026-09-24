@@ -18,7 +18,7 @@ import { isUsableInstructionMode } from "../codecs/instruction-mode.ts";
 import { projectInstructionMessages } from "../instruction-projection.ts";
 import { isInstructionDelivery } from "../instruction-protocol.ts";
 import { formatResourceKey, parseResourceSelector, type ResourceKey } from "../resource-identity.ts";
-import { hasResourcePolicy } from "../policy.ts";
+import { hasToolSelectionPolicy } from "../policy.ts";
 import {
 	buildSessionProjection,
 	type SessionEntry,
@@ -93,7 +93,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 
 	function rememberTools(ctx: ExtensionContext): void {
 		const history = readInstructionSession(ctx);
-		if (!history.events.length && !history.tools && !hasResourcePolicy(workspace.snapshotKnown ? workspace.snapshot().active?.stack.tools : undefined)) return;
+		if (!history.events.length && !history.tools && !hasToolSelectionPolicy(workspace.snapshotKnown ? workspace.snapshot().active?.stack.tools : undefined)) return;
 		const snapshot = tools.snapshot();
 		const serialized = JSON.stringify(snapshot);
 		if (serialized !== lastToolRecord) {

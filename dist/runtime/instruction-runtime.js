@@ -8,7 +8,7 @@ import { isUsableInstructionMode } from "../codecs/instruction-mode.js";
 import { projectInstructionMessages } from "../instruction-projection.js";
 import { isInstructionDelivery } from "../instruction-protocol.js";
 import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
-import { hasResourcePolicy } from "../policy.js";
+import { hasToolSelectionPolicy } from "../policy.js";
 import { buildSessionProjection, } from "@earendil-works/pi-coding-agent";
 import { hasPendingInstructionToolCalls, instructionContextMatches, materializeInstructionAnchors, } from "../instruction-anchors.js";
 import { getCurrentBranchEntries, persistInstructionDelivery, persistInstructionEvent, persistInstructionTools, readInstructionSession, } from "../session-adapter.js";
@@ -52,7 +52,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
     }
     function rememberTools(ctx) {
         const history = readInstructionSession(ctx);
-        if (!history.events.length && !history.tools && !hasResourcePolicy(workspace.snapshotKnown ? workspace.snapshot().active?.stack.tools : undefined))
+        if (!history.events.length && !history.tools && !hasToolSelectionPolicy(workspace.snapshotKnown ? workspace.snapshot().active?.stack.tools : undefined))
             return;
         const snapshot = tools.snapshot();
         const serialized = JSON.stringify(snapshot);
