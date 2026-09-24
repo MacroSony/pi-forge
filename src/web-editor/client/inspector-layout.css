@@ -33,16 +33,17 @@
 	padding-left: 16px;
 }
 
-/* Ensure context-diff-panel is positioned relative for absolute boundary arrow placement */
+/* Keep the divider and reading handle inside the inspector, away from editor actions. */
 .context-diff-panel {
 	position: relative;
 	overflow: visible;
+	border-left: 1px solid var(--line-strong);
 }
 
-/* Arrow handle placed right on the left pane boundary */
+/* Reserve header space for the handle; it must not straddle the editor. */
 .preview-reading-arrow {
 	position: absolute;
-	left: -15px;
+	left: 12px;
 	top: 14px;
 	width: 30px;
 	height: 30px;
@@ -85,7 +86,7 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding-left: 18px;
+	padding-left: 40px;
 	min-height: 32px;
 	flex: 0 0 auto;
 }
@@ -145,7 +146,7 @@
  .editor-dock-area.dock-open.dock-wide {
   grid-template-rows:minmax(260px,.7fr) minmax(340px,1.3fr);
  }
- .editor-dock-area.dock-open .context-diff-panel { border-left:0; border-top:1px solid var(--line); }
+ .editor-dock-area.dock-open:not(.dock-focus) .context-diff-panel { border-left:0; border-top:1px solid var(--line-strong); }
  .preview-reading-arrow { left:8px; }
  .context-diff-dock-header { padding-left:38px; }
 }

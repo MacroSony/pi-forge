@@ -871,9 +871,7 @@ function turnLabel(): string {
 .context-diff-empty.compact { padding: 12px; }
 .context-diff-error { padding: 10px; border: 1px solid var(--error); border-radius: 6px; background: var(--error-bg); }
 .preview-focus-button {
-	position: absolute;
-	left: -15px;
-	top: 50px;
+	flex-shrink: 0;
 	width: 30px;
 	height: 30px;
 	min-width: 30px;
@@ -898,12 +896,6 @@ function turnLabel(): string {
 .preview-focus-button:focus-visible {
 	outline: 2px solid var(--accent);
 	outline-offset: 2px;
-}
-@media (min-width: 801px) and (max-width: 1150px) {
-	.preview-focus-button { left: 6px; }
-}
-@media (max-width: 800px) {
-	.preview-focus-button { left: 8px !important; }
 }
 @media (max-width: 1100px) { .diff-view-controls { order: 3; margin-left: 0; width: 100%; } }
 </style>

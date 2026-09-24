@@ -508,7 +508,7 @@ html, body {
   background: var(--accent-bg);
 }
 .item-row {
-  width:100%; text-align:left; border:1px solid transparent; border-left:2px solid var(--line); background:transparent; border-radius:5px; padding:8px 7px 8px 20px; margin-bottom:3px; display:grid; grid-template-columns:minmax(0,1fr) 30px; gap:3px 6px; align-items:center; cursor:grab; position:relative;
+  width:100%; text-align:left; border:1px solid transparent; border-left:2px solid var(--line); border-bottom-color:var(--line); background:transparent; border-radius:5px; padding:8px 7px 8px 20px; margin-bottom:3px; display:grid; grid-template-columns:minmax(0,1fr) 30px; gap:3px 6px; align-items:center; cursor:grab; position:relative;
 }
 .item-row:active {
   cursor: grabbing;
