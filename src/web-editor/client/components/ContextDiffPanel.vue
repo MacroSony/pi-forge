@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
@@ -32,6 +32,9 @@ export interface InstructionLocation {
 }
 
 const props = defineProps<{
+	sessionOnly?: boolean;
+	active?: boolean;
+	observedState?: import("../../../instruction-state.ts").InstructionStateView | null;
 	getStackDraft?: () => LegacyEditorDraft | undefined;
 	subscribeStackDraft?: (listener: () => void) => () => void;
 	onStatus?: (text: string, tone?: string) => void;
@@ -42,7 +45,7 @@ const props = defineProps<{
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
-const mode = ref<DockMode>("compiled");
+const mode = ref<DockMode>(props.sessionOnly ? "session" : "compiled");
 // Layout belongs to the panel, not its content tab. Switching inspection
 // content must never move the editor or implicitly enter focused reading.
 const readingState = ref<ReadingState>("side");
@@ -82,7 +85,6 @@ function setMode(newMode: DockMode): void {
 	invalidateSessionRequest();
 	locationIds.value = [];
 	mode.value = newMode;
-	if (newMode === "session") void refreshSessionPreview(true);
 }
 
 function returnToEditing(): void {
@@ -202,28 +204,26 @@ function invalidateSessionRequest(): number {
 	sessionLoading.value = false;
 	return ++sessionSequence;
 }
-async function refreshSessionPreview(force = false, expected?: InstructionLocation): Promise<void> {
-	if (mode.value !== "session" || (!force && (sessionLoading.value || !sessionPreview.value))) return;
+async function refreshSessionPreview(expected?: InstructionLocation): Promise<void> {
+	if (mode.value !== "session" || props.active === false || !props.observedState?.trusted || props.observedState.restoring) return;
 	const sequence = invalidateSessionRequest();
 	const controller = new AbortController();
 	sessionAbort = controller;
 	sessionLoading.value = true;
-	if (force) { sessionPreview.value = null; sessionError.value = ""; }
+	sessionError.value = "";
+	// Keep a clearly marked previous projection during same-branch updates.
+	// Boundary changes are cleared by the state watcher before starting this read.
 	try {
-		// Poll only the cheap revision. Compile the active snapshot on demand/change,
-		// never every poll and never from the editor's potentially unrelated draft.
-		if (!force && sessionPreview.value) {
-			const current = await api<{ state: WebEditorSessionPreview["state"] }>("/api/instructions", { signal: controller.signal });
-			if (sequence !== sessionSequence) return;
-			if (sameGuard(current.state.guard, sessionPreview.value.state.guard)
-				&& current.state.presetRevision === sessionPreview.value.state.presetRevision) return;
-			sessionPreview.value = null;
-		}
 		const next = await api<WebEditorSessionPreview>("/api/instructions/preview", { signal: controller.signal });
 		if (sequence !== sessionSequence) return;
+		const observed = props.observedState;
+		if (!observed || !sameGuard(observed.guard, next.state.guard) || observed.presetRevision !== next.state.presetRevision || observed.textPresentation !== next.state.textPresentation) throw new Error(t("instructions.locationChanged"));
 		if (expected && (!sameGuard(expected.guard, next.state.guard) || expected.presetRevision !== next.state.presetRevision)) throw new Error(t("instructions.locationChanged"));
+		const pane = rootElement.value?.querySelector<HTMLElement>(".context-diff-compiled");
+		const scrollTop = pane?.scrollTop ?? 0;
 		sessionPreview.value = next;
-		sessionError.value = "";
+		await nextTick();
+		if (sequence === sessionSequence && pane) pane.scrollTop = scrollTop;
 	} catch (error) {
 		if (controller.signal.aborted || sequence !== sessionSequence) return;
 		sessionPreview.value = null;
@@ -232,10 +232,33 @@ async function refreshSessionPreview(force = false, expected?: InstructionLocati
 		if (sequence === sessionSequence) sessionLoading.value = false;
 	}
 }
+
+// The Session controls remain the single owner of periodic status reads.
+// Only semantic changes (not each new response object) recompile this view.
+const observedRevision = computed(() => {
+	const state = props.observedState;
+	return state ? JSON.stringify([state.guard, state.presetRevision, state.textPresentation, state.trusted, state.restoring]) : null;
+});
+watch([() => props.active, observedRevision], () => {
+	if (!props.sessionOnly) return;
+	const state = props.observedState;
+	const previous = sessionPreview.value?.state;
+	if (!state?.trusted || state.restoring || (previous && (previous.guard.sessionId !== state.guard.sessionId || previous.guard.leafId !== state.guard.leafId))) {
+		invalidateSessionRequest();
+		sessionPreview.value = null;
+		locationIds.value = [];
+	}
+	if (props.active === false) { invalidateSessionRequest(); return; }
+	if (!state?.trusted || state.restoring) { sessionError.value = t("instructions.unavailable"); return; }
+	if (!previous || !sameGuard(previous.guard, state.guard) || previous.presetRevision !== state.presetRevision || previous.textPresentation !== state.textPresentation || sessionError.value) {
+		void refreshSessionPreview();
+	}
+});
+
 async function locateInstruction(target: InstructionLocation): Promise<void> {
 	mode.value = "session";
 	locationIds.value = [...target.activationIds];
-	const request = refreshSessionPreview(true, target);
+	const request = refreshSessionPreview(target);
 	const sequence = sessionSequence;
 	await request;
 	if (sequence !== sessionSequence || mode.value !== "session" || !sessionPreview.value) return;
@@ -254,7 +277,7 @@ async function locateInstruction(target: InstructionLocation): Promise<void> {
 	}
 }
 function refreshVisiblePreview(): void {
-	if (mode.value === "session") void refreshSessionPreview(true);
+	if (mode.value === "session") void refreshSessionPreview();
 	else schedulePreviewRefresh();
 }
 
@@ -325,15 +348,17 @@ const changedBlocks = computed(() => activeDiff.value?.summary.changedBlocks ?? 
 const latestUsage = computed(() => contextDiff.value?.latest?.usage ?? null);
 
 onMounted(() => {
+	if (props.sessionOnly) {
+		void refreshSessionPreview();
+		return;
+	}
 	stopDraftSubscription = props.subscribeStackDraft?.(schedulePreviewRefresh);
 	notifyReading(readingState.value);
 	void refreshPreview();
 	void refreshContextDiff();
 	pollTimer = window.setInterval(() => {
 		void refreshContextDiff();
-		if (mode.value === "session") {
-			if (document.visibilityState === "visible") void refreshSessionPreview();
-		} else schedulePollingPreviewRefresh();
+		schedulePollingPreviewRefresh();
 	}, 2000);
 });
 
@@ -592,10 +617,11 @@ function turnLabel(): string {
 </script>
 
 <template>
-	<div ref="rootElement" class="context-diff-dock" :data-reading="readingState">
+	<div ref="rootElement" class="context-diff-dock" :class="{ 'session-only': props.sessionOnly }" :data-reading="props.sessionOnly ? undefined : readingState">
 		<!-- V4 Inspector Header with Boundary Buttons -->
 		<div class="context-diff-dock-header">
 			<button
+				v-if="!props.sessionOnly"
 				id="focus-toggle"
 				type="button"
 				class="text-btn reading-arrow preview-reading-arrow context-diff-expand"
@@ -633,9 +659,8 @@ function turnLabel(): string {
 			</button>
 		</div>
 
-		<div class="context-diff-mode-tabs" role="tablist" :aria-label="t('diff.dockAria')">
+		<div v-if="!props.sessionOnly" class="context-diff-mode-tabs" role="tablist" :aria-label="t('diff.dockAria')">
 			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="setMode('compiled')">{{ t("tab.preview") }}</button>
-            <button type="button" data-session-context-tab :class="{ active: mode === 'session' }" role="tab" :aria-selected="mode === 'session'" @click="setMode('session')">{{ t("instructions.sessionTab") }}</button>
 			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="setMode('draft')">{{ t("diff.draftTab") }}</button>
 			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="setMode('run')">{{ t("diff.runTab") }}</button>
 		</div>
@@ -643,6 +668,7 @@ function turnLabel(): string {
         <div v-if="mode === 'session'" class="session-context-notice" data-session-context-notice>
                 <template v-if="sessionPreview"><strong>{{ sessionPreview.preset.name || sessionPreview.preset.selector }}</strong> · {{ sessionPreview.preset.selector }}<br></template>
                 {{ t("instructions.sessionPreviewNote") }}
+                <div v-if="sessionLoading && sessionPreview" class="session-updating" role="status">{{ t("instructions.previewUpdating") }}</div>
                 <div v-if="locationIds.length && sessionPreview" class="location-result" data-location-result>
                     {{ matchingSections.length ? t("instructions.locationFound", {count: matchingSections.length}) : t("instructions.locationMissing") }}
                 </div>
@@ -664,7 +690,7 @@ function turnLabel(): string {
 					{{ diagnostic.level.toUpperCase() }}<template v-if="diagnostic.itemId"> · {{ diagnostic.itemId }}</template>: {{ diagnostic.message }}
 				</div>
 			</div>
-			<details v-if="displayPreview && displayPreview.selectedTools !== undefined" class="preview-selected-tools-panel">
+			<details v-if="!props.sessionOnly && displayPreview && displayPreview.selectedTools !== undefined" class="preview-selected-tools-panel">
 				<summary class="selected-tools-head">
 					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count">
@@ -678,7 +704,7 @@ function turnLabel(): string {
 					<span v-for="tool in displayPreview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
 				</div>
 			</details>
-			<div v-else-if="displayPreview && displayPreview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
+			<div v-else-if="!props.sessionOnly && displayPreview && displayPreview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
 				<div class="selected-tools-head">
 					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count muted">{{ t("diff.toolSelectionUnknown") }}</span>
@@ -739,7 +765,7 @@ function turnLabel(): string {
 			</div>
 		</div>
 
-		<div v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
+		<div v-if="!props.sessionOnly" v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
 			<div class="context-diff-panel-head">
 				<div class="context-diff-meta">
 					<span v-if="mode === 'draft' && previewLoading">{{ t("diff.refreshing") }}</span>
@@ -849,6 +875,10 @@ function turnLabel(): string {
 <style src="../inspector-layout.css"></style>
 
 <style scoped>
+.session-only .context-diff-dock-header { padding-left: 0; }
+.session-only .scope-badge { display: inline; }
+.session-updating { margin-top: 4px; color: var(--muted); }
+
 .session-context-notice { padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .location-result { color: var(--accent); margin-top: 5px; }
 .context-diff-section.instruction-location-match { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }

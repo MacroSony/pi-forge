@@ -1,6 +1,6 @@
 import { createApp, type App } from "vue";
 
-import ContextDiffPanel, { type ReadingState, type InstructionLocation } from "./components/ContextDiffPanel.vue";
+import ContextDiffPanel, { type ReadingState } from "./components/ContextDiffPanel.vue";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
 
 export interface VueContextDiffHostDependencies {
@@ -14,7 +14,7 @@ export interface VueContextDiffHostDependencies {
 /** Mounts the self-contained preview/diff dock component into a root element. */
 export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 	let app: App<Element> | undefined;
-	let panel: { revealEditor(): void; locateInstruction(target: InstructionLocation): Promise<void> } | undefined;
+	let panel: { revealEditor(): void } | undefined;
 
 	function mount(root: Element): void {
 		unmount();
@@ -28,7 +28,7 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 				deps.setExpanded(mode === "focus");
 			},
 		});
-		panel = app.mount(root) as unknown as { revealEditor(): void; locateInstruction(target: InstructionLocation): Promise<void> };
+		panel = app.mount(root) as unknown as { revealEditor(): void };
 	}
 
 	function unmount(): void {
@@ -37,5 +37,5 @@ export function createVueContextDiffHost(deps: VueContextDiffHostDependencies) {
 		panel = undefined;
 	}
 
-	return { mount, unmount, revealEditor: () => panel?.revealEditor(), locateInstruction: (target: InstructionLocation) => panel?.locateInstruction(target) };
+	return { mount, unmount, revealEditor: () => panel?.revealEditor() };
 }

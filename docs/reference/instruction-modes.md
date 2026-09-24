@@ -117,7 +117,7 @@ In the Preset editor, instruction mode bindings are configured under the dedicat
 
 ## Web session instructions panel
 
-The web editor provides an expandable **Session instructions** activity panel beneath the top navigation bar.
+The web editor retains a global **Session instructions** summary linking to the non-modal **Current session** workspace: mode/tool controls beside the current session projection. The Preset editing workspace retains its own Preview/Draft diff/Run diff dock; navigation preserves unsaved edits and inspection layout.
 
 ### State display and active modes
 
@@ -153,7 +153,7 @@ The panel includes a human activation picker section:
 
 ### Polling, state guarding, and security
 
-- **Visibility-based polling with zero inference:** The web client polls `GET /api/instructions` (or `/api/instructions/available` after loading choices) every 3 seconds only while visible (`document.visibilityState === "visible"`), on window focus, or via manual refresh. All queries are local reads with zero LLM inference cost.
+- **Visibility-based polling with zero inference:** The web client quietly polls `GET /api/instructions` every 3 seconds only while visible (`document.visibilityState === "visible"`), on window focus, or via manual refresh. Catalog reads (`/api/instructions/available`) happen on workspace entry, explicit refresh and mutation follow-up, not every status poll. Unchanged background checks do not toggle loading/disable controls. The session projection follows semantic state changes and ignores late responses after leaving. All queries are local reads with zero LLM inference cost.
 - **Manual reconciliation on error or conflict:** Errors, stale state, or 409 Conflicts mark the view as stale and require manual review. Mutations do not blindly retry.
 - **Project trust requirement:** Modifying session instructions requires an explicitly trusted project (`isProjectTrusted() === true`). Untrusted sessions reject mutations with `403 Forbidden`; CLI recovery (`/system-update reset`) remains available.
 - **State guard and lifecycle protection:** Mutations enforce derived guards (`sessionId`, `leafId`, `revision`). Unmounted or disposed runtimes return `503 Service Unavailable`.

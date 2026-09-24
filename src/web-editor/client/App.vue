@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
 import InstructionModeBrowser from "./components/InstructionModeBrowser.vue";
@@ -14,13 +14,8 @@ import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let contextDiffTabs: ReturnType<typeof startContextDiffTabs> | undefined;
-async function locateInstruction(target: import("./components/ContextDiffPanel.vue").InstructionLocation): Promise<void> {
-	activeSurface.value = "stacks";
-	await nextTick();
-	contextDiffTabs?.locateInstruction(target);
-}
 let refreshLegacyLocale: (() => void) | undefined;
-const activeSurface = ref<"stacks" | "profiles" | "modes" | "settings">("stacks");
+const activeSurface = ref<"stacks" | "profiles" | "modes" | "session" | "settings">("stacks");
 const hasContributionSettings = ref(false);
 const api = createEditorApi(new URLSearchParams(location.search).get("token") || "");
 type LocaleSetting = EditorLocale | "auto";
@@ -136,6 +131,10 @@ onUnmounted(() => {
 			>
 				{{ t("nav.modes") }}
 			</button>
+			<button id="sessionSurfaceBtn" type="button" :class="{ active: activeSurface === 'session' }"
+				:aria-current="activeSurface === 'session' ? 'page' : undefined" @click="activeSurface = 'session'">
+				{{ t("instructions.workspaceTitle") }}
+			</button>
 			<button
 				v-show="hasContributionSettings"
 				id="settingsSurfaceBtn"
@@ -169,7 +168,7 @@ onUnmounted(() => {
 				<option value="zh-CN">中文</option>
 			</select>
 		</nav>
-		<SessionInstructions @locate="locateInstruction" />
+		<SessionInstructions :active="activeSurface === 'session'" @open="activeSurface = 'session'" />
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 
@@ -298,8 +297,10 @@ onUnmounted(() => {
 }
 
 .surface-nav {
+	flex-wrap: wrap;
+	height: auto;
+	min-height: 40px;
 	flex: none;
-	height: 40px;
 	padding: 4px 10px;
 	display: flex;
 	align-items: center;

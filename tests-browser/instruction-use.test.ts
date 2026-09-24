@@ -39,7 +39,10 @@ async function bundleSessionInstructions(root: string): Promise<{ js: string; cs
 			configFile: false,
 			publicDir: false,
 			logLevel: "silent",
-			plugins: [vue()],
+			// Controls/guard fixture; the real inspector is exercised by the built-App tests.
+			plugins: [{ name: "isolated-session-inspector", enforce: "pre", load(id) {
+				if (id === resolve(root, "src/web-editor/client/components/ContextDiffPanel.vue")) return '<template><div data-inspector-stub /></template>';
+			} }, vue()],
 			define: {
 				"process.env.NODE_ENV": JSON.stringify("production"),
 				__VUE_OPTIONS_API__: "false",
@@ -289,21 +292,19 @@ ${css}
 
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
-		// 1. Initial collapsed state - header layout unchanged
-		const toggleBtn = page.locator("[data-instructions-toggle]");
-		await toggleBtn.waitFor();
+		// 1. Non-modal workspace starts visible
+		await page.locator("[data-instructions-body]").waitFor();
 		const activeBadge = page.locator("[data-instructions-active-badge]");
 		await activeBadge.waitFor();
 		assert.equal(await activeBadge.textContent(), "1 active");
-		assert.equal(await page.locator("[data-instructions-body]").isVisible(), false);
+		assert.equal(await page.locator("[data-instructions-body]").isVisible(), true);
 
-		// Expand panel
-		await toggleBtn.click();
+		// Controls remain beside the inspector
 		const body = page.locator("[data-instructions-body]");
 		await body.waitFor();
 		assert.equal(await body.isVisible(), true);
 
-		// Picker section is rendered within expanded session panel
+		// Picker section is rendered in the controls pane
 		const pickerSection = page.locator("[data-instructions-picker-section]");
 		await pickerSection.waitFor();
 		assert.equal(await pickerSection.isVisible(), true);
@@ -346,6 +347,27 @@ ${css}
 		// 4. Successful use: human explicit click sends exact captured guard and fingerprint
 		const useBtn = page.locator("[data-instructions-use-btn]");
 		assert.equal(await useBtn.isEnabled(), true);
+		// A status poll (including realistic latency) must not reload the catalog,
+		// change selection, or transiently disable the controls.
+		const catalogBeforePoll = catalogReadCount;
+		await page.route("**/api/instructions", async route => {
+			if (route.request().method() === "GET") await new Promise(resolve => setTimeout(resolve, 150));
+			await route.continue();
+		});
+		await page.evaluate(() => {
+			const select = document.querySelector<HTMLSelectElement>("[data-instructions-picker-select]")!;
+			const use = document.querySelector<HTMLButtonElement>("[data-instructions-use-btn]")!;
+			const samples: boolean[] = [];
+			const observer = new MutationObserver(() => samples.push(select.disabled || use.disabled || !!document.querySelector("[data-instructions-summary-refreshing]")));
+			observer.observe(document.querySelector("[data-session-instructions]")!, { subtree: true, attributes: true, childList: true });
+			(window as any).__pollObservation = { samples, observer };
+		});
+		await page.waitForTimeout(3400);
+		const blocked = await page.evaluate(() => { const observation = (window as any).__pollObservation; observation.observer.disconnect(); return observation.samples.some(Boolean); });
+		assert.equal(blocked, false, "unchanged background reads must not flicker/disable controls");
+		assert.equal(catalogReadCount, catalogBeforePoll);
+		assert.equal(await selectElem.inputValue(), "mode:review");
+		await page.unroute("**/api/instructions");
 		const used = page.waitForResponse((r) => r.url().includes("/api/instructions/use") && r.status() === 200);
 		await useBtn.click();
 		await used;
@@ -431,7 +453,7 @@ ${css}
 		await useBtn.evaluate((button: HTMLButtonElement) => { button.disabled = false; button.click(); });
 		assert.equal(postUseRequests.length, beforeUntrusted, "handler rejects untrusted use even if the DOM is force-enabled");
 
-		// 8. Collapse / unmount: no late mutation UI overwrite
+		// 8. Recovery keeps the non-modal controls available
 		currentState = {
 			...currentState,
 			trusted: true,
@@ -439,10 +461,9 @@ ${css}
 		await refreshBtn.click();
 		await untrustedBanner.waitFor({ state: "detached" });
 
-		// Native drawer is closed from its own controls, not the inert background.
-		await page.locator("[data-instructions-drawer-close]").click();
-		assert.equal(await body.isVisible(), false);
-		// Header retains active badge and layout
+		// No modal closes or blocks the adjacent inspector.
+		assert.equal(await body.isVisible(), true);
+		// Header retains the active badge
 		assert.equal(await activeBadge.textContent(), "2 active");
 
 		// Clean console errors

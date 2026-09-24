@@ -9,15 +9,15 @@ import { subscribeEditorView } from "./editor-view-coordinator.ts";
 import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
-import type { ReadingState, InstructionLocation } from "./components/ContextDiffPanel.vue";
+import type { ReadingState } from "./components/ContextDiffPanel.vue";
 
 export interface ContextDiffTabsDependencies {
 	getStackDraft(): LegacyEditorDraft | undefined;
 	subscribeStackDraft(listener: () => void): () => void;
 }
 
-export function startContextDiffTabs(deps: ContextDiffTabsDependencies): { stop(): void; locateInstruction(target: InstructionLocation): void } {
-	const noop = { stop() { }, locateInstruction(_target: InstructionLocation) { } };
+export function startContextDiffTabs(deps: ContextDiffTabsDependencies): { stop(): void } {
+	const noop = { stop() { } };
 	const dockArea = document.getElementById("editorDockArea");
 	const panel = document.getElementById("contextDiffPanel");
 	const status = document.getElementById("status");
@@ -69,9 +69,9 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): { stop(
 		contextDiffHost = undefined;
 	}
 
-	function activate(forSession = false): void {
+	function activate(): void {
 		if (disposed) return;
-		if (!forSession && !deps.getStackDraft()) return;
+		if (!deps.getStackDraft()) return;
 		active = true;
 		setActiveButton(true);
 		dockAreaElement.classList.add("dock-open");
@@ -121,11 +121,6 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): { stop(
 			stopEditorNavigation();
 			buttonElement.onclick = null;
 			clearActiveState();
-		},
-		locateInstruction(target) {
-			if (disposed) return;
-			if (!active) activate(true);
-			void contextDiffHost?.locateInstruction(target);
 		},
 	};
 }

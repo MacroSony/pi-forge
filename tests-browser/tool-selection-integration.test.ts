@@ -29,7 +29,8 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 	try {
 		harness = await createInstructionAgentHarness({ cwd, native: true, allowedTools: [...allowed, "fake_driver"], initialTools: allowed, responses: ["seed"] });
 		await harness.prompt("seed");
-		await harness.prompt("/preset ui");
+		const log = console.log;
+		try { console.log = () => {}; await harness.prompt("/preset ui"); } finally { console.log = log; }
 		server = (globalThis as any).__piForgeWebEditor?.byCwd[cwd]?.server;
 		assert.ok(server);
 		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
@@ -109,7 +110,7 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		await page.locator("#stacksSurfaceBtn").click();
 		if (process.env.PI_FORGE_UI_ARTIFACT_DIR) await page.screenshot({ path: join(process.env.PI_FORGE_UI_ARTIFACT_DIR, "default-tools.png") });
 		const sessionPanel = page.locator("[data-session-instructions]");
-		await sessionPanel.locator("[data-instructions-toggle]").click();
+		await page.locator("#sessionSurfaceBtn").click();
 		await sessionPanel.locator("[data-instructions-catalog-load]").click();
 		const choices = sessionPanel.locator("[data-instructions-picker-select]");
 		await choices.locator('option[value="mode:project:paint-test"]').waitFor({ state: "attached" });
@@ -130,7 +131,7 @@ test("built App default tools: cross-preset isolation, source picker, save/use/p
 		await sessionPanel.locator("[data-item-deactivate-btn]").click();
 		await sessionPanel.locator("[data-instructions-empty]").waitFor();
 		assert.deepEqual(harness.getActiveToolNames(), ["fake_read", "forge_system_update"]);
-		await sessionPanel.locator("[data-instructions-drawer-close]").click();
+		await page.locator("#stacksSurfaceBtn").click();
 		assert.equal(harness.streamContexts.length, 1, "one deliberate seed only; management never infers");
 		assert.equal(harness.fetchAttempts, 0);
 		assert.deepEqual(errors, []);

@@ -39,7 +39,10 @@ async function bundleSessionInstructions(root: string): Promise<{ js: string; cs
 			configFile: false,
 			publicDir: false,
 			logLevel: "silent",
-			plugins: [vue()],
+			// Controls/guard fixture; the real inspector is exercised by the built-App tests.
+			plugins: [{ name: "isolated-session-inspector", enforce: "pre", load(id) {
+				if (id === resolve(root, "src/web-editor/client/components/ContextDiffPanel.vue")) return '<template><div data-inspector-stub /></template>';
+			} }, vue()],
 			define: {
 				"process.env.NODE_ENV": JSON.stringify("production"),
 				__VUE_OPTIONS_API__: "false",
@@ -268,10 +271,9 @@ ${css}
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
 		// --- 1. RENDER MULTI-MODES & INITIAL STATE ---
-		const toggleBtn = page.locator("[data-instructions-toggle]");
-		await toggleBtn.waitFor();
+		await page.locator("[data-instructions-body]").waitFor();
 
-		// Check header badges before expanding
+		// Check session summary badges
 		const activeBadge = page.locator("[data-instructions-active-badge]");
 		await activeBadge.waitFor();
 		assert.equal(await activeBadge.textContent(), "2 active");
@@ -279,8 +281,7 @@ ${css}
 		const deliveryBadge = page.locator("[data-instructions-delivery-badge]");
 		assert.equal(await deliveryBadge.textContent(), "prepared");
 
-		// Expand panel
-		await toggleBtn.click();
+		// Controls remain beside the inspector
 		const body = page.locator("[data-instructions-body]");
 		await body.waitFor();
 		assert.equal(await body.isVisible(), true);
@@ -505,8 +506,7 @@ test("session instructions panel handles untrusted and problem states safely", {
 		const page = await browser.newPage();
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
-		// Expand panel
-		await page.locator("[data-instructions-toggle]").click();
+		// Controls remain beside the inspector
 		await page.locator("[data-instructions-body]").waitFor();
 
 		// Verify problem banner is displayed
@@ -612,7 +612,6 @@ test("session instructions panel confirms reset all with guard without auto-star
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
 		// Open drawer
-		await page.locator("[data-instructions-toggle]").click();
 		const resetBtn = page.locator("[data-instructions-reset-btn]");
 		await resetBtn.waitFor();
 
@@ -647,7 +646,6 @@ test("session instructions panel confirms reset all with guard without auto-star
 		});
 
 		// Close drawer
-		await page.locator("[data-instructions-drawer-close]").click();
 	} finally {
 		await browser?.close();
 		await new Promise<void>((closeResolve) => server.close(() => closeResolve()));
@@ -818,8 +816,7 @@ test("session instructions panel: delayed POST with focus/poll race, guard chang
 		page.on("pageerror", (err) => pageErrors.push(err.message));
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
-		// Expand panel
-		await page.locator("[data-instructions-toggle]").click();
+		// Controls remain beside the inspector
 		await page.locator("[data-instructions-body]").waitFor();
 
 		// Part 1: Delayed POST with focus/poll race
@@ -1015,8 +1012,7 @@ test("session instructions panel: zh-CN localization for badges and warnings", {
 		page.on("pageerror", (err) => pageErrors.push(err.message));
 		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
 
-		// Expand panel
-		await page.locator("[data-instructions-toggle]").click();
+		// Controls remain beside the inspector
 		await page.locator("[data-instructions-body]").waitFor();
 		await page.locator(".instructions-diagnostics summary").click();
 
@@ -1094,7 +1090,6 @@ test("older GET cannot clear stale status after a failed mutation and failed ref
 		const page = await browser.newPage();
 		await page.goto(`http://127.0.0.1:${address.port}/?token=fixture`);
 		await page.locator("[data-instructions-active-badge]").waitFor();
-		await page.locator("[data-instructions-toggle]").click();
 		await page.waitForTimeout(50);
 		holdNext = true;
 		const oldResponse = page.waitForResponse(r => r.url().includes("/api/instructions") && r.status() === 200);

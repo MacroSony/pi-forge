@@ -156,7 +156,7 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 
 		// 3. Expanded Session panel: load guarded choices, use bound instruction, observe tool removal
 		const panel = page.locator("[data-session-instructions]");
-		await panel.locator("[data-instructions-toggle]").click();
+		await page.locator("#sessionSurfaceBtn").click();
 		await panel.locator("[data-instructions-body]").waitFor();
 		await panel.locator("[data-instructions-catalog-load]").click();
 		const selectEl = panel.locator("[data-instructions-picker-select]");
@@ -220,7 +220,7 @@ test("complete built App: modes CRUD, preset bindings, guarded use, stale 409, s
 		assert.ok(harness.getActiveToolNames().includes("fake_write"), "reset restores fake_write");
 
 		// Close modal drawer before interacting with background chrome
-		await panel.locator("[data-instructions-drawer-close]").click();
+		await page.locator("#stacksSurfaceBtn").click();
 
 		// 7. Locale switching verifies bilingual chrome
 		await page.locator("#localeSelect").selectOption("zh-CN");

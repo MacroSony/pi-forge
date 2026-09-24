@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
 import type { InstructionChoice, InstructionStateGuard, InstructionStateMutation, InstructionStateView } from "../../../instruction-state.ts";
 
-const emit = defineEmits<{
-	(e: "locate", target: { activationIds: string[]; guard: InstructionStateGuard; presetRevision?: string }): void;
-}>();
+import ContextDiffPanel, { type InstructionLocation } from "./ContextDiffPanel.vue";
+
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
+const emit = defineEmits<{ (e: "open"): void }>();
+const inspector = ref<InstanceType<typeof ContextDiffPanel> | null>(null);
+const hasOpened = ref(props.active);
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
@@ -17,7 +20,6 @@ interface InstructionAvailableResponse {
 }
 
 const state = ref<InstructionStateView | null>(null);
-const isExpanded = ref(false);
 const isStale = ref(false);
 const isMutating = ref(false);
 const isRefreshing = ref(false);
@@ -31,15 +33,12 @@ const isLoadingAvailable = ref(false);
 const selectedKey = ref("");
 const isUsing = ref(false);
 
-const toggleBtnRef = ref<HTMLButtonElement | null>(null);
-const closeBtnRef = ref<HTMLButtonElement | null>(null);
-const drawerDialog = ref<HTMLDialogElement | null>(null);
-
 let isMounted = false;
 let requestIdSeq = 0;
 let activeReadRequestId = 0;
+let readAbort: AbortController | undefined;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
-let backdropMouseDown = false;
+let catalogRefreshPending = false;
 
 function choiceKey(choice: { kind: string; id: string }): string {
 	return `${choice.kind}:${choice.id}`;
@@ -88,12 +87,13 @@ function rememberChange(before: InstructionStateView | null, after: InstructionS
 		activationIds: [...enabled, ...disabled].map(item => item.activationId),
 	};
 }
-function locate(activationIds: string[]): void {
-	if (!state.value || isStale.value || isMutating.value) return;
-	const guard = { ...state.value.guard };
-	const presetRevision = state.value.presetRevision;
-	closeDrawer();
-	emit("locate", { activationIds, guard, presetRevision });
+async function locate(activationIds: string[]): Promise<void> {
+	if (!state.value || isStale.value || isMutating.value || !props.active) return;
+	const target: InstructionLocation = { activationIds, guard: { ...state.value.guard }, presetRevision: state.value.presetRevision };
+	await inspector.value?.locateInstruction(target);
+	if (isMounted && props.active && window.matchMedia("(max-width: 820px)").matches) {
+		inspector.value?.$el.closest(".session-inspector")?.scrollIntoView({ block: "nearest" });
+	}
 }
 
 function guardsEqual(a: InstructionStateGuard | null | undefined, b: InstructionStateGuard | null | undefined): boolean {
@@ -165,27 +165,45 @@ function applyState(newState: InstructionStateView, reqId: number, includesChoic
 	}
 }
 
-async function fetchAvailable(_silent = false): Promise<void> {
-	await fetchInstructions(true);
+function invalidateRead(): void {
+	++requestIdSeq;
+	readAbort?.abort();
+	readAbort = undefined;
+	activeReadRequestId = 0;
+	isRefreshing.value = false;
+	isLoadingAvailable.value = false;
+	catalogRefreshPending = false;
 }
 
-async function fetchInstructions(forceChoices = false): Promise<void> {
-	if (!isMounted || isMutating.value || activeReadRequestId) return;
+async function fetchAvailable(silent = false): Promise<void> {
+	await fetchInstructions(true, silent);
+}
+
+async function fetchInstructions(forceChoices = false, background = false): Promise<void> {
+	if (!isMounted || isMutating.value) return;
+	if (activeReadRequestId) {
+		if (forceChoices) catalogRefreshPending = true;
+		return;
+	}
 	const reqId = ++requestIdSeq;
 	activeReadRequestId = reqId;
-	isRefreshing.value = true;
-	const withChoices = forceChoices || availableLoaded.value;
+	const controller = new AbortController();
+	readAbort = controller;
+	// Background status reads never put otherwise usable controls into loading.
+	// Catalog discovery is explicit/on entry/after mutation, not every poll.
+	isRefreshing.value = !background;
+	const withChoices = forceChoices;
 	isLoadingAvailable.value = withChoices;
 	try {
 		if (withChoices) {
-			const res = await api<InstructionAvailableResponse>("/api/instructions/available");
+			const res = await api<InstructionAvailableResponse>("/api/instructions/available", { signal: controller.signal });
 			if (!isMounted || reqId !== requestIdSeq) return;
 			if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
 			applyState(res.state, reqId, true);
 			setChoices(res.choices ?? []);
 			availableLoaded.value = true;
 		} else {
-			const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions");
+			const res = await api<{ ok: boolean; state: InstructionStateView }>("/api/instructions", { signal: controller.signal });
 			if (!isMounted || reqId !== requestIdSeq) return;
 			if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
 			applyState(res.state, reqId);
@@ -199,9 +217,14 @@ async function fetchInstructions(forceChoices = false): Promise<void> {
 		if (!state.value) unavailable.value = true;
 	} finally {
 		if (activeReadRequestId === reqId) {
+			readAbort = undefined;
 			activeReadRequestId = 0;
 			isRefreshing.value = false;
 			isLoadingAvailable.value = false;
+		}
+		if (catalogRefreshPending && !activeReadRequestId && isMounted && props.active && !isMutating.value) {
+			catalogRefreshPending = false;
+			void fetchAvailable(true);
 		}
 	}
 }
@@ -340,94 +363,27 @@ async function handleReset(): Promise<void> {
 	await executeMutation({ action: "reset", guard: guardToReset });
 }
 
-function openDrawer(): void {
-	if (isExpanded.value && drawerDialog.value?.open) return;
-	isExpanded.value = true;
-	if (drawerDialog.value && !drawerDialog.value.open) {
-		drawerDialog.value.showModal();
-	}
-	nextTick(() => {
-		closeBtnRef.value?.focus();
-	});
-}
-
-function closeDrawer(): void {
-	pendingResetGuard.value = null;
-	isExpanded.value = false;
-	if (drawerDialog.value?.open) {
-		drawerDialog.value.close();
-	}
-	toggleBtnRef.value?.focus();
-}
-
-function toggleDrawer(): void {
-	if (isExpanded.value) {
-		closeDrawer();
-	} else {
-		openDrawer();
-	}
-}
-
-function onDialogCancel(event: Event): void {
-	event.preventDefault();
-	closeDrawer();
-}
-
-function onDialogClose(): void {
-	pendingResetGuard.value = null;
-	if (isExpanded.value) {
-		isExpanded.value = false;
-	}
-}
-
-function onDialogMouseDown(event: MouseEvent): void {
-	if (!drawerDialog.value) return;
-	if (event.target === drawerDialog.value) {
-		const rect = drawerDialog.value.getBoundingClientRect();
-		const isInside =
-			rect.top <= event.clientY &&
-			event.clientY <= rect.bottom &&
-			rect.left <= event.clientX &&
-			event.clientX <= rect.right;
-		backdropMouseDown = !isInside;
-	} else {
-		backdropMouseDown = false;
-	}
-}
-
-function onDialogClick(event: MouseEvent): void {
-	if (!drawerDialog.value) return;
-	if (backdropMouseDown && event.target === drawerDialog.value) {
-		const rect = drawerDialog.value.getBoundingClientRect();
-		const isInside =
-			rect.top <= event.clientY &&
-			event.clientY <= rect.bottom &&
-			rect.left <= event.clientX &&
-			event.clientX <= rect.right;
-		if (!isInside) {
-			closeDrawer();
+watch(() => props.active, (active) => {
+	if (active) {
+		hasOpened.value = true;
+		// A new visit must not wait behind or accept an old view's catalog.
+		// Never invalidate an in-flight mutation: its receipt still belongs here.
+		if (!isMutating.value) {
+			invalidateRead();
+			void fetchAvailable(true);
 		}
-	}
-	backdropMouseDown = false;
-}
-
-watch(isExpanded, (expanded) => {
-	if (!drawerDialog.value) return;
-	if (expanded && !drawerDialog.value.open) {
-		drawerDialog.value.showModal();
-		nextTick(() => {
-			closeBtnRef.value?.focus();
-		});
-	} else if (!expanded && drawerDialog.value.open) {
-		drawerDialog.value.close();
-		toggleBtnRef.value?.focus();
+	} else {
+		pendingResetGuard.value = null;
+		catalogRefreshPending = false;
+		if (!isMutating.value && isLoadingAvailable.value) invalidateRead();
+		// Cheap status reads continue while hidden for the global summary.
 	}
 });
 
 function onVisibilityOrFocus(): void {
 	if (!isMounted) return;
 	if (document.visibilityState === "visible") {
-		void fetchInstructions();
+		void fetchInstructions(false, true);
 	}
 }
 
@@ -436,7 +392,7 @@ function startPolling(): void {
 	pollTimer = setInterval(() => {
 		if (!isMounted) return;
 		if (document.visibilityState === "visible") {
-			void fetchInstructions();
+			void fetchInstructions(false, true);
 		}
 	}, 3000);
 }
@@ -450,7 +406,7 @@ function stopPolling(): void {
 
 onMounted(() => {
 	isMounted = true;
-	void fetchInstructions();
+	void fetchInstructions(false, true);
 	startPolling();
 	window.addEventListener("focus", onVisibilityOrFocus);
 	document.addEventListener("visibilitychange", onVisibilityOrFocus);
@@ -458,32 +414,32 @@ onMounted(() => {
 
 onUnmounted(() => {
 	isMounted = false;
+	invalidateRead();
 	stopPolling();
 	window.removeEventListener("focus", onVisibilityOrFocus);
 	document.removeEventListener("visibilitychange", onVisibilityOrFocus);
 });
-onBeforeUnmount(() => { drawerDialog.value?.close(); });
+
 </script>
 
 <template>
 	<aside
 		class="session-instructions"
-		:class="{ expanded: isExpanded, stale: isStale, unavailable }"
+		:class="{ 'workspace-open': props.active, stale: isStale, unavailable }"
 		:aria-label="t('instructions.title')"
 		data-session-instructions
 	>
 		<!-- Compact summary header: globally visible above all surfaces -->
 		<header class="instructions-header" data-session-summary aria-live="polite">
 			<button
-				ref="toggleBtnRef"
 				type="button"
 				class="instructions-toggle-btn"
-				:aria-expanded="isExpanded"
-				:title="t('instructions.toggleAria')"
-				data-instructions-toggle
-				@click="toggleDrawer"
+				:aria-current="props.active ? 'page' : undefined"
+				:title="t('instructions.workspaceTitle')"
+				data-instructions-open
+				@click="emit('open')"
 			>
-				<span class="toggle-icon">{{ isExpanded ? "▼" : "▶" }}</span>
+				<span class="toggle-icon" aria-hidden="true">→</span>
 				<span class="instructions-title">{{ t("instructions.title") }}</span>
 				<span v-if="unavailable" class="instructions-badge unavailable-badge" data-instructions-unavailable>{{ t("instructions.unavailable") }}</span>
 				<span v-else-if="state" class="instructions-badge active-badge" data-instructions-active-badge>{{ t(activeCount === 1 ? "instructions.activeCountOne" : "instructions.activeCount", { count: activeCount }) }}</span>
@@ -510,38 +466,22 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 			</div>
 		</header>
 
-		<!-- Right-hand overlay drawer for details and controls -->
-		<dialog
-			ref="drawerDialog"
-			class="instructions-drawer"
-			data-instructions-drawer
-			aria-labelledby="instructions-drawer-title"
-			@cancel="onDialogCancel"
-			@close="onDialogClose"
-			@mousedown="onDialogMouseDown"
-			@click="onDialogClick"
-		>
-			<div class="drawer-inner">
-				<header class="drawer-header">
-					<div class="drawer-header-left">
-						<h2 id="instructions-drawer-title" class="drawer-title">{{ t("instructions.title") }}</h2>
-						<span
-							v-if="state"
-							class="session-context drawer-session-context"
-							:title="`${state.guard.sessionId}${state.guard.leafId ? ` · ${state.guard.leafId}` : ''}`"
-						>
-							{{ t("instructions.session") }} {{ shortId(state.guard.sessionId) }}<template v-if="state.guard.leafId"> · {{ shortId(state.guard.leafId) }}</template>
-						</span>
+		<div v-show="props.active" class="session-workspace" data-session-workspace>
+			<section class="instructions-controls" :aria-label="t('instructions.controlsTitle')">
+				<header class="controls-header">
+					<div class="controls-header-left">
+						<h2 class="controls-title">{{ t("instructions.controlsTitle") }}</h2>
+
 					</div>
 
-					<div class="drawer-header-actions">
+					<div class="controls-header-actions">
 						<button
 							type="button"
 							class="action-btn refresh-btn"
 							:disabled="isRefreshing || isMutating"
 							:title="t('instructions.refresh')"
 							data-instructions-refresh
-							@click="() => fetchInstructions()"
+							@click="() => fetchInstructions(availableLoaded)"
 						>
 							{{ isRefreshing ? t("instructions.refreshing") : t("instructions.refresh") }}
 						</button>
@@ -580,17 +520,6 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 							</button>
 						</template>
 
-						<button
-							ref="closeBtnRef"
-							type="button"
-							class="drawer-close-btn"
-							:title="t('modal.closeTitle')"
-							:aria-label="t('modal.close')"
-							data-instructions-drawer-close
-							@click="closeDrawer"
-						>
-							✕
-						</button>
 					</div>
 				</header>
 
@@ -640,69 +569,6 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
                                 data-locate-recent @click="locate(recentChange.activationIds)">{{ t("instructions.locateChange") }}</button>
                         </div>
                     </section>
-					<!-- Active Items List -->
-					<div v-if="state" class="instructions-active-section" data-instructions-active-section>
-						<div v-if="state.active.length === 0" class="no-active-message" data-instructions-empty>
-							{{ t("instructions.noActiveItems") }}
-						</div>
-						<div v-else class="active-items-list" data-instructions-items-list>
-							<div
-								v-for="item in state.active"
-								:key="item.activationId"
-								class="active-item-card"
-								:data-activation-id="item.activationId"
-							>
-								<div class="item-card-header">
-									<div class="item-title-group">
-										<span class="item-name" data-item-name>{{ item.name || item.source }}</span>
-										<span class="item-source-badge" :title="t('instructions.source')" data-item-source>
-											{{ item.source }}
-										</span>
-										<span class="item-source-badge" :title="item.activationId" data-item-activation-id>#{{ shortId(item.activationId) }}</span>
-										<span class="item-actor-badge" :title="t('instructions.actor')" data-item-actor>
-											{{ item.actor === "user" ? t("instructions.actorUser") : t("instructions.actorAgent") }}
-										</span>
-									</div>
-
-									<div class="item-tools-diff" data-item-tools-diff>
-                                        <span v-if="item.tools?.add?.length || item.tools?.remove?.length" class="declared-tools-label">{{ t("instructions.declaredTools") }}</span>
-										<span
-											v-if="item.tools?.add?.length"
-											class="tool-diff-add"
-											data-item-tools-add
-										>+ {{ item.tools.add.join(", ") }}</span>
-										<span
-											v-if="item.tools?.remove?.length"
-											class="tool-diff-remove"
-											data-item-tools-remove
-										>- {{ item.tools.remove.join(", ") }}</span>
-									</div>
-
-									<button
-										type="button"
-										class="action-btn deactivate-btn"
-										:disabled="!canMutate"
-										:title="t('instructions.deactivate')"
-										data-item-deactivate-btn
-										@click="handleDeactivate(item.activationId)"
-									>
-										{{ t("instructions.deactivate") }}
-									</button>
-								</div>
-
-                                <p v-if="item.content.trim()" class="instruction-excerpt" data-item-content-excerpt>{{ item.content }}</p>
-                                <p v-else class="instruction-excerpt muted">{{ t("instructions.noInstructionText") }}</p>
-                                <button type="button" class="locate-instruction" data-item-locate
-                                    :disabled="isStale || isMutating || !state.trusted || state.restoring"
-                                    @click="locate([item.activationId])">{{ t("instructions.locateChange") }}</button>
-								<details class="item-content-details" data-item-content-details>
-									<summary class="content-summary" data-item-content-summary>{{ t("instructions.viewContent") }}</summary>
-									<pre class="item-content-pre" data-item-content-text>{{ item.content }}</pre>
-								</details>
-							</div>
-						</div>
-					</div>
-
 					<!-- Human Activation Picker -->
 					<div v-if="state" class="instructions-picker-section" data-instructions-picker-section>
 						<div class="picker-section-header">
@@ -810,6 +676,69 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 						</div>
 					</div>
 
+					<!-- Active Items List -->
+					<div v-if="state" class="instructions-active-section" data-instructions-active-section>
+						<div v-if="state.active.length === 0" class="no-active-message" data-instructions-empty>
+							{{ t("instructions.noActiveItems") }}
+						</div>
+						<div v-else class="active-items-list" data-instructions-items-list>
+							<div
+								v-for="item in state.active"
+								:key="item.activationId"
+								class="active-item-card"
+								:data-activation-id="item.activationId"
+							>
+								<div class="item-card-header">
+									<div class="item-title-group">
+										<span class="item-name" data-item-name>{{ item.name || item.source }}</span>
+										<span class="item-source-badge" :title="t('instructions.source')" data-item-source>
+											{{ item.source }}
+										</span>
+										<span class="item-source-badge" :title="item.activationId" data-item-activation-id>#{{ shortId(item.activationId) }}</span>
+										<span class="item-actor-badge" :title="t('instructions.actor')" data-item-actor>
+											{{ item.actor === "user" ? t("instructions.actorUser") : t("instructions.actorAgent") }}
+										</span>
+									</div>
+
+									<div class="item-tools-diff" data-item-tools-diff>
+                                        <span v-if="item.tools?.add?.length || item.tools?.remove?.length" class="declared-tools-label">{{ t("instructions.declaredTools") }}</span>
+										<span
+											v-if="item.tools?.add?.length"
+											class="tool-diff-add"
+											data-item-tools-add
+										>+ {{ item.tools.add.join(", ") }}</span>
+										<span
+											v-if="item.tools?.remove?.length"
+											class="tool-diff-remove"
+											data-item-tools-remove
+										>- {{ item.tools.remove.join(", ") }}</span>
+									</div>
+
+									<button
+										type="button"
+										class="action-btn deactivate-btn"
+										:disabled="!canMutate"
+										:title="t('instructions.deactivate')"
+										data-item-deactivate-btn
+										@click="handleDeactivate(item.activationId)"
+									>
+										{{ t("instructions.deactivate") }}
+									</button>
+								</div>
+
+                                <p v-if="item.content.trim()" class="instruction-excerpt" data-item-content-excerpt>{{ item.content }}</p>
+                                <p v-else class="instruction-excerpt muted">{{ t("instructions.noInstructionText") }}</p>
+                                <button type="button" class="locate-instruction" data-item-locate
+                                    :disabled="isStale || isMutating || !state.trusted || state.restoring"
+                                    @click="locate([item.activationId])">{{ t("instructions.locateChange") }}</button>
+								<details class="item-content-details" data-item-content-details>
+									<summary class="content-summary" data-item-content-summary>{{ t("instructions.viewContent") }}</summary>
+									<pre class="item-content-pre" data-item-content-text>{{ item.content }}</pre>
+								</details>
+							</div>
+						</div>
+					</div>
+
 					<details v-if="state" class="instructions-diagnostics">
 						<summary>{{ t("instructions.technicalDetails") }}</summary>
 					<!-- Meta Status Bar -->
@@ -841,12 +770,33 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 						<p class="instructions-notice" data-instructions-transport-warning>{{ t("instructions.transportCaution") }}</p>
 					</details>
 				</div>
-			</div>
-		</dialog>
+			</section>
+			<section class="session-inspector" :aria-label="t('instructions.sessionContext')">
+				<ContextDiffPanel v-if="hasOpened" ref="inspector" session-only :active="props.active"
+					:observed-state="isStale ? null : state" />
+			</section>
+		</div>
 	</aside>
 </template>
 
 <style scoped>
+.session-instructions.workspace-open { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.session-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 350px) minmax(0, 1fr); gap: 14px; padding: 14px; background: var(--pane-soft); }
+.instructions-controls, .session-inspector { min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--pane); }
+.instructions-controls { display: flex; flex-direction: column; overflow: hidden; }
+.session-inspector { padding: 12px; overflow: hidden; }
+.controls-header { flex-wrap: wrap; }
+.instructions-body { min-height: 0; }
+.instructions-header { flex: none; }
+.instructions-active-section { order: 3; }
+.instructions-diagnostics { order: 4; }
+@media (max-width: 820px) {
+ .session-workspace { display: flex; flex-direction: column; overflow: auto; }
+ .instructions-controls { flex: none; overflow: visible; }
+ .instructions-body { overflow: visible; }
+ .session-inspector { flex: none; height: 70vh; min-height: 390px; }
+}
+
 .instructions-impact { border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 8px; background: var(--pane-soft); }
 .instructions-impact .tools-list { flex-wrap: wrap; }
 .instructions-impact .tool-tag, .impact-change > span { overflow-wrap: anywhere; max-width: 100%; }
@@ -993,58 +943,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 	font-size: 12px;
 }
 
-/* Drawer overlay styling */
-.instructions-drawer {
-	display: none;
-	border: none;
-	padding: 0;
-	margin: 0 0 0 auto;
-	background: transparent;
-	color: inherit;
-}
-
-.instructions-drawer[open] {
-	display: flex;
-	flex-direction: column;
-	position: fixed;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	left: auto;
-	width: min(680px, 95vw);
-	height: 100vh;
-	height: 100dvh;
-	max-height: 100dvh;
-	background: var(--pane);
-	border-left: 1px solid var(--line);
-	box-shadow: -4px 0 24px rgba(0, 0, 0, 0.25);
-	z-index: 1000;
-	outline: none;
-	overflow: hidden;
-}
-
-.instructions-drawer::backdrop {
-	background: rgba(0, 0, 0, 0.4);
-	backdrop-filter: blur(2px);
-}
-
-@media (max-width: 640px) {
-	.instructions-drawer[open] {
-		width: 100vw;
-		max-width: 100vw;
-		border-left: none;
-	}
-}
-
-.drawer-inner {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	width: 100%;
-	overflow: hidden;
-}
-
-.drawer-header {
+.controls-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -1055,7 +954,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 	gap: 10px;
 }
 
-.drawer-header-left {
+.controls-header-left {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -1063,7 +962,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 	flex-wrap: wrap;
 }
 
-.drawer-title {
+.controls-title {
 	margin: 0;
 	font-size: 14px;
 	font-weight: 650;
@@ -1071,37 +970,16 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 	white-space: nowrap;
 }
 
-.drawer-session-context {
+.controls-session-context {
 	font-size: 12px;
 }
 
-.drawer-header-actions {
+.controls-header-actions {
 	display: flex;
 	align-items: center;
 	gap: 6px;
 	flex-shrink: 0;
 	flex-wrap: wrap;
-}
-
-.drawer-close-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 24px;
-	padding: 0;
-	border-radius: 4px;
-	border: 1px solid var(--line);
-	background: var(--pane-soft);
-	color: var(--muted);
-	font-size: 12px;
-	cursor: pointer;
-	line-height: 1;
-}
-
-.drawer-close-btn:hover {
-	background: var(--pane);
-	color: var(--text);
 }
 
 .instructions-body {
