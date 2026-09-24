@@ -442,7 +442,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 				<span class="instructions-title">{{ t("instructions.title") }}</span>
 				<span v-if="unavailable" class="instructions-badge unavailable-badge" data-instructions-unavailable>{{ t("instructions.unavailable") }}</span>
 				<span v-else-if="state" class="instructions-badge active-badge" data-instructions-active-badge>{{ t(activeCount === 1 ? "instructions.activeCountOne" : "instructions.activeCount", { count: activeCount }) }}</span>
-				<span v-if="state?.delivery" class="instructions-badge delivery-badge" :class="state.delivery" data-instructions-delivery-badge>{{ deliveryLabel(state.delivery) }}</span>
+				<span v-if="state?.delivery && state.delivery !== 'none'" class="instructions-badge delivery-badge" :class="state.delivery" data-instructions-delivery-badge>{{ deliveryLabel(state.delivery) }}</span>
 				<span v-if="state" class="session-context" :title="`${state.guard.sessionId}${state.guard.leafId ? ` · ${state.guard.leafId}` : ''}`" data-session-context>
 					{{ t("instructions.session") }} {{ shortId(state.guard.sessionId) }}<template v-if="state.guard.leafId"> · {{ shortId(state.guard.leafId) }}</template>
 				</span>
@@ -551,7 +551,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 
 				<!-- Scrollable details body -->
 				<div class="instructions-body" data-instructions-body>
-					<p class="instructions-notice" data-instructions-transport-warning>{{ t("instructions.transportCaution") }}</p>
+
 					<!-- Warning & Error Banners -->
 					<div v-if="errorMessage" class="instruction-banner error-banner" role="alert" data-instructions-error-banner>
 						{{ errorMessage }}
@@ -569,39 +569,66 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 						{{ t("instructions.staleWarning") }}
 					</div>
 
-					<!-- Meta Status Bar -->
-					<div v-if="state" class="instructions-meta-grid" data-instructions-meta-grid>
-						<div class="meta-item">
-							<span class="meta-label">{{ t("instructions.session") }}:</span>
-							<span class="meta-value" :title="state.guard.sessionId" data-instructions-session-id>{{ shortId(state.guard.sessionId) }}</span>
+					<p v-if="state && state.delivery !== 'none'" class="instructions-delivery-summary">
+						{{ t("instructions.delivery") }}: {{ deliveryLabel(state.delivery) }}
+					</p>
+					<div v-if="state?.delivery === 'prepared'" class="delivery-prepared-notice full-width" data-instructions-prepared-notice>
+						{{ t("instructions.deliveryPreparedNote") }}
+					</div>
+					<!-- Active Items List -->
+					<div v-if="state" class="instructions-active-section" data-instructions-active-section>
+						<div v-if="state.active.length === 0" class="no-active-message" data-instructions-empty>
+							{{ t("instructions.noActiveItems") }}
 						</div>
-						<div class="meta-item">
-							<span class="meta-label">{{ t("instructions.branch") }}:</span>
-							<span class="meta-value" :title="state.guard.leafId ?? 'null'" data-instructions-branch-id>{{ shortId(state.guard.leafId) }}</span>
-						</div>
-						<div class="meta-item">
-							<span class="meta-label">{{ t("instructions.revision") }}:</span>
-							<span class="meta-value" :title="state.guard.revision" data-instructions-revision>{{ shortRevision(state.guard.revision) }}</span>
-						</div>
-						<div class="meta-item">
-							<span class="meta-label">{{ t("instructions.delivery") }}:</span>
-							<span class="meta-value delivery-status" :class="state.delivery" data-instructions-delivery>{{ deliveryLabel(state.delivery) }}</span>
-						</div>
-						<div class="meta-item">
-							<span class="meta-label">{{ t("instructions.textPresentation") }}:</span>
-							<span class="meta-value" data-instructions-presentation>{{ presentationLabel(state.textPresentation) }}</span>
-						</div>
-						<div class="meta-item full-width">
-							<span class="meta-label">{{ t("instructions.effectiveTools") }}:</span>
-							<span v-if="state.effectiveTools?.length" class="tools-list" data-instructions-tools-list>
-								<span v-for="tool in state.effectiveTools" :key="tool" class="tool-tag" data-instructions-tool-tag>
-									{{ tool }}
-								</span>
-							</span>
-							<span v-else class="meta-value" data-instructions-tools-none>{{ t("instructions.none") }}</span>
-						</div>
-						<div v-if="state.delivery === 'prepared'" class="delivery-prepared-notice full-width" data-instructions-prepared-notice>
-							{{ t("instructions.deliveryPreparedNote") }}
+						<div v-else class="active-items-list" data-instructions-items-list>
+							<div
+								v-for="item in state.active"
+								:key="item.activationId"
+								class="active-item-card"
+								:data-activation-id="item.activationId"
+							>
+								<div class="item-card-header">
+									<div class="item-title-group">
+										<span class="item-name" data-item-name>{{ item.name || item.source }}</span>
+										<span class="item-source-badge" :title="t('instructions.source')" data-item-source>
+											{{ item.source }}
+										</span>
+										<span class="item-source-badge" :title="item.activationId" data-item-activation-id>#{{ shortId(item.activationId) }}</span>
+										<span class="item-actor-badge" :title="t('instructions.actor')" data-item-actor>
+											{{ item.actor === "user" ? t("instructions.actorUser") : t("instructions.actorAgent") }}
+										</span>
+									</div>
+
+									<div class="item-tools-diff" data-item-tools-diff>
+										<span
+											v-if="item.tools?.add?.length"
+											class="tool-diff-add"
+											data-item-tools-add
+										>+ {{ item.tools.add.join(", ") }}</span>
+										<span
+											v-if="item.tools?.remove?.length"
+											class="tool-diff-remove"
+											data-item-tools-remove
+										>- {{ item.tools.remove.join(", ") }}</span>
+									</div>
+
+									<button
+										type="button"
+										class="action-btn deactivate-btn"
+										:disabled="!canMutate"
+										:title="t('instructions.deactivate')"
+										data-item-deactivate-btn
+										@click="handleDeactivate(item.activationId)"
+									>
+										{{ t("instructions.deactivate") }}
+									</button>
+								</div>
+
+								<details class="item-content-details" data-item-content-details>
+									<summary class="content-summary" data-item-content-summary>{{ t("instructions.viewContent") }}</summary>
+									<pre class="item-content-pre" data-item-content-text>{{ item.content }}</pre>
+								</details>
+							</div>
 						</div>
 					</div>
 
@@ -712,62 +739,44 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 						</div>
 					</div>
 
-					<!-- Active Items List -->
-					<div v-if="state" class="instructions-active-section" data-instructions-active-section>
-						<div v-if="state.active.length === 0" class="no-active-message" data-instructions-empty>
-							{{ t("instructions.noActiveItems") }}
-						</div>
-						<div v-else class="active-items-list" data-instructions-items-list>
-							<div
-								v-for="item in state.active"
-								:key="item.activationId"
-								class="active-item-card"
-								:data-activation-id="item.activationId"
-							>
-								<div class="item-card-header">
-									<div class="item-title-group">
-										<span class="item-name" data-item-name>{{ item.name || item.source }}</span>
-										<span class="item-source-badge" :title="t('instructions.source')" data-item-source>
-											{{ item.source }}
-										</span>
-										<span class="item-source-badge" :title="item.activationId" data-item-activation-id>#{{ shortId(item.activationId) }}</span>
-										<span class="item-actor-badge" :title="t('instructions.actor')" data-item-actor>
-											{{ item.actor === "user" ? t("instructions.actorUser") : t("instructions.actorAgent") }}
-										</span>
-									</div>
-
-									<div class="item-tools-diff" data-item-tools-diff>
-										<span
-											v-if="item.tools?.add?.length"
-											class="tool-diff-add"
-											data-item-tools-add
-										>+ {{ item.tools.add.join(", ") }}</span>
-										<span
-											v-if="item.tools?.remove?.length"
-											class="tool-diff-remove"
-											data-item-tools-remove
-										>- {{ item.tools.remove.join(", ") }}</span>
-									</div>
-
-									<button
-										type="button"
-										class="action-btn deactivate-btn"
-										:disabled="!canMutate"
-										:title="t('instructions.deactivate')"
-										data-item-deactivate-btn
-										@click="handleDeactivate(item.activationId)"
-									>
-										{{ t("instructions.deactivate") }}
-									</button>
-								</div>
-
-								<details class="item-content-details" data-item-content-details>
-									<summary class="content-summary" data-item-content-summary>{{ t("instructions.viewContent") }}</summary>
-									<pre class="item-content-pre" data-item-content-text>{{ item.content }}</pre>
-								</details>
+					<details v-if="state" class="instructions-diagnostics">
+						<summary>{{ t("instructions.technicalDetails") }}</summary>
+					<!-- Meta Status Bar -->
+						<div v-if="state" class="instructions-meta-grid" data-instructions-meta-grid>
+							<div class="meta-item">
+								<span class="meta-label">{{ t("instructions.session") }}:</span>
+								<span class="meta-value" :title="state.guard.sessionId" data-instructions-session-id>{{ shortId(state.guard.sessionId) }}</span>
 							</div>
+							<div class="meta-item">
+								<span class="meta-label">{{ t("instructions.branch") }}:</span>
+								<span class="meta-value" :title="state.guard.leafId ?? 'null'" data-instructions-branch-id>{{ shortId(state.guard.leafId) }}</span>
+							</div>
+							<div class="meta-item">
+								<span class="meta-label">{{ t("instructions.revision") }}:</span>
+								<span class="meta-value" :title="state.guard.revision" data-instructions-revision>{{ shortRevision(state.guard.revision) }}</span>
+							</div>
+							<div class="meta-item">
+								<span class="meta-label">{{ t("instructions.delivery") }}:</span>
+								<span class="meta-value delivery-status" :class="state.delivery" data-instructions-delivery>{{ deliveryLabel(state.delivery) }}</span>
+							</div>
+							<div class="meta-item">
+								<span class="meta-label">{{ t("instructions.textPresentation") }}:</span>
+								<span class="meta-value" data-instructions-presentation>{{ presentationLabel(state.textPresentation) }}</span>
+							</div>
+							<div class="meta-item full-width">
+								<span class="meta-label">{{ t("instructions.effectiveTools") }}:</span>
+								<span v-if="state.effectiveTools?.length" class="tools-list" data-instructions-tools-list>
+									<span v-for="tool in state.effectiveTools" :key="tool" class="tool-tag" data-instructions-tool-tag>
+										{{ tool }}
+									</span>
+								</span>
+								<span v-else class="meta-value" data-instructions-tools-none>{{ t("instructions.none") }}</span>
+							</div>
+
 						</div>
-					</div>
+
+						<p class="instructions-notice" data-instructions-transport-warning>{{ t("instructions.transportCaution") }}</p>
+					</details>
 				</div>
 			</div>
 		</dialog>
@@ -1340,4 +1349,10 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 	max-height: 120px;
 	overflow-y: auto;
 }
+.instructions-diagnostics { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+.instructions-diagnostics > summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.instructions-diagnostics[open] > summary { margin-bottom:12px; }
+.instructions-delivery-summary { margin:0; font-size:12px; }
+.instructions-toggle-btn { flex-wrap:wrap; }
+@media (max-width:700px) { .instructions-toggle-btn .session-context { display:none; } }
 </style>

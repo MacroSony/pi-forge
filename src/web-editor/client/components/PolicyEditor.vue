@@ -297,13 +297,13 @@ defineExpose({
 </script>
 
 <template>
-	<div class="tab-section policy-container">
-		<div class="policy-intro">
-			<div class="tab-section-title">{{ t("policy.title") }}</div>
+	<div class="policy-container">
+		<details class="policy-intro">
+			<summary class="tab-section-title">{{ t("policy.title") }}</summary>
 			<p class="tab-section-meta help">
 				{{ t("policy.meta") }}
 			</p>
-		</div>
+		</details>
 
 		<!-- Card 1: Permission Ceiling (Tools) -->
 		<div
@@ -897,4 +897,5 @@ defineExpose({
 	flex-direction: column;
 	gap: 12px;
 }
+.policy-intro > summary { cursor:pointer; }
 </style>

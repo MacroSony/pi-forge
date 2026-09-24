@@ -75,16 +75,7 @@ const builtInSlotNames = [
   "append-system-prompt", "date", "cwd", "date-cwd",
   "active-model", "pi-docs"
 ];
-const semanticSlotNames = new Set([
-  "chat-history", "tools", "tool-guidelines", "skills", "project-context", "date", "date-cwd",
-]);
 const roles = ["", "system", "user", "assistant", "custom"];
-
-function slotToneClass(slot: unknown): string {
-  if (typeof slot !== "string") return "slot-custom";
-  if (semanticSlotNames.has(slot)) return `slot-${slot}`;
-  return builtInSlotNames.includes(slot) ? "slot-built-in" : "slot-custom";
-}
 
 const {
   validateStack,
@@ -170,6 +161,7 @@ function renderResourceHeader() {
   if (!name || !selector || !mode || !runtime) return;
   if (!currentStack) {
     name.textContent = t("nav.stacks");
+    name.title = "";
     selector.textContent = "";
     mode.textContent = "";
     runtime.textContent = "";
@@ -178,6 +170,7 @@ function renderResourceHeader() {
   }
   const summary = stacks.find((stack: any) => (stack.selector || stack.id) === selectedId);
   name.textContent = currentStack.name || currentStack.id || t("stackList.unnamed");
+  name.title = name.textContent;
   selector.textContent = currentPresetSelector;
   mode.textContent = ` · ${currentStack.mode || "replace"}`;
   runtime.textContent = summary?.active ? t("polish.workspace.runtimeActive") : t("polish.workspace.savedVersion");
@@ -422,18 +415,14 @@ function renderItemList() {
         ? '<span class="item-badge warning" title="' + attr(diagnosticTitle(itemDiagnostics)) + '">' + warnings + 'W</span>'
         : "";
     const name = displayItemName(item);
-    const kindBadge = '<span class="item-kind-badge ' + (item.kind === "slot" ? "slot" : "block") + '">' + escapeHtml(item.kind) + '</span>';
-    const slotName = item.kind === "slot" ? item.slot || "custom" : "";
-    // A slot key equal to the ID needs only one identity line, not two badges.
-    const slotBadge = slotName && slotName !== item.id && slotName !== name
-      ? '<span class="item-slot-badge ' + slotToneClass(item.slot) + '" title="' + attr(slotName) + '">' + escapeHtml(slotName) + '</span>'
-      : "";
-    const identityClass = slotName === item.id ? ' item-slot-badge ' + slotToneClass(item.slot) : "";
+    const summary = item.kind === "slot"
+      ? ["slot", item.slot || "custom"].join(" · ")
+      : [item.role, name === item.id ? "" : item.id].filter(Boolean).join(" · ");
+    row.title = [name, item.kind, item.role, item.slot, "ID: " + item.id].filter(Boolean).join(" · ");
     row.innerHTML = '<div class="drag-handle" title="' + attr(t("itemList.dragToReorder")) + '">≡</div>' +
       '<div class="item-title" title="' + attr(name) + '">' + escapeHtml(name) + diagBadge + '</div>' +
-      '<div class="item-meta">' + kindBadge + (item.role ? ' <span class="item-role">' + escapeHtml(item.role) + '</span>' : '') + '</div>' +
-      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>' +
-      slotBadge + (name !== item.id ? '<code class="item-row-id' + identityClass + '" title="' + attr(item.id) + '">' + escapeHtml(item.id) + '</code>' : "");
+      '<button type="button" class="item-toggle ' + (enabled ? "enabled" : "disabled") + '" title="' + attr(t("itemList.toggleItem")) + '" aria-label="' + attr(t("itemList.toggleItem") + ': ' + name) + '" aria-pressed="' + enabled + '">' + escapeHtml(enabled ? t("itemList.on") : t("itemList.off")) + '</button>' +
+      '<div class="item-meta" title="' + attr(summary + ' · ID: ' + item.id) + '">' + escapeHtml(summary) + '</div>';
     const selectRow = (event?: any) => {
       if (event?.target?.classList?.contains("item-toggle")) return;
       const retainFocus = event?.type === "keydown" && document.activeElement === row;

@@ -481,8 +481,7 @@ function sectionTokens(section: WebEditorPreviewSection): number {
 }
 
 function sectionMeta(section: WebEditorPreviewSection): string {
-	const rolePrefix = `${sectionRole(section)} · `;
-	return t("diff.sectionMeta", { rolePrefix, chars: sectionChars(section), tokens: sectionTokens(section) });
+	return t("inspector.sectionMeta", { chars: sectionChars(section), tokens: sectionTokens(section) });
 }
 
 async function copyPreviewText(text: string): Promise<void> {
@@ -574,20 +573,20 @@ function turnLabel(): string {
 					{{ diagnostic.level.toUpperCase() }}<template v-if="diagnostic.itemId"> · {{ diagnostic.itemId }}</template>: {{ diagnostic.message }}
 				</div>
 			</div>
-			<div v-if="preview && preview.selectedTools !== undefined" class="preview-selected-tools-panel">
-				<div class="selected-tools-head">
+			<details v-if="preview && preview.selectedTools !== undefined" class="preview-selected-tools-panel">
+				<summary class="selected-tools-head">
 					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count">
 						{{ preview.selectedTools.length === 0
 							? t("diff.noToolsSelected")
 							: t(preview.selectedTools.length === 1 ? "diff.toolCountOne" : "diff.toolCountMany", { count: preview.selectedTools.length }) }}
 					</span>
-				</div>
+				</summary>
 				<p class="selected-tools-note">{{ t("diff.previewSelectedToolsNote") }}</p>
 				<div v-if="preview.selectedTools.length > 0" class="selected-tools-list">
 					<span v-for="tool in preview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
 				</div>
-			</div>
+			</details>
 			<div v-else-if="preview && preview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
 				<div class="selected-tools-head">
 					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
@@ -609,9 +608,9 @@ function turnLabel(): string {
 						<div class="context-diff-group-messages">
 							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
 								<summary>
-									<span class="section-title">{{ section.title || section.id }}</span>
+									<span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
-									<span class="section-meta">{{ sectionMeta(section) }}</span>
+
 									<button
 										type="button"
 										class="context-diff-copy-section"
@@ -628,9 +627,9 @@ function turnLabel(): string {
 					</details>
 					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
 						<summary>
-							<span class="section-title">{{ section.title || section.id }}</span>
+							<span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
-							<span class="section-meta">{{ sectionMeta(section) }}</span>
+
 							<button
 								type="button"
 								class="context-diff-copy-section"
@@ -649,7 +648,6 @@ function turnLabel(): string {
 
 		<div v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
 			<div class="context-diff-panel-head">
-				<div class="context-diff-title">{{ mode === "draft" ? t("diff.draftTitle") : t("diff.runTitle") }}</div>
 				<div class="context-diff-meta">
 					<span v-if="mode === 'draft' && previewLoading">{{ t("diff.refreshing") }}</span>
 					<span v-else-if="mode === 'run' && contextDiffLoading">{{ t("diff.refreshing") }}</span>
@@ -725,24 +723,24 @@ function turnLabel(): string {
 										<span class="line-number old">{{ row.beforeLine ?? "" }}</span>
 										<span class="line-number new">{{ row.afterLine ?? "" }}</span>
 										<span class="line-marker">{{ lineMarker(row) }}</span>
-										<code><span v-if="row.kind === 'note'" class="note-side">{{ eofNoteSide(row) }} · </span><template v-for="(part, partIndex) in row.parts" :key="partIndex"><mark v-if="part.changed && row.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+												<code><span v-if="row.kind === 'note'" class="note-side">{{ eofNoteSide(row) }} · </span><template v-for="(part, partIndex) in row.parts" :key="partIndex"><mark v-if="part.changed && row.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
 									</div>
 								</template>
 							</div>
 							<div v-else class="git-diff split" role="table" :aria-label="t('diff.splitAria')">
-								<div class="split-header"><span>{{ t("diff.before") }}</span><span>{{ t("diff.after") }}</span></div>
+									<div class="split-header"><span>{{ t("diff.before") }}</span><span>{{ t("diff.after") }}</span></div>
 								<template v-for="(row, rowIndex) in blockSplitRows(block)" :key="rowIndex">
 									<div v-if="row.kind === 'separator'" class="git-line-separator split-separator" role="row">⋯</div>
 									<div v-else class="split-line" role="row">
 										<div :class="['git-line', row.before?.kind ?? 'blank']">
 											<span class="line-number">{{ row.before?.beforeLine ?? "" }}</span>
 											<span class="line-marker">{{ row.before ? lineMarker(row.before) : "" }}</span>
-											<code><template v-for="(part, partIndex) in row.before?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.before?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+													<code><template v-for="(part, partIndex) in row.before?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.before?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
 										</div>
 										<div :class="['git-line', row.after?.kind ?? 'blank']">
 											<span class="line-number">{{ row.after?.afterLine ?? "" }}</span>
 											<span class="line-marker">{{ row.after ? lineMarker(row.after) : "" }}</span>
-											<code><template v-for="(part, partIndex) in row.after?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.after?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
+													<code><template v-for="(part, partIndex) in row.after?.parts ?? []" :key="partIndex"><mark v-if="part.changed && row.after?.kind !== 'same'">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></code>
 										</div>
 									</div>
 								</template>
@@ -771,9 +769,11 @@ function turnLabel(): string {
 .context-diff-copy-full, .context-diff-copy-section { min-height: 28px; font-size: 12px; padding: 2px 8px; }
 .context-diff-copy-section { margin-left: auto; }
 .context-diff-copy-section:disabled { opacity: 0.45; cursor: not-allowed; }
-.preview-selected-tools-panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--pane); display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.preview-selected-tools-panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--pane); font-size: 12px; }
 .preview-selected-tools-panel.unknown { background: var(--pane-soft); }
-.selected-tools-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.selected-tools-head { cursor:pointer; color:var(--muted); }
+.selected-tools-head > * { margin-right:6px; }
+.preview-selected-tools-panel[open] > summary { margin-bottom:8px; }
 .selected-tools-title { font-weight: 700; color: var(--text); }
 .selected-tools-count { font-size: 11px; color: var(--accent); border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; line-height: 16px; }
 .selected-tools-count.muted { color: var(--muted); }
@@ -798,8 +798,8 @@ function turnLabel(): string {
 .context-diff-section summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; border-bottom: 1px solid transparent; }
 .context-diff-section summary::-webkit-details-marker { display: none; }
 .context-diff-section[open] summary { border-bottom-color: var(--line); }
-.section-title { font-weight: 650; }
-.section-role { border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 16px; font-weight: 700; text-transform: lowercase; }
+.section-title { font-weight:650; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.section-role { flex:none; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 16px; font-weight: 700; text-transform: lowercase; }
 .section-meta { color: var(--muted); font-size: 12px; }
 .context-diff-section.role-system { border-left-color: var(--role-system); }
 .context-diff-section.role-user { border-left-color: var(--role-user); }

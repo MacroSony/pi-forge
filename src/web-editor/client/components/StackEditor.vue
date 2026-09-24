@@ -346,30 +346,6 @@ defineExpose({
 			</template>
 		</div>
 
-		<!-- Section 2: Extensions & Slots catalog -->
-		<div class="advanced-card tab-section">
-			<div class="tab-section-title">{{ t("stackTab.extensions") }}</div>
-			<div class="tab-section-meta">{{ t("stackTab.extensionsMeta") }}</div>
-			<div class="extension-catalog-grid">
-				<div id="macroCatalog" class="extension-catalog">
-					<strong>{{ t("stackTab.registeredMacros") }}</strong>
-					<div v-if="props.resources.macros.length === 0" class="option-note">{{ t("common.none") }}</div>
-					<div v-for="macro in props.resources.macros" :key="macro.name" class="extension-catalog-entry">
-						<code v-text="`{{ extensions.${macro.name} }}`"></code>
-						<span>{{ macro.description || macro.source || "" }}</span>
-					</div>
-				</div>
-				<div id="slotCatalog" class="extension-catalog">
-					<strong>{{ t("stackTab.availableSlots") }}</strong>
-					<div v-if="props.resources.slots.length === 0" class="option-note">{{ t("common.none") }}</div>
-					<div v-for="slot in props.resources.slots" :key="slot.name" class="extension-catalog-entry">
-						<code>{{ slot.name }}</code>
-						<span>{{ slot.description || slot.source || "" }}</span>
-					</div>
-				</div>
-			</div>
-		</div>
-
 		<!-- Section 3: Parameters / Variables -->
 		<div class="advanced-card tab-section">
 			<div class="tab-section-title">{{ t("stackTab.parameters") }}</div>
@@ -420,6 +396,30 @@ defineExpose({
 				</div>
 			</div>
 		</div>
+
+		<!-- Section 2: Extensions & Slots catalog -->
+		<details class="advanced-card tab-section">
+			<summary class="tab-section-title">{{ t("stackTab.extensions") }}</summary>
+			<div class="tab-section-meta">{{ t("stackTab.extensionsMeta") }}</div>
+			<div class="extension-catalog-grid">
+				<div v-if="props.resources.macros.length" id="macroCatalog" class="extension-catalog">
+					<strong>{{ t("stackTab.registeredMacros") }}</strong>
+					<div v-if="props.resources.macros.length === 0" class="option-note">{{ t("common.none") }}</div>
+					<div v-for="macro in props.resources.macros" :key="macro.name" class="extension-catalog-entry">
+						<code v-text="`{{ extensions.${macro.name} }}`"></code>
+						<span>{{ macro.description || macro.source || "" }}</span>
+					</div>
+				</div>
+				<div id="slotCatalog" class="extension-catalog">
+					<strong>{{ t("stackTab.availableSlots") }}</strong>
+					<div v-if="props.resources.slots.length === 0" class="option-note">{{ t("common.none") }}</div>
+					<div v-for="slot in props.resources.slots" :key="slot.name" class="extension-catalog-entry">
+						<code>{{ slot.name }}</code>
+						<span>{{ slot.description || slot.source || "" }}</span>
+					</div>
+				</div>
+			</div>
+		</details>
 
 		<!-- Section 4: Raw preset JSON (clearly separated) -->
 		<div class="advanced-card raw-json-card tab-section">
@@ -490,7 +490,7 @@ defineExpose({
 
 .extension-catalog-grid {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(min(260px,100%), 1fr));
 	gap: 16px;
 	margin-top: 10px;
 }

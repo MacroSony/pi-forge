@@ -166,104 +166,103 @@ onUnmounted(() => {
 		<SessionInstructions />
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
-		<header class="topbar">
-			<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle presets sidebar" aria-label="Toggle presets sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
-			<div class="brand" aria-hidden="true" data-i18n="chrome.brand">pi-forge preset editor</div>
-			<div id="status" class="status">Loading</div>
-			<button id="disableBtn" data-icon="■" title="Disable the active preset" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable preset</button>
-		</header>
-		<div id="shell" class="shell">
-			<aside class="sidebar">
-				<div class="side-head">
-					<div class="side-head-title">
-						<div class="side-title" data-i18n="nav.stacks">Presets</div>
-						<div id="cwd" class="cwd"></div>
-					</div>
-					<div class="library-actions">
-						<button id="reloadBtn" class="icon" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
-					</div>
-				</div>
-				<div id="stackList" class="stack-list"></div>
-				<div class="library-create">
-					<button id="newStackBtn" class="outline-add" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
-				</div>
-			</aside>
-			<main class="main">
-				<header id="resourceHeader" class="resource-header">
-					<div class="resource-identity">
-						<div class="resource-title-line"><h1 id="resourceName">Preset</h1><span id="dirtyBadge" class="dirty-badge" title="The current preset has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span><span id="runtimeBadge" class="runtime-badge"></span></div>
-						<div class="resource-subline"><code id="resourceSelector"></code><span id="resourceMode"></span></div>
-					</div>
-					<div class="main-actions">
-					<section id="metadataPanel" class="preset-properties-entry"><div id="metadataHost"></div></section>
-					<button id="activateBtn" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
-					<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited preset JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
-					<button id="validateBtn" data-icon="!" title="Validate the edited preset without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
-					<span class="action-spacer"></span>
-					<details id="moreActions" class="action-menu">
-						<summary data-icon="⋯" title="Show less-used preset actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>
-						<div class="action-menu-popover">
-							<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser" data-i18n="chrome.armPayload" data-i18n-title="chrome.armPayloadTitle">Arm payload</button>
-							<button id="forkBtn" data-icon="⑂" title="Create a new preset from the current edits" data-i18n="chrome.fork" data-i18n-title="chrome.forkTitle">Fork</button>
-							<button id="importBtn" data-icon="⇪" title="Import Pi Forge preset JSON" data-i18n="chrome.import" data-i18n-title="chrome.importTitle">Import JSON</button>
-							<button id="exportBtn" data-icon="⇩" title="Download the current preset JSON, or copy it if download is unavailable" data-i18n="chrome.export" data-i18n-title="chrome.exportTitle">Export JSON</button>
-							<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected preset JSON file" data-i18n="chrome.deleteStack" data-i18n-title="chrome.deleteStackTitle">Delete preset</button>
-						</div>
-					</details>
-					<input id="importFileInput" type="file" accept="application/json,.json" hidden>
-					</div>
-					<span class="resource-editing-label" data-i18n="polish.workspace.editing">Editing</span>
-				</header>
-				<nav class="view-tabs" aria-label="Preset editor sections" data-i18n-aria="nav.stackSectionsAria">
-					<button
-						v-for="tab in EDITOR_TABS"
-						:key="tab.id"
-						:id="editorTabButtonId(tab.id)"
-						:data-tab="tab.internalDock ? undefined : tab.id"
-						:data-dock-tab="tab.internalDock ? tab.id : undefined"
-						:class="{ active: tab.id === 'items' }"
-						:aria-pressed="tab.internalDock ? 'false' : undefined"
-						:data-icon="tab.icon"
-						:title="t(tab.titleKey)"
-						:data-i18n="tab.labelKey"
-						:data-i18n-title="tab.titleKey"
-					>{{ t(tab.labelKey) }}</button>
-				</nav>
-				<div id="editorDockArea" class="editor-dock-area">
-					<section id="workspace" class="workspace">
-						<div class="items-pane">
-							<div class="pane-head">
-								<span data-i18n="chrome.items">Stack items</span>
-								<span id="itemCount" class="stack-meta"></span>
-							</div>
-							<div id="itemList" class="item-list"></div>
-							<div class="item-add-wrap">
-								<button id="addContentBtn" class="outline-add" type="button" data-icon="+" aria-expanded="false" aria-controls="addContentMenu" title="Add content or slot" data-i18n="polish.workspace.addContent" data-i18n-title="polish.workspace.addContentTitle">Add content / slot</button>
-								<div id="addContentMenu" class="add-content-menu" hidden>
-									<button id="addItemBtn" type="button" data-icon="+" title="Add a prompt block item" data-i18n-title="chrome.addBlockTitle">
-										<span data-i18n="chrome.addBlock">Add block</span>
-										<small data-i18n="polish.workspace.addBlockHelp">A written prompt section.</small>
-									</button>
-									<button id="addSlotBtn" type="button" data-icon="+" title="Add a runtime slot item" data-i18n-title="chrome.addSlotTitle">
-										<span data-i18n="chrome.addSlot">Add slot</span>
-										<small data-i18n="polish.workspace.addSlotHelp">A value filled by Pi at runtime.</small>
-									</button>
-								</div>
-							</div>
-						</div>
-						<div class="editor-pane">
-							<div id="itemEditor" class="item-editor"></div>
 
-							<div id="diagnostics" class="diagnostics"></div>
+				<div id="shell" class="shell">
+					<aside class="sidebar">
+						<div class="side-head">
+							<div class="side-head-title">
+								<div class="side-title" data-i18n="nav.stacks">Presets</div>
+								<div id="cwd" class="cwd"></div>
+							</div>
+							<div class="library-actions">
+								<button id="reloadBtn" class="icon" data-icon="↻" title="Reload presets from disk" data-i18n="chrome.reload" data-i18n-title="chrome.reloadTitle">Reload</button>
+							</div>
 						</div>
-					</section>
-					<section id="tabPanel" class="tab-panel"></section>
-					<section id="contextDiffPanel" class="context-diff-panel"></section>
+						<div id="stackList" class="stack-list"></div>
+						<div class="library-create">
+							<button id="newStackBtn" class="outline-add" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
+						</div>
+					</aside>
+					<main class="main">
+						<header id="resourceHeader" class="resource-header">
+							<button id="sidebarToggleBtn" class="icon" data-icon="☰" title="Toggle presets sidebar" aria-label="Toggle presets sidebar" data-i18n-title="chrome.toggleSidebar" data-i18n-aria="chrome.toggleSidebar"></button>
+							<div class="resource-identity">
+									<div class="resource-title-line"><h1 id="resourceName">Preset</h1><span id="dirtyBadge" class="dirty-badge" title="The current preset has unsaved edits" data-i18n="chrome.unsaved" data-i18n-title="chrome.unsavedTitle">Unsaved</span><span id="runtimeBadge" class="runtime-badge"></span></div>
+									<div class="resource-subline"><code id="resourceSelector"></code><span id="resourceMode"></span></div>
+							</div>
+							<div class="main-actions">
+									<section id="metadataPanel" class="preset-properties-entry"><div id="metadataHost"></div></section>
+								<button id="activateBtn" data-icon="▶" title="Make this preset active for the current Pi session" data-i18n="chrome.activate" data-i18n-title="chrome.activateTitle">Activate</button>
+								<button id="saveBtn" class="primary" data-icon="✓" title="Save the edited preset JSON to disk (Ctrl/Cmd+S)" data-i18n="chrome.save" data-i18n-title="chrome.saveTitle">Save</button>
+								<button id="validateBtn" data-icon="!" title="Validate the edited preset without saving (Ctrl/Cmd+Shift+Enter)" data-i18n="chrome.validate" data-i18n-title="chrome.validateTitle">Validate</button>
+								<span class="action-spacer"></span>
+								<details id="moreActions" class="action-menu">
+									<summary data-icon="⋯" title="Show less-used preset actions" data-i18n="chrome.more" data-i18n-title="chrome.moreTitle">More</summary>
+									<div class="action-menu-popover">
+										<button id="payloadBtn" data-icon="◆" title="Capture the next provider payload in the browser" data-i18n="chrome.armPayload" data-i18n-title="chrome.armPayloadTitle">Arm payload</button>
+										<button id="forkBtn" data-icon="⑂" title="Create a new preset from the current edits" data-i18n="chrome.fork" data-i18n-title="chrome.forkTitle">Fork</button>
+										<button id="importBtn" data-icon="⇪" title="Import Pi Forge preset JSON" data-i18n="chrome.import" data-i18n-title="chrome.importTitle">Import JSON</button>
+										<button id="exportBtn" data-icon="⇩" title="Download the current preset JSON, or copy it if download is unavailable" data-i18n="chrome.export" data-i18n-title="chrome.exportTitle">Export JSON</button>
+										<button id="deleteStackBtn" class="danger" data-icon="×" title="Delete the selected preset JSON file" data-i18n="chrome.deleteStack" data-i18n-title="chrome.deleteStackTitle">Delete preset</button>
+									</div>
+								</details>
+								<input id="importFileInput" type="file" accept="application/json,.json" hidden>
+							</div>
+						</header>
+						<nav class="view-tabs" aria-label="Preset editor sections" data-i18n-aria="nav.stackSectionsAria">
+							<button
+								v-for="tab in EDITOR_TABS"
+								:key="tab.id"
+								:id="editorTabButtonId(tab.id)"
+								:data-tab="tab.internalDock ? undefined : tab.id"
+								:data-dock-tab="tab.internalDock ? tab.id : undefined"
+								:class="{ active: tab.id === 'items' }"
+								:aria-pressed="tab.internalDock ? 'false' : undefined"
+								:data-icon="tab.icon"
+								:title="t(tab.titleKey)"
+								:data-i18n="tab.labelKey"
+								:data-i18n-title="tab.titleKey"
+					>{{ t(tab.labelKey) }}</button>
+						</nav>
+						<div id="editorDockArea" class="editor-dock-area">
+							<section id="workspace" class="workspace">
+								<div class="items-pane">
+									<div class="pane-head">
+										<span data-i18n="chrome.items">Stack items</span>
+										<span id="itemCount" class="stack-meta"></span>
+									</div>
+									<div id="itemList" class="item-list"></div>
+									<div class="item-add-wrap">
+										<button id="addContentBtn" class="outline-add" type="button" data-icon="+" aria-expanded="false" aria-controls="addContentMenu" title="Add content or slot" data-i18n="polish.workspace.addContent" data-i18n-title="polish.workspace.addContentTitle">Add content / slot</button>
+										<div id="addContentMenu" class="add-content-menu" hidden>
+											<button id="addItemBtn" type="button" data-icon="+" title="Add a prompt block item" data-i18n-title="chrome.addBlockTitle">
+												<span data-i18n="chrome.addBlock">Add block</span>
+												<small data-i18n="polish.workspace.addBlockHelp">A written prompt section.</small>
+											</button>
+											<button id="addSlotBtn" type="button" data-icon="+" title="Add a runtime slot item" data-i18n-title="chrome.addSlotTitle">
+												<span data-i18n="chrome.addSlot">Add slot</span>
+												<small data-i18n="polish.workspace.addSlotHelp">A value filled by Pi at runtime.</small>
+											</button>
+										</div>
+									</div>
+								</div>
+								<div class="editor-pane">
+									<div id="itemEditor" class="item-editor"></div>
+
+									<div id="diagnostics" class="diagnostics"></div>
+								</div>
+							</section>
+							<section id="tabPanel" class="tab-panel"></section>
+							<section id="contextDiffPanel" class="context-diff-panel"></section>
+						</div>
+					</main>
 				</div>
-			</main>
-		</div>
-		<div id="preview" class="preview"></div>
-		<div id="stackModal" class="modal"></div>
+				<footer class="topbar">
+					<div id="status" class="status" role="status">Loading</div>
+					<button id="disableBtn" data-icon="■" title="Disable the active preset" data-i18n="chrome.disableStack" data-i18n-title="chrome.disableStackTitle">Disable preset</button>
+				</footer>
+				<div id="preview" class="preview"></div>
+				<div id="stackModal" class="modal"></div>
 			</div>
 		</section>
 		<ProfileBrowser v-show="activeSurface === 'profiles'" :active="activeSurface === 'profiles'" />

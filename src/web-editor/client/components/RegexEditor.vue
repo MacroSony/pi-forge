@@ -427,6 +427,7 @@ defineExpose({
 							type="button"
 							class="text-btn icon-btn"
 							data-regex-up="true"
+							:disabled="index === 0"
 							data-icon="↑"
 							:title="t('regex.upTitle')"
 							@click="moveRule(index, -1)"
@@ -437,6 +438,7 @@ defineExpose({
 							type="button"
 							class="text-btn icon-btn"
 							data-regex-down="true"
+							:disabled="index === rows.length - 1"
 							data-icon="↓"
 							:title="t('regex.downTitle')"
 							@click="moveRule(index, 1)"
@@ -445,7 +447,7 @@ defineExpose({
 						</button>
 						<button
 							type="button"
-							class="text-btn danger icon-btn"
+							class="text-btn quiet-danger icon-btn"
 							data-delete-row="true"
 							data-icon="×"
 							:title="t('regex.deleteTitle')"

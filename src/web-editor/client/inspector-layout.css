@@ -134,34 +134,22 @@
 	border-color: var(--line-strong);
 }
 
-/* Narrow desktops stack the two work areas rather than squeezing the editor. */
-@media (min-width: 801px) and (max-width: 1150px) {
+/* One responsive dock rule: editor visibility is never inferred from width.
+   The legacy host may explicitly hide workspace when a different editing tab is active. */
+@media (max-width:1150px) {
  .editor-dock-area.dock-open:not(.dock-focus) {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(260px, 1fr) minmax(290px, 1fr);
-  overflow-y: auto;
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:minmax(280px,1fr) minmax(300px,1fr);
+  overflow-y:auto;
  }
  .editor-dock-area.dock-open.dock-wide {
-  grid-template-rows: minmax(220px, .6fr) minmax(350px, 1.4fr);
+  grid-template-rows:minmax(260px,.7fr) minmax(340px,1.3fr);
  }
- .editor-dock-area.dock-open .preview-reading-arrow { left: 6px; }
- .editor-dock-area.dock-open .context-diff-dock-header { padding-left: 36px; }
+ .editor-dock-area.dock-open .context-diff-panel { border-left:0; border-top:1px solid var(--line); }
+ .preview-reading-arrow { left:8px; }
+ .context-diff-dock-header { padding-left:38px; }
 }
-@media (max-width: 800px) {
- .editor-dock-area.dock-open, .editor-dock-area.dock-open[data-reading] {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
- }
- /* Explicit editor navigation must reveal an editor at phone widths too.
-    Outside focus, use a vertical composition rather than an inspector-only trap. */
- .editor-dock-area.dock-open:not(.dock-focus) {
-  grid-template-rows: minmax(240px, auto) minmax(300px, auto);
-  overflow-y: auto;
- }
- .editor-dock-area.dock-open:not(.dock-focus) .workspace { display: grid; }
- .editor-dock-area.dock-open:not(.dock-focus) .tab-panel.open { display: block; }
- .editor-dock-area.dock-open.dock-focus .workspace,
- .editor-dock-area.dock-open.dock-focus .tab-panel.open { display: none; }
- .preview-reading-arrow { left: 8px !important; }
- .context-diff-dock-header { padding-left: 44px !important; }
+@media (max-width:700px) {
+ .editor-dock-area.dock-open:not(.dock-focus) { grid-template-rows:auto minmax(300px,auto); }
+ .editor-dock-area.dock-open.dock-focus { grid-template-rows:minmax(0,1fr); }
 }

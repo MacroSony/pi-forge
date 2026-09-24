@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, onMounted, onBeforeUnmount } from "vue";
 
 import { t, type MessageKey } from "../i18n.ts";
 import type { EditorPromptStackItem } from "../types.ts";
@@ -19,12 +19,54 @@ const emit = defineEmits<{
 	replace: [item: EditorPromptStackItem];
 }>();
 
-
 function removeItem(): void { emit("delete"); }
 const item = reactive(props.item);
 const mode = ref(props.mode);
 const optionsText = ref(JSON.stringify(item.options || {}, null, 2));
 const optionsError = ref(false);
+const propertiesRef = ref<HTMLDetailsElement>();
+const propertiesPosition = ref<Record<string, string>>({});
+function positionProperties(event?: Event): void {
+	const details = propertiesRef.value;
+	if (!details || (!details.open && event?.type !== "click")) return;
+	const rect = details.querySelector("summary")!.getBoundingClientRect();
+	const width = Math.min(330, window.innerWidth - 24);
+	const below = window.innerHeight - rect.bottom - 18;
+	const above = rect.top - 18;
+	const placeBelow = below >= 240 || below >= above;
+	propertiesPosition.value = {
+		left: `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`,
+		width: `${width}px`,
+		top: placeBelow ? `${rect.bottom + 6}px` : "auto",
+		bottom: placeBelow ? "auto" : `${window.innerHeight - rect.top + 6}px`,
+		maxHeight: `${Math.max(80, placeBelow ? below : above)}px`,
+	};
+}
+function dismissProperties(event: Event): void {
+	const details = propertiesRef.value;
+	if (!details?.open) return;
+	if (event instanceof KeyboardEvent) {
+		if (event.key !== "Escape") return;
+		event.stopPropagation();
+		details.open = false;
+		details.querySelector("summary")?.focus();
+	} else if (event.target instanceof Node && !details.contains(event.target)) {
+		details.open = false;
+	}
+}
+onMounted(() => {
+	window.addEventListener("resize", positionProperties);
+	window.addEventListener("scroll", positionProperties, true);
+	document.addEventListener("pointerdown", dismissProperties);
+	document.addEventListener("keydown", dismissProperties);
+});
+onBeforeUnmount(() => {
+	window.removeEventListener("resize", positionProperties);
+	window.removeEventListener("scroll", positionProperties, true);
+	document.removeEventListener("pointerdown", dismissProperties);
+	document.removeEventListener("keydown", dismissProperties);
+});
+
 const options = computed<any>(() => item.options || {});
 const structuredOptionCount = computed(() => {
 	if (item.slot === "chat-history") return 7;
@@ -120,46 +162,45 @@ function optionHelp(key: string): string {
 		<div class="item-primary-field field">
 			<div class="item-heading">
 				<label for="itemName">{{ t("item.name") }}</label>
-				<button id="deleteItemBtn" type="button" class="danger" :title="t('chrome.deleteItemTitle')" @click="removeItem">{{ t("chrome.deleteItem") }}</button>
+				<button id="deleteItemBtn" type="button" class="quiet-danger" :title="t('chrome.deleteItemTitle')" @click="removeItem">{{ t("chrome.deleteItem") }}</button>
 			</div>
 			<input id="itemName" :value="item.name || ''" @input="setString('name', ($event.target as HTMLInputElement).value, true, true)">
 		</div>
 
 		<div class="item-technical-row">
-			<span class="item-kind-badge" :class="item.kind">{{ item.kind }}</span>
 			<label class="role-control">
 				<span>{{ t("polish.workspace.itemRole") }}</span>
 				<select id="itemRole" :value="item.role || ''" @change="setString('role', ($event.target as HTMLSelectElement).value, true, true)">
 					<option v-for="role in roles" :key="role" :value="role">{{ role || t("item.roleNone") }}</option>
 				</select>
 			</label>
-			<span v-if="item.kind === 'slot'" class="slot-inline-label">{{ item.slot || t("item.slot") }}</span>
-			<details id="itemProperties" class="item-properties">
-				<summary :title="t('polish.workspace.propertiesTitle')">{{ t("polish.workspace.properties") }}</summary>
-				<div class="item-properties-popover">
+			<label v-if="item.kind === 'slot'" class="role-control slot-control">
+				<span>{{ t("item.slot") }}</span>
+				<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
+					<option v-for="slot in slotOptions" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
+				</select>
+			</label>
+			<details id="itemProperties" ref="propertiesRef" class="item-properties" @toggle="positionProperties">
+				<summary @click="positionProperties" :title="t('polish.workspace.propertiesTitle')">{{ t("polish.workspace.properties") }}</summary>
+				<div class="item-properties-popover" :style="{ ...propertiesPosition, visibility: propertiesPosition.left ? 'visible' : 'hidden' }">
 					<div class="field">
-						<label>{{ t("polish.workspace.itemKind") }}</label>
+						<label for="itemKind">{{ t("polish.workspace.itemKind") }}</label>
 						<select id="itemKind" :value="item.kind" @change="setKind(($event.target as HTMLSelectElement).value as 'block' | 'slot')">
 							<option value="block">block</option>
 							<option value="slot">slot</option>
 						</select>
 					</div>
 					<div class="field">
-						<label>{{ t("polish.workspace.itemIdentifier") }}</label>
+						<label for="itemId">{{ t("polish.workspace.itemIdentifier") }}</label>
 						<input id="itemId" :value="item.id" @input="setString('id', ($event.target as HTMLInputElement).value, false, true)">
 					</div>
-					<div v-if="item.kind === 'slot'" class="field">
-						<label>{{ t("polish.workspace.slotControl") }}</label>
-						<select id="itemSlot" :value="item.slot || 'chat-history'" @change="setString('slot', ($event.target as HTMLSelectElement).value, false, true)">
-							<option v-for="slot in slotOptions" :key="slot" :value="slot">{{ slotLabel(slot) }}</option>
-						</select>
-					</div>
+
+					<div class="item-id-display"><span>ID</span><code class="item-full-id" :title="item.id">{{ item.id }}</code><button type="button" class="copy-id" @click="emit('copyId')">{{ t("polish.workspace.copyId") }}</button></div>
 				</div>
 			</details>
 
 		</div>
 
-		<div class="item-id-display"><span>ID</span><code class="item-full-id" :title="item.id">{{ item.id }}</code><button type="button" class="copy-id" @click="emit('copyId')">{{ t("polish.workspace.copyId") }}</button></div>
 
 		<div class="item-body">
 			<div v-if="item.kind === 'block'" class="field content-field">
@@ -183,18 +224,20 @@ function optionHelp(key: string): string {
 				></textarea>
 				<div v-else class="options-grid">
 					<template v-if="item.slot === 'chat-history'">
-						<label class="checkline" :title="optionHelp('includeLastUserMessage')">
-							<input type="checkbox" data-option="includeLastUserMessage" :checked="options.includeLastUserMessage !== false" @change="setOption('includeLastUserMessage', ($event.target as HTMLInputElement).checked, true)">
-							{{ t("item.includeLastUserMessage") }}
-						</label>
-						<label class="checkline" :title="optionHelp('stripAssistantThinking')">
-							<input type="checkbox" data-option="stripAssistantThinking" :checked="options.stripAssistantThinking === true" @change="setOption('stripAssistantThinking', ($event.target as HTMLInputElement).checked, false)">
-							{{ t("item.stripAssistantThinking") }}
-						</label>
-						<label class="checkline" :title="optionHelp('includeSummaries')">
-							<input type="checkbox" data-option="includeSummaries" :checked="options.includeSummaries !== false" @change="setOption('includeSummaries', ($event.target as HTMLInputElement).checked, true)">
-							{{ t("item.includeSummaries") }}
-						</label>
+						<div class="slot-flags">
+							<label class="checkline" :title="optionHelp('includeLastUserMessage')">
+								<input type="checkbox" data-option="includeLastUserMessage" :checked="options.includeLastUserMessage !== false" @change="setOption('includeLastUserMessage', ($event.target as HTMLInputElement).checked, true)">
+								{{ t("item.includeLastUserMessage") }}
+							</label>
+							<label class="checkline" :title="optionHelp('stripAssistantThinking')">
+								<input type="checkbox" data-option="stripAssistantThinking" :checked="options.stripAssistantThinking === true" @change="setOption('stripAssistantThinking', ($event.target as HTMLInputElement).checked, false)">
+								{{ t("item.stripAssistantThinking") }}
+							</label>
+							<label class="checkline" :title="optionHelp('includeSummaries')">
+								<input type="checkbox" data-option="includeSummaries" :checked="options.includeSummaries !== false" @change="setOption('includeSummaries', ($event.target as HTMLInputElement).checked, true)">
+								{{ t("item.includeSummaries") }}
+							</label>
+						</div>
 						<div class="field" :title="optionHelp('toolMode')">
 							<label>{{ t("item.toolHistory") }}</label>
 							<select data-option="toolMode" :value="options.toolMode || 'keep'" @change="setOption('toolMode', ($event.target as HTMLSelectElement).value, 'keep')">

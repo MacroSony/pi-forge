@@ -291,7 +291,8 @@ function recordRowKeyId(fieldKey: string, rowId: number): string {
 		<div
 			v-for="field in props.schema.fields"
 			:key="field.key"
-			class="tab-section schema-field"
+			class="schema-field"
+			:class="{ 'schema-collection': field.type === 'record' }"
 			:data-field="field.key"
 		>
 			<div v-if="field.description" class="tab-section-meta">{{ field.description }}</div>
@@ -401,23 +402,23 @@ function recordRowKeyId(fieldKey: string, rowId: number): string {
 						:data-record-row="index"
 					>
 						<div class="field">
-						<select
-							v-if="field.keyOptions !== undefined"
-							:id="recordRowKeyId(field.key, row.__id)"
-							:data-record-key="field.key"
-							:aria-label="recordKeyLabel(field)"
-							:value="row.key"
-							@change="setRecordRowKey(field, index, $event)"
-						>
-							<option
-								v-for="option in recordKeyOptions(field, row)"
-								:key="option.value"
-								:value="option.value"
+							<select
+								v-if="field.keyOptions !== undefined"
+								:id="recordRowKeyId(field.key, row.__id)"
+								:data-record-key="field.key"
+								:aria-label="recordKeyLabel(field)"
+								:value="row.key"
+								@change="setRecordRowKey(field, index, $event)"
+							>
+								<option
+									v-for="option in recordKeyOptions(field, row)"
+									:key="option.value"
+									:value="option.value"
 							>{{ option.label }}</option>
-						</select>
-						<input
-							v-else
-							type="text"
+							</select>
+							<input
+								v-else
+								type="text"
 								:id="recordRowKeyId(field.key, row.__id)"
 								:data-record-key="field.key"
 								:aria-label="recordKeyLabel(field)"
@@ -571,4 +572,7 @@ function recordRowKeyId(fieldKey: string, rowId: number): string {
 		display: block;
 	}
 }
+.schema-field { padding:12px 0; max-width:720px; }
+.schema-field + .schema-field { border-top:1px solid var(--line); }
+.schema-collection { max-width:none; }
 </style>

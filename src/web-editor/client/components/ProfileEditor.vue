@@ -248,37 +248,34 @@ async function saveDraft(): Promise<void> {
 		</header>
 
 		<div class="profile-form">
-			<label class="profile-field">
+			<label class="profile-field profile-field-wide">
 				<span>{{ t("metadata.name") }}</span>
 				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
 			</label>
-			<label class="profile-field">
-				<span>{{ t("profileEditor.id") }}</span>
-				<input
-					id="profileId"
-					v-model="draft.id"
-					:readonly="mode === 'edit'"
-					:placeholder="t('profileEditor.idPlaceholder')"
-					autocomplete="off"
-				>
-				<small>{{ t("profileEditor.idHint", { scope: editScope, id: draft.id || "<id>" }) }}</small>
-			</label>
-			<label v-if="mode === 'create'" class="profile-field">
-				<span>{{ t("polish.surfaces.profileScope") }}</span>
-				<select
-					id="profileScope"
-					:value="draft.scope"
-					:title="t('profiles.scopeTitle')"
-					@change="changeCreateScope(($event.target as HTMLSelectElement).value as 'project' | 'global')"
-				>
-					<option value="project">{{ t("profiles.scopeProject") }}</option>
-					<option value="global">{{ t("profiles.scopeGlobal") }}</option>
-				</select>
-			</label>
-			<div v-else class="profile-field profile-scope-readonly">
-				<span>{{ t("polish.surfaces.profileScope") }}</span>
-				<code>{{ sourceSelector || `${editScope}:${draft.id}` }}</code>
-			</div>
+			<template v-if="mode === 'create'">
+				<label class="profile-field">
+					<span>{{ t("profileEditor.id") }}</span>
+					<input
+						id="profileId"
+						v-model="draft.id"
+						:placeholder="t('profileEditor.idPlaceholder')"
+						autocomplete="off"
+					>
+					<small>{{ t("profileEditor.idHint", { scope: editScope, id: draft.id || "<id>" }) }}</small>
+				</label>
+				<label class="profile-field">
+					<span>{{ t("polish.surfaces.profileScope") }}</span>
+					<select
+						id="profileScope"
+						:value="draft.scope"
+						:title="t('profiles.scopeTitle')"
+						@change="changeCreateScope(($event.target as HTMLSelectElement).value as 'project' | 'global')"
+					>
+						<option value="project">{{ t("profiles.scopeProject") }}</option>
+						<option value="global">{{ t("profiles.scopeGlobal") }}</option>
+					</select>
+				</label>
+			</template>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.modelProvider") }}</span>
 				<input id="profileModelProvider" v-model="draft.provider" list="profileProviderOptions" autocomplete="off">
@@ -319,7 +316,7 @@ async function saveDraft(): Promise<void> {
 				<small v-else>{{ t("profileEditor.projectStackHint") }}</small>
 			</label>
 
-			<details open class="profile-advanced-group profile-field-wide">
+			<details class="profile-advanced-group profile-field-wide">
 				<summary class="profile-advanced-summary">{{ t("polish.surfaces.profileAdvanced") }}</summary>
 				<div class="profile-advanced-content">
 					<label class="profile-field profile-field-wide">
@@ -438,9 +435,7 @@ async function saveDraft(): Promise<void> {
 	min-width: 0;
 }
 
-.profile-field > span {
-	font-weight: 650;
-}
+.profile-field > span { font-size:12px; color:var(--muted); font-weight:600; }
 
 .profile-field-wide {
 	grid-column: 1 / -1;

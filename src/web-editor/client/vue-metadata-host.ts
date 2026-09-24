@@ -1,4 +1,4 @@
-import { t, type MessageKey } from "./i18n.ts";
+import type { MessageKey } from "./i18n.ts";
 import { createApp, type App } from "vue";
 
 import StackMetadataEditor from "./components/StackMetadataEditor.vue";
@@ -31,8 +31,6 @@ export function createVueMetadataHost(deps: VueMetadataHostDependencies) {
 			onChange: deps.markDirty,
 			onToggle: (collapsed: boolean) => {
 				deps.setCollapsed(collapsed);
-				const key = collapsed ? "status.metadataHidden" : "status.metadataShown";
-				deps.setStatus(t(key), "", { key });
 			},
 		});
 		app.mount(root);

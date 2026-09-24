@@ -452,6 +452,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 			<span class="action-spacer"></span>
 			<button
 				id="refreshModesBtn"
+                class="icon"
+                :aria-label="t('binding.refreshModesTitle')"
 				type="button"
 				data-binding-refresh-btn
 				data-icon="↻"
@@ -459,7 +461,6 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 				:title="t('binding.refreshModesTitle')"
 				@click="refreshModes"
 			>
-				{{ modesLoading ? t("binding.refreshingModes") : t("binding.refreshModes") }}
 			</button>
 		</div>
 
@@ -498,15 +499,12 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 				:data-binding-index="index"
 			>
 				<div class="binding-card-head">
-					<span class="binding-card-idx">#{{ index + 1 }}</span>
-					<span v-if="modeName(binding.ref)" class="binding-mode-name" data-binding-name>
-						{{ modeName(binding.ref) }}
-					</span>
-					<div class="binding-ref-field">
-						<label class="compact-label">{{ t("binding.ref") }}</label>
+					<label class="binding-ref-field">
+						<span class="compact-label">{{ t("binding.ref") }}</span>
 						<select
 							data-binding-ref
 							:value="binding.ref"
+							:title="binding.ref"
 							@change="setBindingRef(binding, ($event.target as HTMLSelectElement).value)"
 						>
 							<option v-if="!eligibleModes.some(m => m.selector === binding.ref)" :value="binding.ref">
@@ -520,14 +518,46 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 								{{ mode.selector }}{{ mode.mode.name ? ` (${mode.mode.name})` : '' }}
 							</option>
 						</select>
+					</label>
+					<div class="binding-actions">
+						<label class="binding-checkbox-label">
+							<input
+								data-binding-model-callable
+								type="checkbox"
+								:checked="binding.modelCallable === true"
+								@change="setModelCallable(binding, ($event.target as HTMLInputElement).checked)"
+							>
+							<span :title="t('binding.modelCallableHint')">{{ t("binding.modelCallable") }}</span>
+						</label>
+						<button
+							type="button"
+							class="binding-advanced-toggle-btn"
+							data-binding-advanced-toggle
+							:data-binding-index="index"
+							:aria-expanded="isRowAdvancedOpen(binding)"
+							@click="toggleRowAdvanced(binding)"
+						>
+						{{ isRowAdvancedOpen(binding) ? t("binding.hideAdvanced") : t("binding.showAdvanced") }}
+						</button>
+
+						<button
+							type="button"
+							class="binding-remove-btn"
+							data-binding-delete-btn
+							:title="t('binding.deleteTitle')"
+							:aria-label="t('binding.deleteTitle')"
+							@click="removeBinding(binding)"
+						>
+						×
+						</button>
 					</div>
-
-					<span class="binding-scope-badge" data-binding-scope :data-scope="modeScope(binding.ref) || presetScope">
-						{{ modeScope(binding.ref) || presetScope }}
+					<span v-if="bindingProblem(binding)" class="binding-problem-badge" data-binding-problem :title="bindingProblem(binding)">
+						⚠️ {{ bindingProblem(binding) }}
 					</span>
-
-					<div class="binding-id-field">
-						<label class="compact-label">{{ t("binding.id") }}</label>
+				</div>
+				<div v-if="isRowAdvancedOpen(binding)" class="binding-card-body" data-binding-advanced-body>
+					<label class="binding-id-field">
+						<span class="compact-label">{{ t("binding.id") }}</span>
 						<input
 							data-binding-id
 							type="text"
@@ -535,49 +565,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 							:placeholder="t('binding.idPlaceholder')"
 							@input="setBindingId(binding, ($event.target as HTMLInputElement).value)"
 						>
-					</div>
-
-					<label class="binding-checkbox-label">
-						<input
-							data-binding-model-callable
-							type="checkbox"
-							:checked="binding.modelCallable === true"
-							@change="setModelCallable(binding, ($event.target as HTMLInputElement).checked)"
-						>
-						<span :title="t('binding.modelCallableHint')">{{ t("binding.modelCallable") }}</span>
 					</label>
-
-					<span v-if="bindingProblem(binding)" class="binding-problem-badge" data-binding-problem :title="bindingProblem(binding)">
-						⚠️ {{ bindingProblem(binding) }}
-					</span>
-
-					<span class="action-spacer"></span>
-
-					<button
-						type="button"
-						class="binding-advanced-toggle-btn"
-						data-binding-advanced-toggle
-						:data-binding-index="index"
-						:aria-expanded="isRowAdvancedOpen(binding)"
-						@click="toggleRowAdvanced(binding)"
-					>
-						{{ isRowAdvancedOpen(binding) ? t("binding.hideAdvanced") : t("binding.showAdvanced") }}
-					</button>
-
-					<button
-						type="button"
-						class="binding-remove-btn"
-						data-binding-delete-btn
-						:title="t('binding.deleteTitle')"
-						:aria-label="t('binding.deleteTitle')"
-						@click="removeBinding(binding)"
-					>
-						×
-					</button>
-
-				</div>
-
-				<div v-if="isRowAdvancedOpen(binding)" class="binding-card-body" data-binding-advanced-body>
 					<!-- Overrides Section -->
 					<div class="overrides-section">
 						<span class="overrides-title">{{ t("binding.overrides") }}</span>
@@ -629,8 +617,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 										:resources="catalogTools"
 										:loading="catalogLoading"
 										:error="catalogError"
-							can-refresh
-							@refresh="loadCatalog"
+										can-refresh
+										@refresh="loadCatalog"
 										:model-value="binding.overrides?.tools?.add || []"
 										@update:model-value="(tools) => setToolsOverrideList(binding, 'add', tools)"
 									/>
@@ -666,8 +654,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 										:resources="catalogTools"
 										:loading="catalogLoading"
 										:error="catalogError"
-							can-refresh
-							@refresh="loadCatalog"
+										can-refresh
+										@refresh="loadCatalog"
 										:model-value="binding.overrides?.tools?.remove || []"
 										@update:model-value="(tools) => setToolsOverrideList(binding, 'remove', tools)"
 									/>
@@ -695,13 +683,13 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 						</div>
 					</div>
 
-					<!-- Server Effective Preview -->
-					<div
+					<!-- Server Effective Preview: independent disclosure, never a second draft. -->
+					<details
 						v-if="effectiveBindings[index] && !previewLoading && !previewError"
 						class="effective-preview-box"
 						data-binding-preview
 					>
-						<span class="preview-heading">{{ t("binding.previewTitle") }}</span>
+						<summary class="preview-heading">{{ t("binding.previewTitle") }}</summary>
 
 						<div class="preview-content-grid">
 							<div class="preview-column">
@@ -729,7 +717,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 								</div>
 							</div>
 						</div>
-					</div>
+					</details>
 				</div>
 			</div>
 		</div>
@@ -861,20 +849,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	overflow: hidden;
 }
 
-.binding-card-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 8px 12px;
-	background: var(--pane);
-	border-bottom: 1px solid var(--line);
-}
+.binding-card-head { display:flex; flex-wrap:wrap; align-items:end; gap:12px; padding:12px; background:var(--pane); }
 
-.binding-card-idx {
-	font-weight: 700;
-	font-size: 12px;
-	color: var(--muted);
-}
 
 .binding-ref-field,
 .binding-id-field {
@@ -883,31 +859,12 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	gap: 2px;
 }
 
-.compact-label {
-	font-size: 10px;
-	font-weight: 600;
-	color: var(--muted);
-	text-transform: uppercase;
-}
+.compact-label { font-size:12px; font-weight:500; color:var(--muted); }
 
 .binding-card-head select,
-.binding-card-head input[type="text"] {
-	padding: 4px 8px;
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	background: var(--bg);
-	color: var(--fg);
-	font-size: 12px;
-}
+.binding-card-head input[type="text"] { min-width:0; min-height:32px; font-size:13px; }
 
-.binding-checkbox-label {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 12px;
-	cursor: pointer;
-	margin-left: 6px;
-}
+.binding-checkbox-label { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; }
 
 .binding-card-head button {
 	padding: 2px 8px;
@@ -959,7 +916,8 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 
 .override-control {
 	display: flex;
-	align-items: center;
+    flex-direction:column;
+	align-items: stretch;
 	gap: 8px;
 }
 
@@ -990,11 +948,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	gap: 6px;
 }
 
-.override-tools-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 12px;
-}
+.override-tools-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr)); gap:12px; }
 
 .override-tool-col {
 	display: flex;
@@ -1033,11 +987,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	text-transform: uppercase;
 }
 
-.preview-content-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 10px;
-}
+.preview-content-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr)); gap:12px; margin-top:10px; }
 
 .preview-column {
 	display: flex;
@@ -1099,26 +1049,7 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 	font-weight: 600;
 }
 
-.binding-mode-name {
-	font-weight: 600;
-	font-size: 12px;
-	color: var(--text);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: 140px;
-}
 
-.binding-scope-badge {
-	font-size: 10px;
-	padding: 1px 5px;
-	border-radius: 3px;
-	background: var(--pane);
-	border: 1px solid var(--line);
-	color: var(--muted);
-	text-transform: uppercase;
-	font-weight: 600;
-}
 
 .binding-problem-badge {
 	font-size: 11px;
@@ -1149,4 +1080,9 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 }
 .binding-checkbox-label { white-space: nowrap; }
 .binding-checkbox-label input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; padding: 0; margin: 0; flex: 0 0 14px; }
+.binding-ref-field { flex:1 1 260px; min-width:0; }
+.binding-id-field { width:min(100%,360px); }
+.binding-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.binding-problem-badge { flex-basis:100%; max-width:100%; white-space:normal; }
+.preview-heading { cursor:pointer; }
 </style>

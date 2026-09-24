@@ -371,26 +371,7 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 								({{ groupSelectedCount(group) }}/{{ group.tools.length }})
 							</span>
 							<span class="tool-group-spacer"></span>
-							<div class="tool-group-batch-actions">
-								<button
-									type="button"
-									class="tool-group-action-btn"
-									data-tool-group-select-all
-									:data-group-id="group.id"
-									@click.stop="selectGroup(group, true)"
-								>
-									{{ t("tools.selectAllGroup") }}
-								</button>
-								<button
-									type="button"
-									class="tool-group-action-btn"
-									data-tool-group-deselect-all
-									:data-group-id="group.id"
-									@click.stop="selectGroup(group, false)"
-								>
-									{{ t("tools.deselectAllGroup") }}
-								</button>
-							</div>
+
 						</div>
 
 						<div v-if="isGroupExpanded(group.id)" class="tool-group-items" :data-tool-group-items="group.id">
@@ -440,24 +421,29 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 				</div>
 
 				<footer class="tool-picker-footer">
-					<div v-if="allowManualEntry" class="tool-picker-manual-row">
+					<details v-if="allowManualEntry" class="tool-picker-manual">
+                        <summary>{{ t("tools.manualEntry") }}</summary>
+                        <div class="tool-picker-manual-row">
 						<input
 							v-model="manualInput"
 							type="text"
 							class="tool-picker-manual-input"
 							data-tool-manual-input
-							:placeholder="t('policy.filterPlaceholder')"
+							:placeholder="t('tools.manualNames')"
+                            :aria-label="t('tools.manualNames')"
 							@keydown.enter.prevent="addManualInput"
 						>
 						<button
 							type="button"
 							class="tool-picker-manual-btn"
 							data-tool-manual-btn
+                            :aria-label="t('tools.addNames')"
 							@click="addManualInput"
 						>
 							+
 						</button>
-					</div>
+                        </div>
+                    </details>
 					<div class="tool-picker-batch-hint">{{ t("tools.batchHint") }}</div>
 				<div class="tool-picker-footer-bar">
 						<span class="tool-picker-footer-count" data-tool-footer-count>
@@ -688,25 +674,8 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 	font-weight: normal;
 }
 
-.tool-group-batch-actions {
-	display: inline-flex;
-	gap: 4px;
-}
 
-.tool-group-action-btn {
-	padding: 2px 5px;
-	font-size: 10px;
-	background: var(--pane);
-	border: 1px solid var(--line);
-	border-radius: 3px;
-	color: var(--muted);
-	cursor: pointer;
-}
 
-.tool-group-action-btn:hover {
-	color: var(--text);
-	border-color: var(--accent);
-}
 
 .tool-group-items {
 	display: flex;
@@ -843,4 +812,6 @@ function getTooltip(tool: WebEditorPolicyResource): string {
 .tool-item { min-width: 0; }
 .tool-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-item-source { display: none; } /* Complete provenance remains in the row tooltip. */
+.tool-picker-manual summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.tool-picker-manual[open] summary { margin-bottom:8px; }
 </style>

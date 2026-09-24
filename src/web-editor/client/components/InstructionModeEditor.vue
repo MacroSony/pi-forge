@@ -55,8 +55,6 @@ const draft = reactive({
 	toolsRemove: [...(initial.tools?.remove ?? [])],
 });
 
-const newToolAdd = ref("");
-const newToolRemove = ref("");
 const error = ref("");
 const busy = ref(false);
 const catalogTools = ref<WebEditorPolicyResource[]>([]);
@@ -121,20 +119,6 @@ onBeforeUnmount(() => {
 function requestCancel(): void {
 	if (dirty.value && !window.confirm(t("modes.confirmDiscard"))) return;
 	emit("cancel");
-}
-
-function addToolsFromInput(kind: "add" | "remove"): void {
-	const inputRef = kind === "add" ? newToolAdd : newToolRemove;
-	const targetList = kind === "add" ? draft.toolsAdd : draft.toolsRemove;
-	const raw = inputRef.value.trim();
-	if (!raw) return;
-	const parts = raw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
-	for (const part of parts) {
-		if (!targetList.includes(part)) {
-			targetList.push(part);
-		}
-	}
-	inputRef.value = "";
 }
 
 function removeTool(kind: "add" | "remove", index: number): void {
@@ -254,24 +238,22 @@ async function saveDraft(): Promise<void> {
 				>
 			</label>
 
-			<div class="mode-form-row">
+			<div v-if="mode === 'create'" class="mode-form-row">
 				<label class="mode-field">
 					<span>{{ t("modes.editorId") }}</span>
 					<input
 						id="modeId"
 						v-model="draft.id"
-						:readonly="mode === 'edit'"
 						:placeholder="t('modes.editorIdPlaceholder')"
 						autocomplete="off"
 					>
 				</label>
 				<label class="mode-field">
 					<span>{{ t("polish.surfaces.modeScope") }}</span>
-					<select id="modeScope" v-model="draft.scope" :disabled="mode === 'edit'" :aria-label="t('polish.surfaces.modeScopeAria')">
+					<select id="modeScope" v-model="draft.scope" :aria-label="t('polish.surfaces.modeScopeAria')">
 						<option value="project">{{ t("modes.scopeProject") }}</option>
 						<option value="global">{{ t("modes.scopeGlobal") }}</option>
 					</select>
-					<small v-if="mode === 'edit'" class="mode-scope-note">{{ editTarget.selector }}</small>
 				</label>
 			</div>
 
@@ -310,17 +292,6 @@ async function saveDraft(): Promise<void> {
 							v-model="draft.toolsAdd"
 						/>
 					</div>
-					<div class="mode-tool-input-row">
-						<input
-							id="modeToolAddInput"
-							v-model="newToolAdd"
-							:placeholder="t('modes.addToolPlaceholder')"
-							@keydown.enter.prevent="addToolsFromInput('add')"
-						>
-						<button id="modeToolAddBtn" type="button" data-icon="+" @click="addToolsFromInput('add')">
-							{{ t("modes.addToolBtn") }}
-						</button>
-					</div>
 					<div class="mode-tag-list">
 						<span
 							v-for="(tool, index) in draft.toolsAdd"
@@ -346,17 +317,6 @@ async function saveDraft(): Promise<void> {
 							@refresh="loadCatalog"
 							v-model="draft.toolsRemove"
 						/>
-					</div>
-					<div class="mode-tool-input-row">
-						<input
-							id="modeToolRemoveInput"
-							v-model="newToolRemove"
-							:placeholder="t('modes.removeToolPlaceholder')"
-							@keydown.enter.prevent="addToolsFromInput('remove')"
-						>
-						<button id="modeToolRemoveBtn" type="button" data-icon="+" @click="addToolsFromInput('remove')">
-							{{ t("modes.removeToolBtn") }}
-						</button>
 					</div>
 					<div class="mode-tag-list">
 						<span
@@ -480,7 +440,7 @@ async function saveDraft(): Promise<void> {
 	background: var(--bg);
 	color: var(--fg);
 	font-family: inherit;
-	font-size: 13px;
+	font-size:14px; min-height:34px;
 }
 
 .mode-field textarea {
@@ -490,7 +450,7 @@ async function saveDraft(): Promise<void> {
 
 .mode-tools-grid {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: repeat(auto-fit,minmax(min(260px,100%),1fr));
 	gap: 16px;
 	border-top: 1px solid var(--line);
 	padding-top: 12px;
@@ -514,21 +474,6 @@ async function saveDraft(): Promise<void> {
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--muted);
-}
-
-.mode-tool-input-row {
-	display: flex;
-	gap: 6px;
-}
-
-.mode-tool-input-row input {
-	flex: 1;
-	padding: 4px 8px;
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	background: var(--bg);
-	color: var(--fg);
-	font-size: 13px;
 }
 
 .mode-tag-list {
