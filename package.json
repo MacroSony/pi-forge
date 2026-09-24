@@ -95,6 +95,7 @@
 		"dist/",
 		"docs/",
 		"examples/",
+		"assets/readme/",
 		"README.md",
 		"README.zh-CN.md",
 		"CHANGELOG.md",

@@ -14,6 +14,8 @@ I was used to SillyTavern's preset system, so this really annoyed me. I wanted t
 
 <!-- MEDIA: editor-overview — PNG candidate. Real editor showing a useful preset, its blocks/slots, selected text, and compiled preview. No asset linked until reviewed. -->
 
+![A code-review Preset with blocks, slots, editable instructions and compiled Preview](assets/readme/en/editor-overview.png)
+
 ## Features
 
 ### Compose the context
@@ -23,6 +25,8 @@ Build a Preset from text **blocks** and runtime **slots**. Write instructions or
 Replace Pi's base system prompt, append to it, or prepend to it. History options can filter roles, limit retained context, or strip prior thinking from model input without rewriting the stored conversation.
 
 <!-- MEDIA: context-toggle — GIF candidate. One change only: toggle the project-context slot and show its corresponding paragraph disappear/reappear in Preview. Fixed view, no zoom or captions. -->
+
+![Toggle project context off and on; the compiled paragraph disappears and returns](assets/readme/en/context-toggle.gif)
 
 ### Choose tools and transform text
 
@@ -51,6 +55,8 @@ Cache notices also flag timestamp-sensitive macros and estimate the possible pro
 
 <!-- MEDIA: draft-diff — PNG candidate. A readable instruction change, shown as additions/removals against the saved preset. -->
 
+![An unsaved instruction change compared with the saved Preset](assets/readme/en/draft-diff.png)
+
 ### Reuse your setups
 
 Save a model, thinking level, and Preset reference as an **Agent Profile**, then apply it with `/profile use <id>`. Keep Presets and Profiles in the project or your global library; a project resource takes precedence over a global resource with the same ID.
@@ -62,7 +68,7 @@ Use different setups for coding, reviewing, writing, or roleplay—not just diff
 Requires Node.js **22.19 or newer**. The 0.5.5 line supports Pi **0.87.x** (`>=0.87.0 <0.88.0`), tested with **0.87.0**.
 
 <!-- RELEASE NOTE: remove this block when 0.5.5 is published; keep the install command below. -->
-> **0.5.5 is not published yet.** Instruction modes and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ.
+> **0.5.5 is not published yet.** Instruction modes and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ. For a local build, see [development setup](docs/development/setup.md#load-the-extension).
 <!-- END RELEASE NOTE -->
 
 ```bash

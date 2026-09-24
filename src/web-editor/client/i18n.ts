@@ -484,7 +484,7 @@ const en = {
 	"diff.draftTitle": "Compiled draft vs saved output",
 	"diff.runTitle": "Latest run vs previous run",
 	"diff.noChanges": "No changes",
-	"diff.changedBlocks": "{count} changed blocks",
+	"diff.changedBlocks": "Changed blocks: {count}",
 	"diff.noDraftComparison": "No draft comparison",
 	"diff.noCapturedRuns": "No captured runs",
 	"diff.draftEmpty": "Select a saved preset to compare its current draft with disk.",

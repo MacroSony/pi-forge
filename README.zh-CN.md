@@ -14,6 +14,8 @@ pi-forge 给 [Pi](https://github.com/earendil-works/pi) 加了一个可视化工
 
 <!-- MEDIA: editor-overview — PNG 候选。真实编辑器中展示一个有实际用途的预设、内容块／插槽、选中的文本与编译预览；审核素材前不插图片链接。 -->
 
+![代码审查预设：条目、正文编辑与编译预览](assets/readme/zh-CN/editor-overview.png)
+
 ## 功能
 
 ### 编排上下文
@@ -23,6 +25,8 @@ pi-forge 给 [Pi](https://github.com/earendil-works/pi) 加了一个可视化工
 你可以替换 Pi 默认的系统提示词，也可以只在它前面或后面加内容。聊天记录能按角色筛选、限制保留的上下文，或者从模型输入中去掉先前的思考内容，不会改写已存储的聊天记录。
 
 <!-- MEDIA: context-toggle — GIF 候选。只展示一件事：切换 project-context 插槽，右侧预览中对应的段落消失／恢复。固定画面，不缩放，不加字幕。 -->
+
+![开关项目上下文插槽，编译预览中的对应段落随之消失和恢复](assets/readme/zh-CN/context-toggle.gif)
 
 ### 选择工具与处理文本
 
@@ -36,7 +40,7 @@ pi-forge 给 [Pi](https://github.com/earendil-works/pi) 加了一个可视化工
 
 用**指令模式（Instruction mode）**追加或停用会话规则、开关工具，不必换掉整份预设。比如平时只带少量工具，需要查代码时再开启搜索工具。这里改变的是真正可执行的工具集，不只是告诉模型“不要用某个工具”。
 
-在 **Modes** 中创建可复用的定义，在预设的 **Bindings** 中绑定，再从 **Session instructions** 或 `/system-update` 启用。想让 Agent 自己控制，可以为具体绑定打开 `modelCallable` 授权；光把模式放进库里，不会自动授予权限。
+在 **指令模式（Modes）** 中创建可复用的定义，在预设的 **绑定（Bindings）** 中绑定，再从 **会话指令模式（Session instructions）** 或 `/system-update` 启用。想让 Agent 自己控制，可以为具体绑定打开 `modelCallable` 授权；光把模式放进库里，不会自动授予权限。
 
 保存模式不等于启用，修改定义也不会替换会话中已经启用的快照。停用时，会按预设的基础工具集和其他仍启用的模式重新计算；不会抹掉历史、撤回已做的文件修改或中断正在运行的工具。设置方法和生命周期见[指令模式参考](docs/zh-CN/reference/instruction-modes.md)。
 
@@ -51,6 +55,8 @@ pi-forge 给 [Pi](https://github.com/earendil-works/pi) 加了一个可视化工
 
 <!-- MEDIA: draft-diff — PNG 候选。展示一处容易读懂的指令修改，以及相对已保存预设的增删高亮。 -->
 
+![未保存的指令修改与已保存预设的差异](assets/readme/zh-CN/draft-diff.png)
+
 ### 复用你的配置
 
 把模型、思考强度，以及要用哪份预设存成 **Agent Profile**，以后用 `/profile use <id>` 一次应用。预设和 Profile 都可以放在项目里，也可以存到用户全局目录；项目里有同 ID 的配置时，优先用项目里的那份。
@@ -63,6 +69,7 @@ Node.js 需要 **22.19 或更高版本**。0.5.5 支持 Pi **0.87.x**（`>=0.87.
 
 <!-- 发布提示：0.5.5 发布后移除本段；保留下方安装命令。 -->
 > **0.5.5 尚未发布。** 指令模式和可配置默认工具目前需要本地开发版。下方 npm 安装命令装到的仍是 0.5.4，它的功能和 Pi 版本要求与这里不同。
+> 本地构建与加载方式见[开发配置（英文）](docs/development/setup.md#load-the-extension)。
 <!-- END RELEASE NOTE -->
 
 ```bash
