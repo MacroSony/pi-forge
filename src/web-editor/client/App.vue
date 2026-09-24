@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
 import InstructionModeBrowser from "./components/InstructionModeBrowser.vue";
@@ -13,7 +13,12 @@ import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
-let stopContextDiffTabs: (() => void) | undefined;
+let contextDiffTabs: ReturnType<typeof startContextDiffTabs> | undefined;
+async function locateInstruction(target: import("./components/ContextDiffPanel.vue").InstructionLocation): Promise<void> {
+	activeSurface.value = "stacks";
+	await nextTick();
+	contextDiffTabs?.locateInstruction(target);
+}
 let refreshLegacyLocale: (() => void) | undefined;
 const activeSurface = ref<"stacks" | "profiles" | "modes" | "settings">("stacks");
 const hasContributionSettings = ref(false);
@@ -78,7 +83,7 @@ onMounted(async () => {
 				if (!available && activeSurface.value === "settings") activeSurface.value = "stacks";
 			},
 		});
-		stopContextDiffTabs = startContextDiffTabs({
+		contextDiffTabs = startContextDiffTabs({
 			getStackDraft: getLegacyEditorDraft,
 			subscribeStackDraft: subscribeLegacyEditorDraft,
 		});
@@ -93,7 +98,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-	stopContextDiffTabs?.();
+	contextDiffTabs?.stop();
+	contextDiffTabs = undefined;
 	stopContributionTabs?.();
 	stopLegacyEditor?.();
 });
@@ -163,7 +169,7 @@ onUnmounted(() => {
 				<option value="zh-CN">中文</option>
 			</select>
 		</nav>
-		<SessionInstructions />
+		<SessionInstructions @locate="locateInstruction" />
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 

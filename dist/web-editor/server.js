@@ -343,6 +343,13 @@ async function handleRequest(host, token, contributionService, req, res, getCurr
         sendJson(res, 200, { ok: true, state: result.state, choices: result.choices });
         return;
     }
+    if (req.method === "GET" && parts[1] === "instructions" && parts[2] === "preview" && parts.length === 3) {
+        const hostNow = getCurrentHost ? getCurrentHost() : host;
+        sendOperation(res, hostNow.previewInstructions
+            ? hostNow.previewInstructions()
+            : { ok: false, status: 503, error: "Instruction runtime is unavailable." });
+        return;
+    }
     if (req.method === "POST" && parts[1] === "instructions" && parts[2] === "use" && parts.length === 3) {
         const body = await readJsonBody(req);
         host = getCurrentHost ? getCurrentHost() : host;

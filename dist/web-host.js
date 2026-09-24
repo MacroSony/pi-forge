@@ -24,6 +24,50 @@ export function createWebEditorHost(ctx, runtime) {
             }
             return runtime.readInstructions();
         },
+        previewInstructions: () => {
+            if (!runtime.readInstructions) {
+                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            }
+            try {
+                const initial = runtime.readInstructions();
+                if (!initial.ok)
+                    return initial;
+                if (!initial.state.trusted)
+                    return { ok: false, status: 403, error: "Project is not trusted." };
+                if (initial.state.restoring)
+                    return { ok: false, status: 503, error: "Instruction session is restoring." };
+                if (!instructionGuardMatchesContext(ctx, initial.state.guard)) {
+                    return { ok: false, status: 409, error: "Session or branch changed. Refresh and review." };
+                }
+                const target = runtime.getActive();
+                if (!target)
+                    return { ok: false, status: 409, error: "No active preset is selected for instruction preview." };
+                const built = runtime.buildPreview(target);
+                const final = runtime.readInstructions();
+                if (!final.ok)
+                    return final;
+                if (!sameInstructionGuard(initial.state.guard, final.state.guard)
+                    || initial.state.presetRevision !== final.state.presetRevision
+                    || !instructionGuardMatchesContext(ctx, final.state.guard)
+                    || runtime.getActive() !== target) {
+                    return { ok: false, status: 409, error: "Session, branch, instruction state, or active preset changed during preview. Refresh and review." };
+                }
+                return {
+                    ok: true,
+                    state: final.state,
+                    preset: {
+                        selector: formatResourceKey(target.key),
+                        ...(target.stack.name === undefined ? {} : { name: target.stack.name }),
+                    },
+                    text: built.text,
+                    preview: built.preview,
+                    diagnostics: built.diagnostics,
+                };
+            }
+            catch (error) {
+                return { ok: false, status: 503, error: `Instruction preview unavailable: ${error instanceof Error ? error.message : String(error)}` };
+            }
+        },
         readInstructionChoices: () => {
             if (!runtime.readInstructionChoices) {
                 return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
@@ -362,6 +406,13 @@ function profileWriteError(id, result) {
 }
 function modelKey(provider, id) {
     return `${provider}\0${id}`;
+}
+function sameInstructionGuard(a, b) {
+    return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
+}
+function instructionGuardMatchesContext(ctx, guard) {
+    return ctx.sessionManager.getSessionId() === guard.sessionId
+        && ctx.sessionManager.getLeafId() === guard.leafId;
 }
 function resolveStack(runtime, selector) {
     const parsed = parseResourceSelector(selector);

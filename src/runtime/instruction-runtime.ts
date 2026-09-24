@@ -272,6 +272,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 				preset: preset ? { key: preset.key, tools: preset.stack.tools, instructionModes: preset.stack.instructionModes ?? [] } : null, baseline: history.tools });
 			const result: InstructionStateView = {
 				guard: { sessionId, leafId, revision }, trusted, restoring, delivery,
+				...(preset ? { presetRevision: fingerprintJson({ domain: "forge-inspection-preset-v1", key: preset.key, stack: preset.stack }) } : {}),
 				textPresentation: (ctx.model?.compat as { supportsMidConvoSystemMessages?: boolean } | undefined)?.supportsMidConvoSystemMessages === true ? "native" : "user",
 				effectiveTools, active, ...(problem ? { problem } : {}),
 			};

@@ -4,6 +4,9 @@ import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
 import type { InstructionChoice, InstructionStateGuard, InstructionStateMutation, InstructionStateView } from "../../../instruction-state.ts";
 
+const emit = defineEmits<{
+	(e: "locate", target: { activationIds: string[]; guard: InstructionStateGuard; presetRevision?: string }): void;
+}>();
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
@@ -66,6 +69,32 @@ const canUseSelected = computed(() => {
 });
 
 const activeCount = computed(() => state.value?.active?.length ?? 0);
+// Ephemeral observation of this browser's successful guarded action, never a
+// reconstructed history or the Mode definition's requested tool patch.
+const recentChange = ref<{
+	added: string[]; removed: string[]; enabled: number; disabled: number; activationIds: string[];
+} | null>(null);
+function rememberChange(before: InstructionStateView | null, after: InstructionStateView): void {
+	if (!before || before.guard.sessionId !== after.guard.sessionId) return;
+	const previous = new Set(before.effectiveTools), current = new Set(after.effectiveTools);
+	const oldIds = new Set(before.active.map(item => item.activationId));
+	const newIds = new Set(after.active.map(item => item.activationId));
+	const enabled = after.active.filter(item => !oldIds.has(item.activationId));
+	const disabled = before.active.filter(item => !newIds.has(item.activationId));
+	recentChange.value = {
+		added: after.effectiveTools.filter(tool => !previous.has(tool)),
+		removed: before.effectiveTools.filter(tool => !current.has(tool)),
+		enabled: enabled.length, disabled: disabled.length,
+		activationIds: [...enabled, ...disabled].map(item => item.activationId),
+	};
+}
+function locate(activationIds: string[]): void {
+	if (!state.value || isStale.value || isMutating.value) return;
+	const guard = { ...state.value.guard };
+	const presetRevision = state.value.presetRevision;
+	closeDrawer();
+	emit("locate", { activationIds, guard, presetRevision });
+}
 
 function guardsEqual(a: InstructionStateGuard | null | undefined, b: InstructionStateGuard | null | undefined): boolean {
 	if (!a || !b) return false;
@@ -118,6 +147,7 @@ function applyState(newState: InstructionStateView, reqId: number, includesChoic
 	if (reqId !== requestIdSeq) return;
 
 	const guardChanged = !guardsEqual(state.value?.guard, newState.guard);
+	const presetChanged = state.value?.presetRevision !== newState.presetRevision;
 
 	if (pendingResetGuard.value && !guardsEqual(newState.guard, pendingResetGuard.value)) {
 		pendingResetGuard.value = null;
@@ -127,6 +157,7 @@ function applyState(newState: InstructionStateView, reqId: number, includesChoic
 	unavailable.value = false;
 	isStale.value = false;
 
+	if (guardChanged || presetChanged) recentChange.value = null;
 	if (guardChanged && !includesChoices) {
 		availableChoices.value = [];
 		availableLoaded.value = false;
@@ -162,6 +193,7 @@ async function fetchInstructions(forceChoices = false): Promise<void> {
 	} catch (error) {
 		if (!isMounted || reqId !== requestIdSeq) return;
 		isStale.value = true;
+		recentChange.value = null;
 		pendingResetGuard.value = null;
 		if (withChoices) errorMessage.value = error instanceof Error ? error.message : String(error);
 		if (!state.value) unavailable.value = true;
@@ -176,6 +208,8 @@ async function fetchInstructions(forceChoices = false): Promise<void> {
 
 async function executeMutation(mutation: InstructionStateMutation): Promise<void> {
 	if (isMutating.value || !isMounted) return;
+	const before = state.value;
+	recentChange.value = null;
 	// Invalidate an older GET even when this POST fails. Old responses must never
 	// make a stale view actionable again after a failed refresh.
 	const reqId = ++requestIdSeq;
@@ -194,10 +228,12 @@ async function executeMutation(mutation: InstructionStateMutation): Promise<void
 		if (!isMounted || reqId !== requestIdSeq) return;
 		if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
 		applyState(res.state, reqId);
+		rememberChange(before, res.state);
 	} catch (error) {
 		if (!isMounted) return;
 		hasError = true;
 		isStale.value = true;
+		recentChange.value = null;
 		pendingResetGuard.value = null;
 		errorMessage.value = error instanceof Error ? error.message : String(error);
 	} finally {
@@ -218,6 +254,8 @@ async function handleUse(): Promise<void> {
 		revision: state.value.guard.revision,
 	};
 	const { kind, id, fingerprint } = selectedChoice.value;
+	const before = state.value;
+	recentChange.value = null;
 
 	const reqId = ++requestIdSeq;
 	activeReadRequestId = 0;
@@ -237,11 +275,13 @@ async function handleUse(): Promise<void> {
 		if (!isMounted || reqId !== requestIdSeq) return;
 		if (!res?.ok || !res.state) throw new Error(t("instructions.unavailable"));
 		applyState(res.state, reqId);
+		rememberChange(before, res.state);
 		selectedKey.value = "";
 	} catch (error) {
 		if (!isMounted) return;
 		hasError = true;
 		isStale.value = true;
+		recentChange.value = null;
 		pendingResetGuard.value = null;
 		errorMessage.value = error instanceof Error ? error.message : String(error);
 	} finally {
@@ -580,6 +620,26 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 					<div v-if="state?.delivery === 'prepared'" class="delivery-prepared-notice full-width" data-instructions-prepared-notice>
 						{{ t("instructions.deliveryPreparedNote") }}
 					</div>
+                    <section v-if="state" class="instructions-impact" data-instructions-impact>
+                        <strong>{{ t("instructions.effectiveTools") }}</strong>
+                        <div v-if="state.effectiveTools.length" class="tools-list" data-instructions-tools-list>
+                            <span v-for="tool in state.effectiveTools" :key="tool" class="tool-tag"
+                                :class="{ 'impact-added': recentChange?.added.includes(tool) }" data-instructions-tool-tag>
+                                <span v-if="recentChange?.added.includes(tool)" aria-hidden="true">+ </span>{{ tool }}
+                            </span>
+                        </div>
+                        <span v-else data-instructions-tools-none>{{ t("instructions.none") }}</span>
+                        <div v-if="recentChange && !isStale" class="impact-change" data-instructions-recent-change role="status">
+                            <span>{{ t("instructions.lastAction") }}</span>
+                            <span v-if="recentChange.enabled">{{ t("instructions.enabledCount", {count: recentChange.enabled}) }}</span>
+                            <span v-if="recentChange.disabled">{{ t("instructions.disabledCount", {count: recentChange.disabled}) }}</span>
+                            <span v-for="tool in recentChange.added" :key="'add:'+tool" class="impact-added" data-impact-added>+ {{ tool }}</span>
+                            <span v-for="tool in recentChange.removed" :key="'remove:'+tool" class="impact-removed" data-impact-removed>− {{ tool }}</span>
+                            <span v-if="!recentChange.added.length && !recentChange.removed.length">{{ t("instructions.toolsUnchanged") }}</span>
+                            <button v-if="recentChange.activationIds.length" type="button" :disabled="isMutating"
+                                data-locate-recent @click="locate(recentChange.activationIds)">{{ t("instructions.locateChange") }}</button>
+                        </div>
+                    </section>
 					<!-- Active Items List -->
 					<div v-if="state" class="instructions-active-section" data-instructions-active-section>
 						<div v-if="state.active.length === 0" class="no-active-message" data-instructions-empty>
@@ -605,6 +665,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 									</div>
 
 									<div class="item-tools-diff" data-item-tools-diff>
+                                        <span v-if="item.tools?.add?.length || item.tools?.remove?.length" class="declared-tools-label">{{ t("instructions.declaredTools") }}</span>
 										<span
 											v-if="item.tools?.add?.length"
 											class="tool-diff-add"
@@ -629,6 +690,11 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 									</button>
 								</div>
 
+                                <p v-if="item.content.trim()" class="instruction-excerpt" data-item-content-excerpt>{{ item.content }}</p>
+                                <p v-else class="instruction-excerpt muted">{{ t("instructions.noInstructionText") }}</p>
+                                <button type="button" class="locate-instruction" data-item-locate
+                                    :disabled="isStale || isMutating || !state.trusted || state.restoring"
+                                    @click="locate([item.activationId])">{{ t("instructions.locateChange") }}</button>
 								<details class="item-content-details" data-item-content-details>
 									<summary class="content-summary" data-item-content-summary>{{ t("instructions.viewContent") }}</summary>
 									<pre class="item-content-pre" data-item-content-text>{{ item.content }}</pre>
@@ -768,15 +834,7 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 								<span class="meta-label">{{ t("instructions.textPresentation") }}:</span>
 								<span class="meta-value" data-instructions-presentation>{{ presentationLabel(state.textPresentation) }}</span>
 							</div>
-							<div class="meta-item full-width">
-								<span class="meta-label">{{ t("instructions.effectiveTools") }}:</span>
-								<span v-if="state.effectiveTools?.length" class="tools-list" data-instructions-tools-list>
-									<span v-for="tool in state.effectiveTools" :key="tool" class="tool-tag" data-instructions-tool-tag>
-										{{ tool }}
-									</span>
-								</span>
-								<span v-else class="meta-value" data-instructions-tools-none>{{ t("instructions.none") }}</span>
-							</div>
+
 
 						</div>
 
@@ -789,6 +847,17 @@ onBeforeUnmount(() => { drawerDialog.value?.close(); });
 </template>
 
 <style scoped>
+.instructions-impact { border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 8px; background: var(--pane-soft); }
+.instructions-impact .tools-list { flex-wrap: wrap; }
+.instructions-impact .tool-tag, .impact-change > span { overflow-wrap: anywhere; max-width: 100%; }
+.item-tools-diff { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
+.impact-change { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: 12px; }
+.impact-added { color: var(--success); border: 1px solid var(--success); border-radius: 4px; padding: 2px 5px; }
+.impact-removed { color: var(--error); border: 1px solid var(--error); border-radius: 4px; padding: 2px 5px; }
+.instruction-excerpt { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 13px/1.5 ui-monospace, monospace; }
+.declared-tools-label { color: var(--muted); font-size: 11px; }
+.locate-instruction { align-self: flex-start; margin: 0 0 6px; }
+
 .session-instructions {
 	flex: none;
 	background: var(--pane);

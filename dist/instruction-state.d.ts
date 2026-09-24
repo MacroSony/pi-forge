@@ -16,6 +16,8 @@ export interface InstructionChoice {
 }
 export interface InstructionStateView {
     guard: InstructionStateGuard;
+    /** Active loaded Preset fingerprint for inspection freshness, not a write receipt. */
+    presetRevision?: string;
     trusted: boolean;
     restoring: boolean;
     delivery: "none" | "pending" | "prepared";

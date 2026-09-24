@@ -3,7 +3,7 @@ import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import type { ContextDiffView } from "../context-diff-history.ts";
-import type { InstructionAvailableResult, InstructionStateResult } from "../instruction-state.ts";
+import type { InstructionAvailableResult, InstructionStateResult, InstructionStateView } from "../instruction-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
 
 export interface WebEditorStackSummary {
@@ -39,6 +39,7 @@ export interface WebEditorHost {
 	readInstructionChoices?(): InstructionAvailableResult;
 	mutateInstructions?(input: unknown): InstructionStateResult;
 	useInstruction?(input: unknown): InstructionStateResult;
+	previewInstructions?(): WebEditorOperationResult<WebEditorSessionPreview>;
 	getEditorConfig(): { locale: WebEditorLocale };
 	setEditorLocale(locale: WebEditorLocale): WebEditorOperationResult<{ locale: WebEditorLocale }>;
 	listStacks(): WebEditorStackSummary[];
@@ -140,6 +141,12 @@ export interface WebEditorPreviewSection {
 	content: string;
 	/** Native named System sections, including explicit removals (null). */
 	sections?: Record<string, string | null>;
+	/** Read-only instruction projection metadata; not prompt prose or executable state. */
+	instructionUpdate?: {
+		activationIds: string[];
+		kind: "anchor" | "pending" | "checkpoint";
+		throughEventId: string;
+	};
 	/** Recorded transcript declarations, NOT current executable tool selection. */
 	toolChanges?: {
 		added: Array<{ name: string; description?: string; parameters?: unknown }>;
@@ -159,6 +166,14 @@ export interface WebEditorPreview {
 	selectedTools?: string[];
 	totalChars: number;
 	approxTokens: number;
+}
+
+export interface WebEditorSessionPreview {
+	state: InstructionStateView;
+	preset: { selector: string; name?: string };
+	text: string;
+	preview: WebEditorPreview;
+	diagnostics: PromptStackDiagnostic[];
 }
 
 export interface WebEditorPayloadCapture {

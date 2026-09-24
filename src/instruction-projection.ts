@@ -88,6 +88,13 @@ function computeDeltaSections(
 	return hasChanges ? sections : null;
 }
 
+function instructionActivationIds(sections: Record<string, string | null>): string[] {
+	const prefix = "forge-instruction-";
+	return Object.keys(sections)
+		.filter((key) => key.startsWith(prefix))
+		.map((key) => key.slice(prefix.length));
+}
+
 /**
  * Pure instruction projection bridge. Replaces delivery markers with native
  * SystemMessage or fallback UserMessage updates based on event prefixes.
@@ -96,6 +103,11 @@ export function projectInstructionMessages(
 	messages: AgentMessage[],
 	history: InstructionHistory,
 	native: boolean,
+	onUpdate?: (message: AgentMessage, update: {
+		activationIds: string[];
+		kind: "anchor" | "pending" | "checkpoint";
+		throughEventId: string;
+	}) => void,
 ): { messages: AgentMessage[]; throughEventId?: string } {
 	if (!history || typeof history !== "object" || !Array.isArray(history.events)) {
 		throw new Error("Invalid instruction history: events array is required");
@@ -196,6 +208,11 @@ export function projectInstructionMessages(
 			}
 			const checkpointTimestamp = history.events[checkpointIndex].createdAt;
 			checkpointMessage = createProjectedMessage(checkpointSections, checkpointTimestamp, native);
+			onUpdate?.(checkpointMessage, {
+				activationIds: instructionActivationIds(checkpointSections),
+				kind: "checkpoint",
+				throughEventId: history.events[checkpointIndex].eventId,
+			});
 		}
 	}
 
@@ -231,7 +248,13 @@ export function projectInstructionMessages(
 
 		if (delta !== null) {
 			const timestamp = typeof msg.timestamp === "number" ? msg.timestamp : 0;
-			out.push(createProjectedMessage(delta, timestamp, native));
+			const projectedMessage = createProjectedMessage(delta, timestamp, native);
+			out.push(projectedMessage);
+			onUpdate?.(projectedMessage, {
+				activationIds: instructionActivationIds(delta),
+				kind: "anchor",
+				throughEventId: markerDetails.throughEventId,
+			});
 		}
 	}
 
@@ -251,7 +274,15 @@ export function projectInstructionMessages(
 		const nextState = getActiveMap(index);
 		const delta = computeDeltaSections(currentState, nextState);
 		currentState = nextState;
-		if (delta !== null) out.push(createProjectedMessage(delta, history.events[index].createdAt, native));
+		if (delta !== null) {
+			const projectedMessage = createProjectedMessage(delta, history.events[index].createdAt, native);
+			out.push(projectedMessage);
+			onUpdate?.(projectedMessage, {
+				activationIds: instructionActivationIds(delta),
+				kind: "pending",
+				throughEventId: history.events[index].eventId,
+			});
+		}
 	}
 
 	const throughEventId = history.events.length > 0

@@ -6,7 +6,11 @@ export declare function getPiBasePrompt(messages: AgentMessage[], fallback: stri
  * Pure instruction projection bridge. Replaces delivery markers with native
  * SystemMessage or fallback UserMessage updates based on event prefixes.
  */
-export declare function projectInstructionMessages(messages: AgentMessage[], history: InstructionHistory, native: boolean): {
+export declare function projectInstructionMessages(messages: AgentMessage[], history: InstructionHistory, native: boolean, onUpdate?: (message: AgentMessage, update: {
+    activationIds: string[];
+    kind: "anchor" | "pending" | "checkpoint";
+    throughEventId: string;
+}) => void): {
     messages: AgentMessage[];
     throughEventId?: string;
 };

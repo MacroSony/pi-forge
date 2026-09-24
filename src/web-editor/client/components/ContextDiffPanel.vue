@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
 import type { EditorPromptStack, PromptStackDiagnostic } from "../types.ts";
-import type { WebEditorPreview, WebEditorPreviewSection } from "../../types.ts";
+import type { WebEditorSessionPreview, WebEditorPreview, WebEditorPreviewSection } from "../../types.ts";
 import type { ContextDiffView } from "../../../context-diff-history.ts";
 import {
 	diffTurns,
@@ -24,7 +24,12 @@ import { previewSections, previewSectionText, previewToTurnSnapshot } from "../p
 import PreviewSectionBody from "./PreviewSectionBody.vue";
 
 export type ReadingState = "side" | "wide" | "focus";
-export type DockMode = "compiled" | "draft" | "run";
+export type DockMode = "compiled" | "session" | "draft" | "run";
+export interface InstructionLocation {
+	activationIds: string[];
+	presetRevision?: string;
+	guard: import("../../../instruction-state.ts").InstructionStateGuard;
+}
 
 const props = defineProps<{
 	getStackDraft?: () => LegacyEditorDraft | undefined;
@@ -74,7 +79,10 @@ function exitFocus(): void {
 }
 
 function setMode(newMode: DockMode): void {
+	invalidateSessionRequest();
+	locationIds.value = [];
 	mode.value = newMode;
+	if (newMode === "session") void refreshSessionPreview(true);
 }
 
 function returnToEditing(): void {
@@ -90,7 +98,7 @@ function returnToEditing(): void {
 function revealEditor(): void {
 	if (readingState.value === "focus") exitFocus();
 }
-defineExpose({ revealEditor });
+defineExpose({ revealEditor, locateInstruction });
 
 const primaryBoundaryTitle = computed(() => {
 	switch (readingState.value) {
@@ -116,6 +124,8 @@ const primaryBoundaryAria = computed(() => {
 
 const currentTitle = computed(() => {
 	switch (mode.value) {
+		case "session":
+			return t("instructions.sessionContext");
 		case "compiled":
 			return t("diff.compiledDraft");
 		case "draft":
@@ -127,6 +137,8 @@ const currentTitle = computed(() => {
 
 const currentScopeBadge = computed(() => {
 	switch (mode.value) {
+		case "session":
+			return t("instructions.sessionScope");
 		case "compiled":
 			return t("polish.inspector.draftScope");
 		case "draft":
@@ -159,7 +171,92 @@ let previewAbort: AbortController | undefined;
 let contextDiffSequence = 0;
 let contextDiffAbort: AbortController | undefined;
 
-const compiledSections = computed<WebEditorPreviewSection[]>(() => previewSections(preview.value));
+const sessionPreview = ref<WebEditorSessionPreview | null>(null);
+const sessionLoading = ref(false);
+const sessionError = ref("");
+const locationIds = ref<string[]>([]);
+const rootElement = ref<HTMLElement | null>(null);
+let sessionSequence = 0;
+let sessionAbort: AbortController | undefined;
+const displayPreview = computed(() => mode.value === "session"
+	? sessionPreview.value ? { ...sessionPreview.value.preview, selectedTools: sessionPreview.value.state.effectiveTools } : null
+	: preview.value);
+const displayText = computed(() => mode.value === "session" ? sessionPreview.value?.text ?? "" : previewText.value);
+const displayDiagnostics = computed(() => mode.value === "session" ? sessionPreview.value?.diagnostics ?? [] : previewDiagnostics.value);
+const displayLoading = computed(() => mode.value === "session" ? sessionLoading.value : previewLoading.value);
+const displayError = computed(() => mode.value === "session" ? sessionError.value : previewError.value);
+const compiledSections = computed<WebEditorPreviewSection[]>(() => previewSections(displayPreview.value));
+const matchingSections = computed(() => compiledSections.value.filter(matchesLocation));
+function matchesLocation(section: WebEditorPreviewSection): boolean {
+	return mode.value === "session" && !!section.instructionUpdate?.activationIds.some(id => locationIds.value.includes(id));
+}
+function sectionPosition(section: WebEditorPreviewSection): number {
+	return compiledSections.value.indexOf(section) + 1;
+}
+function sameGuard(a: InstructionLocation["guard"], b: InstructionLocation["guard"]): boolean {
+	return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
+}
+function invalidateSessionRequest(): number {
+	sessionAbort?.abort();
+	sessionAbort = undefined;
+	sessionLoading.value = false;
+	return ++sessionSequence;
+}
+async function refreshSessionPreview(force = false, expected?: InstructionLocation): Promise<void> {
+	if (mode.value !== "session" || (!force && (sessionLoading.value || !sessionPreview.value))) return;
+	const sequence = invalidateSessionRequest();
+	const controller = new AbortController();
+	sessionAbort = controller;
+	sessionLoading.value = true;
+	if (force) { sessionPreview.value = null; sessionError.value = ""; }
+	try {
+		// Poll only the cheap revision. Compile the active snapshot on demand/change,
+		// never every poll and never from the editor's potentially unrelated draft.
+		if (!force && sessionPreview.value) {
+			const current = await api<{ state: WebEditorSessionPreview["state"] }>("/api/instructions", { signal: controller.signal });
+			if (sequence !== sessionSequence) return;
+			if (sameGuard(current.state.guard, sessionPreview.value.state.guard)
+				&& current.state.presetRevision === sessionPreview.value.state.presetRevision) return;
+			sessionPreview.value = null;
+		}
+		const next = await api<WebEditorSessionPreview>("/api/instructions/preview", { signal: controller.signal });
+		if (sequence !== sessionSequence) return;
+		if (expected && (!sameGuard(expected.guard, next.state.guard) || expected.presetRevision !== next.state.presetRevision)) throw new Error(t("instructions.locationChanged"));
+		sessionPreview.value = next;
+		sessionError.value = "";
+	} catch (error) {
+		if (controller.signal.aborted || sequence !== sessionSequence) return;
+		sessionPreview.value = null;
+		sessionError.value = error instanceof Error ? error.message : String(error);
+	} finally {
+		if (sequence === sessionSequence) sessionLoading.value = false;
+	}
+}
+async function locateInstruction(target: InstructionLocation): Promise<void> {
+	mode.value = "session";
+	locationIds.value = [...target.activationIds];
+	const request = refreshSessionPreview(true, target);
+	const sequence = sessionSequence;
+	await request;
+	if (sequence !== sessionSequence || mode.value !== "session" || !sessionPreview.value) return;
+	await nextTick();
+	// Scroll the inspector only. Never focus/resize it, scroll the whole page, or
+	// change the resource selection/caret in the editor.
+	const pane = rootElement.value?.querySelector<HTMLElement>(".context-diff-compiled");
+	const block = pane?.querySelectorAll<HTMLElement>(".instruction-location-match").item(matchingSections.value.length - 1);
+	if (pane && block) {
+		let parent = block.parentElement;
+		while (parent && parent !== pane) {
+			if (parent instanceof HTMLDetailsElement) parent.open = true;
+			parent = parent.parentElement;
+		}
+		pane.scrollTop += block.getBoundingClientRect().top - pane.getBoundingClientRect().top - 8;
+	}
+}
+function refreshVisiblePreview(): void {
+	if (mode.value === "session") void refreshSessionPreview(true);
+	else schedulePreviewRefresh();
+}
 
 type PreviewSectionGroup = {
 	key: string;
@@ -234,7 +331,9 @@ onMounted(() => {
 	void refreshContextDiff();
 	pollTimer = window.setInterval(() => {
 		void refreshContextDiff();
-		schedulePollingPreviewRefresh();
+		if (mode.value === "session") {
+			if (document.visibilityState === "visible") void refreshSessionPreview();
+		} else schedulePollingPreviewRefresh();
 	}, 2000);
 });
 
@@ -242,6 +341,7 @@ onUnmounted(() => {
 	if (previewTimer !== undefined) window.clearTimeout(previewTimer);
 	if (pollTimer !== undefined) window.clearInterval(pollTimer);
 	stopDraftSubscription?.();
+	invalidateSessionRequest();
 	invalidatePreviewRequest();
 	invalidateContextDiffRequest();
 	props.onExpandedChanged?.(false);
@@ -492,7 +592,7 @@ function turnLabel(): string {
 </script>
 
 <template>
-	<div class="context-diff-dock" :data-reading="readingState">
+	<div ref="rootElement" class="context-diff-dock" :data-reading="readingState">
 		<!-- V4 Inspector Header with Boundary Buttons -->
 		<div class="context-diff-dock-header">
 			<button
@@ -523,7 +623,7 @@ function turnLabel(): string {
 			<strong class="inspect-title">{{ currentTitle }}</strong>
 			<span class="preview-state scope-badge">{{ currentScopeBadge }}</span>
 			<button
-				v-if="mode !== 'compiled'"
+				v-if="mode === 'draft' || mode === 'run'"
 				id="return-editing"
 				type="button"
 				class="text-btn return-editing-btn"
@@ -535,52 +635,60 @@ function turnLabel(): string {
 
 		<div class="context-diff-mode-tabs" role="tablist" :aria-label="t('diff.dockAria')">
 			<button type="button" :class="{ active: mode === 'compiled' }" role="tab" :aria-selected="mode === 'compiled'" @click="setMode('compiled')">{{ t("tab.preview") }}</button>
+            <button type="button" data-session-context-tab :class="{ active: mode === 'session' }" role="tab" :aria-selected="mode === 'session'" @click="setMode('session')">{{ t("instructions.sessionTab") }}</button>
 			<button type="button" :class="{ active: mode === 'draft' }" role="tab" :aria-selected="mode === 'draft'" @click="setMode('draft')">{{ t("diff.draftTab") }}</button>
 			<button type="button" :class="{ active: mode === 'run' }" role="tab" :aria-selected="mode === 'run'" @click="setMode('run')">{{ t("diff.runTab") }}</button>
 		</div>
 
-		<div v-show="mode === 'compiled'" class="context-diff-compiled" role="tabpanel">
-			<div class="context-diff-panel-head">
+        <div v-if="mode === 'session'" class="session-context-notice" data-session-context-notice>
+                <template v-if="sessionPreview"><strong>{{ sessionPreview.preset.name || sessionPreview.preset.selector }}</strong> · {{ sessionPreview.preset.selector }}<br></template>
+                {{ t("instructions.sessionPreviewNote") }}
+                <div v-if="locationIds.length && sessionPreview" class="location-result" data-location-result>
+                    {{ matchingSections.length ? t("instructions.locationFound", {count: matchingSections.length}) : t("instructions.locationMissing") }}
+                </div>
+            </div>
+        <div v-show="mode === 'compiled' || mode === 'session'" class="context-diff-compiled" role="tabpanel">
+            <div class="context-diff-panel-head">
 				<div class="context-diff-meta">
-					<span v-if="preview" :title="t('diff.compiledMeta', { tokens: preview.approxTokens, chars: preview.totalChars })">{{ t("diff.compiledMeta", { tokens: preview.approxTokens, chars: preview.totalChars }) }}</span>
-					<span v-else-if="previewLoading">{{ t("diff.refreshing") }}</span>
-					<span v-else-if="previewError" class="error">{{ previewError }}</span>
+					<span v-if="displayPreview" :title="t('diff.compiledMeta', { tokens: displayPreview.approxTokens, chars: displayPreview.totalChars })">{{ t("diff.compiledMeta", { tokens: displayPreview.approxTokens, chars: displayPreview.totalChars }) }}</span>
+					<span v-else-if="displayLoading">{{ t("diff.refreshing") }}</span>
+					<span v-else-if="displayError" class="error">{{ displayError }}</span>
 					<span v-else>{{ t("diff.noPreview") }}</span>
 				</div>
-				<button v-if="previewText" type="button" class="context-diff-copy-full" @click="copyPreviewText(previewText)">{{ t("inspector.copyFull") }}</button>
-				<button type="button" class="context-diff-refresh" @click="schedulePreviewRefresh">{{ t("profiles.refresh") }}</button>
+				<button v-if="displayText" type="button" class="context-diff-copy-full" @click="copyPreviewText(displayText)">{{ t("inspector.copyFull") }}</button>
+				<button type="button" class="context-diff-refresh" @click="refreshVisiblePreview">{{ t("profiles.refresh") }}</button>
 			</div>
-			<div v-if="previewDiagnostics.length" class="context-diff-diagnostics">
-				<strong>{{ t("diff.compilerDiagnostics", { count: previewDiagnostics.length }) }}</strong>
-				<div v-for="(diagnostic, index) in previewDiagnostics" :key="index" :class="['context-diff-diagnostic', diagnostic.level]">
+			<div v-if="displayDiagnostics.length" class="context-diff-diagnostics">
+				<strong>{{ t("diff.compilerDiagnostics", { count: displayDiagnostics.length }) }}</strong>
+				<div v-for="(diagnostic, index) in displayDiagnostics" :key="index" :class="['context-diff-diagnostic', diagnostic.level]">
 					{{ diagnostic.level.toUpperCase() }}<template v-if="diagnostic.itemId"> · {{ diagnostic.itemId }}</template>: {{ diagnostic.message }}
 				</div>
 			</div>
-			<details v-if="preview && preview.selectedTools !== undefined" class="preview-selected-tools-panel">
+			<details v-if="displayPreview && displayPreview.selectedTools !== undefined" class="preview-selected-tools-panel">
 				<summary class="selected-tools-head">
-					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count">
-						{{ preview.selectedTools.length === 0
+						{{ displayPreview.selectedTools.length === 0
 							? t("diff.noToolsSelected")
-							: t(preview.selectedTools.length === 1 ? "diff.toolCountOne" : "diff.toolCountMany", { count: preview.selectedTools.length }) }}
+							: t(displayPreview.selectedTools.length === 1 ? "diff.toolCountOne" : "diff.toolCountMany", { count: displayPreview.selectedTools.length }) }}
 					</span>
 				</summary>
-				<p class="selected-tools-note">{{ t("diff.previewSelectedToolsNote") }}</p>
-				<div v-if="preview.selectedTools.length > 0" class="selected-tools-list">
-					<span v-for="tool in preview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
+				<p class="selected-tools-note">{{ mode === 'session' ? t("instructions.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
+				<div v-if="displayPreview.selectedTools.length > 0" class="selected-tools-list">
+					<span v-for="tool in displayPreview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
 				</div>
 			</details>
-			<div v-else-if="preview && preview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
+			<div v-else-if="displayPreview && displayPreview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
 				<div class="selected-tools-head">
-					<span class="selected-tools-title">{{ t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count muted">{{ t("diff.toolSelectionUnknown") }}</span>
 				</div>
-				<p class="selected-tools-note">{{ t("diff.previewSelectedToolsNote") }}</p>
+				<p class="selected-tools-note">{{ mode === 'session' ? t("instructions.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
 			</div>
-			<div v-if="previewError" class="context-diff-error">{{ previewError }}</div>
-			<pre v-else-if="compiledSections.length === 0 && previewText" class="section-text">{{ previewText }}</pre>
+			<div v-if="displayError" class="context-diff-error">{{ displayError }}</div>
+			<pre v-else-if="compiledSections.length === 0 && displayText" class="section-text">{{ displayText }}</pre>
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
-				{{ previewLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
+				{{ displayLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
 			<div v-else class="context-diff-sections">
 				<template v-for="group in previewGroups" :key="group.key">
@@ -589,9 +697,10 @@ function turnLabel(): string {
 							<span class="group-title">{{ groupTitle(group) }}</span>
 						</summary>
 						<div class="context-diff-group-messages">
-							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
+							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'instruction-location-match': matchesLocation(section) }]" open>
 								<summary>
-									<span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
+									<span v-if="mode === 'session'" class="section-position" :title="t('instructions.positionNote')">#{{ sectionPosition(section) }}</span>
+                                    <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 
 									<button
@@ -608,9 +717,10 @@ function turnLabel(): string {
 							</details>
 						</div>
 					</details>
-					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section)]" open>
+					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'instruction-location-match': matchesLocation(section) }]" open>
 						<summary>
-							<span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
+							<span v-if="mode === 'session'" class="section-position" :title="t('instructions.positionNote')">#{{ sectionPosition(section) }}</span>
+                                    <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 
 							<button
@@ -739,6 +849,11 @@ function turnLabel(): string {
 <style src="../inspector-layout.css"></style>
 
 <style scoped>
+.session-context-notice { padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.location-result { color: var(--accent); margin-top: 5px; }
+.context-diff-section.instruction-location-match { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.section-position { font-size: 11px; color: var(--accent); flex: none; }
+
 .context-diff-dock { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; position: static; }
 .context-diff-mode-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
 .context-diff-mode-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 4px 2px; margin-right: 10px; font-size: 12px; }

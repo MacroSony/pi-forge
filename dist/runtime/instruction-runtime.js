@@ -238,6 +238,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
                 preset: preset ? { key: preset.key, tools: preset.stack.tools, instructionModes: preset.stack.instructionModes ?? [] } : null, baseline: history.tools });
             const result = {
                 guard: { sessionId, leafId, revision }, trusted, restoring, delivery,
+                ...(preset ? { presetRevision: fingerprintJson({ domain: "forge-inspection-preset-v1", key: preset.key, stack: preset.stack }) } : {}),
                 textPresentation: ctx.model?.compat?.supportsMidConvoSystemMessages === true ? "native" : "user",
                 effectiveTools, active, ...(problem ? { problem } : {}),
             };

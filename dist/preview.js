@@ -57,7 +57,10 @@ export function buildPreview(ctx, target, options) {
         throw new Error("Active instruction modes require a trusted project. Use /system-update reset to clear them, or trust the project.");
     }
     const native = ctx.model?.compat?.supportsMidConvoSystemMessages === true;
-    const projected = projectInstructionMessages(baseProjected, history, native);
+    const instructionUpdates = new Map();
+    const projected = projectInstructionMessages(baseProjected, history, native, (message, update) => {
+        instructionUpdates.set(message, update);
+    });
     // Match the runtime's untrusted, inactive recovery path without replaying old rules.
     const previewMessages = trusted ? projected.messages : baseProjected.filter(message => !isInstructionDelivery(message));
     const diagnostics = dedupeDiagnostics([target.diagnostics, system.diagnostics, messages.diagnostics]);
@@ -87,6 +90,11 @@ export function buildPreview(ctx, target, options) {
     const systemSection = leadingSystem
         ? previewMessageSection(leadingSystem, "system", "System prompt", "system")
         : previewSection("system", "System prompt", "", undefined, "system");
+    if (leadingSystem) {
+        const instructionUpdate = instructionUpdates.get(leadingSystem);
+        if (instructionUpdate)
+            systemSection.instructionUpdate = instructionUpdate;
+    }
     const messagesToDisplay = leadingSystem ? previewMessages.slice(1) : previewMessages;
     const diffKeyOccurrences = new Map();
     const messageSections = [];
@@ -94,6 +102,9 @@ export function buildPreview(ctx, target, options) {
         const source = originalMessageSources.get(message);
         const isForgeUpdate = !beforeModeProjection.has(message);
         const section = previewMessageSection(message, `message-${index}`, previewMessageTitle(source, index, isForgeUpdate));
+        const instructionUpdate = instructionUpdates.get(message);
+        if (instructionUpdate)
+            section.instructionUpdate = instructionUpdate;
         // Display-only omission: never remove events or mutate the request projection.
         if (isTrulyEmptySystemSection(section))
             continue;

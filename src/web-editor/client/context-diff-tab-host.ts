@@ -9,23 +9,24 @@ import { subscribeEditorView } from "./editor-view-coordinator.ts";
 import { getEditorTab } from "./tab-registry.ts";
 import { createVueContextDiffHost } from "./vue-context-diff-host.ts";
 import type { LegacyEditorDraft } from "./legacy-editor.ts";
-import type { ReadingState } from "./components/ContextDiffPanel.vue";
+import type { ReadingState, InstructionLocation } from "./components/ContextDiffPanel.vue";
 
 export interface ContextDiffTabsDependencies {
 	getStackDraft(): LegacyEditorDraft | undefined;
 	subscribeStackDraft(listener: () => void): () => void;
 }
 
-export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => void {
+export function startContextDiffTabs(deps: ContextDiffTabsDependencies): { stop(): void; locateInstruction(target: InstructionLocation): void } {
+	const noop = { stop() { }, locateInstruction(_target: InstructionLocation) { } };
 	const dockArea = document.getElementById("editorDockArea");
 	const panel = document.getElementById("contextDiffPanel");
 	const status = document.getElementById("status");
-	if (!dockArea || !panel) return () => {};
+	if (!dockArea || !panel) return noop;
 
 	const definition = getEditorTab("preview");
-	if (!definition?.internalDock) return () => {};
+	if (!definition?.internalDock) return noop;
 	const button = document.querySelector<HTMLButtonElement>(`[data-dock-tab="${definition.id}"]`);
-	if (!button) return () => {};
+	if (!button) return noop;
 
 	const dockAreaElement: HTMLElement = dockArea;
 	const panelElement: HTMLElement = panel;
@@ -33,6 +34,7 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 	const statusElement: HTMLElement | null = status;
 
 	let active = false;
+	let disposed = false;
 	let contextDiffHost: ReturnType<typeof createVueContextDiffHost> | undefined;
 
 	function setStatus(text: string, tone = ""): void {
@@ -67,8 +69,9 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		contextDiffHost = undefined;
 	}
 
-	function activate(): void {
-		if (!deps.getStackDraft()) return;
+	function activate(forSession = false): void {
+		if (disposed) return;
+		if (!forSession && !deps.getStackDraft()) return;
 		active = true;
 		setActiveButton(true);
 		dockAreaElement.classList.add("dock-open");
@@ -89,11 +92,11 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 				setStatus,
 				// ReadingState is owned by ContextDiffPanel; the host only reflects
 				// its event in dock CSS through setReadingMode below.
-				setExpanded: () => {},
+				setExpanded: () => { },
 				setReadingMode: (mode) => applyReadingMode(mode),
 			});
+			contextDiffHost.mount(panelElement);
 		}
-		contextDiffHost.mount(panelElement);
 	}
 
 	buttonElement.onclick = (event) => {
@@ -112,9 +115,17 @@ export function startContextDiffTabs(deps: ContextDiffTabsDependencies): () => v
 		}
 	});
 
-	return () => {
-		stopEditorNavigation();
-		buttonElement.onclick = null;
-		clearActiveState();
+	return {
+		stop() {
+			disposed = true;
+			stopEditorNavigation();
+			buttonElement.onclick = null;
+			clearActiveState();
+		},
+		locateInstruction(target) {
+			if (disposed) return;
+			if (!active) activate(true);
+			void contextDiffHost?.locateInstruction(target);
+		},
 	};
 }

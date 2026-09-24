@@ -124,8 +124,8 @@ The web editor provides an expandable **Session instructions** activity panel be
 - **Active modes list:** Lists active instruction modes and manual directives for the current session. Each card provides:
   - **Identity and source:** Activation ID, display name, and resolved source (e.g. `project:review`, `global:review`, or `manual`).
   - **Actor:** Attribution indicating whether the mode was activated by the `user` or an `agent`.
-  - **Frozen snapshot content:** Collapsible preview of the exact literal rule text captured upon activation.
-  - **Tool deltas and effective tools:** Item tool patch deltas (`+add`, `-remove`) alongside the session's overall effective tool selection (`effectiveTools`).
+  - **Frozen snapshot content:** A visible excerpt plus an expandable view of the exact literal rule text captured upon activation.
+  - **Tool adjustments and effective tools:** Cards label configured patches separately from current effective tools. The latest successful action in this browser shows observed net additions/removals; overlapping Modes can leave the effective set unchanged.
 - **Delivery and presentation indicators:**
   - **Delivery status:** Displays `none` (no instruction events recorded yet), `pending` (updates queued for next request), or `prepared` (request context assembled for the current turn). The panel notes that `prepared` indicates prompt context preparation only, not remote model compliance or delivery confirmation.
   - **Text presentation:** Indicates whether instructions are projected as `native` system message sections or attributed `user` timeline updates.
@@ -137,6 +137,7 @@ The web editor provides an expandable **Session instructions** activity panel be
 
 The panel includes a human activation picker section:
 
+- **Session projection (`GET /api/instructions/preview`):** Read-only inspection of the active saved Preset and current mode snapshots, with session/leaf/revision and active-Preset fingerprint checks before and after compilation. The Preview sidecar links actual projected update blocks to activation IDs without modifying prompt messages. Requires a trusted session and active Preset; missing/stale context fails explicitly. This does not prepare a request, synchronize tools, or prove provider delivery/cache reuse.
 - **Resource discovery (`GET /api/instructions/available`):** Pure read-only endpoint returning current session state and available choices categorized into *Library modes (unbound)* and *Current preset (bound)*. Read operations never mutate tool policies or session events.
 - **Explicit pre-activation preview:** Selecting a mode in the dropdown renders an immediate pre-activation preview card displaying:
   - Label, ID, kind badge (`library` or `preset binding`), and short content fingerprint (`#<hash>`).
