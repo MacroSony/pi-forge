@@ -6,6 +6,9 @@
 
 可选包 `@zihanw/pi-forge-subagents` 可以把明确授权的 agent profile 作为独立、干净、一次性的 Pi 进程执行。它在前台运行，并向父对话返回有界报告。
 
+> **默认工具兼容要求：** 使用 `tools.initial` 的预设需要 Forge 0.5.5 开发实现，以及包含本次修复的 subagents 源码。已发布的 subagents 0.5.3 不兼容该字段。配套版本发布前请使用匹配的本地源码；版本与发布门槛见[工具选择兼容说明（英文）](../../reference/subagent-host-port.md#tool-selection-compatibility)。
+
+
 ## 启用 profile
 
 Profile 默认不能委派。请在可信项目的 `.pi/forge/subagents.json` 中逐个启用项目 profile，在用户全局 `~/.pi/forge/subagents.json` 中逐个启用全局 profile；`.pi/forge/config.json.subagents` 仅作为只读兼容来源：

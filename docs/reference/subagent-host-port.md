@@ -40,6 +40,14 @@ Request: `{ profile: string }` — a scoped selector (`reviewer`, `project:revie
 
 Request: `{ profile, task: { text }, access: ForgePromptAccessFacts, backend: ForgeBackendFacts }`. The workspace resolves the profile and stack from its snapshot, filters the client tool catalog through stack tool policy and the access facts, and compiles through the same compilation context as runtime and preview. Response: `{ profileId, model, thinkingLevel, systemPrompt, messages, effectiveToolIds, effectiveToolNames, diagnostics, profileSnapshot, preparedAt }`. `messages` ends with the protected delegated task (`protectedTask: true`, `source: "delegated-task"`); stack-compiled messages carry `source: "prompt-stack"`. The base system prompt is host-owned and intentionally empty for delegated subagents — the prompt stack composes the system prompt.
 
+## Tool-selection compatibility
+
+For Presets containing `tools.initial`, both the host and the optional package must understand the field. The host filters the registered backend catalog to those concrete names (including an explicitly empty set), applies the existing allow/deny ceiling, then applies request access. The optional package independently recomputes this selection when validating the execution plan; `plan.tool-negotiation` must continue to reject disagreement. Omitting `initial` preserves legacy selection.
+
+This requires the Forge **0.5.5 development implementation** together with the **post-0.5.3 optional-package fix**. Published `pi-forge-subagents` 0.5.3 is not compatible with `tools.initial`: it ignores the field during its independent negotiation. Use matching local checkouts until the paired releases are available; the existing broad package dependency range is not a feature-compatibility guarantee.
+
+Release gate: publish the fixed optional package under a new version (planned **0.5.4**) alongside Forge **0.5.5**, raise its Forge dependency floor to **0.5.5**, update lockfiles/dev SDK pins, and rerun the real cross-package and packed execution tests. Development package versions remain 0.5.4 / 0.5.3 until that coordinated release preparation; no package is published by these tests.
+
 ## Fingerprints
 
 `canonicalSubagentJson`, `subagentFingerprint`, `subagentSourceProfileFingerprint`, `subagentPromptStackFingerprint`, and `SUBAGENT_FINGERPRINT_PREFIX` are Forge-owned and vendored in the main package; golden vectors pin byte compatibility with the runtime's canonical serialization. Conversation and execution fingerprints are never host-computed — they are issued by `@zihanw/pi-subagent-runtime` during plan sealing in the optional package.

@@ -38,17 +38,10 @@ const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
 const mode = ref<DockMode>("compiled");
-const readingByTab = ref<Record<DockMode, ReadingState>>({
-	compiled: "side",
-	draft: "focus",
-	run: "focus",
-});
-
-const lastNonFocusByTab = ref<Record<DockMode, "side" | "wide">>({
-	compiled: "side",
-	draft: "wide",
-	run: "wide",
-});
+// Layout belongs to the panel, not its content tab. Switching inspection
+// content must never move the editor or implicitly enter focused reading.
+const readingState = ref<ReadingState>("side");
+const lastNonFocus = ref<"side" | "wide">("side");
 
 function notifyReading(state: ReadingState): void {
 	props.onReadingChanged?.(state);
@@ -56,19 +49,10 @@ function notifyReading(state: ReadingState): void {
 }
 
 function setReadingState(state: ReadingState): void {
-	if (state !== "focus") {
-		lastNonFocusByTab.value[mode.value] = state;
-	}
-	readingByTab.value[mode.value] = state;
+	if (state !== "focus") lastNonFocus.value = state;
+	readingState.value = state;
 	notifyReading(state);
 }
-
-const readingState = computed<ReadingState>({
-	get: () => readingByTab.value[mode.value],
-	set: (val: ReadingState) => {
-		setReadingState(val);
-	},
-});
 
 function handlePrimaryBoundaryClick(): void {
 	if (readingState.value === "side") {
@@ -85,13 +69,12 @@ function enterFocus(): void {
 }
 
 function exitFocus(): void {
-	const fallback = lastNonFocusByTab.value[mode.value] ?? "wide";
+	const fallback = lastNonFocus.value;
 	setReadingState(fallback);
 }
 
 function setMode(newMode: DockMode): void {
 	mode.value = newMode;
-	notifyReading(readingByTab.value[newMode]);
 }
 
 function returnToEditing(): void {

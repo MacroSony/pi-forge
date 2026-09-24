@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import { type LoadedInstructionMode } from "./codecs/instruction-mode.ts";
 import type { LoadedPromptStack } from "./types.ts";
 import type { WebEditorModeOperation, WebEditorModeResult } from "./web-editor/types.ts";
 export interface InstructionWebResources {

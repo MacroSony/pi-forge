@@ -8,6 +8,13 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- Preserve Mode edits made during a pending create/save or subsequent catalog refresh; follow-up saves use the exact write's revision receipt. Cancelling a pending refresh releases its busy state.
+- Persist the original tool baseline for `tools.initial`-only Presets, so rebuilding from a filtered tool set can still restore that baseline when the Preset is disabled.
+- Retain a continuous suffix of ordinary history under `maxChars`, while continuing to preserve necessary instruction control messages beyond the trimming boundary.
+- Keep Preview panel width/focus unchanged when switching Preview, Draft diff and Run diff. Focused reading is entered explicitly.
+- Specify that `tools.initial` delegation requires the matching optional subagents fix; published subagents 0.5.3 cannot validate this selection. See the host-port compatibility and paired-release gate.
+
+
 - **On-demand tool loadouts:** Presets can opt into `tools.initial` (concrete tool names; `[]` means zero defaults). Omission preserves legacy behavior; existing allow/deny remains the hard ceiling. Authorized modes add permitted registered tools, and off/reset recomputes from defaults plus remaining modes. Live execution, Preview and subagent preparation agree; source edits never replace frozen mode snapshots. Older Forge readers do not understand this new selection field.
 - **Source-grouped tool selection and binding UX:** One searchable, collapsible picker batches the current extension/source tools into ordinary literal tool-name arrays; no permanent package bindings or automatic future-tool grants. Preset bindings move out of metadata to a peer **Mode bindings** tab, with overrides/source-effective details collapsed. Default-tool selection is opt-in. Cross-preset draft ownership, authoritative scoped identity, resource response ordering and baseline-vs-mode default seeding are guarded. Saving a mode never activates it; saving an active Preset refreshes that Preset's policy. Catalog refresh preserves literal selections without auto-selecting new package members; payload polling ignores obsolete responses after a newer capture or mutation.
 

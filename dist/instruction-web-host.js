@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { serializeInstructionMode } from "./codecs/instruction-mode.js";
 import { createResourceCatalog } from "./catalog.js";
 import { resolveInstructionMode, resolveInstructionModeBindings } from "./instruction-modes.js";
 import { formatResourceKey, parseResourceSelector, isValidResourceId } from "./resource-identity.js";
@@ -56,7 +58,11 @@ export function instructionModeOperation(ctx, runtime, action, selector, input) 
             if (!result.ok)
                 return mutationFailure(result);
             runtime.readInstructionModes();
-            return { ok: true, changed: formatResourceKey({ scope: input.scope, id: mode.id }) };
+            return {
+                ok: true,
+                changed: formatResourceKey({ scope: input.scope, id: mode.id }),
+                sourceRevision: createHash("sha256").update(serializeInstructionMode(mode)).digest("hex"),
+            };
         }
         const parsed = parseResourceSelector(selector ?? "");
         if (!parsed.ok || !parsed.selector.scope)
@@ -81,7 +87,13 @@ export function instructionModeOperation(ctx, runtime, action, selector, input) 
         if (!result.ok)
             return mutationFailure(result);
         runtime.readInstructionModes();
-        return { ok: true, changed: selector };
+        return {
+            ok: true,
+            changed: selector,
+            ...(action === "save" ? {
+                sourceRevision: createHash("sha256").update(serializeInstructionMode(input.mode)).digest("hex"),
+            } : {}),
+        };
     }
     catch (error) {
         return { ok: false, status: 503, error: error instanceof Error ? error.message : "Instruction mode resources unavailable." };

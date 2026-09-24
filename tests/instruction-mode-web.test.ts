@@ -137,7 +137,9 @@ test("Instruction Mode Web API Suite", async (suite) => {
 			};
 			const createRes = await httpRequest(base, { method: "POST", headers: auth, body: { scope: "project", mode: validMode } });
 			assert.equal(createRes.status, 200);
-			assert.deepEqual(createRes.json(), { ok: true, changed: "project:custom" });
+			assert.equal(createRes.json().ok, true);
+			assert.equal(createRes.json().changed, "project:custom");
+			assert.match(createRes.json().sourceRevision, /^[a-f0-9]{64}$/);
 
 			assert.equal((await httpRequest(base, { method: "POST", headers: auth, body: { scope: "project", mode: validMode } })).status, 409);
 
@@ -167,7 +169,9 @@ test("Instruction Mode Web API Suite", async (suite) => {
 				method: "PUT", headers: auth, body: { mode: { ...validMode, content: "Updated Custom Content" }, expectedSourceRevision: rev1 },
 			});
 			assert.equal(saveRes.status, 200);
-			assert.deepEqual(saveRes.json(), { ok: true, changed: "project:custom" });
+			assert.equal(saveRes.json().ok, true);
+			assert.equal(saveRes.json().changed, "project:custom");
+			assert.match(saveRes.json().sourceRevision, /^[a-f0-9]{64}$/);
 
 			const getRes2 = await httpRequest(`${base}/project:custom`, { headers: auth });
 			assert.equal(getRes2.status, 200);

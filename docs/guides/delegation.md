@@ -6,6 +6,9 @@
 
 The optional `@zihanw/pi-forge-subagents` package executes an explicitly authorized agent profile as a separate, clean, one-shot Pi process. It runs in the foreground and returns a bounded report to the parent conversation.
 
+> **Default-tool compatibility:** Presets using `tools.initial` require the Forge 0.5.5 development implementation and the matching post-0.5.3 subagents fix. Published subagents 0.5.3 is not compatible with this field. Until the paired releases are available, use matching local checkouts; see [tool-selection compatibility](../reference/subagent-host-port.md#tool-selection-compatibility).
+
+
 ## Enable a profile
 
 Profiles are not delegatable by default. Enable each eligible ID in the trusted project's `.pi/forge/subagents.json`:

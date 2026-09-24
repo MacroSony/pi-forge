@@ -21,9 +21,11 @@ export interface WebEditorStackSummary {
 }
 export type WebEditorLocale = "en" | "zh-CN" | "auto";
 export type WebEditorModeOperation = "list" | "get" | "create" | "save" | "delete" | "effective";
-export type WebEditorModeResult = WebEditorOperationResult<WebEditorInstructionModeCollection | WebEditorInstructionModeEntry | WebEditorEffectiveInstructionModes | {
+export interface WebEditorInstructionModeMutation {
     changed: string;
-}>;
+    sourceRevision?: string;
+}
+export type WebEditorModeResult = WebEditorOperationResult<WebEditorInstructionModeCollection | WebEditorInstructionModeEntry | WebEditorEffectiveInstructionModes | WebEditorInstructionModeMutation>;
 export interface WebEditorHost {
     modeOperation?(action: WebEditorModeOperation, selector?: string, input?: unknown): WebEditorModeResult;
     cwd: string;

@@ -9,6 +9,7 @@ import ToolPicker from "./ToolPicker.vue";
 const props = defineProps<{
 	mode: "create" | "edit";
 	sourceEntry?: InstructionModeEntry;
+	mutationBusy?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +33,9 @@ const editTarget = {
 	sourceRevision: props.sourceEntry?.sourceRevision,
 };
 const editSource = props.mode === "edit" ? props.sourceEntry?.mode : undefined;
+// A create becomes an edit after its first successful POST. Keep this local
+// identity/revision independent of collection refreshes in the parent.
+const persisted = ref(props.mode === "edit");
 
 const initial = editSource
 	? editSource
@@ -94,12 +98,12 @@ function snapshot(): string {
 	});
 }
 
-const initialSnapshot = snapshot();
-const dirty = computed(() => snapshot() !== initialSnapshot);
+const savedSnapshot = ref(snapshot());
+const dirty = computed(() => snapshot() !== savedSnapshot.value);
 
 watch(dirty, (isDirty) => {
 	emit("dirtyChange", isDirty);
-});
+}, { flush: "sync" });
 
 function handleBeforeUnload(event: BeforeUnloadEvent): void {
 	if (!dirty.value) return;
@@ -145,6 +149,7 @@ function modeFromDraft(): InstructionMode {
 }
 
 async function saveDraft(): Promise<void> {
+	if (busy.value || props.mutationBusy) return;
 	error.value = "";
 	const trimmedId = draft.id.trim();
 	if (!trimmedId) {
@@ -157,24 +162,27 @@ async function saveDraft(): Promise<void> {
 	}
 
 	const reqId = ++requestId;
+	const submittedSnapshot = snapshot();
+	const submittedAsCreate = !persisted.value;
 	busy.value = true;
 	try {
 		const mode = modeFromDraft();
-		const selector = props.mode === "create"
+		const selector = submittedAsCreate
 			? `${draft.scope}:${mode.id}`
 			: editTarget.selector;
-		if (props.mode === "edit" && !selector) {
+		if (!submittedAsCreate && !selector) {
 			error.value = t("modes.validationError", { message: "The selected mode is no longer available." });
 			return;
 		}
 
-		if (props.mode === "create") {
-			await api("/api/instruction-modes", {
+		let receipt: { sourceRevision?: string };
+		if (submittedAsCreate) {
+			receipt = await api("/api/instruction-modes", {
 				method: "POST",
 				body: { scope: draft.scope, mode },
 			});
 		} else {
-			await api(`/api/instruction-modes/${encodeURIComponent(selector)}`, {
+			receipt = await api(`/api/instruction-modes/${encodeURIComponent(selector)}`, {
 				method: "PUT",
 				body: {
 					mode,
@@ -184,6 +192,15 @@ async function saveDraft(): Promise<void> {
 		}
 
 		if (reqId !== requestId || isUnmounted) return;
+		if (typeof receipt?.sourceRevision !== "string" || !/^[a-f0-9]{64}$/.test(receipt.sourceRevision)) {
+			throw new Error("Mode write did not return its source revision receipt.");
+		}
+		// Advance only the baseline for the exact submitted snapshot. Any typing
+		// that happened while the request was pending remains dirty.
+		editTarget.selector = selector;
+		editTarget.sourceRevision = receipt.sourceRevision;
+		persisted.value = true;
+		savedSnapshot.value = submittedSnapshot;
 		emit("saved", selector, mode.id);
 	} catch (caught) {
 		if (reqId !== requestId || isUnmounted) return;
@@ -220,7 +237,7 @@ async function saveDraft(): Promise<void> {
 			<button id="modeCancelBtn" type="button" :disabled="busy" @click="requestCancel">
 				{{ t("modes.cancel") }}
 			</button>
-			<button id="modeSaveBtn" class="primary" data-icon="✓" type="button" :disabled="busy" @click="saveDraft">
+			<button id="modeSaveBtn" class="primary" data-icon="✓" type="button" :disabled="busy || mutationBusy" @click="saveDraft">
 				{{ t("modes.save") }}
 			</button>
 		</header>
@@ -246,11 +263,12 @@ async function saveDraft(): Promise<void> {
 						v-model="draft.id"
 						:placeholder="t('modes.editorIdPlaceholder')"
 						autocomplete="off"
+						:disabled="busy || mutationBusy || persisted"
 					>
 				</label>
 				<label class="mode-field">
 					<span>{{ t("polish.surfaces.modeScope") }}</span>
-					<select id="modeScope" v-model="draft.scope" :aria-label="t('polish.surfaces.modeScopeAria')">
+					<select id="modeScope" v-model="draft.scope" :aria-label="t('polish.surfaces.modeScopeAria')" :disabled="busy || mutationBusy || persisted">
 						<option value="project">{{ t("modes.scopeProject") }}</option>
 						<option value="global">{{ t("modes.scopeGlobal") }}</option>
 					</select>

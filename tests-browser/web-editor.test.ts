@@ -266,9 +266,8 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".diff-layout-buttons button", { hasText: "Split" }).click();
 		assert.equal(await draftBlock.locator(".git-diff.split .split-header").count(), 1);
 		await page.locator(".diff-layout-buttons button", { hasText: "Unified" }).click();
-		await page.locator("#editorDockArea.dock-focus").waitFor(); // Draft diff initially uses focus.
-		assert.equal(await page.locator("#workspace").isVisible(), false);
-		await page.locator("#focus-toggle").click();
+		assert.equal(await page.locator("#editorDockArea").getAttribute("data-reading"), "side");
+		assert.equal(await page.locator("#workspace").isVisible(), true);
 		await page.locator("#workspace").waitFor({ state: "visible" });
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Run diff" }).click();

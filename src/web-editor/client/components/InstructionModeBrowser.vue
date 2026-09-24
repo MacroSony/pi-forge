@@ -138,6 +138,9 @@ function startEdit(): void {
 
 function handleEditorCancel(): void {
 	mutationId++;
+	// Cancelling invalidates the refresh owner; its finally block must not
+	// clear a newer operation, so release this owner's busy flag here.
+	actionBusy.value = false;
 	interactionVersion++;
 	editorSession++;
 	editorMode.value = undefined;
@@ -166,9 +169,16 @@ async function handleEditorSaved(savedSelector: string, savedId: string): Promis
 		pendingCollection = undefined;
 		selectedSelector.value = savedSelector;
 		actionStatus.value = t(wasCreate ? "modes.created" : "modes.saved", { id: savedId });
-		editorMode.value = undefined;
-		isEditorDirty.value = false;
-		editorSession++;
+		// The editor has already advanced its baseline to the exact write
+		// receipt. Keep it mounted when typing happened during the write or the
+		// follow-up collection GET; that draft must be saved with the receipt,
+		// not with whatever revision the GET happened to observe.
+		const retainEditor = isEditorDirty.value;
+		if (!retainEditor) {
+			editorMode.value = undefined;
+			isEditorDirty.value = false;
+			editorSession++;
+		}
 	} catch (err) {
 		if (isUnmounted || opId !== mutationId || reqId !== requestId) return;
 		actionError.value = err instanceof Error ? err.message : String(err);
@@ -303,6 +313,7 @@ function modeDiagnosticsBadge(entry: InstructionModeEntry): string {
 					v-if="editorMode"
 					:mode="editorMode"
 					:source-entry="editorMode === 'create' ? undefined : selected"
+					:mutation-busy="actionBusy"
 					@cancel="handleEditorCancel"
 					@saved="handleEditorSaved"
 					@dirty-change="(isDirty) => { isEditorDirty = isDirty; }"

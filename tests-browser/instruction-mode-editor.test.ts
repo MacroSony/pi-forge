@@ -331,7 +331,7 @@ ${css}
 					modes.push(newEntry);
 					// Contract: writes return ok; client explicitly GETs collection
 					res.writeHead(200, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ ok: true }));
+					res.end(JSON.stringify({ ok: true, sourceRevision: "a".repeat(64) }));
 				});
 				return;
 			}
@@ -359,7 +359,7 @@ ${css}
 						};
 					}
 					res.writeHead(200, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ ok: true }));
+					res.end(JSON.stringify({ ok: true, sourceRevision: "b".repeat(64) }));
 				});
 				return;
 			}
@@ -675,7 +675,7 @@ ${css}
 					};
 					modes.push(newEntry);
 					res.writeHead(200, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ ok: true }));
+					res.end(JSON.stringify({ ok: true, sourceRevision: "c".repeat(64) }));
 				});
 				return;
 			}

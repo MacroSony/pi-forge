@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { InstructionMode, InstructionModeBinding, LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import { serializeInstructionMode, type InstructionMode, type InstructionModeBinding, type LoadedInstructionMode } from "./codecs/instruction-mode.ts";
 import { createResourceCatalog } from "./catalog.ts";
 import { resolveInstructionMode, resolveInstructionModeBindings } from "./instruction-modes.ts";
 import { formatResourceKey, parseResourceSelector, isValidResourceId } from "./resource-identity.ts";
@@ -59,7 +60,11 @@ export function instructionModeOperation(ctx: ExtensionContext, runtime: Instruc
 			const result = writeInstructionModeFile(ctx.cwd, input.scope, path, mode, { overwrite: false });
 			if (!result.ok) return mutationFailure(result);
 			runtime.readInstructionModes();
-			return { ok: true, changed: formatResourceKey({scope: input.scope, id: mode.id}) };
+			return {
+				ok: true,
+				changed: formatResourceKey({scope: input.scope, id: mode.id}),
+				sourceRevision: createHash("sha256").update(serializeInstructionMode(mode)).digest("hex"),
+			};
 		}
 		const parsed = parseResourceSelector(selector ?? "");
 		if (!parsed.ok || !parsed.selector.scope) return { ok: false, status: 400, error: "A qualified mode selector is required." };
@@ -80,7 +85,13 @@ export function instructionModeOperation(ctx: ExtensionContext, runtime: Instruc
 			: writeInstructionModeFile(ctx.cwd, loaded.scope, loaded.filePath, input.mode as InstructionMode, options);
 		if (!result.ok) return mutationFailure(result);
 		runtime.readInstructionModes();
-		return { ok: true, changed: selector! };
+		return {
+			ok: true,
+			changed: selector!,
+			...(action === "save" ? {
+				sourceRevision: createHash("sha256").update(serializeInstructionMode(input.mode as InstructionMode)).digest("hex"),
+			} : {}),
+		};
 	} catch (error) {
 		return { ok: false, status: 503, error: error instanceof Error ? error.message : "Instruction mode resources unavailable." };
 	}

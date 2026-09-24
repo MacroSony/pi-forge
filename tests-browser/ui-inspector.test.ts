@@ -102,7 +102,7 @@ async function withUiInspectorFixture(
 	}
 }
 
-test("inspection: reading controls, per-tab preference, draft save, and preview geometry", { timeout: 30_000 }, async (t) => {
+test("inspection: reading controls, layout-stable tabs, draft save, and preview geometry", { timeout: 30_000 }, async (t) => {
 	await withUiInspectorFixture(t, async ({ page, cwd }) => {
 		// 1. Open the preview dock
 		await page.locator("#previewTabBtn").click();
@@ -182,29 +182,28 @@ test("inspection: reading controls, per-tab preference, draft save, and preview 
 		assert.equal(await dockArea.getAttribute("data-reading"), "side", "Boundary control must return to side reading mode");
 		assert.ok(await page.locator("#workspace").isVisible(), "Workspace editor must be visible again in side mode");
 
-		// 7. Per-tab preference & first diff focus
-		// Switch to Draft diff tab -> should default to focus mode on first entry
+		// 7. Content tabs preserve panel geometry in every layout, even after
+		// an explicit focus and restore. There are no hidden per-tab preferences.
 		const draftTabBtn = page.locator('.context-diff-mode-tabs button[role="tab"]', { hasText: /Draft diff/i });
-		await draftTabBtn.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "focus", "First entry into Draft diff must default to focus reading mode");
-
-		// Manually change Draft diff to wide mode from its focused first entry.
-		await cycleButton.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "Draft diff changed to wide mode");
-
-		// Switch back to Preview tab -> should restore its previous state (side)
 		const previewTabBtn = page.locator('.context-diff-mode-tabs button[role="tab"]', { hasText: /Preview/i });
-		await previewTabBtn.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "side", "Returning to Preview tab must retain its side preference");
-
-		// Switch back to Draft diff tab -> should retain user's manual selection (wide)
-		await draftTabBtn.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "wide", "Returning to Draft diff tab must retain user's manual wide preference");
-
-		// Switch to Run diff tab -> first entry must default to focus
 		const runTabBtn = page.locator('.context-diff-mode-tabs button[role="tab"]', { hasText: /Run diff/i });
-		await runTabBtn.click();
-		assert.equal(await dockArea.getAttribute("data-reading"), "focus", "First entry into Run diff must default to focus reading mode");
+		for (const layout of ["side", "wide", "focus"] as const) {
+			if (layout === "wide") await cycleButton.click();
+			if (layout === "focus") await focusButton.click();
+			const before = await pane.boundingBox();
+			for (const tab of [draftTabBtn, runTabBtn, previewTabBtn, draftTabBtn]) {
+				await tab.click();
+				assert.equal(await dockArea.getAttribute("data-reading"), layout);
+				assert.equal(await page.locator("#workspace").isVisible(), layout !== "focus");
+				const after = await pane.boundingBox();
+				assert.ok(before && after);
+				assert.equal(after.x, before.x, "Changing content does not move the panel");
+				assert.equal(after.width, before.width, "Changing content does not resize the panel");
+			}
+		}
+		await cycleButton.click();
+		assert.equal(await dockArea.getAttribute("data-reading"), "wide");
+		await cycleButton.click();
 
 		// 8. View switching never dirties clean presets
 		assert.equal(await page.locator("#dirtyBadge.visible").count(), 0, "Inspecting views does not make preset dirty");
