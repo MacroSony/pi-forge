@@ -31,6 +31,8 @@ function smokeScript(imports) {
 	const lines = [
 		"const mainDefault = (await import('@zihanw/pi-forge')).default;",
 		"const port = await import('@zihanw/pi-forge/subagent');",
+		"const commandPort = await import('@zihanw/pi-forge/command-contribution');",
+		"if (typeof commandPort.contributeForgeCommand !== 'function') throw new Error('command contribution export missing');",
 		"if (typeof mainDefault !== 'function') throw new Error('@zihanw/pi-forge default is not a function');",
 		"if (typeof port.ForgeHostClient !== 'function') throw new Error('@zihanw/pi-forge/subagent ForgeHostClient is not exported');",
 	];
@@ -47,6 +49,8 @@ function typeSmoke(dir, entryImports) {
 	const lines = [
 		"import piForge, { registerMacro, registerSlot, type PromptMacroDefinition, type PromptEnvironment, type ForgeExtensionApi } from '@zihanw/pi-forge';",
 		"import { ForgeHostClient, ForgeHost, FORGE_HOST_PORT_VERSION, type ForgePrepareRequest, type ForgeHostTransport, subagentFingerprint } from '@zihanw/pi-forge/subagent';",
+		"import { contributeForgeCommand, FORGE_COMMAND_DISCOVERY_EVENT, type ForgeCommandContribution } from '@zihanw/pi-forge/command-contribution';",
+		"void [contributeForgeCommand, FORGE_COMMAND_DISCOVERY_EVENT]; export type { ForgeCommandContribution };",
 		...entryImports,
 		"const version: 1 = FORGE_HOST_PORT_VERSION;",
 		"void [piForge, registerMacro, registerSlot, ForgeHostClient, ForgeHost, version, subagentFingerprint];",

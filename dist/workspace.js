@@ -64,8 +64,10 @@ export class ForgeWorkspace {
             cwd,
             stacks,
             profiles,
-            // Mode definitions load on explicit library use, never to reconstruct active snapshots.
-            instructionModes: [],
+            // Populate completion/catalog data on explicit workspace reload, not on
+            // keystrokes. Active snapshots are still restored from session history,
+            // never reconstructed from these current library definitions.
+            instructionModes: trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes(),
             activeStackId,
             active,
             lastAppliedProfile: options.lastAppliedProfile ?? this.current?.lastAppliedProfile,

@@ -30,6 +30,30 @@ export type DeactivateBoundResult = {
     ok: false;
     error: string;
 };
+export interface InstructionCompletionMode {
+    id: string;
+    label: string;
+}
+export interface InstructionCompletionBinding {
+    id: string;
+    label: string;
+    modelCallable: boolean;
+}
+export interface InstructionCompletionActivation {
+    id: string;
+    label: string;
+}
+export type InstructionCompletionViewResult = {
+    ok: true;
+    trusted: boolean;
+    capturedAt: string;
+    modes: readonly InstructionCompletionMode[];
+    bindings: readonly InstructionCompletionBinding[];
+    active: readonly InstructionCompletionActivation[];
+} | {
+    ok: false;
+    error: string;
+};
 /** Branch entries are authoritative. This service only coordinates the existing tool owner and delivery. */
 export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorkspace, tools: ToolPolicyRuntime): {
     prepareRestore: (ctx: ExtensionContext) => void;
@@ -42,6 +66,7 @@ export declare function createInstructionRuntime(pi: ExtensionAPI, workspace: Fo
     commitEndAnchors: (ctx: ExtensionContext) => void;
     setAgentBusy: (busy: boolean) => void;
     library: (ctx: ExtensionContext) => string;
+    completionView: (ctx?: ExtensionContext) => InstructionCompletionViewResult;
     status: (ctx: ExtensionContext, includeRuleContent?: boolean) => string;
     change: (ctx: ExtensionContext, command: "add" | "use" | "use-bound" | "off" | "reset", value: string, expectedFingerprint?: string, expectedGuard?: InstructionStateGuard) => string;
     readBindings: (ctx: ExtensionContext) => ReadBindingsResult;

@@ -40,7 +40,7 @@ export interface ProfileCommandDeps {
 
 export function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, compileCycle: CompileCycleState, deps: ProfileCommandDeps): void {
 	pi.registerCommand("profile", {
-		description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget",
+		description: "Manage pi-forge agent profiles: list, use, save, status, preview, validate, reload, forget, help",
 		getArgumentCompletions: (prefix) => profileArgumentCompletions(state, prefix),
 		handler: async (args, ctx) => {
 			await handleProfileCommand(pi, state, compileCycle, deps, args, ctx);
@@ -51,22 +51,33 @@ export function registerProfileCommand(pi: ExtensionAPI, state: ForgeWorkspace, 
 function profileArgumentCompletions(state: ForgeWorkspace, prefix: string) {
 	const parts = prefix.trimStart().split(/\s+/);
 	if (parts.length <= 1 && !prefix.endsWith(" ")) {
-		const commands = ["list", "use", "save", "status", "preview", "validate", "reload", "forget"];
+		const commands = ["list", "use", "save", "status", "preview", "validate", "reload", "forget", "help"];
 		return commands.filter((command) => command.startsWith(parts[0] ?? "")).map((command) => ({ value: command, label: command }));
 	}
 
 	const command = parts[0];
 	if (["use", "preview", "validate"].includes(command)) {
+		if (parts.length > 2) return [];
 		const fragment = parts[1] ?? "";
-		return profileSelectorCandidates(state)
+		return profileSelectorCandidates(state, fragment)
 			.filter((id) => id.startsWith(fragment))
 			.map((id) => ({ value: `${command} ${id}`, label: id }));
 	}
-	if (command === "save" && parts.length > 2) {
-		const fragment = parts.at(-1) ?? "";
-		return "--overwrite".startsWith(fragment) ? [{ value: `${parts.slice(0, -1).join(" ")} --overwrite`, label: "--overwrite" }] : [];
+	if (command === "save") {
+		if (parts.length === 2) {
+			const fragment = parts[1] ?? "";
+			return profileSelectorCandidates(state, fragment)
+				.filter((id) => id.startsWith(fragment))
+				.map((id) => ({ value: `save ${id}`, label: id }));
+		}
+		if (parts.length === 3) {
+			const fragment = parts.at(-1) ?? "";
+			return "--overwrite".startsWith(fragment) && fragment !== "--overwrite"
+				? [{ value: `${parts.slice(0, -1).join(" ")} --overwrite`, label: "--overwrite" }]
+				: [];
+		}
 	}
-	return null;
+	return [];
 }
 
 async function handleProfileCommand(
@@ -81,11 +92,27 @@ async function handleProfileCommand(
 	const [command = "list", ...rest] = trimmed ? trimmed.split(/\s+/) : ["list"];
 
 	switch (command) {
+		case "help":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /profile help", "warning");
+				return;
+			}
+			await showText(ctx, "pi-forge profile help", profileHelp());
+			return;
+
 		case "list":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /profile list", "warning");
+				return;
+			}
 			await showText(ctx, "pi-forge agent profiles", renderProfileList(state, deps, ctx));
 			return;
 
 		case "use":
+			if (rest.length !== 1) {
+				ctx.ui.notify("Usage: /profile use <id|project:id|global:id>", "warning");
+				return;
+			}
 			await useProfile(pi, state, compileCycle, deps, rest[0], ctx);
 			return;
 
@@ -94,18 +121,34 @@ async function handleProfileCommand(
 			return;
 
 		case "status":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /profile status", "warning");
+				return;
+			}
 			await showText(ctx, "pi-forge profile status", renderProfileStatus(pi, state, ctx));
 			return;
 
 		case "preview":
+			if (rest.length !== 1) {
+				ctx.ui.notify("Usage: /profile preview <id|project:id|global:id>", "warning");
+				return;
+			}
 			await previewProfile(pi, state, deps, rest[0], ctx);
 			return;
 
 		case "validate":
+			if (rest.length > 1) {
+				ctx.ui.notify("Usage: /profile validate [id|project:id|global:id]", "warning");
+				return;
+			}
 			await validateProfiles(state, deps, rest[0], ctx);
 			return;
 
 		case "reload":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /profile reload", "warning");
+				return;
+			}
 			await deps.reloadProfiles(ctx);
 			ctx.ui.notify(ctx.isProjectTrusted()
 				? `pi-forge: reloaded ${state.snapshot().profiles.length} agent profile(s); no profile was applied.`
@@ -114,6 +157,10 @@ async function handleProfileCommand(
 			return;
 
 		case "forget":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /profile forget", "warning");
+				return;
+			}
 			forgetProfileProvenance(pi, state, ctx);
 			return;
 
@@ -395,7 +442,7 @@ function renderProfileStatus(pi: ExtensionAPI, state: ForgeWorkspace, ctx: Exten
 	return lines.join("\n");
 }
 
-function profileSelectorCandidates(state: ForgeWorkspace): string[] {
+function profileSelectorCandidates(state: ForgeWorkspace, fragment = ""): string[] {
 	const collidingIds = new Set<string>();
 	const byId = new Map<string, number>();
 	for (const loaded of state.snapshot().profiles) {
@@ -405,10 +452,23 @@ function profileSelectorCandidates(state: ForgeWorkspace): string[] {
 	}
 
 	const candidates: string[] = [];
+	const wantsScope = fragment.includes(":");
 	for (const loaded of state.snapshot().profiles) {
-		candidates.push(collidingIds.has(loaded.profile.id) ? formatResourceKey(loaded.key) : loaded.profile.id);
+		candidates.push(wantsScope || collidingIds.has(loaded.profile.id) ? formatResourceKey(loaded.key) : loaded.profile.id);
 	}
 	return [...new Set(candidates)].sort();
+}
+
+function profileHelp(): string {
+	return [
+		"Usage:",
+		"  /profile list | use <id|project:id|global:id>",
+		"  /profile save <id|global:id> [--overwrite]",
+		"  /profile status | preview <id> | validate [id] | reload | forget | help",
+		"",
+		"validate without an ID checks all loaded profiles. save writes a definition but does not apply or mark it active.",
+		"Completions use the current workspace snapshot; /profile reload refreshes definitions without applying a profile.",
+	].join("\n");
 }
 
 function findProfile(state: ForgeWorkspace, selector: string): LoadedAgentProfile | undefined {

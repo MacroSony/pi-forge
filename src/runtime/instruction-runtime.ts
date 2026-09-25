@@ -50,6 +50,33 @@ export type DeactivateBoundResult =
 	| { ok: true; activationId: string; message: string }
 	| { ok: false; error: string };
 
+export interface InstructionCompletionMode {
+	id: string;
+	label: string;
+}
+
+export interface InstructionCompletionBinding {
+	id: string;
+	label: string;
+	modelCallable: boolean;
+}
+
+export interface InstructionCompletionActivation {
+	id: string;
+	label: string;
+}
+
+export type InstructionCompletionViewResult =
+	| {
+			ok: true;
+			trusted: boolean;
+			capturedAt: string;
+			modes: readonly InstructionCompletionMode[];
+			bindings: readonly InstructionCompletionBinding[];
+			active: readonly InstructionCompletionActivation[];
+		}
+	| { ok: false; error: string };
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return false;
@@ -239,6 +266,63 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			const errors = loaded.diagnostics.filter((d) => d.level === "error").map((d) => d.message);
 			return `${formatResourceKey(loaded.key)}${loaded.mode.name ? ` — ${loaded.mode.name}` : ""}${errors.length ? ` [invalid: ${errors.join("; ")}]` : ""}`;
 		}).join("\n") : "No instruction modes. Place JSON in .pi/forge/instruction-modes/ or ~/.pi/forge/instruction-modes/.";
+	}
+
+	/**
+	 * Completion-only projection. It deliberately consumes the current session
+	 * and the last published workspace snapshot; unlike library()/readBindings()
+	 * it never reloads files or publishes a snapshot on a keystroke.
+	 */
+	function completionView(ctx?: ExtensionContext): InstructionCompletionViewResult {
+		const target = ctx ?? context;
+		if (disposed || restoring || !target || (ctx && !sameContext(context!, ctx))) {
+			return { ok: false, error: "Instruction runtime is not active for this session." };
+		}
+		try {
+			const trusted = target.isProjectTrusted();
+			const snapshot = workspace.snapshot();
+			if (!workspace.snapshotKnown || snapshot.cwd !== target.cwd) return { ok: false, error: "Workspace completion snapshot does not match the current project." };
+			const { state } = view(target);
+			const active = state.active.map((item) => {
+				const source = sourceLabel(item);
+				const name = item.snapshot.name;
+				return {
+					id: item.snapshot.activationId,
+					label: `${source}${name ? ` — ${name}` : ""} [${item.actor}]`,
+				};
+			});
+			if (!trusted) {
+				return { ok: true, trusted: false, capturedAt: snapshot.capturedAt, modes: [], bindings: [], active };
+			}
+
+			const modes = snapshot.instructionModes
+				.filter((loaded) => isUsableInstructionMode(loaded))
+				.map((loaded) => ({
+					id: formatResourceKey(loaded.key),
+					label: `${formatResourceKey(loaded.key)}${loaded.mode.name ? ` — ${loaded.mode.name}` : ""}`,
+				}));
+			const bindings: InstructionCompletionBinding[] = [];
+			const preset = snapshot.active;
+			if (preset && (preset.stack.instructionModes?.length ?? 0) > 0) {
+				const resolved = resolveInstructionModeBindings(
+					createResourceCatalog([...snapshot.instructionModes]),
+					preset.key,
+					preset.stack.instructionModes ?? [],
+				);
+				if (!resolved.ok) return { ok: false, error: resolved.error };
+				for (const binding of resolved.bindings) {
+					const readable = binding.mode.name ?? formatResourceKey(binding.ref);
+					bindings.push({
+						id: binding.id,
+						modelCallable: binding.modelCallable,
+						label: `${binding.id} — ${readable}${binding.modelCallable ? "" : " [human-only]"}`,
+					});
+				}
+			}
+			return { ok: true, trusted: true, capturedAt: snapshot.capturedAt, modes, bindings, active };
+		} catch (error) {
+			return { ok: false, error: `Instruction completion unavailable: ${error instanceof Error ? error.message : String(error)}` };
+		}
 	}
 
 	function modelKey(ctx: ExtensionContext): string {
@@ -910,7 +994,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		agentBusy = false;
 	}
 
-	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, readAvailableInstructions, useInstruction, dispose };
+	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, readAvailableInstructions, useInstruction, dispose };
 }
 
 function sourceLabel(item: ActiveInstruction): string {

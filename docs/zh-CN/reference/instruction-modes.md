@@ -1,8 +1,8 @@
-# 指令模式 (system-update)
+# 指令模式（`/instruction`；`/system-update` 兼容别名）
 
 [中文文档](../README.md) · [English](../../reference/instruction-modes.md)
 
-Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。本文档涵盖模式配置、所有权作用域、CLI 操作、Web 资源编辑、Preset 授权与 Agent 控制、投递模型、状态恢复边界与兼容性限制。
+Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。`/instruction` 是推荐的 CLI 命令名；`/system-update` 保持为完全兼容的别名。本文档涵盖模式配置、所有权作用域、CLI 操作、Web 资源编辑、Preset 授权与 Agent 控制、投递模型、状态恢复边界与兼容性限制。
 
 ## 环境要求与安装
 
@@ -41,11 +41,11 @@ Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词
 
 - **所有权划分：** 模式定义（modes）为可复用资源，归属于项目或全局库；绑定与授权归属于预设（Preset JSON 顶层的 `instructionModes` 数组）；活跃状态与激活项严格归属于会话（Session）。
 - **直接启用 vs 绑定启用：**
-  - 通过 CLI 直接激活（`/system-update use <[scope:]id>`）或 Web 模式库直接启用，创建的是会话中的**未绑定**活动项。
-  - 通过 CLI 绑定激活（`/system-update use-bound <id>`）或 Web 预设绑定启用，创建的是与当前 Preset 关联的**绑定**活动项。
+  - 通过 CLI 直接激活（`/instruction use <[scope:]id>`）或 Web 模式库直接启用，创建的是会话中的**未绑定**活动项。
+  - 通过 CLI 绑定激活（`/instruction use-bound <id>`）或 Web 预设绑定启用，创建的是与当前 Preset 关联的**绑定**活动项。
 - **不可变快照语义：** 激活时捕获不可变快照（包括内容、工具策略、内容指纹）。修改或删除磁盘上的 JSON 文件不会引发活跃会话漂移。
 - **同 Preset 重载 vs 切换 Preset：** 重新加载同一 Preset 保持既有的冻结活动快照；切换 Preset 会自动停用（lifecycle 停用）旧 Preset 关联的绑定项，同时保留手动输入与未绑定的用户规则。
-- **授权撤销行为：** 在 Preset 中撤销授权（将 `modelCallable` 设为 `false`）或删除绑定项，不会追溯抹除已激活的快照；用户通过 CLI（`/system-update off` 或 `/system-update reset`）或 Web 面板停用是标准恢复路径。
+- **授权撤销行为：** 在 Preset 中撤销授权（将 `modelCallable` 设为 `false`）或删除绑定项，不会追溯抹除已激活的快照；用户通过 CLI（`/instruction off` 或 `/instruction reset`）或 Web 面板停用是标准恢复路径。
 - **用户与 Agent 所有权及去重：** 激活项记录归属主体（`user` 或 `agent`）。重复 `use` 已激活的模式具备幂等性，绝不自动在用户与 Agent 之间转移所有权（takeover）。接管必须通过显式关闭后再重新启用。
 
 ## Preset 授权的 Agent 控制
@@ -75,26 +75,29 @@ Agent 的 list/status 回复不复制完整规则正文：list 提供作者填�
 1. 在可信的临时项目中，将预设复制为 `.pi/forge/prompt-stacks/read-first-worker.json`，模式复制为 `.pi/forge/instruction-modes/write-tools.json`。先检查是否已有同名文件，不覆盖自己的资源。仅导入预设不会顺带安装引用的模式。
 2. 用已加载 Forge 的全新 Pi 会话，执行 `/preset reload`，再执行 `/preset use project:read-first-worker`。示例 `autoActivate: false`，绑定明确指向**项目作用域**；放到全局时，模式也须放全局并修改 `ref`。
 3. 没有其他活动模式时，默认工具只有 `read`、`ls` 与 `forge_system_update`；后者是模式管理工具，不是文件写入工具。模型可用 `{ "action": "list" }` 列出授权绑定，以 `{ "action": "use", "id": "write-tools" }` 启用命令／编辑能力，再以 `{ "action": "off", "id": "write-tools" }` 停用自己的激活项。
-4. 在**当前会话**或 `/system-update status` 观察：`read, ls, forge_system_update` → 增加 `bash, edit` → 回到默认集。其他活动模式仍参与计算。若由人类启用，模型不能关闭该人类拥有的激活项，应从界面或 `/system-update off <activation-id>` 停用。
+4. 在**当前会话**或 `/instruction status` 观察：`read, ls, forge_system_update` → 增加 `bash, edit` → 回到默认集。其他活动模式仍参与计算。若由人类启用，模型不能关闭该人类拥有的激活项，应从界面或 `/instruction off <activation-id>` 停用。
 
 `allow` 是许可上限，`initial` 是默认集，`modelCallable: true` 明确允许模型选择该绑定，**不是每次启用都弹出人类审批**。若希望仅人类启用，将它改为 `false`。示例提示词要求任务结束后关闭，但这不是自动生命周期保证；Off 不撤销文件修改，也不终止运行中的工具。**Read-first 不是只读沙箱：** `bash` 能执行任意命令，而不只是写文件；这些配置不提供文件系统／进程隔离。为保持最小风格，替换提示词省略了 Pi 默认的项目上下文、技能和工具指导插槽；需要这些内容时请从默认 Pi mirror 改起。
 
 ## 命令行操作
 
-通过 `/system-update` 管理会话指令：
+通过推荐的 `/instruction` 管理会话指令。`/system-update` 保持为使用相同 handler 和 completions 的兼容别名：
 
 | 命令 | 行为 |
 |---|---|
-| `/system-update list` | 列出项目与全局库中可用的指令模式及其校验状态。 |
-| `/system-update bindings` | 列出当前活跃 Preset 中声明的指令模式绑定及其授权状态。 |
-| `/system-update use <[scope:]id>` | 激活指定的未绑定指令模式（裸 ID 或限定作用域）。直接 use 保持未绑定。 |
-| `/system-update use-bound <id>` | 按绑定 ID 激活当前 Preset 中已绑定的指令模式。 |
-| `/system-update status` | 显示激活模式数量、投递表现形式、投递状态以及当前选中的工具。 |
-| `/system-update off <activation-or-mode-id>` | 通过激活 UUID 或模式 ID 关闭激活的指令模式。 |
-| `/system-update reset` | 关闭当前会话所有激活的指令模式与手动指令（仅限用户）。 |
-| `/system-update add <text>` | 向当前会话追加一条手动字面指令（无工具变更）。 |
+| `/instruction list` | 显式重新发现指令模式库，并列出项目与全局模式及校验状态。 |
+| `/instruction bindings` | 列出当前活跃 Preset 的指令模式绑定，包括人类专用绑定。 |
+| `/instruction use <[scope:]id>` | 激活指定的未绑定指令模式（裸 ID 或限定作用域）。直接 use 保持未绑定。 |
+| `/instruction use-bound <id>` | 按绑定 ID 激活当前 Preset 中已绑定的指令模式。 |
+| `/instruction status` | 显示激活模式数量、投递表现形式、投递状态以及当前选中的工具。 |
+| `/instruction off <activation-or-mode-id>` | 通过激活 UUID 或模式 ID 关闭激活的指令模式。 |
+| `/instruction reset` | 关闭当前会话所有激活的指令模式与手动指令（仅限用户）。 |
+| `/instruction add <text>` | 向当前会话追加一条手动字面指令（无工具变更）。 |
+| `/instruction help` | 显示命令用法与兼容性说明。 |
 
-**零推理成本：** 所有 `/system-update` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态并同步工具策略，操作本身不调用模型推理，不消耗付费 token。活动指令的规则正文仅在随后的真实模型请求中占用输入 token。
+补全使用当前 session 与最近发布的 workspace snapshot，不会在每次按键时扫描资源。需要显式刷新发现时使用 `/instruction list`。`bindings` 仍显示人类专用绑定；`modelCallable: false` 只禁止 Agent 控制，不会把绑定从人类检查或启用列表中过滤掉。
+
+**零推理成本：** 所有 `/instruction` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态并同步工具策略，操作本身不调用模型推理，不消耗付费 token。活动指令的规则正文仅在随后的真实模型请求中占用输入 token。
 
 ## Web 资源编辑
 
@@ -227,7 +230,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 - **`before_agent_start` 注入时机：** `before_agent_start` 阶段强制注入的 System 提示词在 Pi 执行流中仍然晚于 `context_with_system` 生效。
 - **前置扩展上下文改写：** Pi 允许 hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与规范会话投影有唯一的有序对应，否则中止而非猜测（fail-closed）。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
 - **上游缺陷与协议限制：** 上游 Pi 元数据分块及语义截断缺陷（semantic-cut defect）未被修复，压缩检查点位置保持不变。旧会话中的 `custom_message` 载体条目保持原样不进行自动迁移；若对此类会话执行压缩，旧载体仍可能污染摘要输入。不支持也不承诺 OMP（Oh My Pi）。
-- **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/payload` 或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
+- **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/forge payload`（裸 `/payload` 仍兼容）或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
 - **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界。支持追加的 Codex 传输在保留历史没有移除/重复声明时可追加全新工具以保留请求前缀，但不保证命中；移除或同名再声明会回退到当前全量工具表；pi-forge 提供保守的 Provider 托管与缓存预警，不提供权限绕过或缓存保障（不保证零 KV 缓存失效）。
 - **沙盒免责：** 指令模式不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
 
@@ -236,7 +239,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 0.5.5 核心功能源码已在所有规划的开发通道中全量交付：
 
 - 模式基础编解码器、多范围解析、会话事件与不可变快照 Reducer。
-- 人工 CLI 操作集（`/system-update` add、list、bindings、use、use-bound、off、status、reset）。
+- 人工 CLI 操作集（`/instruction` add、list、bindings、use、use-bound、off、status、reset；`/system-update` 保持为别名）。
 - 纯元数据锚点投影机制与编译前序数物化。
 - Web 会话指令活动面板与带守卫的人类启用选择器（`GET /api/instructions/available`, `POST /api/instructions/use`）。
 - Live Preset 绑定在独立的同级“模式绑定”tab 中支持（`instructionModes`），具备有限覆盖、折叠的高级面板及 `modelCallable: true` 显式授权。

@@ -54,7 +54,7 @@ Keep the Pi mirror, require the tools needed for the workflow, strip prior assis
 
 ## Payload lab
 
-Include `active-model` and `date-cwd`, then add compiled regex rules for deterministic redaction or formatting. Pair the stack with `/payload next` or the web editor's capture view to audit exactly what changed.
+Include `active-model` and `date-cwd`, then add compiled regex rules for deterministic redaction or formatting. Pair the stack with `/forge payload next` (or bare `/payload`) or the web editor's capture view to audit exactly what changed. Use `save="path with spaces.json"` when saving a capture; existing files require `--overwrite`.
 
 Redaction is limited to the declared patterns and supported text targets. It is useful for known shapes but is not an exhaustive credential scanner or security boundary.
 

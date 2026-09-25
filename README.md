@@ -36,7 +36,7 @@ Replace Pi's base system prompt, append to it, or prepend to it. History options
 
 **Instruction modes** add or stop session rules and adjust executable tools without switching Presets. A typical use is enabling permitted search tools during code exploration while retaining a smaller default tool set.
 
-Create reusable definitions in **Modes** and configure Preset authorization in its peer **Bindings** tab. In **Current session**, the picker separates unbound library modes from current-Preset bindings; CLI `/system-update use` and `use-bound` make the same distinction. You can explicitly authorize individual bindings for Agent control with `modelCallable`; adding a mode to the library does not grant that permission.
+Create reusable definitions in **Modes** and configure Preset authorization in its peer **Bindings** tab. In **Current session**, the picker separates unbound library modes from current-Preset bindings; CLI `/instruction use` and `use-bound` make the same distinction. `/system-update` remains an exact compatibility alias. You can explicitly authorize individual bindings for Agent control with `modelCallable`; adding a mode to the library does not grant that permission.
 
 Saving a Mode does not activate it, and editing its definition does not replace an already-active snapshot. Turning it off recomputes tools from the Preset's base selection and remaining Modes; it does not erase history, undo file changes, or interrupt running tools. See [Instruction modes](docs/reference/instruction-modes.md) for setup and lifecycle details.
 
@@ -49,13 +49,19 @@ Saving a Mode does not activate it, and editing its definition does not replace 
 - **Preview** compiles the current draft without making a model request.
 - **Draft diff** compares unsaved edits with the saved Preset.
 - **Run diff** compares successive provider turns, with size estimates kept separate from reported token/cache usage when available.
-- **Payload capture** shows a redacted view of the next provider request through the editor or `/payload next`.
+- **Payload capture** shows a redacted view of the next provider request through the editor or `/forge payload next`.
 
 Cache notices also flag timestamp-sensitive macros and estimate the possible prompt-cache impact of Preset/Profile switches. Cache reuse belongs to the SDK/provider, so Mode or tool changes never guarantee a cache hit.
 
 ![An unsaved instruction change compared with the saved Preset](assets/readme/en/edit-draft-diff.gif)
 
-### Reusable configurations
+### Recommended CLI names
+
+Use `/forge ui` for the workspace, `/forge payload` for request-hook capture, and `/instruction` for session instruction modes. `/preset` and `/profile` keep their existing roots. Compatibility entries remain available: `/preset ui` maps to `/forge ui`, `/payload` and `/intercept` arm the next payload capture, and `/system-update` maps to `/instruction`.
+
+`/forge` with no arguments shows help. Command arguments are strict; unknown flags are rejected. `/forge payload next save="path with spaces.json"` accepts an optional save path; existing files require `--overwrite` (which is valid only with `save=<path>`). `cancel` only cancels a pending capture and does not erase capture/history data. Capture occurs at the provider hook, so later plugin shaping may differ from the final wire body.
+
+## Reusable configurations
 
 An **Agent Profile** stores a model, thinking level, and Preset reference. Apply it with `/profile use <id>`. Presets and Profiles have project or global scope; project resources take precedence for matching IDs.
 
@@ -112,9 +118,9 @@ See [patterns and use cases](docs/guides/use-cases.md) for more ways to build on
 
 ## Optional subagents
 
-The experimental `@zihanw/pi-forge-subagents` package lets an agent discover authorized Profiles with `forge_subagent_profiles` and delegate one-shot foreground tasks with `forge_subagent`.
+The matching development `@zihanw/pi-forge-subagents` package contributes the `/forge subagent plan` execution-plan command and lets an agent discover authorized Profiles with `forge_subagent_profiles` and delegate one-shot tasks with `forge_subagent`. The legacy `/subagent` command remains a separate low-level smoke helper.
 
-Profiles must be explicitly enabled. Runs require approval by default; unattended model invocation requires explicit trusted-project authorization. Isolation depends on the selected backend—tool restrictions alone are not an OS sandbox.
+Profiles must be explicitly enabled. `/forge-agent run` always asks for human approval and the selected backend may write; the model-callable `forge_subagent` path is separate and can be unattended only with explicit trusted-project authorization. Isolation depends on the selected backend—tool restrictions alone are not an OS sandbox. Use matching local development sources until the coordinated release; this does not claim a published package pairing.
 
 Read the [delegation guide](docs/guides/delegation.md) before enabling it.
 

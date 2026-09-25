@@ -8,6 +8,7 @@ export type PayloadDisplayTarget = "editor" | "web";
 export interface PayloadState {
     interceptNextProviderPayload: boolean;
     interceptPayloadSavePath?: string;
+    interceptPayloadOverwrite?: boolean;
     interceptPayloadDisplayTarget: PayloadDisplayTarget;
     payloadCaptureArmedAt?: string;
     latestProviderPayloadCapture?: WebEditorPayloadCapture;

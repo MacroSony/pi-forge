@@ -36,7 +36,7 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 **指令模式（Instruction mode）**可以在不切换预设的情况下追加或停用会话规则，并调整可执行工具。典型用途是保留少量默认工具，在探索代码时启用许可范围内的搜索工具。
 
-在 **指令模式（Modes）** 中创建可复用定义，在预设独立的 **绑定（Bindings）** 页签配置授权。**当前会话**的选择器区分未绑定的库模式与当前预设绑定；CLI 的 `/system-update use` 和 `use-bound` 也分别对应这两种操作。想让 Agent 自己控制，可以为具体绑定打开 `modelCallable` 授权；仅将模式加入库中不会自动授予权限。
+在 **指令模式（Modes）** 中创建可复用定义，在预设独立的 **绑定（Bindings）** 页签配置授权。**当前会话**的选择器区分未绑定的库模式与当前预设绑定；CLI 的 `/instruction use` 和 `use-bound` 也分别对应这两种操作。`/system-update` 仍是完全兼容的别名。想让 Agent 自己控制，可以为具体绑定打开 `modelCallable` 授权；仅将模式加入库中不会自动授予权限。
 
 保存模式不等于启用，修改定义也不会替换会话中已经启用的快照。停用时，会按预设的基础工具集和其他仍启用的模式重新计算；不会抹掉历史、撤回已做的文件修改或中断正在运行的工具。设置方法和生命周期见[指令模式参考](docs/zh-CN/reference/instruction-modes.md)。
 
@@ -49,13 +49,19 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 - **预览（Preview）**：编译当前草稿，不发起模型请求。
 - **草稿差异（Draft diff）**：将当前草稿与已保存的预设进行比较。
 - **运行差异（Run diff）**：比对前后两次 provider 请求。大小估算与 provider 返回的 token／cache 用量分开展示，后者在有返回数据时才显示。
-- **请求捕获（Payload capture）**：通过编辑器或 `/payload next`，查看下一次 provider 请求的脱敏版本。
+- **请求捕获（Payload capture）**：通过编辑器或 `/forge payload next`，查看下一次 provider 请求的脱敏版本。
 
 缓存提示会标出容易影响缓存的时间戳宏，也会估算切换预设或 Profile 可能带来的提示词缓存影响。缓存是否复用由 SDK／provider 管理，启停模式或增减工具都不保证命中缓存。
 
 ![未保存的指令修改与已保存预设的差异](assets/readme/zh-CN/edit-draft-diff.gif)
 
-### 配置复用
+### 推荐的 CLI 命令名
+
+推荐使用 `/forge ui` 管理工作区，使用 `/forge payload` 捕获请求 hook，使用 `/instruction` 管理会话指令模式。`/preset` 和 `/profile` 根命令不变。兼容入口仍保留：`/preset ui` 对应 `/forge ui`，`/payload` 与 `/intercept` 会布置下一次 payload 捕获，`/system-update` 对应 `/instruction`。
+
+`/forge` 不带参数时显示帮助。命令参数会严格校验，未知 flag 会被拒绝。`/forge payload next save="path with spaces.json"` 支持可选保存路径；已有文件必须在 `save=<path>` 中显式加 `--overwrite`。`cancel` 只取消待处理的捕获，不删除捕获或历史。捕获发生在 provider hook，因此后续插件改写可能使最终 wire body 不同。
+
+## 配置复用
 
 **Agent Profile** 保存模型、思考强度和预设引用，通过 `/profile use <id>` 应用。预设与 Profile 支持项目和全局作用域；同 ID 时项目资源优先。
 
@@ -113,9 +119,9 @@ Profile 只在应用时更新一次设置。之后手动调整的模型或思考
 
 ## 可选 Subagents
 
-安装实验性可选包 `@zihanw/pi-forge-subagents`，Agent 就可以用 `forge_subagent_profiles` 查看已获授权的 Profile，再通过 `forge_subagent` 派出一次性的前台任务。
+匹配的开发版可选包 `@zihanw/pi-forge-subagents` 提供 `/forge subagent plan` 执行计划命令，也可以让 Agent 用 `forge_subagent_profiles` 查看已获授权的 Profile，再通过 `forge_subagent` 派出一次性任务。旧的 `/subagent` 命令仍是独立的底层 smoke helper。
 
-对应的 Profile 要先明确启用，运行默认需要审批。想让模型免逐次审批调用，需要在可信项目里明确授权。隔离能力取决于所选 backend；工具限制不等于操作系统沙箱。
+`/forge-agent run` 始终请求人类审批，所选 backend 可能写文件；模型可调用的 `forge_subagent` 是独立路径，只有可信项目明确授权后才可无人值守。隔离能力取决于所选 backend；工具限制不等于操作系统沙箱。配套发布前请使用匹配的本地开发源码；这里不声称已有发布包配对兼容。
 
 启用前先看[委派指南](docs/zh-CN/guides/delegation.md)。
 

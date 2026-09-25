@@ -10,6 +10,7 @@ export function createPayloadState() {
 export function clearPayloadState(state) {
     state.interceptNextProviderPayload = false;
     state.interceptPayloadSavePath = undefined;
+    state.interceptPayloadOverwrite = undefined;
     state.interceptPayloadDisplayTarget = "editor";
     state.payloadCaptureArmedAt = undefined;
     state.latestProviderPayloadCapture = undefined;

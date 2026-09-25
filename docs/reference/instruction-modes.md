@@ -1,8 +1,8 @@
-# Instruction modes (system-update)
+# Instruction modes (`/instruction`; `/system-update` compatibility alias)
 
 [Documentation](../README.md) · [中文](../zh-CN/reference/instruction-modes.md)
 
-Pi-forge introduces instruction modes: session-scoped prompt directives paired with dynamic tool selection. This reference details configuration, CLI usage, Web editing, Agent controls, delivery models, recovery boundaries, and compatibility limits.
+Pi-forge introduces instruction modes: session-scoped prompt directives paired with dynamic tool selection. `/instruction` is the canonical CLI name; `/system-update` remains an exact compatibility alias. This reference details configuration, CLI usage, Web editing, Agent controls, delivery models, recovery boundaries, and compatibility limits.
 
 ## Requirements and installation
 
@@ -41,11 +41,11 @@ Instruction modes are JSON files stored in:
 
 - **Owner scopes:** Definitions (modes) are reusable resources stored in project or global libraries. Authorizations and bindings belong to Presets (top-level `instructionModes` array in the Preset JSON). Active state and activations belong strictly to Sessions.
 - **Direct vs. bound use:**
-  - Direct activation via CLI (`/system-update use <[scope:]id>`) or Web library activation creates an *unbound* session activation.
-  - Bound activation via CLI (`/system-update use-bound <id>`) or Web preset binding activation creates a *preset-bound* session activation tied to the active Preset.
+  - Direct activation via CLI (`/instruction use <[scope:]id>`) or Web library activation creates an *unbound* session activation.
+  - Bound activation via CLI (`/instruction use-bound <id>`) or Web preset binding activation creates a *preset-bound* session activation tied to the active Preset.
 - **Immutable snapshot semantics:** Activation captures an immutable snapshot (`content`, `tools`, `fingerprint`). Modifying or deleting mode files on disk does not mutate already active session snapshots.
 - **Same-Preset reload vs. switching:** Reloading the same Preset retains immutable active snapshots. Switching Presets automatically retires (lifecycle-deactivates) old bound activations while retaining manual and unbound user rules.
-- **Revocation behavior:** Revoking a binding's authorization (`modelCallable: false`) or removing the binding from the Preset does not retroactively erase active snapshots; human CLI (`/system-update off` or `/system-update reset`) or Web panel deactivation is the recovery path.
+- **Revocation behavior:** Revoking a binding's authorization (`modelCallable: false`) or removing the binding from the Preset does not retroactively erase active snapshots; human CLI (`/instruction off` or `/instruction reset`) or Web panel deactivation is the recovery path.
 - **User vs. Agent ownership and deduplication:** Activations record actor attribution (`user` vs `agent`). Repeated `use` of an already active mode is idempotent and never performs an automatic owner takeover between user and agent. Takeover requires an explicit deactivation and reactivation cycle.
 
 ## Preset-authorized Agent controls
@@ -75,26 +75,29 @@ A minimal paired example: [Preset](../../examples/read-first-worker-prompt-stack
 1. In a trusted scratch project, copy the Preset to `.pi/forge/prompt-stacks/read-first-worker.json` and the mode to `.pi/forge/instruction-modes/write-tools.json`. Check for existing files first; do not overwrite your own resources. Importing the Preset alone does not install its referenced mode.
 2. Start a fresh Pi session with Forge loaded, run `/preset reload`, then `/preset use project:read-first-worker`. The example has `autoActivate: false` and uses a **project-scoped** binding; a global copy needs a global mode and an updated `ref`.
 3. With no other active modes, defaults are `read`, `ls`, and `forge_system_update`. The latter is a mode-management tool, not a file-writing tool. The model can list authorized bindings with `{ "action": "list" }`, enable commands/edits with `{ "action": "use", "id": "write-tools" }`, then stop its own activation with `{ "action": "off", "id": "write-tools" }`.
-4. Observe `read, ls, forge_system_update` → plus `bash, edit` → defaults again in **Current session** or `/system-update status`. Other active modes still participate. If a human enabled the mode instead, the model cannot turn that human-owned activation off; stop it from the UI or `/system-update off <activation-id>`.
+4. Observe `read, ls, forge_system_update` → plus `bash, edit` → defaults again in **Current session** or `/instruction status`. Other active modes still participate. If a human enabled the mode instead, the model cannot turn that human-owned activation off; stop it from the UI or `/instruction off <activation-id>`.
 
 `allow` is the ceiling; `initial` selects defaults; `modelCallable: true` explicitly authorizes this binding without a new human approval prompt on each use. Change it to `false` if you want human-only activation. Off is requested by the sample prompt, not automatically enforced at task completion. It neither undoes changes nor terminates running tools. **Read-first is not a read-only sandbox:** `bash` can execute arbitrary commands, not just write files; these settings provide no filesystem/process isolation. This deliberately minimal replacement prompt omits Pi's normal project-context, skill and guidance slots; fork the default Pi mirror when you need them.
 
 ## Commands
 
-Manage active instructions through `/system-update`:
+Manage active instructions through the canonical `/instruction` command. `/system-update` remains an exact compatibility alias with the same handler and completions:
 
 | Command | Behavior |
 |---|---|
-| `/system-update list` | List available modes in project and global libraries with validation status. |
-| `/system-update bindings` | List instruction mode bindings declared in the active Preset with authorization status. |
-| `/system-update use <[scope:]id>` | Select and activate an unbound library mode (bare ID or qualified selector). |
-| `/system-update use-bound <id>` | Activate a Preset binding by ID as a human; `modelCallable` is not required. |
-| `/system-update status` | Show active mode count, presentation model, delivery state, and selected tools. |
-| `/system-update off <activation-or-mode-id>` | Deactivate an active mode by activation UUID or mode ID. |
-| `/system-update reset` | Deactivate all active instruction modes and manual directives (user only). |
-| `/system-update add <text>` | Append a manual literal instruction rule to the active session without tool changes. |
+| `/instruction list` | Explicitly reload the instruction-mode library and list available modes with validation status. |
+| `/instruction bindings` | List instruction mode bindings declared in the active Preset, including human-only bindings. |
+| `/instruction use <[scope:]id>` | Select and activate an unbound library mode (bare ID or qualified selector). |
+| `/instruction use-bound <id>` | Activate a Preset binding by ID as a human; `modelCallable` is not required. |
+| `/instruction status` | Show active mode count, presentation model, delivery state, and selected tools. |
+| `/instruction off <activation-or-mode-id>` | Deactivate an active mode by activation UUID or mode ID. |
+| `/instruction reset` | Deactivate all active instruction modes and manual directives (user only). |
+| `/instruction add <text>` | Append a manual literal instruction rule to the active session without tool changes. |
+| `/instruction help` | Show command usage and compatibility notes. |
 
-**No inference cost:** All `/system-update` commands and Web activity panel actions execute locally. They update internal session state and synchronize tool policies without starting model inference or consuming API tokens for the operation itself. Instruction text consumes input tokens on subsequent model requests when inference occurs.
+Completions use the current session and last published workspace snapshot. They do not perform discovery on every keystroke. Run `/instruction list` when an explicit discovery refresh is needed. Human-only bindings remain in `bindings`; `modelCallable: false` prevents Agent control but does not filter the binding from human inspection or activation.
+
+**No inference cost:** All `/instruction` commands and Web activity panel actions execute locally. They update internal session state and synchronize tool policies without starting model inference or consuming API tokens for the operation itself. Instruction text consumes input tokens on subsequent model requests when inference occurs.
 
 ## Web resource editing
 
@@ -166,7 +169,7 @@ The panel includes a human activation picker section:
 
 - **Visibility-based polling with zero inference:** The web client quietly polls `GET /api/instructions` every 3 seconds only while visible (`document.visibilityState === "visible"`), on window focus, or via manual refresh. Catalog reads (`/api/instructions/available`) happen on workspace entry, explicit refresh and mutation follow-up, not every status poll. Unchanged background checks do not toggle loading/disable controls. The session projection follows semantic state changes and ignores late responses after leaving. All queries are local reads with zero LLM inference cost.
 - **Manual reconciliation on error or conflict:** Errors, stale state, or 409 Conflicts mark the view as stale and require manual review. Mutations do not blindly retry.
-- **Project trust requirement:** Modifying session instructions requires an explicitly trusted project (`isProjectTrusted() === true`). Untrusted sessions reject mutations with `403 Forbidden`; CLI recovery (`/system-update reset`) remains available.
+- **Project trust requirement:** Modifying session instructions requires an explicitly trusted project (`isProjectTrusted() === true`). Untrusted sessions reject mutations with `403 Forbidden`; CLI recovery (`/instruction reset`, with `/system-update` retained as an alias) remains available.
 - **State guard and lifecycle protection:** Mutations enforce derived guards (`sessionId`, `leafId`, `revision`). Unmounted or disposed runtimes return `503 Service Unavailable`.
 
 ### Local developer testing and host reload
@@ -227,7 +230,7 @@ Active state is derived deterministically from session events and delivery curso
 - **Timing with `before_agent_start`:** Any forced System prompt injection via `before_agent_start` continues to execute later than `context_with_system`.
 - **Preceding extension message rewrites:** Pi permits context hooks to rewrite messages. When visible metadata anchors or unanchored events need positioning, Forge requires a unique ordered alignment with the canonical session projection and fails closed if arbitrary preceding rewrites break alignment. Pi may persist queued custom messages absent from a tool follow-up: Forge permits only uniquely alignable custom-message omissions, ignores their regenerated envelope timestamps, and preserves incoming objects without restoring omitted dialogue. A preceding rewrite can therefore conflict with this locator; moving it later does not guarantee safe composition. Broad plugin, warming, and automatic-overflow compatibility remain unverified.
 - **Upstream defect status and protocol limits:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched and remain unfixed upstream. Compaction checkpoint placement is unchanged. Legacy sessions containing old `custom_message` carriers remain untouched without automatic disk migration; if compacted, old carriers may still contaminate summarizer input. Oh My Pi (OMP) is not supported or promised.
-- **System prompt getters:** `ctx.getSystemPrompt()` and SDK getters return Pi's raw base prompt, not Forge's compiled request. Inspect compiled requests via `/payload` or Run context diffs. Forge does not claim to synchronize SDK getters. Extensions returning a full `systemPrompt` in lifecycle hooks cause forced projection conflicts and are unsupported.
+- **System prompt getters:** `ctx.getSystemPrompt()` and SDK getters return Pi's raw base prompt, not Forge's compiled request. Inspect compiled requests via `/forge payload` (bare `/payload` remains compatible) or Run context diffs. Forge does not claim to synchronize SDK getters. Extensions returning a full `systemPrompt` in lifecycle hooks cause forced projection conflicts and are unsupported.
 - **Provider-managed tool transport and prompt caching:** Tool transport serialization and prompt prefix cache reuse are downstream provider-managed. Tool policy additions/removals, fallback formatting, and compaction alter prompt boundaries. For compatible Codex transports, clean first-time tool additions can retain request prefixes; removals or same-name redeclarations anywhere in retained history switch to full-current-tool serialization. Provider cache hits are not guaranteed. Pi-forge issues conservative provider-managed cache warnings and makes no permission bypass or caching guarantees (zero KV cache invalidation is not guaranteed).
 - **Sandbox disclaimer:** Instruction modes provide no OS-level sandboxing or process isolation. The demo `review.json` removes `bash`, `powershell`, `write`, and `edit`, but does not block external MCP tools or subagents. Configure tool removals matching your specific execution tools.
 
@@ -236,7 +239,7 @@ Active state is derived deterministically from session events and delivery curso
 The 0.5.5 core functional implementation is delivered in source across all planned lanes:
 
 - Foundation codecs, scoped discovery, semantic events, and immutable snapshot reducer.
-- Human CLI commands (`/system-update` add, list, bindings, use, use-bound, off, status, reset).
+- Human CLI commands (`/instruction` add, list, bindings, use, use-bound, off, status, reset; `/system-update` remains an alias).
 - Formal plain metadata delivery anchor projection with pre-compilation ordinal materialization.
 - Web Session instructions activity panel and guarded human activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`).
 - Live Preset bindings (`instructionModes`) in dedicated peer Mode bindings tab, with finite overrides, collapsed advanced view, and opt-in `modelCallable: true`.

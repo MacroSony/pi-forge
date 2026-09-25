@@ -18,6 +18,11 @@
 			"import": "./dist/subagent/index.js",
 			"default": "./dist/subagent/index.js"
 		},
+		"./command-contribution": {
+			"types": "./dist/command-contribution/index.d.ts",
+			"import": "./dist/command-contribution/index.js",
+			"default": "./dist/command-contribution/index.js"
+		},
 		"./ui-contribution": {
 			"types": "./dist/ui-contribution/index.d.ts",
 			"import": "./dist/ui-contribution/index.js",

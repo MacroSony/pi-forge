@@ -2,9 +2,9 @@
 
 [Documentation](../README.md)
 
-pi-forge is pre-1.0. This document defines the intentional integration surfaces of the 0.5.0 line.
+pi-forge is pre-1.0. This document defines the intentional integration surfaces of the 0.5 development line.
 
-## The four intentional entry points
+## The five intentional entry points
 
 `check-package` enforces this allowlist; nothing else is importable from the package.
 
@@ -72,6 +72,26 @@ import {
 
 The experimental generic Settings integration surface. Optional packages contribute recursively validated, JSON-compatible schemas and values over the Pi event bus; pi-forge owns only the renderer and web proxy. Providers own validation and persistence, may resolve operations asynchronously, and receive an abort signal tied to provider generation so stale requests can stop before side effects. The full contract is documented in the [UI contribution port reference](ui-contribution-port.md).
 
+### 5. `@zihanw/pi-forge/command-contribution`: Forge child-command contribution
+
+```ts
+import {
+  FORGE_COMMAND_DISCOVERY_EVENT,
+  contributeForgeCommand,
+} from "@zihanw/pi-forge/command-contribution";
+import type {
+  ForgeCommandContribution,
+  ForgeCommandDiscovery,
+  ForgeCommandEvents,
+} from "@zihanw/pi-forge/command-contribution";
+```
+
+This is a local, synchronous discovery surface for contributing one child command below the main `/forge` root. A contribution supplies callback metadata (`name`, `description`, `handler`, and optional argument completions); `contributeForgeCommand` returns an explicit unsubscribe function. Discovery is an in-process callback exchange, not an RPC, authorization boundary, execution sandbox, singleton registry, or persistent format. The main package owns the sole `/forge` root. Reserved names are rejected and duplicate child contributors fail closed rather than being selected arbitrarily.
+
+The optional subagent package can use this surface for `/forge subagent plan`, while its backend policy remains separate: `/forge-agent run` retains mandatory human approval and a selected backend may write; model-callable `forge_subagent` unattended authorization is a different path.
+
+This new subpath is intentional source for the current development line. Use matching DEVELOPMENT builds of the main and optional packages until the coordinated release and package/peer-floor bumps are made; this documentation does not claim that the subpath is published or compatible with an older main package.
+
 ## Event bus contracts (no import entry point)
 
 Optional cosmetic consumers integrate over the Pi event bus instead of importing the package:
@@ -83,7 +103,7 @@ These channels carry only plain JSON scalars. They are not `@zihanw/pi-forge` im
 ## Compatibility policy
 
 - **Stable** surfaces (root factory, macro/slot registration) preserve source compatibility within the documented release range unless a changelog entry announces a breaking release.
-- **Experimental** surfaces (the `/subagent` and `/ui-contribution` ports) are typed, tested, and documented, but may change deliberately as integration experience exposes missing semantics.
+- **Experimental** surfaces (the `/subagent`, `/ui-contribution`, and `/command-contribution` ports) are typed and documented, but may change deliberately as integration experience exposes missing semantics. The command-contribution source is development-only pending the coordinated release and version/floor bumps.
 - Everything not listed above is internal and may change without notice. In particular: no `src/*` subpath aliases exist, `./examples/*` is not an import surface (examples ship as browsable files), and removed 0.4 surfaces (the execution contract re-exports, loader/profile/catalog helpers) now live either nowhere or in `@zihanw/pi-forge-subagents`.
 
 ## Removed in 0.5.0

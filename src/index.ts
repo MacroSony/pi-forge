@@ -1,3 +1,4 @@
+import { registerForgeCommand } from "./forge-command.ts";
 import { createInstructionRuntime } from "./runtime/instruction-runtime.ts";
 import { registerInstructionCommand } from "./instruction-command.ts";
 import { registerInstructionTool } from "./instruction-tool.ts";
@@ -22,8 +23,8 @@ import { createPayloadState } from "./payload-state.ts";
 /**
  * Intentional public surface (0.5.0): the default Pi extension factory plus
  * the trusted-extension API (`registerMacro`/`registerSlot` and their contract
- * types). Everything else is internal; the only other entry point is
- * `@zihanw/pi-forge/subagent`, the versioned host port.
+ * types). Other intentional entries are the /subagent and /ui-contribution ports
+ * and the local /command-contribution contract. Everything else is internal.
  */
 export {
 	registerMacro,
@@ -174,7 +175,8 @@ export default function piForge(pi: ExtensionAPI) {
 	registerPayloadRequestHandler(pi, payloadState, () => currentActive());
 	registerInstructionCommand(pi, instructions);
 	registerInstructionTool(pi, instructions);
-	registerPayloadCommands(pi, payloadState);
+	const payloadCommand = registerPayloadCommands(pi, payloadState);
+	registerForgeCommand(pi, { openWebEditor: webEditorRuntime.open, stopWebEditor: webEditorRuntime.stop }, payloadCommand);
 	registerPresetCommand(pi, workspace, compileCycle, {
 		selectedActiveId: stackRuntime.selectedActiveId,
 		setActive: stackRuntime.setActive,

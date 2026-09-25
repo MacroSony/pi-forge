@@ -207,6 +207,60 @@ export function createInstructionRuntime(pi, workspace, tools) {
             return `${formatResourceKey(loaded.key)}${loaded.mode.name ? ` — ${loaded.mode.name}` : ""}${errors.length ? ` [invalid: ${errors.join("; ")}]` : ""}`;
         }).join("\n") : "No instruction modes. Place JSON in .pi/forge/instruction-modes/ or ~/.pi/forge/instruction-modes/.";
     }
+    /**
+     * Completion-only projection. It deliberately consumes the current session
+     * and the last published workspace snapshot; unlike library()/readBindings()
+     * it never reloads files or publishes a snapshot on a keystroke.
+     */
+    function completionView(ctx) {
+        const target = ctx ?? context;
+        if (disposed || restoring || !target || (ctx && !sameContext(context, ctx))) {
+            return { ok: false, error: "Instruction runtime is not active for this session." };
+        }
+        try {
+            const trusted = target.isProjectTrusted();
+            const snapshot = workspace.snapshot();
+            if (!workspace.snapshotKnown || snapshot.cwd !== target.cwd)
+                return { ok: false, error: "Workspace completion snapshot does not match the current project." };
+            const { state } = view(target);
+            const active = state.active.map((item) => {
+                const source = sourceLabel(item);
+                const name = item.snapshot.name;
+                return {
+                    id: item.snapshot.activationId,
+                    label: `${source}${name ? ` — ${name}` : ""} [${item.actor}]`,
+                };
+            });
+            if (!trusted) {
+                return { ok: true, trusted: false, capturedAt: snapshot.capturedAt, modes: [], bindings: [], active };
+            }
+            const modes = snapshot.instructionModes
+                .filter((loaded) => isUsableInstructionMode(loaded))
+                .map((loaded) => ({
+                id: formatResourceKey(loaded.key),
+                label: `${formatResourceKey(loaded.key)}${loaded.mode.name ? ` — ${loaded.mode.name}` : ""}`,
+            }));
+            const bindings = [];
+            const preset = snapshot.active;
+            if (preset && (preset.stack.instructionModes?.length ?? 0) > 0) {
+                const resolved = resolveInstructionModeBindings(createResourceCatalog([...snapshot.instructionModes]), preset.key, preset.stack.instructionModes ?? []);
+                if (!resolved.ok)
+                    return { ok: false, error: resolved.error };
+                for (const binding of resolved.bindings) {
+                    const readable = binding.mode.name ?? formatResourceKey(binding.ref);
+                    bindings.push({
+                        id: binding.id,
+                        modelCallable: binding.modelCallable,
+                        label: `${binding.id} — ${readable}${binding.modelCallable ? "" : " [human-only]"}`,
+                    });
+                }
+            }
+            return { ok: true, trusted: true, capturedAt: snapshot.capturedAt, modes, bindings, active };
+        }
+        catch (error) {
+            return { ok: false, error: `Instruction completion unavailable: ${error instanceof Error ? error.message : String(error)}` };
+        }
+    }
     function modelKey(ctx) {
         return JSON.stringify([ctx.model?.provider, ctx.model?.id, ctx.model?.compat?.supportsMidConvoSystemMessages === true]);
     }
@@ -885,7 +939,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
         restoredTools = undefined;
         agentBusy = false;
     }
-    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, readAvailableInstructions, useInstruction, dispose };
+    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, useBound, deactivateBound, executeAgentTool, readState, mutateState, readAvailableInstructions, useInstruction, dispose };
 }
 function sourceLabel(item) {
     return item.snapshot.source.kind === "manual" ? "manual" : formatResourceKey(item.snapshot.source.key);

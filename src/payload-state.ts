@@ -10,6 +10,7 @@ export type PayloadDisplayTarget = "editor" | "web";
 export interface PayloadState {
 	interceptNextProviderPayload: boolean;
 	interceptPayloadSavePath?: string;
+	interceptPayloadOverwrite?: boolean;
 	interceptPayloadDisplayTarget: PayloadDisplayTarget;
 	payloadCaptureArmedAt?: string;
 	latestProviderPayloadCapture?: WebEditorPayloadCapture;
@@ -29,6 +30,7 @@ export function createPayloadState(): PayloadState {
 export function clearPayloadState(state: PayloadState): void {
 	state.interceptNextProviderPayload = false;
 	state.interceptPayloadSavePath = undefined;
+	state.interceptPayloadOverwrite = undefined;
 	state.interceptPayloadDisplayTarget = "editor";
 	state.payloadCaptureArmedAt = undefined;
 	state.latestProviderPayloadCapture = undefined;

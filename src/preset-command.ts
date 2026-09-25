@@ -1,3 +1,4 @@
+import { handleForgeUi } from "./forge-command.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { isDisabledPromptStackId, promptStackReadDirs } from "./loader.ts";
 import { resolveResourceSelector } from "./catalog.ts";
@@ -27,35 +28,41 @@ export function registerPresetCommand(
 	deps: PresetCommandDeps,
 ): void {
 	pi.registerCommand("preset", {
-		description: "Manage pi-forge presets: list, use, preview, validate, reload, ui",
-		getArgumentCompletions: (prefix) => {
-			const parts = prefix.trimStart().split(/\s+/);
-			if (parts.length <= 1 && !prefix.endsWith(" ")) {
-				const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "migrate-stacks", "ui"];
-				return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
-			}
-			const first = parts[0];
-			if (["use", "preview", "validate"].includes(first)) {
-				const fragment = parts[1] ?? "";
-				const ids = ["none", ...stackSelectorCandidates(workspace)];
-				return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
-			}
-			if (first === "ui" && parts.length <= 2) {
-				const fragment = parts[1] ?? "";
-				const subs = ["stop", "restart"];
-				return subs.filter((s) => s.startsWith(fragment)).map((s) => ({ value: `ui ${s}`, label: s }));
-			}
-			if (first === "migrate-stacks") {
-				const fragment = parts[parts.length - 1] ?? "";
-				const flags = ["--dry-run", "--overwrite", "--delete-legacy"];
-				return flags.filter((flag) => flag.startsWith(fragment)).map((flag) => ({ value: `${parts.slice(0, -1).join(" ")} ${flag}`.trim(), label: flag }));
-			}
-			return null;
-		},
+		description: "Manage pi-forge presets: list, use, preview, validate, reload, ui, help",
+		getArgumentCompletions: (prefix) => presetArgumentCompletions(workspace, prefix),
 		handler: async (args, ctx) => {
 			await handlePresetCommand(workspace, compileCycle, deps, args, ctx);
 		},
 	});
+}
+
+function presetArgumentCompletions(workspace: ForgeWorkspace, prefix: string) {
+	const parts = prefix.trimStart().split(/\s+/);
+	if (parts.length <= 1 && !prefix.endsWith(" ")) {
+		const commands = ["list", "use", "preview", "validate", "diagnostics", "reload", "status", "migrate-stacks", "ui", "help"];
+		return commands.filter((cmd) => cmd.startsWith(parts[0] ?? "")).map((cmd) => ({ value: cmd, label: cmd }));
+	}
+	const first = parts[0];
+	if (["use", "preview", "validate"].includes(first)) {
+		if (parts.length > 2) return [];
+		const fragment = parts[1] ?? "";
+		const ids = stackSelectorCandidates(workspace, fragment, first === "use");
+		return ids.filter((id) => id.startsWith(fragment)).map((id) => ({ value: `${first} ${id}`, label: id }));
+	}
+	if (first === "ui") {
+		if (parts.length > 2) return [];
+		const fragment = parts[1] ?? "";
+		const subs = ["stop", "restart", "help"];
+		return subs.filter((s) => s.startsWith(fragment)).map((s) => ({ value: `ui ${s}`, label: s }));
+	}
+	if (first === "migrate-stacks") {
+		if (parts.length > 2 && parts.some((part, index) => index > 0 && part !== "" && !part.startsWith("--"))) return [];
+		const fragment = parts.at(-1) ?? "";
+		const flags = ["--dry-run", "--overwrite", "--delete-legacy"];
+		return flags.filter((flag) => flag.startsWith(fragment) && !parts.slice(1, -1).includes(flag))
+			.map((flag) => ({ value: `${parts.slice(0, -1).join(" ")} ${flag}`.trim(), label: flag }));
+	}
+	return [];
 }
 
 async function handlePresetCommand(
@@ -69,27 +76,40 @@ async function handlePresetCommand(
 	const [command = "list", ...rest] = trimmed ? trimmed.split(/\s+/) : ["list"];
 
 	switch (command) {
+		case "help":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /preset help", "warning");
+				return;
+			}
+			await showText(ctx, "pi-forge preset help", presetHelp());
+			return;
+
 		case "list":
 		case "status":
+			if (rest.length) {
+				ctx.ui.notify(`Usage: /preset ${command}`, "warning");
+				return;
+			}
 			await showText(ctx, "pi-forge presets", renderStackList(workspace, ctx));
 			return;
 
 		case "reload":
+			if (rest.length) {
+				ctx.ui.notify("Usage: /preset reload", "warning");
+				return;
+			}
 			await deps.reloadStacks(ctx, deps.selectedActiveId());
 			ctx.ui.notify(`pi-forge: reloaded ${workspace.snapshot().stacks.length} preset(s).`, "info");
 			return;
 
-		case "ui": {
-			const sub = rest[0];
-			if (sub === "stop") {
-				await deps.stopWebEditor(ctx);
-				return;
-			}
-			await deps.openWebEditor(ctx, sub === "restart" ? "restart" : "open");
-			return;
-		}
+		case "ui":
+			return handleForgeUi(rest.join(" "), ctx, deps, "/preset ui");
 
 		case "use": {
+			if (rest.length !== 1) {
+				ctx.ui.notify("Usage: /preset use <id|none|off|project:id|global:id>", "warning");
+				return;
+			}
 			const id = rest[0];
 			if (!id) {
 				ctx.ui.notify("Usage: /preset use <id|none|project:id|global:id>", "warning");
@@ -115,6 +135,10 @@ async function handlePresetCommand(
 		}
 
 		case "preview": {
+			if (rest.length > 1) {
+				ctx.ui.notify("Usage: /preset preview [id|project:id|global:id]", "warning");
+				return;
+			}
 			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
 				ctx.ui.notify(rest[0] ? `Unknown preset: ${rest[0]}` : "No active preset.", "warning");
@@ -125,6 +149,10 @@ async function handlePresetCommand(
 		}
 
 		case "validate": {
+			if (rest.length > 1) {
+				ctx.ui.notify("Usage: /preset validate [id|project:id|global:id]", "warning");
+				return;
+			}
 			const target = rest[0] ? findStack(workspace, rest[0]) : workspace.snapshot().active;
 			if (!target) {
 				ctx.ui.notify(rest[0] ? `Unknown preset: ${rest[0]}` : "No active preset.", "warning");
@@ -135,12 +163,21 @@ async function handlePresetCommand(
 		}
 
 		case "diagnostics": {
+			if (rest.length) {
+				ctx.ui.notify("Usage: /preset diagnostics", "warning");
+				return;
+			}
 			await showText(ctx, "pi-forge diagnostics", renderCurrentDiagnostics(workspace, compileCycle));
 			return;
 		}
 
 		case "migrate-stacks": {
+			const allowedFlags = new Set(["--dry-run", "--overwrite", "--delete-legacy"]);
 			const flags = new Set(rest);
+			if (flags.size !== rest.length || rest.some((flag) => !allowedFlags.has(flag))) {
+				ctx.ui.notify("Usage: /preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]", "warning");
+				return;
+			}
 			const dryRun = flags.has("--dry-run");
 			if (!ctx.isProjectTrusted() && !dryRun) {
 				ctx.ui.notify("pi-forge: project is not trusted; refusing to migrate presets.", "warning");
@@ -212,7 +249,7 @@ function renderCurrentDiagnostics(workspace: ForgeWorkspace, compileCycle: Compi
 	return lines.join("\n");
 }
 
-function stackSelectorCandidates(workspace: ForgeWorkspace): string[] {
+function stackSelectorCandidates(workspace: ForgeWorkspace, fragment = "", includeDisabled = false): string[] {
 	const stacks = workspace.snapshot().stacks;
 	const collidingIds = new Set<string>();
 	const byId = new Map<string, number>();
@@ -223,10 +260,27 @@ function stackSelectorCandidates(workspace: ForgeWorkspace): string[] {
 	}
 
 	const candidates: string[] = [];
+	const wantsScope = fragment.includes(":");
 	for (const loaded of stacks) {
-		candidates.push(collidingIds.has(loaded.stack.id) ? formatResourceKey(loaded.key) : loaded.stack.id);
+		const qualified = formatResourceKey(loaded.key);
+		if (wantsScope || collidingIds.has(loaded.stack.id)) candidates.push(qualified);
+		else candidates.push(loaded.stack.id);
 	}
+	if (includeDisabled && !wantsScope) candidates.push("none", "off");
 	return [...new Set(candidates)].sort();
+}
+
+function presetHelp(): string {
+	return [
+		"Usage:",
+		"  /preset list | status | use <id|none|off|project:id|global:id>",
+		"  /preset preview [id] | validate [id] | diagnostics | reload",
+		"  /preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]",
+		"  /preset ui [stop|restart] | help",
+		"",
+		"validate without an ID checks the active preset only. preview without an ID previews the active preset.",
+		"Completions use the current workspace snapshot; /preset reload explicitly refreshes preset definitions.",
+	].join("\n");
 }
 
 export function findStack(workspace: ForgeWorkspace, selector: string): LoadedPromptStack | undefined {
