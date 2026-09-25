@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1553,3 +1553,56 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 		},
 	);
 });
+
+// Exercise the shipped examples without replacing their defaults or binding schema.
+for (const native of [true, false]) {
+	test(`read-first worker example: authorized on-demand tools (${native ? "native" : "fallback"})`, async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "pi-forge-read-first-example-"));
+		let harness: Awaited<ReturnType<typeof createInstructionAgentControlHarness>> | undefined;
+		try {
+			const root = join(cwd, ".pi", "forge");
+			mkdirSync(join(root, "prompt-stacks"), { recursive: true });
+			mkdirSync(join(root, "instruction-modes"), { recursive: true });
+			const presetSource = readFileSync(new URL("../examples/read-first-worker-prompt-stack.json", import.meta.url), "utf8");
+			const modeSource = readFileSync(new URL("../examples/instruction-modes/write-tools.json", import.meta.url), "utf8");
+			const { parsePromptStack } = await import("../src/codecs/prompt-stack.ts");
+			const { parseInstructionMode } = await import("../src/codecs/instruction-mode.ts");
+			assert.deepEqual(parsePromptStack(presetSource, "read-first-worker.json", "project").diagnostics, []);
+			assert.deepEqual(parseInstructionMode(modeSource, "write-tools.json", "project").diagnostics, []);
+			writeFileSync(join(root, "prompt-stacks", "read-first-worker.json"), presetSource);
+			writeFileSync(join(root, "instruction-modes", "write-tools.json"), modeSource);
+			harness = await createInstructionAgentControlHarness({ cwd, native, initialTools: [], allowedTools: ["read", "forge_system_update", "bash", "edit"] });
+			assert.deepEqual(harness.getActiveToolNames(), [], "example does not auto-activate");
+			await harness.prompt("/preset use project:read-first-worker");
+			const base = ["forge_system_update", "read"];
+			const enabled = ["bash", "edit", ...base].sort();
+			assert.deepEqual(harness.getActiveToolNames().sort(), base);
+			assert.equal(harness.streamContexts.length, 0, "human activation invokes no model");
+			for (const action of ["use", "off"] as const) {
+				harness.setResponses([{ toolCalls: [{ name: "forge_system_update", args: { action, id: "write-tools" } }] }, "Done."]);
+				await harness.prompt(`${action} the authorized write-tools binding`);
+				const last: import("@earendil-works/pi-ai").TranscriptContext = harness.streamContexts.at(-1)!;
+				assert.deepEqual(harness.getActiveToolNames().sort(), action === "use" ? enabled : base);
+				assert.deepEqual(getCurrentTools(last.messages).map(t => t.name).sort(), action === "use" ? enabled : base);
+				assert.equal(findLatestToolResult(last.messages)?.isError, false);
+				if (action === "use") {
+					const event: ReturnType<typeof readInstructionSession>["events"][number] = readInstructionSession(harness.session as any).events[0];
+					assert.equal(event.actor, "agent");
+					assert.equal(event.op, "activate");
+					assert.ok(JSON.stringify(last.messages).includes(JSON.parse(modeSource).content));
+				} else if (native) {
+					assert.ok(!getCurrentSystemPrompt(last.messages).includes(JSON.parse(modeSource).content));
+				} else {
+					assert.match(JSON.stringify(last.messages), /Removed system prompt section/);
+				}
+			}
+			assert.deepEqual(getCurrentTools(harness.streamContexts[0].messages).map(t => t.name).sort(), base);
+			assert.equal(harness.streamContexts.length, 4, "only deliberate local fake-provider turns");
+			assert.equal(harness.fetchAttempts, 0);
+			assert.deepEqual(harness.toolExecutions, [], "no shell/edit or fake tools executed");
+		} finally {
+			await harness?.dispose();
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+}

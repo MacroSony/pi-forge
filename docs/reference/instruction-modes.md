@@ -6,7 +6,7 @@ Pi-forge introduces instruction modes: session-scoped prompt directives paired w
 
 ## Requirements and installation
 
-- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim; development package version remains 0.5.4; release version bump decision pending between 0.5.5 or 0.6).
+- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim; development package version remains 0.5.4; target release 0.5.5, version bump pending).
 - **Project trust:** Activating instruction modes, preset bindings, or manual directives requires a trusted project (`isProjectTrusted()`).
 - **Compatibility:** Configurations utilizing `tools.initial` require a Forge version with this support; older Forge versions may ignore `initial`, so configurations are not downgrade-compatible.
 
@@ -39,7 +39,7 @@ Instruction modes are JSON files stored in:
 
 ## Ownership scopes and lifecycle
 
-- **Owner scopes:** Definitions (modes) are reusable resources stored in project or global libraries. Authorizations and bindings belong to Presets (`instructionModes` array in Preset metadata). Active state and activations belong strictly to Sessions.
+- **Owner scopes:** Definitions (modes) are reusable resources stored in project or global libraries. Authorizations and bindings belong to Presets (top-level `instructionModes` array in the Preset JSON). Active state and activations belong strictly to Sessions.
 - **Direct vs. bound use:**
   - Direct activation via CLI (`/system-update use <[scope:]id>`) or Web library activation creates an *unbound* session activation.
   - Bound activation via CLI (`/system-update use-bound <id>`) or Web preset binding activation creates a *preset-bound* session activation tied to the active Preset.
@@ -67,6 +67,17 @@ Preset `instructionModes` bindings support autonomous Agent activation when expl
   - Disposed, restoring, or cross-session re-entry requests fail closed immediately.
 
 Agent list/status replies intentionally omit full rule bodies: list returns authored descriptions and effects; status reports activity metadata. This avoids duplicating request-only instructions into ordinary tool history and later summaries. Human CLI/Web inspection still displays the complete frozen content. Genuine dialogue and authored descriptions are not scrubbed.
+
+### Read-first Worker
+
+A minimal paired example: [Preset](../../examples/read-first-worker-prompt-stack.json) and [Write tools mode](../../examples/instruction-modes/write-tools.json). Use the matching 0.5.5-development build; older published Forge may ignore `tools.initial`.
+
+1. In a trusted scratch project, copy the Preset to `.pi/forge/prompt-stacks/read-first-worker.json` and the mode to `.pi/forge/instruction-modes/write-tools.json`. Check for existing files first; do not overwrite your own resources. Importing the Preset alone does not install its referenced mode.
+2. Start a fresh Pi session with Forge loaded, run `/preset reload`, then `/preset use project:read-first-worker`. The example has `autoActivate: false` and uses a **project-scoped** binding; a global copy needs a global mode and an updated `ref`.
+3. With no other active modes, defaults are `read` and `forge_system_update`. The latter is a mode-management tool, not a file-writing tool. The model can list authorized bindings with `{ "action": "list" }`, enable commands/edits with `{ "action": "use", "id": "write-tools" }`, then stop its own activation with `{ "action": "off", "id": "write-tools" }`.
+4. Observe `read, forge_system_update` → plus `bash, edit` → defaults again in **Current session** or `/system-update status`. Other active modes still participate. If a human enabled the mode instead, the model cannot turn that human-owned activation off; stop it from the UI or `/system-update off <activation-id>`.
+
+`allow` is the ceiling; `initial` selects defaults; `modelCallable: true` explicitly authorizes this binding without a new human approval prompt on each use. Change it to `false` if you want human-only activation. Off is requested by the sample prompt, not automatically enforced at task completion. It neither undoes changes nor terminates running tools. **Read-first is not a read-only sandbox:** `bash` can execute arbitrary commands, not just write files; these settings provide no filesystem/process isolation. This deliberately minimal replacement prompt omits Pi's normal project-context, skill and guidance slots; fork the default Pi mirror when you need them.
 
 ## Commands
 
@@ -109,7 +120,7 @@ In the Preset editor, instruction mode bindings are configured under the dedicat
 - **Collapsed advanced section:** Overrides and source-effective preview are collapsed under an advanced section to keep the primary binding list clear.
 - **Finite overrides:**
   - **Content override:** Choose between *None (use base content)*, *Replace* (`content`), or *Append* (`appendContent`, separated by two newlines).
-  - **Tool overrides:** Independently set `tools.add` and `tools.remove` to *Omitted (keep base)*, *Explicit empty []* (clears base list), or *Custom tool list* (with integrated tool picker).
+  - **Tool overrides:** Independently choose *Inherit* (omit the field) or *Custom override* (literal list, including explicit `[]` to clear the source list), with the integrated tool picker.
   - Arbitrary fields, scripts, or inheritance chains cannot be authored.
 - **Source vs. effective preview:** Side-by-side comparison displays source content/tools alongside effective content/tools, resolved through the same server resolver (`resolveInstructionModeBindings`) as runtime activation.
 - **Stale-save guard:** Preset saves enforce a `sourceRevision` check against disk bytes whenever bindings are present or modified, rejecting stale overwrites (409 Conflict), including when external edits added bindings.
@@ -235,7 +246,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
 - Conservative provider-managed prompt cache warnings; compatible Codex additional-tool delivery can preserve prefixes for new names when retained history has no removals/redeclarations; tool removal/redeclaration falls back to the current full tool list (not guaranteed cache hits); no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Full parent verification is pending across Node and browser test suites; parent updates summary after acceptance. Package version remains 0.5.4 with release version bump pending (0.5.5 or maybe 0.6); min SDK 0.87 unchanged (`>=0.87.0 <0.88.0`); release, git push, and host reload (`/reload`) are separate user-authorized actions.
+- Local build and full Node/browser/package verification passed at the 2026-09-24 UI closeout (commit `89c6ba2`); this is not remote-provider acceptance or publication. The target release is 0.5.5; development package metadata remains 0.5.4 pending coordinated release preparation. Pi `>=0.87.0 <0.88.0` remains required. Publishing, git push and host reload are separate user-authorized actions.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

@@ -33,6 +33,9 @@ for (const required of [
 	"docs/README.md",
 	"docs/development/release.md",
 	"docs/reference/commands.md",
+	"examples/read-first-worker-prompt-stack.json",
+	"examples/instruction-modes/write-tools.json",
+	...["en", "zh-CN"].flatMap(locale => ["editor-overview-v3.png", "context-composition.gif", "mode-tools.gif", "edit-draft-diff.gif"].map(name => `assets/readme/${locale}/${name}`)),
     ...["en", "zh-CN"].flatMap(locale => ["editor-overview.png", "context-toggle.gif", "draft-diff.png"].map(name => `assets/readme/${locale}/${name}`)),
 ]) {
 	if (!paths.has(required)) failures.push(`missing required package entry: ${required}`);

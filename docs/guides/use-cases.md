@@ -44,6 +44,10 @@ Allow only `read`, `grep`, `find`, and `ls`, omit editing tools, and cap chat hi
 
 Tool policy constrains model tool calls but is not an operating-system sandbox. A normal Pi agent may still have other non-tool ways to interact with its host; do not describe a prompt stack alone as process isolation.
 
+## Read first, enable command/edit tools on demand
+
+The [Read-first Worker pair](../reference/instruction-modes.md#read-first-worker) keeps the minimal-worker shape: one role block and chat history. Defaults are `read` plus `forge_system_update`; one explicitly authorized binding adds `bash` and `edit`. Follow the paired-file setup and ownership/sandbox caveats before trying it.
+
 ## Surgical patcher
 
 Keep the Pi mirror, require the tools needed for the workflow, strip prior assistant thinking from inserted history, and move project context near the current user turn. This reduces distracting prompt material without removing relevant repository instructions.

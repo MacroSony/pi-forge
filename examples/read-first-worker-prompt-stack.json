@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 2,
+  "type": "pi-forge.prompt-stack",
+  "id": "read-first-worker",
+  "name": "Read-first Worker",
+  "autoActivate": false,
+  "mode": "replace",
+  "tools": {
+    "allow": [
+      "read",
+      "forge_system_update",
+      "bash",
+      "edit"
+    ],
+    "initial": [
+      "read",
+      "forge_system_update"
+    ]
+  },
+  "instructionModes": [
+    {
+      "id": "write-tools",
+      "ref": "project:write-tools",
+      "modelCallable": true
+    }
+  ],
+  "items": [
+    {
+      "kind": "block",
+      "id": "worker-role",
+      "name": "Worker Role",
+      "enabled": true,
+      "role": "system",
+      "content": "You are a helpful software engineer assistant. Inspect with read first. When the task needs shell commands or edits, use forge_system_update to enable the write-tools binding, then disable it when finished."
+    },
+    {
+      "kind": "slot",
+      "id": "chat-history",
+      "name": "Chat History",
+      "enabled": true,
+      "slot": "chat-history",
+      "options": {
+        "includeSummaries": false
+      }
+    }
+  ]
+}

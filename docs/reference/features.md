@@ -207,7 +207,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Resource inventory and preview remain usable when a reclaimed editor host is refreshed from lifecycle contexts that do not expose command-only prompt APIs.
 - Stack list with active/error/warning indicators.
 - Collapsible prompt-stack sidebar.
-- Collapsible stack metadata panel and main-area tabs for Items, Regex, Policy, and Stack JSON/context/variables work.
+- Preset properties from the resource header, with peer Stack, Regex, Policy, Bindings and Advanced editing tabs; the separate Preview/Draft diff/Run diff dock stays alongside the editor.
 - Light/dark theme toggle, button icons, and tooltips for common actions.
 - English/中文 interface switch (`webEditor.locale`: `"en"`, `"zh-CN"`, or `"auto"` following the browser language); contributed settings tabs remain provider-authored and are not translated.
 - Unsaved-change badge in the top bar.
@@ -293,10 +293,12 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Top-level **Modes** surface for project and global instruction mode CRUD with validation diagnostics.
 - Mode writes and deletions require `sourceRevision` checking against raw file bytes; 409 Conflict on stale views preserves user drafts.
 - Mode saves never activate definitions into the active session.
-- **Preset metadata → Instruction mode bindings** tab in the Preset editor with binding configuration, `modelCallable` toggle, finite overrides, and live source vs effective preview.
-- Top-bar **Session instructions** activity panel showing active instructions, actor attribution (`user`/`agent`), collapsible frozen snapshots, tool deltas, effective tools, delivery status (`none`/`pending`/`prepared`), and presentation mode.
+- Dedicated peer **Mode bindings** tab in the Preset editor with binding configuration, `modelCallable` toggle, finite overrides, and live source vs effective preview.
+- Global **Session instructions** summary opens the non-modal **Current session** workspace, pairing controls with the active saved Preset/session projection and showing active instructions, actor attribution (`user`/`agent`), collapsible frozen snapshots, tool deltas, effective tools, delivery status (`none`/`pending`/`prepared`), and presentation mode.
 - Human activation picker with available modes (`GET /api/instructions/available`) categorized into Library modes (unbound) and Current preset (bound).
 - Explicit pre-activation preview displaying label, ID, badge, fingerprint, tool diff, problem banner, and full literal content.
 - Bodyguard activation (`POST /api/instructions/use`) requiring session guard (`sessionId`, `leafId`, `revision`) and source fingerprint validation, rejecting stale or modified sources (409 Conflict) without automatic retry or inference.
 - Read-only resource discovery and Preview never mutate tool policies, commit session events, or mark pending instructions as prepared.
-- Visibility-based polling (every 3 seconds while visible, on focus, or manual refresh) with zero inference.
+- Quiet state polling (every 3 seconds while visible, and on focus) with zero inference; catalog discovery occurs on workspace entry, explicit refresh and mutation follow-up, not each status poll.
+
+The [Read-first Worker example](instruction-modes.md#read-first-worker) demonstrates default reading tools plus a model-authorized `bash`/`edit` mode. It is a tool-selection pattern, not a sandbox.

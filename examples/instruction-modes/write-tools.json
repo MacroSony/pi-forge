@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "type": "pi-forge.instruction-mode",
+  "id": "write-tools",
+  "name": "Write tools",
+  "description": "Enable bash and edit for task commands/edits.",
+  "content": "Use bash and edit only as needed for the current task. Disable this mode when finished.",
+  "tools": {
+    "add": [
+      "bash",
+      "edit"
+    ],
+    "remove": []
+  }
+}

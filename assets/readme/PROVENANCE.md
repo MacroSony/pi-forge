@@ -1,4 +1,28 @@
-# README media
+# README media — continuous v3
+
+Captured 2026-09-24 EDT from accepted UI commit `89c6ba2` (development package metadata 0.5.4), using isolated synthetic projects, the built production loopback editor/compiler and, for Mode, a real SDK AgentSession with no remote model requests.
+
+Current README uses these per-locale files:
+- `editor-overview-v3.png`: current editor and compiled Preview (1439×899 browser viewport; the continuous videos/GIFs include the 1px X11 border at 1440×900).
+- `context-composition.gif`: native drag reordering plus project-context toggle, about 14.6s.
+- `mode-tools.gif`: Current session Use → locate → Off → locate removal, about 18.3s. Actual SDK tools `read → read,grep,find → read`; projected instructions/stop notices remain distinct from delivery or cache evidence.
+- `edit-draft-diff.gif`: real keyboard edit followed by Draft diff without resizing, about 13–14s.
+
+GIFs are 1440×900/15fps exports of continuous 30fps x11grab MP4, without time acceleration or stitched state screenshots. The native pointer drives the UI; the blue halo/click pulse is a disclosed recording aid, not a Forge feature. Native dragging's light drag image and actual compile loading states are retained. GIF palette conversion is lossy. Complete MP4/GIF decoding and real browser playback/seek were checked for both languages. No personal resources/credentials/history, model inference, provider/cache claims or user-host restart were involved.
+
+## Reproduce current recordings
+
+Requires the checkout's development dependencies, Xvfb, xdotool, ffmpeg, Google Chrome and Python Pillow. Private display `:192` must be unused. The recorder refuses to use an occupied display, creates disposable fixtures and cleans its own processes/resources. Do not copy output over formal assets without reviewing it.
+
+```bash
+npm run build
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-readme-v3 LOCALES=en,zh-CN SCENES=context,diff,mode node scripts/record-readme-continuous.ts
+python3 scripts/export-readme-continuous.py /tmp/forge-readme-v3
+```
+
+Output is `media/<locale>/{context,mode,diff}.{mp4,gif}`, proof images and semantic evidence; `manifest.json` records dimensions/durations/hashes. Copy approved GIFs to the corresponding names above and `context-poster.png` to `editor-overview-v3.png`. New recordings have fresh synthetic session IDs; pixel-identical reproduction is not promised.
+
+## Retained legacy media (not referenced by current README)
 
 Captured on 2026-09-23 from the built 0.5.5-development WebUI (package version still 0.5.4), using the production loopback editor server and compiler with an isolated, synthetic code-review project.
 
