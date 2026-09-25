@@ -1571,10 +1571,10 @@ for (const native of [true, false]) {
 			assert.deepEqual(parseInstructionMode(modeSource, "write-tools.json", "project").diagnostics, []);
 			writeFileSync(join(root, "prompt-stacks", "read-first-worker.json"), presetSource);
 			writeFileSync(join(root, "instruction-modes", "write-tools.json"), modeSource);
-			harness = await createInstructionAgentControlHarness({ cwd, native, initialTools: [], allowedTools: ["read", "forge_system_update", "bash", "edit"] });
+			harness = await createInstructionAgentControlHarness({ cwd, native, initialTools: [], allowedTools: ["read", "ls", "forge_system_update", "bash", "edit"] });
 			assert.deepEqual(harness.getActiveToolNames(), [], "example does not auto-activate");
 			await harness.prompt("/preset use project:read-first-worker");
-			const base = ["forge_system_update", "read"];
+			const base = ["forge_system_update", "ls", "read"];
 			const enabled = ["bash", "edit", ...base].sort();
 			assert.deepEqual(harness.getActiveToolNames().sort(), base);
 			assert.equal(harness.streamContexts.length, 0, "human activation invokes no model");

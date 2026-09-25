@@ -105,7 +105,7 @@ A Profile applies once. Later manual model or thinking-level changes remain in e
 
 - [Default Pi mirror](examples/default-prompt-stack.json) — A Pi-style starting point, split into editable blocks and runtime slots.
 - [Minimal worker](examples/minimal-prompt-stack.json) — One line of instructions, chat history, and only `bash` plus `edit`.
-- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools mode](examples/instruction-modes/write-tools.json) — start with `read` and the mode control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/instruction-modes.md#read-first-worker).
+- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools mode](examples/instruction-modes/write-tools.json) — start with `read`, `ls`, and the mode control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/instruction-modes.md#read-first-worker).
 - [Regex examples](examples/hack-prompt-stack.json) — Outgoing redaction paired with stored-transcript cleanup for two sample token patterns.
 
 See [patterns and use cases](docs/guides/use-cases.md) for more ways to build on them.

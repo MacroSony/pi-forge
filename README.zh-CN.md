@@ -106,7 +106,7 @@ Profile 只在应用时更新一次设置。之后手动调整的模型或思考
 
 - [默认 Pi mirror](examples/default-prompt-stack.json)：从一份 Pi 风格的配置开始，内容已经拆成可编辑的文本块和运行时插槽。
 - [Minimal worker](examples/minimal-prompt-stack.json)：一行提示词、聊天记录，只留 `bash` 和 `edit` 两个工具。
-- [Read-first Worker](examples/read-first-worker-prompt-stack.json)＋[Write tools 模式](examples/instruction-modes/write-tools.json)：默认仅 `read` 与模式控制工具，模型按需启用 `bash`／`edit`。[安装与边界](docs/zh-CN/reference/instruction-modes.md#read-first-worker)。
+- [Read-first Worker](examples/read-first-worker-prompt-stack.json)＋[Write tools 模式](examples/instruction-modes/write-tools.json)：默认仅 `read`、`ls` 与模式控制工具，模型按需启用 `bash`／`edit`。[安装与边界](docs/zh-CN/reference/instruction-modes.md#read-first-worker)。
 - [正则示例](examples/hack-prompt-stack.json)：拿两种示例 token 格式，演示发送前脱敏，以及清理已存储的会话文本。
 
 更多用法见[模式与用例（英文）](docs/guides/use-cases.md)。

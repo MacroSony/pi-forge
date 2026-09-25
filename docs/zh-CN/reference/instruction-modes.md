@@ -74,8 +74,8 @@ Agent 的 list/status 回复不复制完整规则正文：list 提供作者填�
 
 1. 在可信的临时项目中，将预设复制为 `.pi/forge/prompt-stacks/read-first-worker.json`，模式复制为 `.pi/forge/instruction-modes/write-tools.json`。先检查是否已有同名文件，不覆盖自己的资源。仅导入预设不会顺带安装引用的模式。
 2. 用已加载 Forge 的全新 Pi 会话，执行 `/preset reload`，再执行 `/preset use project:read-first-worker`。示例 `autoActivate: false`，绑定明确指向**项目作用域**；放到全局时，模式也须放全局并修改 `ref`。
-3. 没有其他活动模式时，默认工具只有 `read` 与 `forge_system_update`；后者是模式管理工具，不是文件写入工具。模型可用 `{ "action": "list" }` 列出授权绑定，以 `{ "action": "use", "id": "write-tools" }` 启用命令／编辑能力，再以 `{ "action": "off", "id": "write-tools" }` 停用自己的激活项。
-4. 在**当前会话**或 `/system-update status` 观察：`read, forge_system_update` → 增加 `bash, edit` → 回到默认集。其他活动模式仍参与计算。若由人类启用，模型不能关闭该人类拥有的激活项，应从界面或 `/system-update off <activation-id>` 停用。
+3. 没有其他活动模式时，默认工具只有 `read`、`ls` 与 `forge_system_update`；后者是模式管理工具，不是文件写入工具。模型可用 `{ "action": "list" }` 列出授权绑定，以 `{ "action": "use", "id": "write-tools" }` 启用命令／编辑能力，再以 `{ "action": "off", "id": "write-tools" }` 停用自己的激活项。
+4. 在**当前会话**或 `/system-update status` 观察：`read, ls, forge_system_update` → 增加 `bash, edit` → 回到默认集。其他活动模式仍参与计算。若由人类启用，模型不能关闭该人类拥有的激活项，应从界面或 `/system-update off <activation-id>` 停用。
 
 `allow` 是许可上限，`initial` 是默认集，`modelCallable: true` 明确允许模型选择该绑定，**不是每次启用都弹出人类审批**。若希望仅人类启用，将它改为 `false`。示例提示词要求任务结束后关闭，但这不是自动生命周期保证；Off 不撤销文件修改，也不终止运行中的工具。**Read-first 不是只读沙箱：** `bash` 能执行任意命令，而不只是写文件；这些配置不提供文件系统／进程隔离。为保持最小风格，替换提示词省略了 Pi 默认的项目上下文、技能和工具指导插槽；需要这些内容时请从默认 Pi mirror 改起。
 
