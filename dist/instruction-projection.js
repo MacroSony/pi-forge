@@ -133,6 +133,10 @@ export function projectInstructionMessages(messages, history, native, onUpdate) 
         }
         const map = new Map();
         for (const item of res.active) {
+            // Tool-only modes carry no instruction text: never project an empty
+            // section on activation, nor a removal notice when they stop.
+            if (item.snapshot.content.trim().length === 0)
+                continue;
             map.set(item.snapshot.activationId, item.snapshot.content);
         }
         activeCache.set(eventIndex, map);

@@ -84,7 +84,8 @@ function rememberChange(before: InstructionStateView | null, after: InstructionS
 		added: after.effectiveTools.filter(tool => !previous.has(tool)),
 		removed: before.effectiveTools.filter(tool => !current.has(tool)),
 		enabled: enabled.length, disabled: disabled.length,
-		activationIds: [...enabled, ...disabled].map(item => item.activationId),
+		// Tool-only modes project no instruction update, so there is nothing to locate.
+		activationIds: [...enabled, ...disabled].filter(item => item.content.trim()).map(item => item.activationId),
 	};
 }
 async function locate(activationIds: string[]): Promise<void> {
@@ -728,7 +729,7 @@ onUnmounted(() => {
 
                                 <p v-if="item.content.trim()" class="instruction-excerpt" data-item-content-excerpt>{{ item.content }}</p>
                                 <p v-else class="instruction-excerpt muted">{{ t("instructions.noInstructionText") }}</p>
-                                <button type="button" class="locate-instruction" data-item-locate
+                                <button v-if="item.content.trim()" type="button" class="locate-instruction" data-item-locate
                                     :disabled="isStale || isMutating || !state.trusted || state.restoring"
                                     @click="locate([item.activationId])">{{ t("instructions.locateChange") }}</button>
 								<details class="item-content-details" data-item-content-details>

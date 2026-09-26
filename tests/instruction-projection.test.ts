@@ -562,3 +562,84 @@ test("identical event replay cannot move an earlier delivery cursor past later e
 	assert.equal(projected.messages.length, 2);
 	assert.deepEqual((projected.messages[0] as SystemMessage).sections, { "forge-instruction-one": "one" });
 });
+
+function makeToolOnlyActivate(
+	eventId: string,
+	activationId: string,
+	content = "",
+	createdAt = 1000,
+): InstructionActivateEvent {
+	return {
+		schemaVersion: 1,
+		eventId,
+		op: "activate",
+		actor: "user",
+		createdAt,
+		snapshot: createInstructionSnapshot({
+			activationId,
+			source: { kind: "manual" },
+			content,
+			tools: { add: ["ls"], remove: [] },
+		}),
+	};
+}
+
+for (const native of [true, false]) {
+	const label = native ? "native" : "fallback";
+
+	test(`tool-only (${label}): empty or whitespace-only text projects no update on activate or deactivate`, () => {
+		for (const content of ["", "  \n\t"]) {
+			const history: InstructionHistory = {
+				events: [makeToolOnlyActivate("ev-1", "tools", content, 1000), makeDeactivate("ev-2", "tools", 2000)],
+			};
+			const user1 = { role: "user", content: "first", timestamp: 200 } as AgentMessage;
+			const user2 = { role: "user", content: "second", timestamp: 2200 } as AgentMessage;
+			const res = projectInstructionMessages([user1, makeMarker("ev-1", 1100), user2, makeMarker("ev-2", 2100)], history, native);
+			assert.deepEqual(res.messages, [user1, user2]);
+			assert.equal(res.throughEventId, "ev-2");
+		}
+	});
+
+	test(`tool-only (${label}): mixed with a text mode, only the text mode is projected`, () => {
+		const history: InstructionHistory = {
+			events: [
+				makeActivate("ev-1", "text", "Rule", 1000),
+				makeToolOnlyActivate("ev-2", "tools", "", 2000),
+				makeDeactivate("ev-3", "tools", 3000),
+				makeDeactivate("ev-4", "text", 4000),
+			],
+		};
+		const res = projectInstructionMessages(
+			[makeMarker("ev-1", 1100), makeMarker("ev-2", 2100), makeMarker("ev-3", 3100), makeMarker("ev-4", 4100)],
+			history,
+			native,
+		);
+		assert.equal(res.messages.length, 2);
+		assert.ok(!JSON.stringify(res.messages).includes("forge-instruction-tools"));
+		if (native) {
+			assert.deepEqual((res.messages[0] as SystemMessage).sections, { "forge-instruction-text": "Rule" });
+			assert.deepEqual((res.messages[1] as SystemMessage).sections, { "forge-instruction-text": null });
+		} else {
+			assert.match((res.messages[0] as UserMessage).content as string, /Updated system prompt section "forge-instruction-text"/);
+			assert.match((res.messages[1] as UserMessage).content as string, /Removed system prompt section "forge-instruction-text"/);
+		}
+	});
+
+	test(`tool-only (${label}): no checkpoint or missing-carrier replay for text-free state`, () => {
+		const leading = { role: "system", content: "Leading", timestamp: 100 } as AgentMessage;
+		const user = { role: "user", content: "kept", timestamp: 2200 } as AgentMessage;
+		const checkpoint = projectInstructionMessages(
+			[leading, user],
+			{ events: [makeToolOnlyActivate("ev-1", "tools", "", 1000)], checkpointThrough: "ev-1" },
+			native,
+		);
+		assert.deepEqual(checkpoint.messages, [leading, user]);
+
+		const pending = projectInstructionMessages(
+			[leading, user],
+			{ events: [makeToolOnlyActivate("ev-1", "tools", "", 1000), makeDeactivate("ev-2", "tools", 2000)] },
+			native,
+		);
+		assert.deepEqual(pending.messages, [leading, user]);
+	});
+}

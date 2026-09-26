@@ -213,6 +213,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 2. **规则投影（Project）：** 由 `projectInstructionMessages` 将物化后的增量转化为适配当前模型的呈现形式：
    - **Native 投递：** 当模型服务商声明支持会话中系统消息（`compat.supportsMidConvoSystemMessages === true`）时，增量以 `SystemMessage.sections`（以 `forge-instruction-<id>` 为 key）注入，关闭时发送 null patch。Native 投递完全依赖服务商 capability 标记，并非所有提供商都支持。
    - **Fallback 投递：** 对不支持原生系统更新的模型，增量以带来源标记的时间线用户消息（`[pi-forge instruction update]`）投递。Forge 绝不折叠或篡改首条 leading system prompt，不把用户/工具对话提升为系统权限。
+   - **纯工具模式：** 正文为空或只有空白的模式在两条路径下都不发文字更新：启用时不发分段，停用时不发移除通知，compaction checkpoint 里也不包含它。只有工具变化进入请求，**当前会话**中也不提供“在上下文中定位”按钮。
    - **如何判断走哪条路径：** 每次请求都按 Pi 模型目录中当前模型的 `compat` 条目决定；该目录由 Pi 拉取并缓存在本地，可能随更新变化。服务商名称、认证方式或认证扩展都不决定这一点，同一服务商的不同型号也可能不同。例如 2026-09-26 在 Pi 0.87.1 下观察到的目录中，`anthropic/claude-opus-4-8`、`claude-opus-5`、`claude-opus-5-5` 带有该标记，`anthropic/claude-sonnet-5` 没有。用 `/model` 切换后，之后的请求随之改变投递方式。`/instruction status` 和 Agent 的 `status` 动作会显示 `native system sections` 或 `attributed user updates`；测试原生更新或缓存行为前请先确认。
    - **Fallback 的附带影响：** 对未标记的模型，Pi 还会把它自己的工具变更声明折回首条 system 消息和顶层工具列表，因此工具变化会改写下一次请求的开头，这部分缓存前缀无法复用。部分模型可能把带标记的用户更新当作不可信文本，先质疑再使用新工具。
 

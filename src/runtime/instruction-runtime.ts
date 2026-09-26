@@ -565,7 +565,7 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 			throw new Error("Instruction source changed. Refresh and review before trying again.");
 		}
 		commit(ctx, { ...common, op: "activate", snapshot });
-		return `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`;
+		return selectedMessage(snapshot);
 	}
 
 	function readBindings(ctx: ExtensionContext): ReadBindingsResult {
@@ -721,8 +721,15 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 		return {
 			ok: true,
 			activationId: snapshot.activationId,
-			message: `Selected ${snapshot.activationId}; tools prepared, instruction pending next model request. Use /system-update off ${snapshot.activationId} to stop.`,
+			message: selectedMessage(snapshot),
 		};
+	}
+
+	function selectedMessage(snapshot: { activationId: string; content: string }): string {
+		const delivery = snapshot.content.trim().length === 0
+			? "tools prepared; tool-only mode, no instruction text is sent."
+			: "tools prepared, instruction pending next model request.";
+		return `Selected ${snapshot.activationId}; ${delivery} Use /system-update off ${snapshot.activationId} to stop.`;
 	}
 
 	function deactivateBound(ctx: ExtensionContext, id: string, actor: "user" | "agent" = "user"): DeactivateBoundResult {

@@ -1606,3 +1606,64 @@ for (const native of [true, false]) {
 		}
 	});
 }
+
+for (const native of [true, false]) {
+	test(`tool-only mode sends tool changes without an instruction update (${native ? "native" : "fallback"})`, async () => {
+		const env = setupHermeticProject({
+			customMode: {
+				schemaVersion: 1,
+				type: "pi-forge.instruction-mode",
+				id: "review",
+				name: "Tool-only Review",
+				description: "Removes fake_write without instruction text.",
+				content: "",
+				tools: { add: [], remove: ["fake_write"] },
+			},
+		});
+		let harness: Awaited<ReturnType<typeof createInstructionAgentControlHarness>> | undefined;
+		try {
+			harness = await createInstructionAgentControlHarness({
+				cwd: env.cwd,
+				native,
+				initialTools: ["fake_write", "fake_read", "forge_system_update"],
+			});
+			const noInstructionUpdate = (label: string) => {
+				for (const context of harness!.streamContexts) {
+					const wire = JSON.stringify(context.messages);
+					assert.doesNotMatch(wire, /forge-instruction-/, `${label}: no instruction section`);
+					assert.doesNotMatch(wire, /\[pi-forge instruction update\]/, `${label}: no fallback user update`);
+				}
+			};
+
+			harness.setResponses([{ toolCalls: [{ name: "forge_system_update", args: { action: "use", id: "review" } }] }, "Done."]);
+			await harness.prompt("Enable the review binding");
+			let last = harness.streamContexts.at(-1)!;
+			const useResult = findLatestToolResult(last.messages);
+			const useText = useResult.content.map((c: any) => c.text ?? "").join("\n");
+			assert.match(useText, /tool-only mode, no instruction text is sent/);
+			assert.doesNotMatch(useText, /instruction pending/);
+			assert.ok(!harness.getActiveToolNames().includes("fake_write"));
+			assert.ok(!getCurrentTools(last.messages).some(t => t.name === "fake_write"), "tool removal still reaches the request");
+
+			harness.setResponses(["Plain reply."]);
+			await harness.prompt("Plain follow-up");
+			last = harness.streamContexts.at(-1)!;
+			assert.ok(!getCurrentTools(last.messages).some(t => t.name === "fake_write"));
+			noInstructionUpdate("after use");
+
+			harness.setResponses([{ toolCalls: [{ name: "forge_system_update", args: { action: "off", id: "review" } }] }, "Done."]);
+			await harness.prompt("Disable the review binding");
+			harness.setResponses(["Plain reply."]);
+			await harness.prompt("Plain follow-up");
+			last = harness.streamContexts.at(-1)!;
+			assert.ok(harness.getActiveToolNames().includes("fake_write"));
+			assert.ok(getCurrentTools(last.messages).some(t => t.name === "fake_write"), "tool restoration reaches the request");
+			noInstructionUpdate("after off");
+			assert.equal(harness.fetchAttempts, 0);
+			assert.equal(harness.toolExecutions.filter(t => t.name === "fake_write").length, 0);
+		} finally {
+			await harness?.dispose();
+			env.cleanup();
+		}
+	});
+}

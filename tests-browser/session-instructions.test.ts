@@ -1111,3 +1111,91 @@ test("older GET cannot clear stale status after a failed mutation and failed ref
 		await new Promise<void>(r => server.close(() => r()));
 	}
 });
+
+test("session instructions panel offers no locate action for tool-only modes", { timeout: 30_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+	const root = resolve(import.meta.dirname, "..");
+	const { js, css } = await bundleSessionInstructions(root);
+
+	const initial = createInitialState();
+	let currentState: InstructionStateView = {
+		...initial,
+		effectiveTools: ["read", "write", "guard_scan", "ls"],
+		active: [initial.active[0], {
+			activationId: "act-tools-3",
+			source: "project:add-list",
+			name: "Add List",
+			actor: "user",
+			content: "",
+			tools: { add: ["ls"], remove: [] },
+		}],
+	};
+	const server = createHttpServer((req, res) => {
+		const url = new URL(req.url || "/", "http://127.0.0.1");
+		if (url.pathname === "/") {
+			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+			res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div id="app"></div><script>${js}</script></body></html>`);
+			return;
+		}
+		if (url.pathname === "/api/instructions" && req.method === "GET") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, state: currentState }));
+			return;
+		}
+		if (url.pathname === "/api/instructions" && req.method === "POST") {
+			let body = "";
+			req.on("data", (chunk) => { body += chunk; });
+			req.on("end", () => {
+				const parsed = JSON.parse(body);
+				assert.equal(parsed.action, "off");
+				currentState = {
+					...currentState,
+					guard: { ...currentState.guard, revision: "rev-002-opaque" },
+					effectiveTools: ["read", "write", "guard_scan"],
+					active: currentState.active.filter((a) => a.activationId !== parsed.activationId),
+				};
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ ok: true, state: currentState }));
+			});
+			return;
+		}
+		res.writeHead(404);
+		res.end();
+	});
+	await new Promise<void>((resolveServer) => server.listen(0, "127.0.0.1", () => resolveServer()));
+	const address = server.address();
+	assert.ok(address && typeof address === "object");
+
+	let browser: Browser | undefined;
+	const pageErrors: string[] = [];
+	try {
+		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
+		const page = await browser.newPage();
+		page.setDefaultTimeout(6_000);
+		page.on("pageerror", (error) => pageErrors.push(error.message));
+		await page.goto(`http://127.0.0.1:${address.port}/?token=test-token-instructions`, { waitUntil: "domcontentloaded" });
+
+		const textCard = page.locator('.active-item-card[data-activation-id="act-sec-1"]');
+		const toolCard = page.locator('.active-item-card[data-activation-id="act-tools-3"]');
+		await toolCard.waitFor();
+		assert.equal(await textCard.locator("[data-item-locate]").count(), 1, "text mode can be located");
+		assert.equal(await toolCard.locator("[data-item-locate]").count(), 0, "tool-only mode projects nothing to locate");
+		assert.match(await toolCard.locator(".instruction-excerpt").textContent() || "", /Tool-only mode/);
+
+		await toolCard.locator("[data-item-deactivate-btn]").click();
+		await toolCard.waitFor({ state: "detached" });
+		const recent = page.locator("[data-instructions-recent-change]");
+		await recent.waitFor();
+		assert.match(await recent.textContent() || "", /ls/);
+		assert.equal(await recent.locator("[data-locate-recent]").count(), 0, "recent tool-only change has nothing to locate");
+		assert.deepEqual(pageErrors, []);
+	} finally {
+		await browser?.close();
+		await new Promise<void>((resolveServer) => server.close(() => resolveServer()));
+	}
+});
