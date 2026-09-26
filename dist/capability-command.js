@@ -99,9 +99,15 @@ function capabilityArgumentCompletions(runtime, prefix) {
     if (!projected.ok)
         return [];
     if (operation === "enable") {
+        const wantsScope = argument.includes(":");
         return projected.capabilities
-            .filter((candidate) => candidate.id.startsWith(argument))
-            .map((candidate) => ({ value: `enable ${candidate.id}`, label: candidate.label }));
+            .map((candidate) => ({
+            selector: wantsScope || candidate.collides ? candidate.id : candidate.bareId,
+            label: candidate.label,
+        }))
+            .filter((candidate) => candidate.selector.startsWith(argument))
+            .sort((a, b) => a.selector.localeCompare(b.selector))
+            .map((candidate) => ({ value: `enable ${candidate.selector}`, label: candidate.label }));
     }
     if (operation === "enable-bound") {
         return projected.bindings
@@ -148,7 +154,7 @@ function capabilityHelp() {
         `  ${CAPABILITY_USAGE}`,
         "",
         "add preserves the free-form text after the command and does not infer a capability ID.",
-        "enable completions use qualified project:<id> or global:<id> resource IDs.",
+        "enable completions offer bare IDs when unique, qualified selectors on collision or when ':' is typed.",
         "enable-bound completes bindings saved on the current active preset, including human-only bindings.",
         "disable completes exact active activation IDs; the label identifies the source and actor.",
         "Completions use the current session and last published workspace snapshot only.",

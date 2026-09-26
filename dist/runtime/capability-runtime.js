@@ -235,11 +235,22 @@ export function createCapabilityRuntime(pi, workspace, tools) {
             if (!trusted) {
                 return { ok: true, trusted: false, capturedAt: snapshot.capturedAt, capabilities: [], bindings: [], active };
             }
+            // Invalid project definitions still shadow global ones; count before filtering.
+            const collidingIds = new Set();
+            const byId = new Map();
+            for (const loaded of snapshot.capabilities) {
+                const count = (byId.get(loaded.key.id) ?? 0) + 1;
+                byId.set(loaded.key.id, count);
+                if (count === 2)
+                    collidingIds.add(loaded.key.id);
+            }
             const capabilities = snapshot.capabilities
                 .filter((loaded) => isUsableCapability(loaded))
                 .map((loaded) => ({
                 id: formatResourceKey(loaded.key),
+                bareId: loaded.key.id,
                 label: `${formatResourceKey(loaded.key)}${loaded.capability.name ? ` — ${loaded.capability.name}` : ""}`,
+                collides: collidingIds.has(loaded.key.id),
             }));
             const bindings = [];
             const preset = snapshot.active;

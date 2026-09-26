@@ -95,7 +95,7 @@ Manage active instructions through the `/capability` command:
 | `/capability add <text>` | Append a manual literal instruction rule to the active session without tool changes. |
 | `/capability help` | Show command usage and command details. |
 
-Completions use the current session and last published workspace snapshot. They do not perform discovery on every keystroke. Run `/capability list` when an explicit discovery refresh is needed. Human-only bindings remain in `bindings`; `modelCallable: false` prevents Agent control but does not filter the binding from human inspection or activation.
+Completions use the current session and last published workspace snapshot. They do not perform discovery on every keystroke. Run `/capability list` when an explicit discovery refresh is needed. `/capability enable` completions offer bare IDs when unique, and qualified selectors on same-ID collision or when typing a `:` scope prefix (with labels always qualified by source and name). Human-only bindings remain in `bindings`; `modelCallable: false` prevents Agent control but does not filter the binding from human inspection or activation.
 
 **No inference cost:** All `/capability` commands and Web activity panel actions execute locally. They update internal session state and synchronize tool policies without starting model inference or consuming API tokens for the operation itself. Instruction text consumes input tokens on subsequent model requests when inference occurs.
 

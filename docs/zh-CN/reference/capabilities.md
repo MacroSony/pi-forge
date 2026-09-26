@@ -95,7 +95,7 @@ Agent 的 list/status 回复不复制完整规则正文：list 提供作者填�
 | `/capability add <text>` | 向当前会话追加一条手动字面指令（无工具变更）。 |
 | `/capability help` | 显示命令用法与兼容性说明。 |
 
-补全使用当前 session 与最近发布的 workspace snapshot，不会在每次按键时扫描资源。需要显式刷新发现时使用 `/capability list`。`bindings` 仍显示人类专用绑定；`modelCallable: false` 只禁止 Agent 控制，不会把绑定从人类检查或启用列表中过滤掉。
+补全使用当前 session 与最近发布的 workspace snapshot，不会在每次按键时扫描资源。需要显式刷新发现时使用 `/capability list`。`/capability enable` 补全在唯一时提供裸 ID，在同名冲突或键入 `:` 作用域前缀时提供限定作用域的选择器（标签始终保留来源与名称限定）。`bindings` 仍显示人类专用绑定；`modelCallable: false` 只禁止 Agent 控制，不会把绑定从人类检查或启用列表中过滤掉。
 
 **零推理成本：** 所有 `/capability` 斜杠命令与 Web 活动面板操作均在本地执行，仅更新内部会话状态并同步工具策略，操作本身不调用模型推理，不消耗付费 token。活动指令的规则正文仅在随后的真实模型请求中占用输入 token。
 

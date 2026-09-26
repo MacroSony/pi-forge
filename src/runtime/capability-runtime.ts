@@ -53,7 +53,9 @@ export type DisableBoundResult =
 
 export interface CapabilityCompletionCapability {
 	id: string;
+	bareId: string;
 	label: string;
+	collides: boolean;
 }
 
 export interface CapabilityCompletionBinding {
@@ -296,11 +298,22 @@ export function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorksp
 				return { ok: true, trusted: false, capturedAt: snapshot.capturedAt, capabilities: [], bindings: [], active };
 			}
 
-			const capabilities = snapshot.capabilities
+			// Invalid project definitions still shadow global ones; count before filtering.
+			const collidingIds = new Set<string>();
+			const byId = new Map<string, number>();
+			for (const loaded of snapshot.capabilities) {
+				const count = (byId.get(loaded.key.id) ?? 0) + 1;
+				byId.set(loaded.key.id, count);
+				if (count === 2) collidingIds.add(loaded.key.id);
+			}
+
+			const capabilities: CapabilityCompletionCapability[] = snapshot.capabilities
 				.filter((loaded) => isUsableCapability(loaded))
 				.map((loaded) => ({
 					id: formatResourceKey(loaded.key),
+					bareId: loaded.key.id,
 					label: `${formatResourceKey(loaded.key)}${loaded.capability.name ? ` — ${loaded.capability.name}` : ""}`,
+					collides: collidingIds.has(loaded.key.id),
 				}));
 			const bindings: CapabilityCompletionBinding[] = [];
 			const preset = snapshot.active;

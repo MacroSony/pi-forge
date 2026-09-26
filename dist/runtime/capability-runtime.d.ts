@@ -32,7 +32,9 @@ export type DisableBoundResult = {
 };
 export interface CapabilityCompletionCapability {
     id: string;
+    bareId: string;
     label: string;
+    collides: boolean;
 }
 export interface CapabilityCompletionBinding {
     id: string;
