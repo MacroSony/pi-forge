@@ -60,6 +60,24 @@ The experimental host port over the Pi event bus: discovery, profile listing/sna
 
 The optional `@zihanw/pi-forge-subagents` package consumes this port and owns subagent execution and configuration.
 
+#### Experimental nested-usage contract exports
+
+The entry point also exports helper constants, validators, and types for tools and subagents reporting inner model usage under `toolResult.details[FORGE_NESTED_USAGE_KEY]`:
+
+```ts
+import {
+  FORGE_NESTED_USAGE_KEY,
+  parseForgeNestedUsage,
+  type ForgeNestedUsage,
+} from "@zihanw/pi-forge/subagent";
+```
+
+- `FORGE_NESTED_USAGE_KEY`: constant string key (`"forgeNestedUsage"`).
+- `parseForgeNestedUsage(value: unknown): ForgeNestedUsage | undefined`: strict schema parser that returns typed usage or `undefined` for malformed objects.
+- `type ForgeNestedUsage`: typed schemaVersion 1 contract (`schemaVersion`, `requests`, `input`, `output`, optional `cacheRead` and `cacheWrite`).
+
+See the [session cache usage reference](session-cache.md) for full contract rules, ingestion boundaries, and hit-rate aggregation semantics.
+
 ### 4. `@zihanw/pi-forge/ui-contribution`: versioned settings port
 
 ```ts

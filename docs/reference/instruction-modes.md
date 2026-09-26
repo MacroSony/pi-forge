@@ -146,6 +146,7 @@ The web editor retains a global **Session instructions** summary linking to the 
 - **Session controls:**
   - **Individual deactivation:** Click **Deactivate** to turn off a specific mode by its `activationId`.
   - **Reset confirmation:** The **Reset all** button initiates a two-step confirmation prompt (**Confirm reset** / **Cancel**) before clearing active instructions.
+- **Prompt cache usage:** When prompt caching statistics exist on the current branch, the panel renders prompt-cache hit rates and request counts for the current turn and session, maintaining visible separation between main assistant requests and nested tool runs. See [Session cache usage](session-cache.md).
 
 ### Human activation picker (guarded preview and use)
 

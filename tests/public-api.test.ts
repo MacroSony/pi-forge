@@ -12,6 +12,7 @@ import * as subagentSurface from "../src/subagent/index.ts";
 
 const hostContractRuntimeExports = [
 	"FORGE_HOST_CHANNEL",
+	"FORGE_NESTED_USAGE_KEY",
 	"FORGE_HOST_PORT_NAMESPACE",
 	"FORGE_HOST_PORT_OPERATIONS",
 	"FORGE_HOST_PORT_VERSION",
@@ -20,6 +21,7 @@ const hostContractRuntimeExports = [
 	"ForgeHostPortError",
 	"SUBAGENT_FINGERPRINT_PREFIX",
 	"canonicalSubagentJson",
+	"parseForgeNestedUsage",
 	"subagentFingerprint",
 	"subagentPromptStackFingerprint",
 	"subagentSourceProfileFingerprint",

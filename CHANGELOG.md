@@ -8,6 +8,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- **Session prompt-cache usage:** document read-only branch prompt-cache hit rates (turn and session) derived from persisted message usage, separate main vs nested reporting, and the experimental v1 `toolResult.details.forgeNestedUsage` contract.
 - **Current session workspace:** mode/tool controls beside the runtime projection; preserve the separate Preset editor and Preview/Draft diff/Run diff reading state. Quiet background state polling no longer repeatedly reloads the catalog or disables controls. Late reads cannot overwrite a newer visit; navigation retains in-flight mutation receipts.
 - **Reviewed documentation and examples:** adopt bilingual README B and continuous Context/Mode/Draft diff media. Add the small Read-first Worker + Write tools pair: default reading, explicitly authorized model-selected `bash`/`edit`, and documented non-sandbox/ownership limits.
 - **CLI naming and compatibility:** document `/forge ui`, `/forge payload`, and optional `/forge subagent plan` as the recommended Forge commands; `/instruction` is the canonical instruction-mode command and `/system-update` remains its alias. `/preset` and `/profile` roots are unchanged. The legacy `/subagent` smoke helper remains distinct from the `/forge subagent` execution-plan command.

@@ -1,4 +1,5 @@
 import type { InstructionToolPatch } from "./codecs/instruction-mode.ts";
+import type { SessionCacheUsageView } from "./session-usage.ts";
 /** A derived session view, never a second persisted instruction state. */
 export interface InstructionStateGuard {
     sessionId: string;
@@ -23,6 +24,8 @@ export interface InstructionStateView {
     delivery: "none" | "pending" | "prepared";
     textPresentation: "native" | "user";
     effectiveTools: string[];
+    /** Read-only provider-reported usage for the current branch; absent when unavailable. */
+    cacheUsage?: SessionCacheUsageView;
     problem?: string;
     active: Array<{
         activationId: string;

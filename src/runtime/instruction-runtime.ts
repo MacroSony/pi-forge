@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { summarizeSessionCacheUsage } from "../session-usage.ts";
 import { fingerprintJson } from "../json-fingerprint.ts";
 import {
 	isInstructionStateMutation,
@@ -359,6 +360,8 @@ export function createInstructionRuntime(pi: ExtensionAPI, workspace: ForgeWorks
 				...(preset ? { presetRevision: fingerprintJson({ domain: "forge-inspection-preset-v1", key: preset.key, stack: preset.stack }) } : {}),
 				textPresentation: (ctx.model?.compat as { supportsMidConvoSystemMessages?: boolean } | undefined)?.supportsMidConvoSystemMessages === true ? "native" : "user",
 				effectiveTools, active, ...(problem ? { problem } : {}),
+				// Derived from persisted usage only; leafId already changes the guard for each new request.
+				cacheUsage: summarizeSessionCacheUsage(getCurrentBranchEntries(ctx)),
 			};
 			return { ok: true, state: result };
 		} catch (error) {

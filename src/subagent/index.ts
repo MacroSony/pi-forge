@@ -23,6 +23,9 @@ export {
 	validateResolveProfileRequest,
 	validateResolveProfileResponse,
 } from "./host-port.ts";
+// Experimental nested-usage contract: tools that call models report usage in toolResult details.
+export { FORGE_NESTED_USAGE_KEY, parseForgeNestedUsage } from "../session-usage.ts";
+export type { ForgeNestedUsage } from "../session-usage.ts";
 export type {
 	ForgeDelegationDiagnostic,
 	ForgeDelegationMessage,

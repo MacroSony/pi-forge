@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
+import { cacheHitRate } from "../../../session-usage.ts";
+import type { CacheUsageTotals, SessionCacheUsageView } from "../../../session-usage.ts";
 import type { InstructionChoice, InstructionStateGuard, InstructionStateMutation, InstructionStateView } from "../../../instruction-state.ts";
 
 import ContextDiffPanel, { type InstructionLocation } from "./ContextDiffPanel.vue";
@@ -130,6 +132,39 @@ function presentationLabel(presentation: string | undefined): string {
 	if (presentation === "native") return t("instructions.presentationNative");
 	if (presentation === "user") return t("instructions.presentationUser");
 	return presentation;
+}
+
+function cacheRate(totals: CacheUsageTotals): string {
+	const rate = cacheHitRate(totals);
+	return rate === undefined ? "—" : `${(rate * 100).toFixed(1)}%`;
+}
+
+function cacheTokenDetail(label: string, totals: CacheUsageTotals): string {
+	return `${label}: ${cacheRate(totals)}; ${t("instructions.cacheRead")} ${totals.cacheRead}; ${t("instructions.cacheWrite")} ${totals.cacheWrite}; ${t("instructions.cacheUncached")} ${totals.input}`;
+}
+
+function cacheMainTitle(usage: SessionCacheUsageView): string {
+	return [
+		usage.main.lastRequest ? cacheTokenDetail(t("instructions.cacheLastRequest"), usage.main.lastRequest) : `${t("instructions.cacheLastRequest")}: —`,
+		cacheTokenDetail(t("instructions.cacheTurnLabel"), usage.main.turn),
+		cacheTokenDetail(t("instructions.cacheSessionLabel"), usage.main.session),
+		t("instructions.cacheScopeNote"),
+	].join("\n");
+}
+
+function cacheNestedTitle(usage: SessionCacheUsageView): string {
+	const combined = (main: CacheUsageTotals, nested: CacheUsageTotals): CacheUsageTotals => ({
+		requests: main.requests + nested.requests, input: main.input + nested.input,
+		output: main.output + nested.output, cacheRead: main.cacheRead + nested.cacheRead,
+		cacheWrite: main.cacheWrite + nested.cacheWrite,
+	});
+	return [
+		cacheTokenDetail(t("instructions.cacheNestedTurnLabel"), usage.nested.turn),
+		cacheTokenDetail(t("instructions.cacheNestedSessionLabel"), usage.nested.session),
+		cacheTokenDetail(t("instructions.cacheCombinedTurn"), combined(usage.main.turn, usage.nested.turn)),
+		cacheTokenDetail(t("instructions.cacheCombinedSession"), combined(usage.main.session, usage.nested.session)),
+		t("instructions.cachePartialNote"),
+	].join("\n");
 }
 
 function setChoices(newChoices: InstructionChoice[]): void {
@@ -569,6 +604,28 @@ onUnmounted(() => {
                             <button v-if="recentChange.activationIds.length" type="button" :disabled="isMutating"
                                 data-locate-recent @click="locate(recentChange.activationIds)">{{ t("instructions.locateChange") }}</button>
                         </div>
+                        <div v-if="state.cacheUsage" class="cache-usage" data-instructions-cache>
+                            <div class="cache-usage-row" data-cache-main :title="cacheMainTitle(state.cacheUsage)">
+                                <strong>{{ t("instructions.cacheHit") }}</strong>
+                                <span data-cache-turn>{{ t("instructions.cacheTurn", { rate: cacheRate(state.cacheUsage.main.turn), count: state.cacheUsage.main.turn.requests }) }}</span>
+                                <span data-cache-session>{{ t("instructions.cacheSession", { rate: cacheRate(state.cacheUsage.main.session), count: state.cacheUsage.main.session.requests }) }}</span>
+                            </div>
+                            <div class="cache-usage-row" data-cache-nested :title="cacheNestedTitle(state.cacheUsage)">
+                                <strong>{{ t("instructions.cacheNested") }}</strong>
+                                <span v-if="state.cacheUsage.nested.session.calls + state.cacheUsage.nested.session.cacheUnknownCalls + state.cacheUsage.nested.session.invalidCalls === 0"
+                                    class="cache-usage-empty" data-cache-nested-empty>{{ t("instructions.cacheNoData") }}</span>
+                                <template v-else>
+                                    <span data-cache-nested-turn>{{ t("instructions.cacheNestedTurn", { rate: cacheRate(state.cacheUsage.nested.turn), count: state.cacheUsage.nested.turn.calls }) }}</span>
+                                    <span data-cache-nested-session>{{ t("instructions.cacheNestedSession", { rate: cacheRate(state.cacheUsage.nested.session), count: state.cacheUsage.nested.session.calls }) }}</span>
+                                    <span v-if="state.cacheUsage.nested.session.cacheUnknownCalls > 0" class="cache-usage-note" data-cache-nested-unknown>
+                                        {{ t("instructions.cacheNestedUnknown", { count: state.cacheUsage.nested.session.cacheUnknownCalls }) }}
+                                    </span>
+                                    <span v-if="state.cacheUsage.nested.session.invalidCalls > 0" class="cache-usage-note" data-cache-nested-invalid>
+                                        {{ t("instructions.cacheNestedInvalid", { count: state.cacheUsage.nested.session.invalidCalls }) }}
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
                     </section>
 					<!-- Human Activation Picker -->
 					<div v-if="state" class="instructions-picker-section" data-instructions-picker-section>
@@ -803,6 +860,11 @@ onUnmounted(() => {
 .instructions-impact .tool-tag, .impact-change > span { overflow-wrap: anywhere; max-width: 100%; }
 .item-tools-diff { flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 .impact-change { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: 12px; }
+.cache-usage { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 12px; }
+.cache-usage-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.cache-usage-row > strong { color: var(--text); flex: 0 0 auto; }
+.cache-usage-row > span { max-width: 100%; overflow-wrap: anywhere; }
+.cache-usage-empty, .cache-usage-note { color: var(--muted); }
 .impact-added { color: var(--success); border: 1px solid var(--success); border-radius: 4px; padding: 2px 5px; }
 .impact-removed { color: var(--error); border: 1px solid var(--error); border-radius: 4px; padding: 2px 5px; }
 .instruction-excerpt { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font: 13px/1.5 ui-monospace, monospace; }

@@ -9,5 +9,7 @@
  * `@zihanw/pi-forge-subagents` package, which consumes this port.
  */
 export { FORGE_HOST_CHANNEL, FORGE_HOST_PORT_NAMESPACE, FORGE_HOST_PORT_OPERATIONS, FORGE_HOST_PORT_VERSION, ForgeHost, ForgeHostClient, ForgeHostPortError, validateListProfilesRequest, validateListProfilesResponse, validatePrepareRequest, validatePrepareResponse, validateResolveProfileRequest, validateResolveProfileResponse, } from "./host-port.js";
+// Experimental nested-usage contract: tools that call models report usage in toolResult details.
+export { FORGE_NESTED_USAGE_KEY, parseForgeNestedUsage } from "../session-usage.js";
 export { SUBAGENT_FINGERPRINT_PREFIX, canonicalSubagentJson, subagentFingerprint, subagentPromptStackFingerprint, subagentSourceProfileFingerprint, } from "./fingerprints.js";
 //# sourceMappingURL=index.js.map

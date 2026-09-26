@@ -1199,3 +1199,122 @@ test("session instructions panel offers no locate action for tool-only modes", {
 		await new Promise<void>((resolveServer) => server.close(() => resolveServer()));
 	}
 });
+
+test("session instructions panel shows separated cache usage and localization", { timeout: 30_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
+		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+		return;
+	}
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+	const root = resolve(import.meta.dirname, "..");
+	const { js, css } = await bundleSessionInstructions(root);
+
+	const cachedState: InstructionStateView = {
+		...createInitialState(),
+		cacheUsage: {
+			main: {
+				turn: { requests: 5, input: 11, output: 1235, cacheRead: 51794, cacheWrite: 6578 },
+				session: { requests: 19, input: 45, output: 4529, cacheRead: 111885, cacheWrite: 16359 },
+				lastRequest: { requests: 1, input: 2, output: 885, cacheRead: 11010, cacheWrite: 5349 },
+			},
+			nested: {
+				turn: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0, cacheUnknownCalls: 0, invalidCalls: 0 },
+				session: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0, cacheUnknownCalls: 0, invalidCalls: 0 },
+			},
+		},
+	};
+	const updatedState: InstructionStateView = {
+		...cachedState,
+		cacheUsage: {
+			main: {
+				turn: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				session: { requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			},
+			nested: {
+				turn: { requests: 3, input: 10, output: 100, cacheRead: 900, cacheWrite: 90, calls: 2, cacheUnknownCalls: 1, invalidCalls: 1 },
+				session: { requests: 3, input: 10, output: 100, cacheRead: 900, cacheWrite: 90, calls: 2, cacheUnknownCalls: 1, invalidCalls: 1 },
+			},
+		},
+	};
+	const withoutCacheState: InstructionStateView = { ...createInitialState() };
+	let currentState: InstructionStateView = cachedState;
+	let locale = "en";
+	const server = createHttpServer((req, res) => {
+		const url = new URL(req.url || "/", "http://127.0.0.1");
+		if (url.pathname === "/favicon.ico") {
+			res.writeHead(204);
+			res.end();
+			return;
+		}
+		if (url.pathname === "/") {
+			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+			res.end(`<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><style>${css}</style></head><body><div id="app"></div><script>${js}</script></body></html>`);
+			return;
+		}
+		if (url.pathname === "/api/instructions" && req.method === "GET") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: true, state: currentState }));
+			return;
+		}
+		res.writeHead(404);
+		res.end();
+	});
+	await new Promise<void>((resolveServer) => server.listen(0, "127.0.0.1", () => resolveServer()));
+	const address = server.address();
+	assert.ok(address && typeof address === "object");
+
+	let browser: Browser | undefined;
+	const pageErrors: string[] = [];
+	try {
+		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
+		const page = await browser.newPage();
+		page.setDefaultTimeout(6_000);
+		page.on("pageerror", (error) => pageErrors.push(error.message));
+		const serverUrl = `http://127.0.0.1:${address.port}/?token=test-cache-usage`;
+
+		// 1. Main rates, last-request title details, and empty nested usage.
+		await page.goto(serverUrl, { waitUntil: "domcontentloaded" });
+		const cache = page.locator("[data-instructions-cache]");
+		await cache.waitFor();
+		assert.equal(await cache.locator("[data-cache-turn]").textContent(), "This turn 88.7% (5 requests)");
+		assert.equal(await cache.locator("[data-cache-session]").textContent(), "Session 87.2% (19 requests)");
+		assert.match(await cache.locator("[data-cache-main]").getAttribute("title") || "", /Latest reported request: 67\.3%/);
+		assert.equal(await cache.locator("[data-cache-nested-empty]").isVisible(), true);
+		assert.doesNotMatch(await cache.locator("[data-cache-nested]").textContent() || "", /5|19/);
+
+		// 2. Reload to fetch the changed state rather than waiting for polling.
+		currentState = updatedState;
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await page.locator("[data-instructions-cache]").waitFor();
+		assert.equal(await page.locator("[data-cache-turn]").textContent(), "This turn — (0 requests)");
+		assert.equal(await page.locator("[data-cache-nested-turn]").textContent(), "This turn 90.0% (2 calls)");
+		assert.equal(await page.locator("[data-cache-nested-session]").textContent(), "Session 90.0% (2 calls)");
+		assert.equal(await page.locator("[data-cache-nested-unknown]").textContent(), "1 calls reported no cache data");
+		assert.equal(await page.locator("[data-cache-nested-invalid]").textContent(), "1 malformed reports ignored");
+		const nestedTitle = await page.locator("[data-cache-nested]").getAttribute("title") || "";
+		assert.match(nestedTitle, /Combined known data — session: 90\.0%/);
+		assert.match(nestedTitle, /cache-unknown reports are excluded/);
+		const updatedCacheText = await page.locator("[data-instructions-cache]").textContent() || "";
+		assert.doesNotMatch(updatedCacheText, /5 requests|19 requests|Combined known/);
+
+		// 3. The optional block is absent when the backend omits cacheUsage.
+		currentState = withoutCacheState;
+		await page.reload({ waitUntil: "domcontentloaded" });
+		await page.locator("[data-instructions-impact]").waitFor();
+		assert.equal(await page.locator("[data-instructions-cache]").count(), 0);
+
+		// 4. No unhandled errors occurred while switching between all states.
+		assert.deepEqual(pageErrors, []);
+
+		// 5. The component follows the document locale on a fresh page load.
+		locale = "zh-CN";
+		currentState = cachedState;
+		await page.reload({ waitUntil: "domcontentloaded" });
+		assert.equal(await page.locator("[data-cache-turn]").textContent(), "本轮 88.7%（5 次请求）");
+		assert.deepEqual(pageErrors, []);
+	} finally {
+		await browser?.close();
+		await new Promise<void>((resolveServer) => server.close(() => resolveServer()));
+	}
+});
