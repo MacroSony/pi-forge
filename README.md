@@ -40,6 +40,8 @@ Create reusable definitions in **Modes** and configure Preset authorization in i
 
 Saving a Mode does not activate it, and editing its definition does not replace an already-active snapshot. Turning it off recomputes tools from the Preset's base selection and remaining Modes; it does not erase history, undo file changes, or interrupt running tools. See [Instruction modes](docs/reference/instruction-modes.md) for setup and lifecycle details.
 
+How an update reaches the model depends on Pi's metadata for the current model. Models marked as accepting mid-conversation system messages receive native system updates; other models receive a labeled user message instead. Models from the same provider can differ, and switching with `/model` affects later requests. `/instruction status` shows which path is in use; see [Delivery models](docs/reference/instruction-modes.md#delivery-models-native-vs-fallback).
+
 **Current session** places mode/tool controls beside the session projection. Inspect net tool changes and locate related instruction updates without closing the controls. This view uses the active saved Preset, not the editor draft or a captured provider request.
 
 ![Use and locate Explore mode: tools and instruction changes together; Off restores read and projects a removal](assets/readme/en/mode-tools.gif)

@@ -40,6 +40,8 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 保存模式不等于启用，修改定义也不会替换会话中已经启用的快照。停用时，会按预设的基础工具集和其他仍启用的模式重新计算；不会抹掉历史、撤回已做的文件修改或中断正在运行的工具。设置方法和生命周期见[指令模式参考](docs/zh-CN/reference/instruction-modes.md)。
 
+指令更新以什么形式发给模型，取决于 Pi 对当前模型的元数据：标记为支持会话中系统消息的模型收到原生 system 更新，其他模型则改收带标记的用户消息。同一服务商的不同型号也可能不同，用 `/model` 切换后会影响之后的请求。`/instruction status` 会显示当前走哪条路径，详见[投递模型](docs/zh-CN/reference/instruction-modes.md#投递模型native-与-fallback)。
+
 **当前会话**将模式与生效工具放在左侧，会话投影放在右侧；启停后可直接查看工具净增减，并定位相关指令更新。它检查已启用的已保存预设，不是编辑草稿或已捕获的实际请求。
 
 ![启用并定位探索模式：工具与指令同步可见；停用恢复 read 并显示移除更新](assets/readme/zh-CN/mode-tools.gif)
