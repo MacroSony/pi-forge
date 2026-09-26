@@ -10,7 +10,7 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 > Inspired by SillyTavern’s presets, I built pi-forge to customize both what goes into an agent’s context and how it is assembled—and inspect what actually reaches the model.
 
-[Context composition](#context-composition) · [Tool selection](#tool-selection) · [Regex transformations](#regex-transformations) · [Instruction modes](#dynamic-system-prompts-and-tools) · [Request inspection](#preview-and-request-inspection)
+[Context composition](#context-composition) · [Tool selection](#tool-selection) · [Regex transformations](#regex-transformations) · [Capabilities](#dynamic-system-prompts-and-tools) · [Request inspection](#preview-and-request-inspection)
 
 > **Optional subagents**: [pi-forge-subagents](https://github.com/MacroSony/pi-forge-subagents) — Delegate tasks to agents with their own model and preset.
 
@@ -19,7 +19,7 @@ pi-forge provides visual context composition, tool selection, reusable configura
 Requires Node.js **22.19 or newer**. The 0.5.5 line supports Pi **0.87.x** (`>=0.87.0 <0.88.0`), tested with **0.87.0**.
 
 <!-- RELEASE NOTE: remove this block when 0.5.5 is published; keep the install command below. -->
-> **0.5.5 is not published yet.** Instruction modes and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ. For a local build, see [development setup](docs/development/setup.md#load-the-extension).
+> **0.5.5 is not published yet.** Capabilities and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ. For a local build, see [development setup](docs/development/setup.md#load-the-extension).
 <!-- END RELEASE NOTE -->
 
 ```bash
@@ -33,7 +33,7 @@ Restart Pi after installing or updating. In a trusted project:
 3. Edit a block or policy and check **Preview**.
 4. **Save** your changes, then **Activate** the Preset for the current session.
 
-Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Mode with `/instruction use <mode>`. Try the [Read-first Worker example](docs/reference/instruction-modes.md#read-first-worker) yourself.
+Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Capability with `/capability enable <capability>`. Try the [Read-first Worker example](docs/reference/capabilities.md#read-first-worker) yourself.
 
 ## Features
 
@@ -50,7 +50,7 @@ See [Web editor guide](docs/guides/web-editor.md) and [Stack schema](docs/refere
 
 ### Tool selection
 
-Choose which tools an agent may use and which are available by default. An allowlist or denylist sets the permission limit; a smaller default set keeps other permitted tools available for Modes to enable later.
+Choose which tools an agent may use and which are available by default. An allowlist or denylist sets the permission limit; a smaller default set keeps other permitted tools available for Capabilities to enable later.
 
 - **Use case**: Keep a review agent focused on reading and searching, without giving it editing or shell tools.
 - **Try it**: In **Policy**, choose the permitted tools and a default set such as `read` and `ls`. Add the already-permitted `grep` to the defaults and check the tool list in **Preview**; save and activate to apply the policy.
@@ -72,18 +72,18 @@ See [Regex transformation reference](docs/reference/stack-schema.md#regex-transf
 
 ### Dynamic system prompts and tools
 
-**Instruction modes** update system instructions and available tools mid-conversation. Start an agent with minimal tools, then let it load task-specific instructions and tools when needed—without restarting the session or switching Presets.
+**Capabilities** update system instructions and available tools mid-conversation. Start an agent with minimal tools, then let it load task-specific instructions and tools when needed—without restarting the session or switching Presets.
 
-- **Use case**: Let an agent explore code with `read` and `ls`, then enable an authorized editing Mode when it is ready to apply a fix.
-- **Try it**: Create a Mode in **Modes** and authorize agent access in the Preset’s **Bindings** tab. You can also enable it yourself in **Current session** or with `/instruction use <mode>`, and inspect the resulting instructions and tools.
+- **Use case**: Let an agent explore code with `read` and `ls`, then enable an authorized editing Capability when it is ready to apply a fix.
+- **Try it**: Create a Capability in **Capabilities** and authorize agent access in the Preset’s **Bindings** tab. You can also enable it yourself in **Current session** or with `/capability enable <capability>`, and inspect the resulting instructions and tools.
 
-Updates reach the model as native mid-conversation system updates on supported models, with a labeled user-message fallback otherwise (see [delivery details](docs/reference/instruction-modes.md#delivery-models-native-vs-fallback)).
+Updates reach the model as native mid-conversation system updates on supported models, with a labeled user-message fallback otherwise (see [delivery details](docs/reference/capabilities.md#delivery-models-native-vs-fallback)).
 
 On supported provider/model combinations, adding or removing tools can preserve the cached prompt prefix. Support differs for additions and removals, and cache hits are not guaranteed; see [provider support and cache observations](docs/reference/provider-support.md#observed-cache-behavior).
 
-![Use and locate Explore mode: tools and instruction changes together; Off restores read and projects a removal](assets/readme/en/mode-tools.gif)
+![Enable and locate Explore capability: tools and instruction changes together; Disable restores read and projects a removal](assets/readme/en/capability-tools.gif)
 
-See [Instruction modes reference](docs/reference/instruction-modes.md).
+See [Capabilities reference](docs/reference/capabilities.md).
 
 ### Preview and request inspection
 
@@ -100,7 +100,7 @@ See what your edits change before calling a model, then inspect captured request
 
 - [Default Pi mirror](examples/default-prompt-stack.json) — A Pi-style starting point, split into editable blocks and runtime slots.
 - [Minimal worker](examples/minimal-prompt-stack.json) — One line of instructions, chat history, and only `bash` plus `edit`.
-- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools mode](examples/instruction-modes/write-tools.json) — Start with `read`, `ls`, and the mode control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/instruction-modes.md#read-first-worker).
+- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools capability](examples/capabilities/write-tools.json) — Start with `read`, `ls`, and the capability control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/capabilities.md#read-first-worker).
 - [Regex examples](examples/hack-prompt-stack.json) — Outgoing redaction paired with stored-transcript cleanup for two sample token patterns.
 
 Save your current model, thinking level, and Preset as an Agent Profile with `/profile save reviewer`; restore it with `/profile use reviewer`. See [patterns and use cases](docs/guides/use-cases.md) for more ideas.

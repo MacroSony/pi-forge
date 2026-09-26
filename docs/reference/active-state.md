@@ -56,7 +56,7 @@ No other fields cross the channel. Prompt text, file paths, tokens, credentials,
 
 ## Publishing lifecycle
 
-The publisher emits on: initial session bind/restore, session start, tree navigation, compaction, explicit preset changes (`use`, `none`/off), profile apply/update, web-editor updates, and disposal. Workspace changes publish without any provider/model call.
+The publisher emits on: initial session bind/restore, session start, tree navigation, compaction, explicit preset changes (`enable`, `none`/off), profile apply/update, web-editor updates, and disposal. Workspace changes publish without any provider/model call.
 
 Rules:
 

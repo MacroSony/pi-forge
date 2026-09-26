@@ -1,9 +1,9 @@
 // Bilingual surface copy; consumed by the single editor i18n owner.
 export const surfacesEn = {
-	"polish.surfaces.modeScope": "Mode scope",
-	"polish.surfaces.modeScopeAria": "Mode scope",
-	"polish.surfaces.modeCreating": "Drafting new instruction mode",
-	"polish.surfaces.modeEditing": "Editing instruction mode",
+	"polish.surfaces.capabilityScope": "Capability scope",
+	"polish.surfaces.capabilityScopeAria": "Capability scope",
+	"polish.surfaces.capabilityCreating": "Drafting new capability",
+	"polish.surfaces.capabilityEditing": "Editing capability",
 	"polish.surfaces.profileEditNotice": "Drafting profile changes — Save writes to disk; Apply remains a separate action",
 	"polish.surfaces.profileNotApplied": "Not applied in session",
 	"polish.surfaces.profileAdvanced": "Advanced options (description & auto-activation)",
@@ -16,10 +16,10 @@ export const surfacesEn = {
 };
 
 export const surfacesZhCN: Record<keyof typeof surfacesEn, string> = {
-	"polish.surfaces.modeScope": "模式作用域",
-	"polish.surfaces.modeScopeAria": "模式作用域",
-	"polish.surfaces.modeCreating": "创建新指令模式",
-	"polish.surfaces.modeEditing": "编辑指令模式",
+	"polish.surfaces.capabilityScope": "能力作用域",
+	"polish.surfaces.capabilityScopeAria": "能力作用域",
+	"polish.surfaces.capabilityCreating": "创建新能力",
+	"polish.surfaces.capabilityEditing": "编辑能力",
 	"polish.surfaces.profileEditNotice": "草稿编辑中 — 保存将写入磁盘；应用到会话为独立操作",
 	"polish.surfaces.profileNotApplied": "当前会话未应用",
 	"polish.surfaces.profileAdvanced": "高级选项（描述与自动启用）",

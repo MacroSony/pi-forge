@@ -1,12 +1,12 @@
 // Bilingual UI copy; consumed by the single editor i18n owner.
 export const formsEn = {
 	"polish.forms.policy.cardCeilingTitle": "Permission ceiling",
-	"polish.forms.policy.cardCeilingDesc": "Modes can only activate registered tools within this ceiling.",
+	"polish.forms.policy.cardCeilingDesc": "Capabilities can only activate registered tools within this ceiling.",
 	"polish.forms.policy.chooseDeniedTools": "Choose denied tools…",
 	"polish.forms.policy.rawRulesAdvanced": "Advanced: matching rules & manual input",
 	"polish.forms.policy.rawRulesHint": "Wildcards and uncataloged tool names are preserved here.",
 	"polish.forms.policy.cardDefaultsTitle": "Default tools",
-	"polish.forms.policy.cardDefaultsDesc": "Permitted tools define the ceiling; this set is the active preset base. Modes can enable other permitted tools.",
+	"polish.forms.policy.cardDefaultsDesc": "Permitted tools define the ceiling; this set is the active preset base. Capabilities can enable other permitted tools.",
 	"polish.forms.policy.defaultsRulesAdvanced": "Rules for default tools",
 	"polish.forms.policy.defaultsRulesHint": "When custom defaults are not enabled, the session baseline is used. An explicit empty list means zero default tools.",
 	"polish.forms.policy.skillsSectionTitle": "Skill listing visibility",
@@ -36,12 +36,12 @@ export const formsEn = {
 
 export const formsZhCN: Record<keyof typeof formsEn, string> = {
 	"polish.forms.policy.cardCeilingTitle": "许可范围",
-	"polish.forms.policy.cardCeilingDesc": "模式只能启用许可范围内、已经注册的工具，不能越过这个上限。",
+	"polish.forms.policy.cardCeilingDesc": "能力只能启用许可范围内、已经注册的工具，不能越过这个上限。",
 	"polish.forms.policy.chooseDeniedTools": "选择拒绝工具…",
 	"polish.forms.policy.rawRulesAdvanced": "高级：匹配规则与手动输入",
 	"polish.forms.policy.rawRulesHint": "保留通配符与手动输入的工具名。",
 	"polish.forms.policy.cardDefaultsTitle": "默认启用",
-	"polish.forms.policy.cardDefaultsDesc": "许可工具定义了上限；这组工具是当前预设的基础。模式可以按需启用其他许可工具。",
+	"polish.forms.policy.cardDefaultsDesc": "许可工具定义了上限；这组工具是当前预设的基础。能力可以按需启用其他许可工具。",
 	"polish.forms.policy.defaultsRulesAdvanced": "默认集的规则",
 	"polish.forms.policy.defaultsRulesHint": "未开启自定义时沿用既有策略／会话基线；明确选空表示零默认工具。",
 	"polish.forms.policy.skillsSectionTitle": "技能列表可见性",

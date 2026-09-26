@@ -95,7 +95,7 @@ Subagent 执行功能从主包移入可选包 `@zihanw/pi-forge-subagents`（要
 ### 上下文 Hook 迁移（`context_with_system`）
 
 - **标准 `context` 排除 System 消息：** 在 Pi 0.87 中，标准 `context` 生命周期 hook 默认排除 System 消息。之前依赖或操作完整 System 上下文的第三方扩展必须迁移至完整的 `context_with_system` hook。
-- **统一的 Forge 流水线：** Forge 将其整个编译器、基础提示词替换与指令模式投影流水线完整移至 `context_with_system`，在完整转录边界上统一运行，无需内部两阶段切分。
+- **统一的 Forge 流水线：** Forge 将其整个编译器、基础提示词替换与能力投影流水线完整移至 `context_with_system`，在完整转录边界上统一运行，无需内部两阶段切分。
 - **`before_agent_start` 注入时机：** 任何通过 `before_agent_start` 强制注入的 System 提示词在 Pi 执行流中仍然晚于 `context_with_system` 执行。
 
 ### 规范会话投影与转录隔离
@@ -106,13 +106,13 @@ Subagent 执行功能从主包移入可选包 `@zihanw/pi-forge-subagents`（要
 
 ### 续跑与生命周期结算
 
-- **`agent_end` 与 `agent_settled` 的职责划分：** `agent_end` 在低层运行结束后提供落锚机会，前提是没有 Forge 上下文失败或未完成的工具批次。但编译周期与 busy fence 仅在 `agent_settled` 时重置。这保证了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 输入与活跃指令模式。
+- **`agent_end` 与 `agent_settled` 的职责划分：** `agent_end` 在低层运行结束后提供落锚机会，前提是没有 Forge 上下文失败或未完成的工具批次。但编译周期与 busy fence 仅在 `agent_settled` 时重置。这保证了由 `agent_before_settle` 发起的继续执行（continuation）不会丢失已编译的 Preset 输入与活跃能力。
 
 ### 防护机制与语义保持
 
-- **项目信任：** 激活指令模式或执行 Agent 控制工具必须处于受信任项目（`isProjectTrusted()`）；人类 CLI 的 off/reset 恢复入口仍可用。
-- **`sourceRevision` 防脏写：** 已有模式的更新/删除与带绑定的预设更新需要匹配原始字节的源版本；创建模式不得覆盖已有文件。并发冲突返回 `409 Conflict`。
-- **Save ≠ Use：** 保存模式或预设绑定仅更新磁盘定义，绝不自动将其激活入当前会话。
+- **项目信任：** 激活能力或执行 Agent 控制工具必须处于受信任项目（`isProjectTrusted()`）；人类 CLI 的 disable/reset 恢复入口仍可用。
+- **`sourceRevision` 防脏写：** 已有能力的更新/删除与带绑定的预设更新需要匹配原始字节的源版本；创建能力不得覆盖已有文件。并发冲突返回 `409 Conflict`。
+- **Save ≠ Enable：** 保存能力库定义仅更新磁盘文件，绝不在当前会话中启用该能力；保存当前生效的预设会立即刷新其策略（更新实时工具与能力授权），但不会替换已冻结的活动能力快照。
 - **上游缺陷状态：** 上游 Pi 元数据切分与语义截断缺陷未修复；压缩检查点位置保持不变；旧会话中的 carrier 保持原样不自动迁移；不支持也不承诺 OMP（Oh My Pi）。
 
 ## 兼容性说明

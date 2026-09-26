@@ -134,9 +134,9 @@ test("inspection: reading controls, layout-stable tabs, draft save, and preview 
 		assert.ok(workspaceBox && workspaceBox.width > 0, "Editor stays visible beside Preview");
 		assert.ok(cycleBox.x >= paneBox.x && cycleBox.x + cycleBox.width <= paneBox.x + paneBox.width, "Reading handle must not overlap the editing pane");
 
-		// Next action aria/title in side mode: widen
+		// Next action aria/title in side capability: widen
 		const sideTitle = await cycleButton.getAttribute("title");
-		assert.match(sideTitle ?? "", /widen|加宽/i, "Next action title in side mode must describe widening");
+		assert.match(sideTitle ?? "", /widen|加宽/i, "Next action title in side layout must describe widening");
 
 		// Role color labels: subtle strip and badge, theme variable usage
 		const systemSection = page.locator(".context-diff-section.role-system");

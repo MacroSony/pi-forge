@@ -2,9 +2,9 @@
 
 [中文文档](../README.md) · [English](../../reference/provider-support.md)
 
-本页记录 Pi 0.87.1 在各 API 下如何发送会话中的 system 更新和工具变化，以及 Pi 模型目录中哪些模型带有相应标记。它解释了为什么同一个[指令模式](instruction-modes.md#投递模型native-与-fallback)在一个模型上以原生 system 更新送达，换到另一个模型却变成带标记的用户消息。
+本页记录 Pi 0.87.1 在各 API 下如何发送会话中的 system 更新和工具变化，以及 Pi 模型目录中哪些模型带有相应标记。它解释了为什么同一个[能力](capabilities.md#投递模型native-与-fallback)在一个模型上以原生 system 更新送达，换到另一个模型却变成带标记的用户消息。
 
-> **快照状态：** Pi 0.87.1（`@earendil-works/pi-ai` 0.87.1），本地模型目录最近检查于 2026-09-21 至 2026-09-25，记录于 2026-09-26。模型目录由 Pi 远程拉取并缓存在 `~/.pi/agent/models-store.json`，标记可能在不升级 Pi 的情况下变化。依赖下表之前，请先用 `/instruction status` 确认当前模型走哪条路径。
+> **快照状态：** Pi 0.87.1（`@earendil-works/pi-ai` 0.87.1），本地模型目录最近检查于 2026-09-21 至 2026-09-25，记录于 2026-09-26。模型目录由 Pi 远程拉取并缓存在 `~/.pi/agent/models-store.json`，标记可能在不升级 Pi 的情况下变化。依赖下表之前，请先用 `/capability status` 确认当前模型走哪条路径。
 
 ## 如何决定
 
@@ -12,7 +12,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 
 | 标记 | 为 `true` 时 | 缺失或为 `false` 时 |
 |---|---|---|
-| `supportsMidConvoSystemMessages` | 后续 system 消息保留在对话中的原位置；Forge 以原生 system 分段发送指令正文。 | Pi 把所有 system 消息折回首条 system 提示词，并在请求级别发送当前工具列表；Forge 以带标记的 `[pi-forge instruction update]` 用户消息发送指令正文。 |
+| `supportsMidConvoSystemMessages` | 后续 system 消息保留在对话中的原位置；Forge 以原生 system 分段发送指令正文。 | Pi 把所有 system 消息折回首条 system 提示词，并在请求级别发送当前工具列表；Forge 以带标记的 `[pi-forge capability update]` 用户消息发送指令正文。 |
 | `supportsMidConvoToolChanges`（Anthropic Messages） | 工具增删以 `tool_addition` / `tool_removal` 块放在 system 更新中发送。 | 在请求级别发送完整的当前工具列表。 |
 | `supportsAdditionalTools` / `supportsToolSearch`（OpenAI Responses、Codex、Azure） | 新工具在原位置加载（`additional_tools`，或客户端 tool search 的调用与结果）。 | 在请求级别发送完整的当前工具列表。 |
 | `supportsMidConvoToolAdditions`（OpenAI Completions） | 新工具由一条带 `tools` 的 system 消息在原位置加载。 | 在请求级别发送完整的当前工具列表。 |
@@ -31,7 +31,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 | Bedrock Converse | 始终折入请求级 system 提示词。 | 完整的当前工具配置。 |
 | `pi-messages` | 原样把上下文交给后端，行为取决于该后端。 | 由后端决定。 |
 
-更新正文渲染为 `Updated system prompt section "<name>": ...` 或 `Removed system prompt section "<name>".`。[纯工具模式](instruction-modes.md#投递模型native-与-fallback)不发送文字更新。
+更新正文渲染为 `Updated system prompt section "<name>": ...` 或 `Removed system prompt section "<name>".`。[纯工具能力](capabilities.md#投递模型native-与-fallback)不发送文字更新。
 
 ## 2026-09 目录中带标记的模型
 
@@ -54,7 +54,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 
 以下是单个会话中的观察，不构成保证。缓存是否复用由服务商决定。
 
-- **`anthropic/claude-opus-5-5`，原生路径（通过认证扩展使用 OAuth）：** 新增、移除、重新添加工具，包括模型自己启用的模式，18 次续轮请求全部完整复用了已缓存的前缀。命中率偏低的请求是在写入新内容，例如新的工具定义或大文件读取结果，并没有丢失之前的缓存。
+- **`anthropic/claude-opus-5-5`，原生路径（通过认证扩展使用 OAuth）：** 新增、移除、重新添加工具，包括模型自己启用的能力，18 次续轮请求全部完整复用了已缓存的前缀。命中率偏低的请求是在写入新内容，例如新的工具定义或大文件读取结果，并没有丢失之前的缓存。
 - **`anthropic/claude-sonnet-5`，fallback 路径：** 工具变化后的那次请求没有读到任何缓存，因为 Pi 改写了首条 system 提示词和工具列表。模型还对带标记的用户更新产生了怀疑，确认后才使用新工具。
 - **OpenAI Responses / Codex：** 之前的测试中，一次移除就改为发送完整工具列表，缓存读取降为 0；只有新增的请求保住了前缀。
 
@@ -62,6 +62,6 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 
 ## 检查自己的环境
 
-1. 运行 `/instruction status`，它会显示当前模型使用 `native system sections` 还是 `attributed user updates`。
+1. 运行 `/capability status`，它会显示当前模型使用 `native system sections` 还是 `attributed user updates`。
 2. 如需直接查看标记，在 `~/.pi/agent/models-store.json` 中找到对应服务商下的模型，读取其 `compat` 对象。
 3. 如需确认实际发送格式，用 `/forge payload next` 捕获下一次真实请求。

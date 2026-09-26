@@ -1,7 +1,7 @@
 import { registerForgeCommand } from "./forge-command.ts";
-import { createInstructionRuntime } from "./runtime/instruction-runtime.ts";
-import { registerInstructionCommand } from "./instruction-command.ts";
-import { registerInstructionTool } from "./instruction-tool.ts";
+import { createCapabilityRuntime } from "./runtime/capability-runtime.ts";
+import { registerCapabilityCommand } from "./capability-command.ts";
+import { registerCapabilityTool } from "./capability-tool.ts";
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerLifecycleHandlers } from "./lifecycle.ts";
 import { registerPayloadCommands, registerPayloadRequestHandler, armPayloadIntercept, clearPayloadCapture, recordProviderResponseUsage, webPayloadSnapshot } from "./payload-command.ts";
@@ -83,7 +83,7 @@ export default function piForge(pi: ExtensionAPI) {
 	const payloadState = createPayloadState();
 	const currentActive = () => workspace.snapshotKnown ? workspace.snapshot().active : undefined;
 	const toolPolicy = createToolPolicyRuntime(pi, () => currentActive());
-	const instructions = createInstructionRuntime(pi, workspace, toolPolicy);
+	const instructions = createCapabilityRuntime(pi, workspace, toolPolicy);
 	let profileRuntime: ProfileRuntime;
 	const stackRuntime = createPromptStackRuntime(pi, workspace, compileCycle, {
 		syncToolPolicy: instructions.sync,
@@ -93,11 +93,11 @@ export default function piForge(pi: ExtensionAPI) {
 		updateStatus: stackRuntime.updateStatus,
 	});
 	const webEditorRuntime = createWebEditorRuntime((ctx: ExtensionContext, promptOptions: BuildSystemPromptOptions) => ({
-		readInstructionModes: () => workspace.reloadInstructionModes(ctx.cwd, ctx.isProjectTrusted()).instructionModes,
-		readInstructions: () => instructions.readState(),
-		readInstructionChoices: () => instructions.readAvailableInstructions(),
-		mutateInstructions: (input) => instructions.mutateState(input),
-		useInstruction: (input) => instructions.useInstruction(input),
+		readCapabilities: () => workspace.reloadCapabilities(ctx.cwd, ctx.isProjectTrusted()).capabilities,
+		readCapabilityState: () => instructions.readState(),
+		readCapabilityChoices: () => instructions.readAvailableCapabilities(),
+		mutateCapabilityState: (input) => instructions.mutateState(input),
+		enableCapability: (input) => instructions.enableCapability(input),
 		getStacks: () => [...workspace.snapshot().stacks],
 		getActive: () => currentActive(),
 		getActiveId: stackRuntime.activeId,
@@ -147,13 +147,13 @@ export default function piForge(pi: ExtensionAPI) {
 		refreshWebEditorHost: webEditorRuntime.refreshHost,
 		notifyActivePreset: stackRuntime.notifyActivePreset,
 		syncActiveToolPolicy: instructions.sync,
-		disposeInstructions: instructions.dispose,
-		prepareInstructionRestore: instructions.prepareRestore,
-		restoreInstructions: instructions.restore,
-		projectInstructions: instructions.project,
-		prepareInstructionMessages: instructions.prepareMessages,
-		commitEndInstructionAnchors: instructions.commitEndAnchors,
-		setInstructionAgentBusy: instructions.setAgentBusy,
+		disposeCapabilities: instructions.dispose,
+		prepareCapabilityRestore: instructions.prepareRestore,
+		restoreCapabilities: instructions.restore,
+		projectCapabilities: instructions.project,
+		prepareCapabilityMessages: instructions.prepareMessages,
+		commitEndCapabilityAnchors: instructions.commitEndAnchors,
+		setCapabilityAgentBusy: instructions.setAgentBusy,
 		toolPromptOptions: (options) => {
 			const active = currentActive();
 			return active ? toolPolicy.previewOptions({ ...options, selectedTools: pi.getActiveTools() }, active.stack) : options;
@@ -173,8 +173,8 @@ export default function piForge(pi: ExtensionAPI) {
 		recordProviderResponseUsage: (message) => recordProviderResponseUsage(payloadState, message),
 	});
 	registerPayloadRequestHandler(pi, payloadState, () => currentActive());
-	registerInstructionCommand(pi, instructions);
-	registerInstructionTool(pi, instructions);
+	registerCapabilityCommand(pi, instructions);
+	registerCapabilityTool(pi, instructions);
 	const payloadCommand = registerPayloadCommands(pi, payloadState);
 	registerForgeCommand(pi, { openWebEditor: webEditorRuntime.open, stopWebEditor: webEditorRuntime.stop }, payloadCommand);
 	registerPresetCommand(pi, workspace, compileCycle, {

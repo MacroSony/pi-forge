@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isValidToolName, type InstructionToolPatch } from "../codecs/instruction-mode.ts";
+import { isValidToolName, type CapabilityToolPatch } from "../codecs/capability.ts";
 import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy } from "../policy.ts";
 import type { LoadedPromptStack } from "../types.ts";
 import type { PromptStack } from "../types.ts";
@@ -19,14 +19,14 @@ export interface ToolPolicyRuntime {
 	previewOptions(base: BuildSystemPromptOptions, stack: PromptStack): BuildSystemPromptOptions;
 	policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources;
 	snapshot(): ToolPolicySnapshot;
-	setInstructionModes(patches: readonly InstructionToolPatch[], restored?: ToolPolicySnapshot): void;
-	validateInstructionModes(patches: readonly InstructionToolPatch[]): string | undefined;
+	setCapabilities(patches: readonly CapabilityToolPatch[], restored?: ToolPolicySnapshot): void;
+	validateCapabilities(patches: readonly CapabilityToolPatch[]): string | undefined;
 }
 
 export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => LoadedPromptStack | undefined): ToolPolicyRuntime {
 	let baseline: string[] | undefined;
 	let lastApplied: string[] | undefined;
-	let instructionPatches: InstructionToolPatch[] = [];
+	let capabilityPatches: CapabilityToolPatch[] = [];
 
 	function filterKnownTools(names: string[]): string[] {
 		const known = new Set(pi.getAllTools().map((tool) => tool.name));
@@ -54,7 +54,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 				: sourceTools;
 
 		const effective = [...baseList];
-		for (const patch of instructionPatches) {
+		for (const patch of capabilityPatches) {
 			for (const name of patch.add) {
 				if (registered.has(name) && !effective.includes(name)) {
 					effective.push(name);
@@ -63,7 +63,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		}
 
 		const allRemoved = new Set<string>();
-		for (const patch of instructionPatches) {
+		for (const patch of capabilityPatches) {
 			for (const name of patch.remove) {
 				allRemoved.add(name);
 			}
@@ -80,9 +80,9 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 	function sync(ctx?: ExtensionContext): void {
 		const policy = getActiveStack()?.stack.tools;
 		const selectionActive = hasToolSelectionPolicy(policy);
-		const modesActive = instructionPatches.length > 0;
+		const capabilitiesActive = capabilityPatches.length > 0;
 
-		if (!selectionActive && !modesActive) {
+		if (!selectionActive && !capabilitiesActive) {
 			restore(ctx);
 			return;
 		}
@@ -109,7 +109,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			baseline = undefined;
 		}
 		lastApplied = undefined;
-		instructionPatches = [];
+		capabilityPatches = [];
 		if (ctx) ctx.ui.setStatus("pi-forge-tools", undefined);
 	}
 
@@ -120,9 +120,9 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		};
 	}
 
-	function validateInstructionModes(patches: readonly InstructionToolPatch[]): string | undefined {
+	function validateCapabilities(patches: readonly CapabilityToolPatch[]): string | undefined {
 		if (!Array.isArray(patches)) {
-			return "Instruction mode patches must be an array.";
+			return "Capability capability patches must be an array.";
 		}
 		const registered = new Set(pi.getAllTools().map((tool) => tool.name));
 		const activeStack = getActiveStack();
@@ -131,19 +131,19 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 
 		for (const patch of patches) {
 			if (!patch || typeof patch !== "object") {
-				return "Instruction mode patch must be an object.";
+				return "Capability capability patch must be an object.";
 			}
 			if (!Array.isArray(patch.add) || !Array.isArray(patch.remove)) {
-				return "Instruction mode patch must have add and remove arrays.";
+				return "Capability capability patch must have add and remove arrays.";
 			}
 			for (const name of patch.remove) {
 				if (typeof name !== "string" || !isValidToolName(name)) {
-					return `Invalid tool name "${name}" in instruction mode remove list.`;
+					return `Invalid tool name "${name}" in capability remove list.`;
 				}
 			}
 			for (const name of patch.add) {
 				if (typeof name !== "string" || !isValidToolName(name)) {
-					return `Invalid tool name "${name}" in instruction mode add list.`;
+					return `Invalid tool name "${name}" in capability add list.`;
 				}
 				if (!registered.has(name)) {
 					return `Tool "${name}" is not registered.`;
@@ -156,8 +156,8 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		return undefined;
 	}
 
-	function setInstructionModes(patches: readonly InstructionToolPatch[], restored?: ToolPolicySnapshot): void {
-		const validationError = validateInstructionModes(patches);
+	function setCapabilities(patches: readonly CapabilityToolPatch[], restored?: ToolPolicySnapshot): void {
+		const validationError = validateCapabilities(patches);
 		if (validationError) throw new Error(validationError);
 		if (restored !== undefined) {
 			if (!restored || typeof restored !== "object" || !Array.isArray(restored.baseline) || !Array.isArray(restored.lastApplied)) {
@@ -171,7 +171,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			baseline = [...restored.baseline];
 			lastApplied = [...restored.lastApplied];
 		}
-		instructionPatches = patches.map((patch) => ({ add: [...patch.add], remove: [...patch.remove] }));
+		capabilityPatches = patches.map((patch) => ({ add: [...patch.add], remove: [...patch.remove] }));
 		if (restored) {
 			const current = filterKnownTools(pi.getActiveTools());
 			const expected = computeEffectiveTools(getActiveStack()?.stack.tools, restored.baseline);
@@ -190,13 +190,13 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			}
 		}
 		const allRemoved = new Set<string>();
-		for (const patch of instructionPatches) {
+		for (const patch of capabilityPatches) {
 			for (const name of patch.remove) {
 				allRemoved.add(name);
 			}
 		}
 		if (allRemoved.has(toolName)) {
-			return `Tool "${toolName}" is blocked by active instruction mode.`;
+			return `Tool "${toolName}" is blocked by active capability.`;
 		}
 		return undefined;
 	}
@@ -230,7 +230,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 				return !!name && selectedToolSet.has(name);
 			})
 			.flatMap((tool) => stringArrayValue(tool.promptGuidelines));
-		const promptGuidelines = baseline || instructionPatches.length > 0 || !sameStringSet(base.selectedTools ?? sessionTools, selectedTools)
+		const promptGuidelines = baseline || capabilityPatches.length > 0 || !sameStringSet(base.selectedTools ?? sessionTools, selectedTools)
 			? mappedGuidelines
 			: (base.promptGuidelines?.length ? [...base.promptGuidelines] : mappedGuidelines);
 
@@ -264,8 +264,8 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		previewOptions,
 		policyResources,
 		snapshot,
-		setInstructionModes,
-		validateInstructionModes,
+		setCapabilities,
+		validateCapabilities,
 	};
 }
 

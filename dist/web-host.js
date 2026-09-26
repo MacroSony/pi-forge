@@ -1,5 +1,5 @@
 import { parsePromptStack, serializePromptStack } from "./codecs/prompt-stack.js";
-import { instructionModeOperation } from "./instruction-web-host.js";
+import { capabilityOperation } from "./capability-web-host.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -12,45 +12,45 @@ import { formatResourceKey, parseResourceSelector } from "./resource-identity.js
 import { getRegisteredSlots } from "./slot-renderers.js";
 import { resolveResourceSelector } from "./catalog.js";
 import { createAgentProfilePreview, deleteAgentProfile, getAgentProfileRuntimeStatus, writeAgentProfile, } from "./profile-service.js";
-import { isInstructionStateMutation, isInstructionUseRequest, } from "./instruction-state.js";
+import { isCapabilityStateMutation, isCapabilityEnableRequest, } from "./capability-state.js";
 export function createWebEditorHost(ctx, runtime) {
     return {
         cwd: ctx.cwd,
-        modeOperation: (action, selector, input) => instructionModeOperation(ctx, runtime, action, selector, input),
+        capabilityOperation: (action, selector, input) => capabilityOperation(ctx, runtime, action, selector, input),
         isProjectTrusted: () => ctx.isProjectTrusted(),
-        readInstructions: () => {
-            if (!runtime.readInstructions) {
-                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+        readCapabilityState: () => {
+            if (!runtime.readCapabilityState) {
+                return { ok: false, status: 503, error: "Capability runtime is unavailable." };
             }
-            return runtime.readInstructions();
+            return runtime.readCapabilityState();
         },
-        previewInstructions: () => {
-            if (!runtime.readInstructions) {
-                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+        previewCapabilities: () => {
+            if (!runtime.readCapabilityState) {
+                return { ok: false, status: 503, error: "Capability runtime is unavailable." };
             }
             try {
-                const initial = runtime.readInstructions();
+                const initial = runtime.readCapabilityState();
                 if (!initial.ok)
                     return initial;
                 if (!initial.state.trusted)
                     return { ok: false, status: 403, error: "Project is not trusted." };
                 if (initial.state.restoring)
-                    return { ok: false, status: 503, error: "Instruction session is restoring." };
-                if (!instructionGuardMatchesContext(ctx, initial.state.guard)) {
+                    return { ok: false, status: 503, error: "Capability session is restoring." };
+                if (!capabilityGuardMatchesContext(ctx, initial.state.guard)) {
                     return { ok: false, status: 409, error: "Session or branch changed. Refresh and review." };
                 }
                 const target = runtime.getActive();
                 if (!target)
-                    return { ok: false, status: 409, error: "No active preset is selected for instruction preview." };
+                    return { ok: false, status: 409, error: "No active preset is selected for capability preview." };
                 const built = runtime.buildPreview(target);
-                const final = runtime.readInstructions();
+                const final = runtime.readCapabilityState();
                 if (!final.ok)
                     return final;
-                if (!sameInstructionGuard(initial.state.guard, final.state.guard)
+                if (!sameCapabilityGuard(initial.state.guard, final.state.guard)
                     || initial.state.presetRevision !== final.state.presetRevision
-                    || !instructionGuardMatchesContext(ctx, final.state.guard)
+                    || !capabilityGuardMatchesContext(ctx, final.state.guard)
                     || runtime.getActive() !== target) {
-                    return { ok: false, status: 409, error: "Session, branch, instruction state, or active preset changed during preview. Refresh and review." };
+                    return { ok: false, status: 409, error: "Session, branch, capability state, or active preset changed during preview. Refresh and review." };
                 }
                 return {
                     ok: true,
@@ -65,45 +65,45 @@ export function createWebEditorHost(ctx, runtime) {
                 };
             }
             catch (error) {
-                return { ok: false, status: 503, error: `Instruction preview unavailable: ${error instanceof Error ? error.message : String(error)}` };
+                return { ok: false, status: 503, error: `Capability preview unavailable: ${error instanceof Error ? error.message : String(error)}` };
             }
         },
-        readInstructionChoices: () => {
-            if (!runtime.readInstructionChoices) {
-                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+        readCapabilityChoices: () => {
+            if (!runtime.readCapabilityChoices) {
+                return { ok: false, status: 503, error: "Capability runtime is unavailable." };
             }
-            return runtime.readInstructionChoices();
+            return runtime.readCapabilityChoices();
         },
-        mutateInstructions: (input) => {
+        mutateCapabilityState: (input) => {
             try {
                 if (!ctx.isProjectTrusted()) {
-                    return { ok: false, status: 403, error: "Project is not trusted; refusing to mutate instructions." };
+                    return { ok: false, status: 403, error: "Project is not trusted; refusing to mutate capabilities." };
                 }
             }
             catch {
-                return { ok: false, status: 503, error: "Instruction session is unavailable." };
+                return { ok: false, status: 503, error: "Capability session is unavailable." };
             }
-            if (!runtime.mutateInstructions) {
-                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
+            if (!runtime.mutateCapabilityState) {
+                return { ok: false, status: 503, error: "Capability runtime is unavailable." };
             }
-            if (!isInstructionStateMutation(input)) {
-                return { ok: false, status: 400, error: "Invalid instruction state mutation payload." };
+            if (!isCapabilityStateMutation(input)) {
+                return { ok: false, status: 400, error: "Invalid capability state mutation payload." };
             }
-            return runtime.mutateInstructions(input);
+            return runtime.mutateCapabilityState(input);
         },
-        useInstruction: (input) => {
+        enableCapability: (input) => {
             try {
                 if (!ctx.isProjectTrusted())
-                    return { ok: false, status: 403, error: "Project is not trusted; refusing to activate instructions." };
+                    return { ok: false, status: 403, error: "Project is not trusted; refusing to activate capabilities." };
             }
             catch {
-                return { ok: false, status: 503, error: "Instruction session is unavailable." };
+                return { ok: false, status: 503, error: "Capability session is unavailable." };
             }
-            if (!runtime.useInstruction)
-                return { ok: false, status: 503, error: "Instruction runtime is unavailable." };
-            if (!isInstructionUseRequest(input))
-                return { ok: false, status: 400, error: "Invalid instruction activation payload." };
-            return runtime.useInstruction(input);
+            if (!runtime.enableCapability)
+                return { ok: false, status: 503, error: "Capability runtime is unavailable." };
+            if (!isCapabilityEnableRequest(input))
+                return { ok: false, status: 400, error: "Invalid capability activation payload." };
+            return runtime.enableCapability(input);
         },
         getEditorConfig: () => ({ locale: loadWebEditorSettings(ctx).locale ?? "auto" }),
         setEditorLocale: (locale) => saveWebEditorLocale(ctx, locale),
@@ -407,10 +407,10 @@ function profileWriteError(id, result) {
 function modelKey(provider, id) {
     return `${provider}\0${id}`;
 }
-function sameInstructionGuard(a, b) {
+function sameCapabilityGuard(a, b) {
     return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
 }
-function instructionGuardMatchesContext(ctx, guard) {
+function capabilityGuardMatchesContext(ctx, guard) {
     return ctx.sessionManager.getSessionId() === guard.sessionId
         && ctx.sessionManager.getLeafId() === guard.leafId;
 }
@@ -559,14 +559,21 @@ async function saveStackFile(ctx, runtime, id, stack, expectedSourceRevision) {
     // Binding-bearing stacks use a stale-view check because their authorization
     // can be revoked outside this editor. Keep the check immediately adjacent to
     // the synchronous write; this is deliberately not a cross-process CAS.
+    if (hasRejectedLegacyPromptStackKey(stack)) {
+        return { ok: false, status: 400, error: rejectedLegacyPromptStackMessage() };
+    }
     let diskHasBindings = false;
     try {
-        diskHasBindings = JSON.parse(readFileSync(target.filePath, "utf8")).instructionModes !== undefined;
+        const diskStack = JSON.parse(readFileSync(target.filePath, "utf8"));
+        if (hasRejectedLegacyPromptStackKey(diskStack)) {
+            return { ok: false, status: 409, error: rejectedLegacyPromptStackMessage() };
+        }
+        diskHasBindings = isPlainObject(diskStack) && diskStack.capabilities !== undefined;
     }
     catch {
         return { ok: false, status: 409, error: "Preset source unavailable or malformed; reload before saving." };
     }
-    const requiresSourceRevision = diskHasBindings || target.stack.instructionModes !== undefined || stack.instructionModes !== undefined;
+    const requiresSourceRevision = diskHasBindings || target.stack.capabilities !== undefined || stack.capabilities !== undefined;
     if (expectedSourceRevision !== undefined || requiresSourceRevision) {
         let currentSourceRevision;
         try {
@@ -576,7 +583,7 @@ async function saveStackFile(ctx, runtime, id, stack, expectedSourceRevision) {
             return { ok: false, status: 409, error: "Preset source changed and could not be verified; reload before saving." };
         }
         if (expectedSourceRevision === undefined || expectedSourceRevision !== currentSourceRevision) {
-            return { ok: false, status: 409, error: "Preset source changed; reload before saving to avoid overwriting instruction bindings." };
+            return { ok: false, status: 409, error: "Preset source changed; reload before saving to avoid overwriting capability bindings." };
         }
     }
     const write = writePromptStackFile(ctx.cwd, target.scope, target.filePath, stack, { overwrite: true });
@@ -599,6 +606,9 @@ async function createStackFile(ctx, runtime, stack, options) {
     if (!ctx.isProjectTrusted()) {
         return { ok: false, status: 403, error: "Project is not trusted; refusing to create presets." };
     }
+    if (hasRejectedLegacyPromptStackKey(stack)) {
+        return { ok: false, status: 400, error: rejectedLegacyPromptStackMessage() };
+    }
     const idError = validateWebStackId(stack.id);
     if (idError)
         return { ok: false, status: 400, error: idError };
@@ -610,6 +620,18 @@ async function createStackFile(ctx, runtime, stack, options) {
     const targetPath = existingById && options.overwrite
         ? existingById.filePath
         : promptStackTargetPath(ctx.cwd, scope, stack.id);
+    // Check the current raw source, not cached diagnostics: normalization intentionally
+    // omits rejected legacy fields, and external edits may postdate the catalog.
+    if (options.overwrite && existsSync(targetPath)) {
+        try {
+            if (hasRejectedLegacyPromptStackKey(JSON.parse(readFileSync(targetPath, "utf8")))) {
+                return { ok: false, status: 409, error: rejectedLegacyPromptStackMessage() };
+            }
+        }
+        catch {
+            return { ok: false, status: 409, error: "Preset source unavailable or malformed; reload before overwriting." };
+        }
+    }
     const write = writePromptStackFile(ctx.cwd, scope, targetPath, stack, { overwrite: options.overwrite ?? false });
     if (!write.ok) {
         const status = stackMutationStatus(write.reason);
@@ -670,6 +692,12 @@ function validateWebStackId(id) {
         return "Preset id must start with a letter or number and contain only letters, numbers, dots, underscores, and hyphens.";
     }
     return undefined;
+}
+function hasRejectedLegacyPromptStackKey(value) {
+    return isPlainObject(value) && Object.prototype.hasOwnProperty.call(value, "instructionModes");
+}
+function rejectedLegacyPromptStackMessage() {
+    return 'Preset key "instructionModes" is no longer supported; convert it to "capabilities" before saving.';
 }
 function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);

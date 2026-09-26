@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 
 // Import the real SDK harness first: it installs the process-wide fetch guard.
-import { createInstructionAgentControlHarness } from "./helpers/instruction-agent-control-harness.ts";
+import { createCapabilityAgentControlHarness } from "./helpers/capability-agent-control-harness.ts";
 
 const { initTheme, SessionManager } = await import("@earendil-works/pi-coding-agent");
 initTheme();
 const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai");
 
-const REGISTERED = ["fake_read", "fake_write", "fake_driver", "forge_system_update"];
-const BASELINE = ["fake_read", "forge_system_update"];
+const REGISTERED = ["fake_read", "fake_write", "fake_driver", "forge_capability"];
+const BASELINE = ["fake_read", "forge_capability"];
 
 function textOf(value: any): string {
 	if (typeof value?.content === "string") return value.content;
@@ -37,7 +37,7 @@ function setupProject() {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-tool-initial-agent-"));
 	const forgeDir = join(cwd, ".pi", "forge");
 	const stacksDir = join(forgeDir, "prompt-stacks");
-	const modesDir = join(forgeDir, "instruction-modes");
+	const modesDir = join(forgeDir, "capabilities");
 	mkdirSync(stacksDir, { recursive: true });
 	mkdirSync(modesDir, { recursive: true });
 	writeFileSync(join(forgeDir, "config.json"), JSON.stringify({ autoActivate: true }));
@@ -59,7 +59,7 @@ function setupProject() {
 		name: "Initial tool base",
 		autoActivate: true,
 		tools: { allow: REGISTERED, initial: BASELINE },
-		instructionModes: [
+		capabilities: [
 			{ ref: "review", id: "review", modelCallable: true },
 			{ ref: "shared-a", id: "shared-a", modelCallable: true },
 			{ ref: "shared-b", id: "shared-b", modelCallable: true },
@@ -79,7 +79,7 @@ function setupProject() {
 		name: "Empty initial",
 		autoActivate: false,
 		tools: { allow: REGISTERED, initial: [] },
-		instructionModes: [
+		capabilities: [
 			{ ref: "shared-a", id: "shared-a", modelCallable: true },
 			{ ref: "shared-b", id: "shared-b", modelCallable: true },
 		],
@@ -93,15 +93,15 @@ function setupProject() {
 		id: "restricted",
 		name: "Restricted driver policy",
 		autoActivate: false,
-		tools: { allow: ["fake_read", "fake_write", "forge_system_update"], initial: BASELINE },
-		instructionModes: [{ ref: "driver", id: "driver", modelCallable: true }],
+		tools: { allow: ["fake_read", "fake_write", "forge_capability"], initial: BASELINE },
+		capabilities: [{ ref: "driver", id: "driver", modelCallable: true }],
 		items: [{ kind: "block", id: "restricted-rule", role: "system", content: "RESTRICTED_RULE" }, ...slots],
 	};
 	writeFileSync(join(stacksDir, "restricted.json"), JSON.stringify(restricted, null, 2));
 
 	const mode = (id: string, content: string, add: string[]) => ({
 		schemaVersion: 1,
-		type: "pi-forge.instruction-mode",
+		type: "pi-forge.capability",
 		id,
 		name: id,
 		content,
@@ -123,7 +123,7 @@ function setupProject() {
 }
 
 async function newHarness(cwd: string, native: boolean, sessionManager?: any) {
-	return createInstructionAgentControlHarness({
+	return createCapabilityAgentControlHarness({
 		cwd,
 		native,
 		sessionManager,
@@ -133,9 +133,9 @@ async function newHarness(cwd: string, native: boolean, sessionManager?: any) {
 	});
 }
 
-async function callMode(harness: any, action: "list" | "use" | "off", id?: string) {
+async function callMode(harness: any, action: "list" | "enable" | "disable", id?: string) {
 	harness.setResponses([
-		{ toolCalls: [{ name: "forge_system_update", args: { action, ...(id ? { id } : {}) } }] },
+		{ toolCalls: [{ name: "forge_capability", args: { action, ...(id ? { id } : {}) } }] },
 		`${action} complete`,
 	]);
 	await harness.prompt(`${action} ${id ?? ""}`.trim());
@@ -195,7 +195,7 @@ test("SDK 0.87 initial tool policy: native and fallback effective-loadout regres
 				assert.match(JSON.stringify(harness.streamContexts.at(-1)!.messages), /review/);
 
 				const beforeUseTurns = harness.streamContexts.length;
-				await callMode(harness, "use", "review");
+				await callMode(harness, "enable", "review");
 				assert.equal(harness.streamContexts.length, beforeUseTurns + 2, "use uses one management inference plus its scripted reply");
 				assert.ok(harness.getActiveToolNames().includes("fake_write"), "Agent use dynamically enables registered writer");
 				const activated = await assertPromptLoadout(harness, true);
@@ -214,7 +214,7 @@ test("SDK 0.87 initial tool policy: native and fallback effective-loadout regres
 				await harness.prompt("Use the newly enabled writer");
 				assert.equal(harness.toolExecutions.filter((call: any) => call.name === "fake_write").length, 1);
 
-				await callMode(harness, "off", "review");
+				await callMode(harness, "disable", "review");
 				assert.deepEqual(harness.getActiveToolNames(), BASELINE, "off restores the preset initial selection");
 				const afterOff = await assertPromptLoadout(harness, false);
 				assert.doesNotMatch(getCurrentSystemPrompt(afterOff.context.messages), /LITERAL_FAKE_WRITE_RULE/);
@@ -236,12 +236,12 @@ test("initial policy ceiling, immutable mode snapshots, shared additions, reset,
 	const h1 = await newHarness(env.cwd, true, manager);
 	let sessionFile = "";
 	try {
-		await callMode(h1, "use", "review");
+		await callMode(h1, "enable", "review");
 		assert.ok(h1.getActiveToolNames().includes("fake_write"));
 		// The activated snapshot is immutable across a disk reload of the source file.
 		writeFileSync(env.modePath, JSON.stringify({
 			schemaVersion: 1,
-			type: "pi-forge.instruction-mode",
+			type: "pi-forge.capability",
 			id: "review",
 			name: "review changed",
 			content: "CHANGED_ON_DISK_MUST_NOT_REPLACE_SNAPSHOT",
@@ -265,14 +265,14 @@ test("initial policy ceiling, immutable mode snapshots, shared additions, reset,
 	const h2 = await newHarness(env.cwd, true, reopenedManager);
 	try {
 		assert.ok(h2.getActiveToolNames().includes("fake_write"), "disk reopen restores active effective writer");
-		await callMode(h2, "off", "review");
+		await callMode(h2, "disable", "review");
 		assert.deepEqual(h2.getActiveToolNames(), BASELINE);
 
 		// An original policy ceiling still rejects a mode add, even though the tool is
 		// registered and executable in the same SDK harness.
 		await h2.prompt("/preset use restricted");
 		assert.deepEqual(h2.getActiveToolNames(), BASELINE);
-		await callMode(h2, "use", "driver");
+		await callMode(h2, "enable", "driver");
 		assert.ok(!h2.getActiveToolNames().includes("fake_driver"), "restricted preset rejects driver mode add");
 		assert.equal(h2.toolExecutions.filter((call: any) => call.name === "fake_driver").length, 0);
 
@@ -280,17 +280,17 @@ test("initial policy ceiling, immutable mode snapshots, shared additions, reset,
 		// tool; reset on a preset whose initial selection is [] removes everything.
 		await h2.prompt("/preset use base");
 		assert.deepEqual(h2.getActiveToolNames(), BASELINE, "switching presets restores the selected preset baseline");
-		await callMode(h2, "use", "shared-a");
-		await callMode(h2, "use", "shared-b");
+		await callMode(h2, "enable", "shared-a");
+		await callMode(h2, "enable", "shared-b");
 		assert.ok(h2.getActiveToolNames().includes("fake_write"));
-		await callMode(h2, "off", "shared-a");
+		await callMode(h2, "disable", "shared-a");
 		assert.ok(h2.getActiveToolNames().includes("fake_write"));
 
 		await h2.prompt("/preset use empty");
-		await h2.prompt("/instruction use-bound shared-a");
-		await h2.prompt("/instruction use-bound shared-b");
+		await h2.prompt("/capability enable-bound shared-a");
+		await h2.prompt("/capability enable-bound shared-b");
 		assert.ok(h2.getActiveToolNames().includes("fake_write"));
-		await h2.prompt("/instruction reset");
+		await h2.prompt("/capability reset");
 		assert.deepEqual(h2.getActiveToolNames(), [], "reset honors empty preset initial rather than restoring a stale baseline");
 		assert.equal(h2.fetchAttempts, 0);
 	} finally {

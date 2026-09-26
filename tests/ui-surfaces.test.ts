@@ -9,10 +9,10 @@ test("surfaces i18n has matching bilingual polish.surfaces.* keys", () => {
 	assert.deepEqual(enKeys, zhKeys, "Both languages must have identical keys");
 
 	const requiredKeys = [
-		"polish.surfaces.modeScope",
-		"polish.surfaces.modeScopeAria",
-		"polish.surfaces.modeCreating",
-		"polish.surfaces.modeEditing",
+		"polish.surfaces.capabilityScope",
+		"polish.surfaces.capabilityScopeAria",
+		"polish.surfaces.capabilityCreating",
+		"polish.surfaces.capabilityEditing",
 		"polish.surfaces.profileEditNotice",
 		"polish.surfaces.profileNotApplied",
 		"polish.surfaces.profileAdvanced",

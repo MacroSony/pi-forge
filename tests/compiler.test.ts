@@ -616,7 +616,7 @@ test("structured slots default to XML and ignore unsupported json format", () =>
 			selectedTools: ["read", "bash"],
 			toolSnippets: { read: "Read files from disk.", bash: "Run shell commands." },
 			skills: [testSkill("review", "Review code.", "/skills/review/SKILL.md")],
-			contextFiles: [{ path: ".pi/instructions.md", content: "Project rules." }],
+			contextFiles: [{ path: ".pi/capabilities.md", content: "Project rules." }],
 		},
 	}), "base");
 
@@ -624,7 +624,7 @@ test("structured slots default to XML and ignore unsupported json format", () =>
 	assert.match(result.systemPrompt, /<tool_guidelines>/);
 	assert.match(result.systemPrompt, /<available_skills>/);
 	assert.match(result.systemPrompt, /<project_context>/);
-	assert.match(result.systemPrompt, /<project_instructions path="\.pi\/instructions\.md">/);
+	assert.match(result.systemPrompt, /<project_instructions path="\.pi\/capabilities\.md">/);
 	assert.doesNotMatch(result.systemPrompt, /Available tools:/);
 	assert.deepEqual(result.diagnostics, []);
 });
@@ -650,7 +650,7 @@ test("structured slots render compact plain format", () => {
 				testSkill("review", "Review code\nfor regressions.", "/skills/review/SKILL.md"),
 				testSkill("hidden", "Hidden skill.", "/skills/hidden/SKILL.md", { disableModelInvocation: true }),
 			],
-			contextFiles: [{ path: ".pi/instructions.md", content: "Project <rules>\nSecond line." }],
+			contextFiles: [{ path: ".pi/capabilities.md", content: "Project <rules>\nSecond line." }],
 		},
 	}), "base");
 
@@ -658,7 +658,7 @@ test("structured slots render compact plain format", () => {
 	assert.match(result.systemPrompt, /Tool guidelines:\n- Use bash for file operations like ls, rg, find\.\n- Use read\n  before edits\./);
 	assert.match(result.systemPrompt, /Available skills:\n- review: Review code\n  for regressions\.\n  Location: \/skills\/review\/SKILL\.md/);
 	assert.doesNotMatch(result.systemPrompt, /hidden/);
-	assert.match(result.systemPrompt, /Project context:\n\nProject-specific instructions and guidelines:\n\nPath: \.pi\/instructions\.md\n  Project <rules>\n  Second line\./);
+	assert.match(result.systemPrompt, /Project context:\n\nProject-specific instructions and guidelines:\n\nPath: \.pi\/capabilities\.md\n  Project <rules>\n  Second line\./);
 	assert.doesNotMatch(result.systemPrompt, /<available_tools>|<available_skills>|<project_context>/);
 	assert.deepEqual(result.diagnostics, []);
 });

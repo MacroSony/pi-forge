@@ -82,14 +82,14 @@ async function withUiFormsFixture(
 test("ui-forms: fold/unfold in regex, policy, and bindings does not dirty preset", { timeout: 35_000 }, async (t) => {
 	await withUiFormsFixture(t, (cwd) => {
 		const root = join(cwd, ".pi", "forge");
-		mkdirSync(join(root, "instruction-modes"), { recursive: true });
+		mkdirSync(join(root, "capabilities"), { recursive: true });
 		writeFileSync(
-			join(root, "instruction-modes", "sample-mode.json"),
+			join(root, "capabilities", "sample-capability.json"),
 			JSON.stringify({
 				schemaVersion: 1,
-				type: "pi-forge.instruction-mode",
-				id: "sample-mode",
-				name: "Sample Mode",
+				type: "pi-forge.capability",
+				id: "sample-capability",
+				name: "Sample Capability",
 				content: "Sample instructions",
 			}),
 		);
@@ -121,9 +121,9 @@ test("ui-forms: fold/unfold in regex, policy, and bindings does not dirty preset
 					},
 				],
 			},
-			instructionModes: [
+			capabilities: [
 				{
-					ref: "project:sample-mode",
+					ref: "project:sample-capability",
 					modelCallable: false,
 				},
 			],
@@ -323,15 +323,15 @@ test("ui-forms: policy deny button label and missing-vs-empty initial preservati
 test("ui-forms: preset binding advanced toggle does not activate or dirty preset", { timeout: 35_000 }, async (t) => {
 	await withUiFormsFixture(t, (cwd) => {
 		const root = join(cwd, ".pi", "forge");
-		mkdirSync(join(root, "instruction-modes"), { recursive: true });
+		mkdirSync(join(root, "capabilities"), { recursive: true });
 		writeFileSync(
-			join(root, "instruction-modes", "mode-1.json"),
+			join(root, "capabilities", "capability-1.json"),
 			JSON.stringify({
 				schemaVersion: 1,
-				type: "pi-forge.instruction-mode",
-				id: "mode-1",
-				name: "Mode 1",
-				content: "Mode 1 instructions",
+				type: "pi-forge.capability",
+				id: "capability-1",
+				name: "Capability 1",
+				content: "Capability 1 instructions",
 			}),
 		);
 		writeStack(cwd, "default.json", {
@@ -351,9 +351,9 @@ test("ui-forms: preset binding advanced toggle does not activate or dirty preset
 			autoActivate: false,
 			mode: "replace",
 			items: [{ kind: "block", id: "system", enabled: true, role: "system", content: "Instructions." }],
-			instructionModes: [
+			capabilities: [
 				{
-					ref: "project:mode-1",
+					ref: "project:capability-1",
 					modelCallable: false,
 				},
 			],
@@ -529,15 +529,15 @@ test("ui-forms: initial invalid rules unfold does not dirty and preserves unknow
 test("ui-forms: effective preview queue same-tick coalescing, late-result drop, and unmount teardown", { timeout: 35_000 }, async (t) => {
 	await withUiFormsFixture(t, (cwd) => {
 		const root = join(cwd, ".pi", "forge");
-		mkdirSync(join(root, "instruction-modes"), { recursive: true });
-		for (const id of ["mode-a", "mode-b"]) {
+		mkdirSync(join(root, "capabilities"), { recursive: true });
+		for (const id of ["capability-a", "capability-b"]) {
 			writeFileSync(
-				join(root, "instruction-modes", `${id}.json`),
+				join(root, "capabilities", `${id}.json`),
 				JSON.stringify({
 					schemaVersion: 1,
-					type: "pi-forge.instruction-mode",
+					type: "pi-forge.capability",
 					id,
-					name: `Mode ${id}`,
+					name: `Capability ${id}`,
 					content: `Content for ${id}`,
 				}),
 			);
@@ -550,9 +550,9 @@ test("ui-forms: effective preview queue same-tick coalescing, late-result drop, 
 			autoActivate: true,
 			mode: "replace",
 			items: [{ kind: "block", id: "system", enabled: true, role: "system", content: "Instructions." }],
-			instructionModes: [
+			capabilities: [
 				{
-					ref: "project:mode-a",
+					ref: "project:capability-a",
 					modelCallable: false,
 				},
 			],
@@ -563,7 +563,7 @@ test("ui-forms: effective preview queue same-tick coalescing, late-result drop, 
 
 		// 1. Same-tick coalescing test
 		const effectiveRequests: string[] = [];
-		await page.route("**/api/instruction-modes/effective", async (route) => {
+		await page.route("**/api/capabilities/effective", async (route) => {
 			effectiveRequests.push(route.request().url());
 			await route.continue();
 		});
@@ -589,8 +589,8 @@ test("ui-forms: effective preview queue same-tick coalescing, late-result drop, 
 		// 2. Late result scenario
 		let resolveSlow: (() => void) | null = null;
 		let reqCounter = 0;
-		await page.unroute("**/api/instruction-modes/effective");
-		await page.route("**/api/instruction-modes/effective", async (route) => {
+		await page.unroute("**/api/capabilities/effective");
+		await page.route("**/api/capabilities/effective", async (route) => {
 			reqCounter++;
 			const thisIndex = reqCounter;
 			if (thisIndex === 1) {
@@ -604,7 +604,7 @@ test("ui-forms: effective preview queue same-tick coalescing, late-result drop, 
 						ok: true,
 						bindings: [
 							{
-								ref: "project:mode-a",
+								ref: "project:capability-a",
 								id: "STALE_SLOW",
 								modelCallable: false,
 							},
@@ -619,7 +619,7 @@ test("ui-forms: effective preview queue same-tick coalescing, late-result drop, 
 						ok: true,
 						bindings: [
 							{
-								ref: "project:mode-b",
+								ref: "project:capability-b",
 								id: "FRESH_FAST",
 								modelCallable: false,
 							},

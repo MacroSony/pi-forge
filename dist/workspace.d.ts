@@ -1,12 +1,12 @@
 import { type AgentProfileProvenance, type LoadedAgentProfile } from "./agent-profile.ts";
-import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import type { LoadedCapability } from "./codecs/capability.ts";
 import type { LoadedPromptStack, PromptStackDiagnostic } from "./types.ts";
 import { ForgeHost, type ForgeHostPortResult, type ForgeHostTransport } from "./subagent/host-port.ts";
 export interface ForgeWorkspaceSnapshot {
     cwd: string;
     stacks: readonly LoadedPromptStack[];
     profiles: readonly LoadedAgentProfile[];
-    instructionModes: readonly LoadedInstructionMode[];
+    capabilities: readonly LoadedCapability[];
     activeStackId: string | null;
     active?: LoadedPromptStack;
     lastAppliedProfile?: AgentProfileProvenance;
@@ -42,7 +42,7 @@ export declare class ForgeWorkspace {
     subscribe(listener: () => void): () => void;
     private notifyListeners;
     reload(cwd: string, options?: ForgeWorkspaceReloadOptions): ForgeWorkspaceSnapshot;
-    reloadInstructionModes(cwd: string, trusted?: boolean): ForgeWorkspaceSnapshot;
+    reloadCapabilities(cwd: string, trusted?: boolean): ForgeWorkspaceSnapshot;
     reloadProfiles(cwd: string, trusted?: boolean): ForgeWorkspaceSnapshot;
     loadExtensions(cwd: string): Promise<{
         diagnostics: PromptStackDiagnostic[];

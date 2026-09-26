@@ -25,16 +25,16 @@ import PreviewSectionBody from "./PreviewSectionBody.vue";
 
 export type ReadingState = "side" | "wide" | "focus";
 export type DockMode = "compiled" | "session" | "draft" | "run";
-export interface InstructionLocation {
+export interface CapabilityLocation {
 	activationIds: string[];
 	presetRevision?: string;
-	guard: import("../../../instruction-state.ts").InstructionStateGuard;
+	guard: import("../../../capability-state.ts").CapabilityStateGuard;
 }
 
 const props = defineProps<{
 	sessionOnly?: boolean;
 	active?: boolean;
-	observedState?: import("../../../instruction-state.ts").InstructionStateView | null;
+	observedState?: import("../../../capability-state.ts").CapabilityStateView | null;
 	getStackDraft?: () => LegacyEditorDraft | undefined;
 	subscribeStackDraft?: (listener: () => void) => () => void;
 	onStatus?: (text: string, tone?: string) => void;
@@ -100,7 +100,7 @@ function returnToEditing(): void {
 function revealEditor(): void {
 	if (readingState.value === "focus") exitFocus();
 }
-defineExpose({ revealEditor, locateInstruction });
+defineExpose({ revealEditor, locateCapability });
 
 const primaryBoundaryTitle = computed(() => {
 	switch (readingState.value) {
@@ -127,7 +127,7 @@ const primaryBoundaryAria = computed(() => {
 const currentTitle = computed(() => {
 	switch (mode.value) {
 		case "session":
-			return t("instructions.sessionContext");
+			return t("sessionCapabilities.sessionContext");
 		case "compiled":
 			return t("diff.compiledDraft");
 		case "draft":
@@ -140,7 +140,7 @@ const currentTitle = computed(() => {
 const currentScopeBadge = computed(() => {
 	switch (mode.value) {
 		case "session":
-			return t("instructions.sessionScope");
+			return t("sessionCapabilities.sessionScope");
 		case "compiled":
 			return t("polish.inspector.draftScope");
 		case "draft":
@@ -190,12 +190,12 @@ const displayError = computed(() => mode.value === "session" ? sessionError.valu
 const compiledSections = computed<WebEditorPreviewSection[]>(() => previewSections(displayPreview.value));
 const matchingSections = computed(() => compiledSections.value.filter(matchesLocation));
 function matchesLocation(section: WebEditorPreviewSection): boolean {
-	return mode.value === "session" && !!section.instructionUpdate?.activationIds.some(id => locationIds.value.includes(id));
+	return mode.value === "session" && !!section.capabilityUpdate?.activationIds.some(id => locationIds.value.includes(id));
 }
 function sectionPosition(section: WebEditorPreviewSection): number {
 	return compiledSections.value.indexOf(section) + 1;
 }
-function sameGuard(a: InstructionLocation["guard"], b: InstructionLocation["guard"]): boolean {
+function sameGuard(a: CapabilityLocation["guard"], b: CapabilityLocation["guard"]): boolean {
 	return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
 }
 function invalidateSessionRequest(): number {
@@ -204,7 +204,7 @@ function invalidateSessionRequest(): number {
 	sessionLoading.value = false;
 	return ++sessionSequence;
 }
-async function refreshSessionPreview(expected?: InstructionLocation): Promise<void> {
+async function refreshSessionPreview(expected?: CapabilityLocation): Promise<void> {
 	if (mode.value !== "session" || props.active === false || !props.observedState?.trusted || props.observedState.restoring) return;
 	const sequence = invalidateSessionRequest();
 	const controller = new AbortController();
@@ -214,11 +214,11 @@ async function refreshSessionPreview(expected?: InstructionLocation): Promise<vo
 	// Keep a clearly marked previous projection during same-branch updates.
 	// Boundary changes are cleared by the state watcher before starting this read.
 	try {
-		const next = await api<WebEditorSessionPreview>("/api/instructions/preview", { signal: controller.signal });
+		const next = await api<WebEditorSessionPreview>("/api/capability-state/preview", { signal: controller.signal });
 		if (sequence !== sessionSequence) return;
 		const observed = props.observedState;
-		if (!observed || !sameGuard(observed.guard, next.state.guard) || observed.presetRevision !== next.state.presetRevision || observed.textPresentation !== next.state.textPresentation) throw new Error(t("instructions.locationChanged"));
-		if (expected && (!sameGuard(expected.guard, next.state.guard) || expected.presetRevision !== next.state.presetRevision)) throw new Error(t("instructions.locationChanged"));
+		if (!observed || !sameGuard(observed.guard, next.state.guard) || observed.presetRevision !== next.state.presetRevision || observed.textPresentation !== next.state.textPresentation) throw new Error(t("sessionCapabilities.locationChanged"));
+		if (expected && (!sameGuard(expected.guard, next.state.guard) || expected.presetRevision !== next.state.presetRevision)) throw new Error(t("sessionCapabilities.locationChanged"));
 		const pane = rootElement.value?.querySelector<HTMLElement>(".context-diff-compiled");
 		const scrollTop = pane?.scrollTop ?? 0;
 		sessionPreview.value = next;
@@ -249,13 +249,13 @@ watch([() => props.active, observedRevision], () => {
 		locationIds.value = [];
 	}
 	if (props.active === false) { invalidateSessionRequest(); return; }
-	if (!state?.trusted || state.restoring) { sessionError.value = t("instructions.unavailable"); return; }
+	if (!state?.trusted || state.restoring) { sessionError.value = t("sessionCapabilities.unavailable"); return; }
 	if (!previous || !sameGuard(previous.guard, state.guard) || previous.presetRevision !== state.presetRevision || previous.textPresentation !== state.textPresentation || sessionError.value) {
 		void refreshSessionPreview();
 	}
 });
 
-async function locateInstruction(target: InstructionLocation): Promise<void> {
+async function locateCapability(target: CapabilityLocation): Promise<void> {
 	mode.value = "session";
 	locationIds.value = [...target.activationIds];
 	const request = refreshSessionPreview(target);
@@ -266,7 +266,7 @@ async function locateInstruction(target: InstructionLocation): Promise<void> {
 	// Scroll the inspector only. Never focus/resize it, scroll the whole page, or
 	// change the resource selection/caret in the editor.
 	const pane = rootElement.value?.querySelector<HTMLElement>(".context-diff-compiled");
-	const block = pane?.querySelectorAll<HTMLElement>(".instruction-location-match").item(matchingSections.value.length - 1);
+	const block = pane?.querySelectorAll<HTMLElement>(".capability-location-match").item(matchingSections.value.length - 1);
 	if (pane && block) {
 		let parent = block.parentElement;
 		while (parent && parent !== pane) {
@@ -667,10 +667,10 @@ function turnLabel(): string {
 
         <div v-if="mode === 'session'" class="session-context-notice" data-session-context-notice>
                 <template v-if="sessionPreview"><strong>{{ sessionPreview.preset.name || sessionPreview.preset.selector }}</strong> · {{ sessionPreview.preset.selector }}<br></template>
-                {{ t("instructions.sessionPreviewNote") }}
-                <div v-if="sessionLoading && sessionPreview" class="session-updating" role="status">{{ t("instructions.previewUpdating") }}</div>
+                {{ t("sessionCapabilities.sessionPreviewNote") }}
+                <div v-if="sessionLoading && sessionPreview" class="session-updating" role="status">{{ t("sessionCapabilities.previewUpdating") }}</div>
                 <div v-if="locationIds.length && sessionPreview" class="location-result" data-location-result>
-                    {{ matchingSections.length ? t("instructions.locationFound", {count: matchingSections.length}) : t("instructions.locationMissing") }}
+                    {{ matchingSections.length ? t("sessionCapabilities.locationFound", {count: matchingSections.length}) : t("sessionCapabilities.locationMissing") }}
                 </div>
             </div>
         <div v-show="mode === 'compiled' || mode === 'session'" class="context-diff-compiled" role="tabpanel">
@@ -692,24 +692,24 @@ function turnLabel(): string {
 			</div>
 			<details v-if="!props.sessionOnly && displayPreview && displayPreview.selectedTools !== undefined" class="preview-selected-tools-panel">
 				<summary class="selected-tools-head">
-					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-title">{{ mode === 'session' ? t("sessionCapabilities.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count">
 						{{ displayPreview.selectedTools.length === 0
 							? t("diff.noToolsSelected")
 							: t(displayPreview.selectedTools.length === 1 ? "diff.toolCountOne" : "diff.toolCountMany", { count: displayPreview.selectedTools.length }) }}
 					</span>
 				</summary>
-				<p class="selected-tools-note">{{ mode === 'session' ? t("instructions.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
+				<p class="selected-tools-note">{{ mode === 'session' ? t("sessionCapabilities.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
 				<div v-if="displayPreview.selectedTools.length > 0" class="selected-tools-list">
 					<span v-for="tool in displayPreview.selectedTools" :key="tool" class="selected-tool-chip">{{ tool }}</span>
 				</div>
 			</details>
 			<div v-else-if="!props.sessionOnly && displayPreview && displayPreview.selectedTools === undefined" class="preview-selected-tools-panel unknown">
 				<div class="selected-tools-head">
-					<span class="selected-tools-title">{{ mode === 'session' ? t("instructions.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
+					<span class="selected-tools-title">{{ mode === 'session' ? t("sessionCapabilities.effectiveTools") : t("diff.previewSelectedToolsTitle") }}</span>
 					<span class="selected-tools-count muted">{{ t("diff.toolSelectionUnknown") }}</span>
 				</div>
-				<p class="selected-tools-note">{{ mode === 'session' ? t("instructions.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
+				<p class="selected-tools-note">{{ mode === 'session' ? t("sessionCapabilities.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
 			</div>
 			<div v-if="displayError" class="context-diff-error">{{ displayError }}</div>
 			<pre v-else-if="compiledSections.length === 0 && displayText" class="section-text">{{ displayText }}</pre>
@@ -723,9 +723,9 @@ function turnLabel(): string {
 							<span class="group-title">{{ groupTitle(group) }}</span>
 						</summary>
 						<div class="context-diff-group-messages">
-							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'instruction-location-match': matchesLocation(section) }]" open>
+							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'capability-location-match': matchesLocation(section) }]" open>
 								<summary>
-									<span v-if="mode === 'session'" class="section-position" :title="t('instructions.positionNote')">#{{ sectionPosition(section) }}</span>
+									<span v-if="mode === 'session'" class="section-position" :title="t('sessionCapabilities.positionNote')">#{{ sectionPosition(section) }}</span>
                                     <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 
@@ -743,9 +743,9 @@ function turnLabel(): string {
 							</details>
 						</div>
 					</details>
-					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'instruction-location-match': matchesLocation(section) }]" open>
+					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'capability-location-match': matchesLocation(section) }]" open>
 						<summary>
-							<span v-if="mode === 'session'" class="section-position" :title="t('instructions.positionNote')">#{{ sectionPosition(section) }}</span>
+							<span v-if="mode === 'session'" class="section-position" :title="t('sessionCapabilities.positionNote')">#{{ sectionPosition(section) }}</span>
                                     <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
 							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
 
@@ -881,7 +881,7 @@ function turnLabel(): string {
 
 .session-context-notice { padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .location-result { color: var(--accent); margin-top: 5px; }
-.context-diff-section.instruction-location-match { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.context-diff-section.capability-location-match { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .section-position { font-size: 11px; color: var(--accent); flex: none; }
 
 .context-diff-dock { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; position: static; }

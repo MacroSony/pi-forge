@@ -22,7 +22,7 @@ Use this page as the documentation map. Each subject has one authoritative home;
 ## Reference
 
 - [Commands](reference/commands.md)
-- [Instruction modes](reference/instruction-modes.md)
+- [Capabilities](reference/capabilities.md)
 - [Session cache usage](reference/session-cache.md) — prompt-cache hit rates and nested-usage contract
 - [Provider support for mid-conversation updates](reference/provider-support.md) — Pi 0.87.1 snapshot
 - [Preset schema and policy](reference/stack-schema.md)

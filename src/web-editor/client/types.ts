@@ -1,10 +1,10 @@
 import type {
-	InstructionMode,
-	InstructionModeBinding,
-	InstructionModeOverrides,
-	InstructionToolPatch,
+	Capability,
+	CapabilityBinding,
+	CapabilityOverrides,
+	CapabilityToolPatch,
 	Diagnostic,
-} from "../../codecs/instruction-mode.ts";
+} from "../../codecs/capability.ts";
 import type {
 	PromptRegexRule,
 	PromptResourcePolicy,
@@ -24,31 +24,32 @@ import type {
 	WebEditorStackSummary,
 } from "../types.ts";
 
-export interface InstructionModeEntry {
+export interface CapabilityEntry {
 	selector: string;
 	scope: "project" | "global";
-	mode: InstructionMode;
+	capability: Capability;
 	filePath: string;
 	sourceRevision?: string;
 	diagnostics?: Diagnostic[];
 }
 
-export interface InstructionModeCollection {
+export interface CapabilityCollection {
 	trusted: boolean;
-	modes: InstructionModeEntry[];
+	capabilities: CapabilityEntry[];
 }
 
-export interface EffectiveInstructionModeBinding {
+export interface EffectiveCapabilityBinding {
 	id?: string;
 	ref: string;
 	modelCallable?: boolean;
-	source: InstructionMode;
-	effective: InstructionMode;
+	source: Capability;
+	effective: Capability;
 }
 
-export interface EffectiveInstructionModesResponse {
-	bindings: EffectiveInstructionModeBinding[];
+export interface EffectiveCapabilitiesResponse {
+	bindings: EffectiveCapabilityBinding[];
 }
+
 
 export type EditorJsonObject = Record<string, any>;
 export type EditorPromptStackItem = PromptStackItem & EditorJsonObject;
@@ -111,11 +112,11 @@ export interface EditorImportReport {
 }
 
 export type {
+	Capability,
+	CapabilityBinding,
+	CapabilityOverrides,
+	CapabilityToolPatch,
 	Diagnostic,
-	InstructionMode,
-	InstructionModeBinding,
-	InstructionModeOverrides,
-	InstructionToolPatch,
 	PromptRegexRule,
 	PromptResourcePolicy,
 	PromptStackDiagnostic,

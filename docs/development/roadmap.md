@@ -4,17 +4,17 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## Active 0.5.5: session instruction modes
+## Active 0.5.5: session capabilities
 
-Implementation is authorized under the [accepted instruction-mode design](../design/pi-forge-system-update-design-notes.md) and [lean-plan amendment](../design/architecture-0.5.md#accepted-055-amendment-session-instruction-modes). Pi 0.86 is released; the old upstream-blocked thin-sections proposal is superseded.
+Implementation is authorized under the [accepted capability design](../design/pi-forge-system-update-design-notes.md) and [lean-plan amendment](../design/architecture-0.5.md#accepted-055-amendment-session-capabilities). Pi 0.86 is released; the old upstream-blocked thin-sections proposal is superseded.
 
 One active lane at a time:
 
-1. **Foundation (verified):** strict mode/override codec, scoped binding resolution, immutable snapshots, and branch event reducer.
-2. **Human CLI core & metadata anchor projection (implemented):** Pi 0.87 dependency upgrade, request-base replacement, `context_with_system` full pipeline, `buildSessionProjection` canonical alignment, native/user projection, semantic events and plain `custom` cursor-only metadata anchors, durable tool baselines, repositories/ForgeWorkspace discovery, and `/instruction` add/list/bindings/use/use-bound/off/status/reset. See [current reference](../reference/instruction-modes.md).
-3. **Session observability & activity panel (implemented):** derived multi-mode state, actual selected tools, delivery status (`none`, `pending`, `prepared`), presentation indicators, and guarded human off/reset; real SDK summarizer-input characterization.
-4. **Preset authorization & restricted Agent control (implemented):** live Preset binding schema (`instructionModes`), opt-in `modelCallable: true`, and model-callable `forge_system_update` tool with fixed list/status/use/off schema; per-call trust, binding identity, authorization, and tool policy checks; strict user-vs-agent ownership.
-5. **Modes library CRUD, Preset binding editor, and guarded human Web activation picker (delivered in functional source):** dedicated **Modes** surface for project/global mode CRUD with `sourceRevision` stale-save guards; dedicated peer Mode bindings editor with finite overrides and live source-effective preview; guarded human Web activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`) with pre-activation preview and session guard plus content fingerprint validation. Parent safeguards enforce raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences (`disposed`, `lifecycleRevision`, `sameContext`).
+1. **Foundation (verified):** strict capability/override codec, scoped binding resolution, immutable snapshots, and branch event reducer.
+2. **Human CLI core & metadata anchor projection (implemented):** Pi 0.87 dependency upgrade, request-base replacement, `context_with_system` full pipeline, `buildSessionProjection` canonical alignment, native/user projection, semantic events and plain `custom` cursor-only metadata anchors, durable tool baselines, repositories/ForgeWorkspace discovery, and `/capability` add/list/bindings/enable/enable-bound/disable/status/reset. See [current reference](../reference/capabilities.md).
+3. **Session observability & activity panel (implemented):** derived multi-capability state, actual selected tools, delivery status (`none`, `pending`, `prepared`), presentation indicators, and guarded human disable/reset; real SDK summarizer-input characterization.
+4. **Preset authorization & restricted Agent control (implemented):** live Preset binding schema (`capabilities`), opt-in `modelCallable: true`, and model-callable `forge_capability` tool with fixed list/status/enable/disable schema; per-call trust, binding identity, authorization, and tool policy checks; strict user-vs-agent ownership.
+5. **Capabilities library CRUD, Preset binding editor, and guarded human Web activation picker (delivered in functional source):** dedicated **Capabilities** surface for project/global capability CRUD with `sourceRevision` stale-save guards; dedicated peer Capability bindings editor with finite overrides and live source-effective preview; guarded human Web activation picker (`GET /api/capability-state/available`, `POST /api/capability-state/enable`) with pre-activation preview and session guard plus content fingerprint validation. Parent safeguards enforce raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences (`disposed`, `lifecycleRevision`, `sameContext`).
 6. **Release closeout (pending release review and user authorization):** The accepted UI and local full verification closed out on 2026-09-24 (`89c6ba2`); bilingual README B and reviewed continuous media are adopted. UI scope is frozen except for regressions/release blockers. Coordinated main/optional version floors and SDK pins, final release checks, version bump to 0.5.5 and publication remain pending; no paid provider matrix is implied. Repo dev SDK pinned to 0.87.0 with peer `>=0.87.0 <0.88.0` (no dual 0.86 support claim); development package version remains 0.5.4; 0.5.5 is not published.
 
 Existing README and optional Pet active-state changes are preserved. No host upgrade, reload or publication follows implicitly from local feature development. Foundation tests are not proof of live 0.5.5 behavior.
@@ -93,7 +93,7 @@ Candidate history controls need concrete use cases and dangling tool-pair tests.
 - Skill filtering is model-visible prompt filtering, not an invocation or security boundary.
 - Delegation remains opt-in, foreground, clean-context, and fail-closed on missing capabilities, and lives in the optional package.
 - Do not report shared-user read-only policy as an OS sandbox.
-- New editor workflows remain frozen except the explicitly accepted instruction-mode surfaces above; migration and new workflows retain real-browser coverage.
+- New editor workflows remain frozen except the explicitly accepted capability surfaces above; migration and new workflows retain real-browser coverage.
 - Run the full verification and package checks before release.
 
 The detailed completed 0.4 plan is retained in the [historical roadmap](../design/roadmap-0.4-archive.md).

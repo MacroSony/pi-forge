@@ -158,7 +158,7 @@ For compatibility:
 
 - Read legacy branch entries containing only `activeStackId` using effective lookup.
 - Write new entries with a scoped active-stack reference.
-- Preserve the explicit `none`/`off` selection as a scope-independent opt-out.
+- Preserve the explicit `none`/`disable` selection as a scope-independent opt-out.
 - Profile provenance should add the profile scope/key while continuing to accept older provenance that has only `profileId` and `sourcePath`.
 - Drift snapshots should store the resolved scoped stack reference so status can distinguish definition changes from a scope change.
 

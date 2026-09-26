@@ -1,10 +1,11 @@
-import type { InstructionMode, Diagnostic } from "../codecs/instruction-mode.ts";
+import type { Capability, Diagnostic } from "../codecs/capability.ts";
 import type { AgentProfile, AgentProfileDiagnostic } from "../agent-profile.ts";
 import type { AgentProfilePreview, AgentProfileRuntimeStatus } from "../profile-service.ts";
 import type { UiContributionTransport } from "../ui-contribution/contrib-port.ts";
 import type { ContextDiffView } from "../context-diff-history.ts";
-import type { InstructionAvailableResult, InstructionStateResult, InstructionStateView } from "../instruction-state.ts";
+import type { CapabilityAvailableResult, CapabilityStateResult, CapabilityStateView } from "../capability-state.ts";
 import type { PromptStack, PromptStackDiagnostic } from "../types.ts";
+import type { LoadedCapability } from "../codecs/capability.ts";
 
 export interface WebEditorStackSummary {
 	id: string;
@@ -23,23 +24,24 @@ export interface WebEditorStackSummary {
 
 export type WebEditorLocale = "en" | "zh-CN" | "auto";
 
-export type WebEditorModeOperation = "list" | "get" | "create" | "save" | "delete" | "effective";
-export interface WebEditorInstructionModeMutation {
+export type WebEditorCapabilityOperation = "list" | "get" | "create" | "save" | "delete" | "effective";
+export interface WebEditorCapabilityMutation {
 	changed: string;
 	sourceRevision?: string;
 }
 
-export type WebEditorModeResult = WebEditorOperationResult<WebEditorInstructionModeCollection | WebEditorInstructionModeEntry | WebEditorEffectiveInstructionModes | WebEditorInstructionModeMutation>;
+export type WebEditorCapabilityResult = WebEditorOperationResult<WebEditorCapabilityCollection | WebEditorCapabilityEntry | WebEditorEffectiveCapabilityCollection | WebEditorCapabilityMutation>;
 
 export interface WebEditorHost {
-	modeOperation?(action: WebEditorModeOperation, selector?: string, input?: unknown): WebEditorModeResult;
+	capabilityOperation?(action: WebEditorCapabilityOperation, selector?: string, input?: unknown): WebEditorCapabilityResult;
 	cwd: string;
 	isProjectTrusted?(): boolean;
-	readInstructions?(): InstructionStateResult;
-	readInstructionChoices?(): InstructionAvailableResult;
-	mutateInstructions?(input: unknown): InstructionStateResult;
-	useInstruction?(input: unknown): InstructionStateResult;
-	previewInstructions?(): WebEditorOperationResult<WebEditorSessionPreview>;
+	readCapabilities?(): readonly LoadedCapability[];
+	readCapabilityState?(): CapabilityStateResult;
+	readCapabilityChoices?(): CapabilityAvailableResult;
+	mutateCapabilityState?(input: unknown): CapabilityStateResult;
+	enableCapability?(input: unknown): CapabilityStateResult;
+	previewCapabilities?(): WebEditorOperationResult<WebEditorSessionPreview>;
 	getEditorConfig(): { locale: WebEditorLocale };
 	setEditorLocale(locale: WebEditorLocale): WebEditorOperationResult<{ locale: WebEditorLocale }>;
 	listStacks(): WebEditorStackSummary[];
@@ -66,30 +68,30 @@ export interface WebEditorHost {
 	reloadStacks(): Promise<WebEditorOperationResult<{ activeId?: string; stacks: WebEditorStackSummary[] }>>;
 }
 
-export interface WebEditorInstructionModeEntry {
+export interface WebEditorCapabilityEntry {
 	selector: string;
 	scope: "global" | "project";
 	filePath: string;
-	mode: InstructionMode;
+	capability: Capability;
 	sourceRevision: string;
 	diagnostics: Diagnostic[];
 }
 
-export interface WebEditorInstructionModeCollection {
+export interface WebEditorCapabilityCollection {
 	trusted: boolean;
-	modes: WebEditorInstructionModeEntry[];
+	capabilities: WebEditorCapabilityEntry[];
 }
 
-export interface WebEditorEffectiveInstructionModeBinding {
+export interface WebEditorEffectiveCapabilityBinding {
 	id: string;
 	ref: string;
 	modelCallable: boolean;
-	source: InstructionMode;
-	effective: InstructionMode;
+	source: Capability;
+	effective: Capability;
 }
 
-export interface WebEditorEffectiveInstructionModes {
-	bindings: WebEditorEffectiveInstructionModeBinding[];
+export interface WebEditorEffectiveCapabilityCollection {
+	bindings: WebEditorEffectiveCapabilityBinding[];
 }
 
 export interface WebEditorProfileEntry {
@@ -142,7 +144,7 @@ export interface WebEditorPreviewSection {
 	/** Native named System sections, including explicit removals (null). */
 	sections?: Record<string, string | null>;
 	/** Read-only instruction projection metadata; not prompt prose or executable state. */
-	instructionUpdate?: {
+	capabilityUpdate?: {
 		activationIds: string[];
 		kind: "anchor" | "pending" | "checkpoint";
 		throughEventId: string;
@@ -169,7 +171,7 @@ export interface WebEditorPreview {
 }
 
 export interface WebEditorSessionPreview {
-	state: InstructionStateView;
+	state: CapabilityStateView;
 	preset: { selector: string; name?: string };
 	text: string;
 	preview: WebEditorPreview;
@@ -205,7 +207,7 @@ export interface WebEditorPolicyResource {
 	description?: string;
 	source?: string;
 	group?: { id: string; label: string };
-	/** Restorable session baseline before Preset/mode selection, for default seeding. */
+	/** Restorable session baseline before Preset/capability selection, for default seeding. */
 	baselineActive?: boolean;
 	active?: boolean;
 	hidden?: boolean;

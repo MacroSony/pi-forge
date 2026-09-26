@@ -110,7 +110,7 @@ The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 r
 ### Context hook migration (`context_with_system`)
 
 - **Standard `context` excludes System:** In Pi 0.87, standard `context` lifecycle hooks intentionally exclude System messages. Any prior extension or custom integration that inspected, modified, or relied upon full System context must move to the full `context_with_system` hook.
-- **Unified Forge pipeline:** Forge moves its entire compiler, base prompt replacement, and instruction mode projection pipeline together to `context_with_system`, operating cleanly at the full-transcript boundary without an internal two-phase split.
+- **Unified Forge pipeline:** Forge moves its entire compiler, base prompt replacement, and capability projection pipeline together to `context_with_system`, operating cleanly at the full-transcript boundary without an internal two-phase split.
 - **`before_agent_start` timing:** Any forced System prompt injection via `before_agent_start` continues to execute later in Pi's lifecycle than `context_with_system`.
 
 ### Canonical projection and session history
@@ -121,13 +121,13 @@ The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 r
 
 ### Continuations and settlement lifecycle
 
-- **`agent_end` vs. `agent_settled`:** `agent_end` offers an anchor boundary after a low-level run, provided no Forge context failure or incomplete tool batch remains. However, the compile cycle and busy fence reset only on `agent_settled`. This guarantees that `agent_before_settle` continuations preserve compiled Preset inputs and active instruction modes across low-level runs without dropping prompt context.
+- **`agent_end` vs. `agent_settled`:** `agent_end` offers an anchor boundary after a low-level run, provided no Forge context failure or incomplete tool batch remains. However, the compile cycle and busy fence reset only on `agent_settled`. This guarantees that `agent_before_settle` continuations preserve compiled Preset inputs and active capabilities across low-level runs without dropping prompt context.
 
 ### Guardrails and semantics unchanged
 
-- **Project trust:** Activations and Agent control require an explicitly trusted project (`isProjectTrusted()`); human CLI off/reset recovery remains available.
-- **`sourceRevision` stale-save guard:** Existing mode updates/deletes and binding-bearing Preset updates must match the loaded source revision; mode creation must not overwrite an existing file. Stale saves fail with `409 Conflict`.
-- **Save ≠ Use:** Saving a mode or Preset binding updates library definitions on disk only; it never activates the mode into an active session.
+- **Project trust:** Activations and Agent control require an explicitly trusted project (`isProjectTrusted()`); human CLI disable/reset recovery remains available.
+- **`sourceRevision` stale-save guard:** Existing capability updates/deletes and binding-bearing Preset updates must match the loaded source revision; capability creation must not overwrite an existing file. Stale saves fail with `409 Conflict`.
+- **Save ≠ Enable:** Saving a capability library definition updates its file only and does not enable it in the session; saving an active Preset refreshes that Preset's policy immediately (updating live tool and capability authorization policy), without replacing frozen active capability snapshots.
 - **Upstream defect status:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched; compaction checkpoint placement is unchanged. Existing legacy session carriers remain untouched without automatic migration, and Oh My Pi (OMP) is not supported or promised.
 
 ## Compatibility notes

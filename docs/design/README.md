@@ -9,7 +9,7 @@ The active plan defines the executable forward-looking work. Archived documents 
 - [Lean 0.5.0 architecture plan](architecture-0.5.md) — executable breaking-cleanup scope, accepted decisions, implementation lanes, and release gates.
 - [Architecture and development rules](../development/architecture-rules.md) — dependency direction and ownership rules for the full target.
 - [Architecture decision template](decision-template.md) — structure for future boundary/product decisions.
-- [Instruction modes (0.5.5)](pi-forge-system-update-design-notes.md) — accepted staged implementation; foundation and human CLI core implemented, Preset authorization/Agent control and UI remain later lanes.
+- [Capabilities (0.5.5)](pi-forge-system-update-design-notes.md) — accepted staged implementation; foundation and human CLI core implemented, Preset authorization/Agent control and UI remain later lanes.
 - [September 12 system-update proposal](archive/2026-09-12-system-update-design.md) — historical upstream-blocked thin-sections design, superseded by the 0.86 spike.
 
 ## Archived 0.5 full proposal

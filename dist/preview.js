@@ -5,14 +5,14 @@ import { estimatePayloadTokens } from "./payload-capture.js";
 import { hashText } from "./context-diff.js";
 import { isTrulyEmptySystemSection, previewSectionText } from "./preview-text.js";
 import { promptRuntimeFromCompileOptions } from "./prompt-runtime.js";
-import { getPiBasePrompt, projectInstructionMessages, projectPresetSystemPrompt, } from "./instruction-projection.js";
-import { getCurrentBranchEntries, readInstructionSession } from "./session-adapter.js";
-import { isInstructionDelivery } from "./instruction-protocol.js";
-import { materializeInstructionAnchors } from "./instruction-anchors.js";
-import { reduceInstructionEvents } from "./instruction-events.js";
+import { getPiBasePrompt, projectCapabilityMessages, projectPresetSystemPrompt, } from "./capability-projection.js";
+import { getCurrentBranchEntries, readCapabilitySession } from "./session-adapter.js";
+import { isCapabilityDelivery } from "./capability-protocol.js";
+import { materializeCapabilityAnchors } from "./capability-anchors.js";
+import { reduceCapabilityEvents } from "./capability-events.js";
 /**
  * Render preview for a prompt stack against current session context.
- * Evaluates the selected draft against current session mode snapshots without
+ * Evaluates the selected draft against current session capability snapshots without
  * mutating runtime state, applying tool policy, or marking preparation.
  */
 export function renderPreview(ctx, target) {
@@ -21,10 +21,10 @@ export function renderPreview(ctx, target) {
 /**
  * Build a structured preview and text rendering for a prompt stack.
  *
- * Evaluates the selected draft against current session mode snapshots:
+ * Evaluates the selected draft against current session capability snapshots:
  * 1. Restores compaction base System and Pi base prompt.
- * 2. Matches live compile -> base projection -> mode projection ordering.
- * 3. Fails closed for active modes when project is untrusted.
+ * 2. Matches live compile -> base projection -> capability projection ordering.
+ * 3. Fails closed for active capabilities when project is untrusted.
  * 4. Preserves untouched message provenance and labels synthesized updates.
  * 5. Avoids duplicating leading compiled base between preview.system and preview.messages.
  * 6. Separates actual text from named-section operations and historical tool declarations.
@@ -40,29 +40,29 @@ export function buildPreview(ctx, target, options) {
     const messages = compilation.compileMessages(sessionMessages);
     const baseProjected = projectPresetSystemPrompt(messages.messages, system.systemPrompt ?? "");
     // Base projection clones every System and may insert one new leading System.
-    // Preserve provenance by position here, before mode projection inserts/removes entries.
+    // Preserve provenance by position here, before capability projection inserts/removes entries.
     const originalMessageSources = new Map();
     const baseOffset = baseProjected.length - messages.messages.length;
     for (let i = 0; i < messages.messages.length; i++) {
         originalMessageSources.set(baseProjected[i + baseOffset], messages.messageSources[i]);
     }
-    const beforeModeProjection = new Set(baseProjected);
-    const history = readInstructionSession(ctx);
+    const beforeCapabilityProjection = new Set(baseProjected);
+    const history = readCapabilitySession(ctx);
     const trusted = ctx.isProjectTrusted?.() === true;
-    const reduced = reduceInstructionEvents(history.events);
+    const reduced = reduceCapabilityEvents(history.events);
     if (!reduced.ok) {
-        throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
+        throw new Error(`Invalid Forge capability event ${reduced.index}: ${reduced.error}`);
     }
     if (!trusted && reduced.active.length > 0) {
-        throw new Error("Active instruction modes require a trusted project. Use /instruction reset to clear them, or trust the project.");
+        throw new Error("Active capabilities require a trusted project. Use /capability reset to clear them, or trust the project.");
     }
     const native = ctx.model?.compat?.supportsMidConvoSystemMessages === true;
-    const instructionUpdates = new Map();
-    const projected = projectInstructionMessages(baseProjected, history, native, (message, update) => {
-        instructionUpdates.set(message, update);
+    const capabilityUpdates = new Map();
+    const projected = projectCapabilityMessages(baseProjected, history, native, (message, update) => {
+        capabilityUpdates.set(message, update);
     });
     // Match the runtime's untrusted, inactive recovery path without replaying old rules.
-    const previewMessages = trusted ? projected.messages : baseProjected.filter(message => !isInstructionDelivery(message));
+    const previewMessages = trusted ? projected.messages : baseProjected.filter(message => !isCapabilityDelivery(message));
     const diagnostics = dedupeDiagnostics([target.diagnostics, system.diagnostics, messages.diagnostics]);
     let hasFinalize = false;
     let hasRequestFrequency = false;
@@ -91,20 +91,20 @@ export function buildPreview(ctx, target, options) {
         ? previewMessageSection(leadingSystem, "system", "System prompt", "system")
         : previewSection("system", "System prompt", "", undefined, "system");
     if (leadingSystem) {
-        const instructionUpdate = instructionUpdates.get(leadingSystem);
-        if (instructionUpdate)
-            systemSection.instructionUpdate = instructionUpdate;
+        const capabilityUpdate = capabilityUpdates.get(leadingSystem);
+        if (capabilityUpdate)
+            systemSection.capabilityUpdate = capabilityUpdate;
     }
     const messagesToDisplay = leadingSystem ? previewMessages.slice(1) : previewMessages;
     const diffKeyOccurrences = new Map();
     const messageSections = [];
     for (const [index, message] of messagesToDisplay.entries()) {
         const source = originalMessageSources.get(message);
-        const isForgeUpdate = !beforeModeProjection.has(message);
+        const isForgeUpdate = !beforeCapabilityProjection.has(message);
         const section = previewMessageSection(message, `message-${index}`, previewMessageTitle(source, index, isForgeUpdate));
-        const instructionUpdate = instructionUpdates.get(message);
-        if (instructionUpdate)
-            section.instructionUpdate = instructionUpdate;
+        const capabilityUpdate = capabilityUpdates.get(message);
+        if (capabilityUpdate)
+            section.capabilityUpdate = capabilityUpdate;
         // Display-only omission: never remove events or mutate the request projection.
         if (isTrulyEmptySystemSection(section))
             continue;
@@ -185,11 +185,11 @@ function getPreviewSessionMessages(ctx) {
     const entries = (ctx.sessionManager.getEntries ? ctx.sessionManager.getEntries() : getCurrentBranchEntries(ctx));
     const leafId = ctx.sessionManager.getLeafId ? ctx.sessionManager.getLeafId() : undefined;
     const projection = buildSessionProjection(entries, leafId);
-    return materializeInstructionAnchors(entries, projection.messages, leafId);
+    return materializeCapabilityAnchors(entries, projection.messages, leafId);
 }
 function previewMessageTitle(source, index, isForgeUpdate = false) {
     if (isForgeUpdate) {
-        return "Forge instruction update";
+        return "Forge capability update";
     }
     if (source?.kind === "stack-item") {
         if (source.mergedItems?.length) {
@@ -218,7 +218,7 @@ function renderPreviewSectionText(sections) {
 }
 function previewMessageDiffKey(source, content, role, isForgeUpdate = false) {
     if (isForgeUpdate) {
-        return `forge-instruction-update:${hashText(`${role}\0${content}`)}`;
+        return `forge-capability-update:${hashText(`${role}\0${content}`)}`;
     }
     if (source?.kind === "stack-item" && source.mergedItems?.length) {
         return `stack-items:${source.mergedItems.map((item) => item.itemId ?? "").join("+")}`;

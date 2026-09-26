@@ -3,8 +3,8 @@ import { createResourceCatalog } from "./catalog.ts";
 import { hasAgentProfileErrors, type AgentProfileProvenance, type LoadedAgentProfile } from "./agent-profile.ts";
 import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.ts";
 import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.ts";
-import { readGlobalInstructionModes, readInstructionModesScoped } from "./repositories/instruction-mode.ts";
-import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import { readGlobalCapabilities, readCapabilitiesScoped } from "./repositories/capability.ts";
+import type { LoadedCapability } from "./codecs/capability.ts";
 import { chooseDefaultStack, isDisabledPromptStackId } from "./loader.ts";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.ts";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.ts";
@@ -32,7 +32,7 @@ export interface ForgeWorkspaceSnapshot {
 	cwd: string;
 	stacks: readonly LoadedPromptStack[];
 	profiles: readonly LoadedAgentProfile[];
-	instructionModes: readonly LoadedInstructionMode[];
+	capabilities: readonly LoadedCapability[];
 	activeStackId: string | null;
 	active?: LoadedPromptStack;
 	lastAppliedProfile?: AgentProfileProvenance;
@@ -108,7 +108,7 @@ export class ForgeWorkspace {
 			// Populate completion/catalog data on explicit workspace reload, not on
 			// keystrokes. Active snapshots are still restored from session history,
 			// never reconstructed from these current library definitions.
-			instructionModes: trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes(),
+			capabilities: trusted ? readCapabilitiesScoped(cwd) : readGlobalCapabilities(),
 			activeStackId,
 			active,
 			lastAppliedProfile: options.lastAppliedProfile ?? this.current?.lastAppliedProfile,
@@ -121,10 +121,10 @@ export class ForgeWorkspace {
 		return this.current;
 	}
 
-	reloadInstructionModes(cwd: string, trusted = true): ForgeWorkspaceSnapshot {
+	reloadCapabilities(cwd: string, trusted = true): ForgeWorkspaceSnapshot {
 		if (!this.current || this.current.cwd !== cwd) throw new Error("Forge workspace does not match this session.");
-		const instructionModes = trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes();
-		return this.publish({ ...this.current, instructionModes, capturedAt: new Date().toISOString() });
+		const capabilities = trusted ? readCapabilitiesScoped(cwd) : readGlobalCapabilities();
+		return this.publish({ ...this.current, capabilities, capturedAt: new Date().toISOString() });
 	}
 
 	reloadProfiles(cwd: string, trusted = true): ForgeWorkspaceSnapshot {

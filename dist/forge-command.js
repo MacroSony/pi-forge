@@ -86,7 +86,7 @@ export function registerForgeCommand(pi, deps, payload) {
                     ...[...contributions].map(([key, values]) => `/forge ${key} — ${values.length === 1 ? values[0].description : "unavailable: duplicate contributors"}`),
                     ...(!contributions.has("subagent") ? ["/forge subagent — requires matching @zihanw/pi-forge-subagents"] : []),
                     "", "/preset help — context presets", "/profile help — model/thinking/preset combinations",
-                    "/instruction help — session instructions and modes",
+                    "/capability help — session capabilities",
                     "Compatibility: /preset ui, /payload, and /intercept remain available; /forge-agent requires the optional package.",
                     "Legacy /subagent is a different low-level smoke helper, not the execution plan command.",
                 ].join("\n"));

@@ -28,7 +28,7 @@ The legacy `/subagent` command is a separate low-level smoke helper. It is not t
 | `/preset list` | List presets and activation/validation state. |
 | `/preset status` | Show the selected preset and diagnostics summary. |
 | `/preset use <id>` | Validate and select a preset. |
-| `/preset use none` | Disable prompt presets for this session branch. `off` is accepted as an alias. |
+| `/preset use none` | Disable prompt presets for this session branch. `disable` is accepted as an alias. |
 | `/preset preview [id]` | Compile and display a preset without provider transport. Defaults to the selected preset. |
 | `/preset validate [id]` | Validate the selected preset when omitted, or one named preset when supplied. It does not validate every preset by default. |
 | `/preset diagnostics` | Show loader, runtime, policy, regex, and trusted-extension diagnostics. |
@@ -58,23 +58,23 @@ Use migration dry runs before overwriting or deleting anything.
 | `/profile forget` | Remove last-applied provenance without changing runtime state. |
 | `/profile help` | Show profile command help. |
 
-## Instruction modes
+## Capabilities
 
-`/instruction` is the command for managing session instruction modes.
+`/capability` is the command for managing session capabilities.
 
 | Command | Behavior |
 |---|---|
-| `/instruction add <text>` | Add a literal manual instruction. |
-| `/instruction list` | Explicitly reload and list the instruction-mode library. |
-| `/instruction bindings` | List bindings on the active preset, including human-only bindings (`modelCallable: false`). |
-| `/instruction use <[scope:]id>` | Activate an unbound library mode. |
-| `/instruction use-bound <id>` | Activate a binding from the active preset. |
-| `/instruction off <activation-id>` | Deactivate one active activation. |
-| `/instruction status` | Show active instructions and effective tools. |
-| `/instruction reset` | Deactivate all active instructions and manual directives. |
-| `/instruction help` | Show usage and compatibility notes. |
+| `/capability add <text>` | Add a literal manual instruction. |
+| `/capability list` | Explicitly reload and list the capability library. |
+| `/capability bindings` | List bindings on the active preset, including human-only bindings (`modelCallable: false`). |
+| `/capability enable <[scope:]id>` | Enable an unbound library capability. |
+| `/capability enable-bound <id>` | Enable a binding from the active preset. |
+| `/capability disable <activation-id>` | Disable one active capability. |
+| `/capability status` | Show active capabilities and effective tools. |
+| `/capability reset` | Disable all active capabilities and manual directives. |
+| `/capability help` | Show usage and compatibility notes. |
 
-Completions use the current session and last published workspace snapshot. They do not scan resources on every keystroke. Use `/instruction list` for an explicit discovery refresh. Human-only bindings remain visible in `bindings`; `modelCallable: false` only prevents Agent control.
+Completions use the current session and last published workspace snapshot. They do not scan resources on every keystroke. Use `/capability list` for an explicit discovery refresh. Human-only bindings remain visible in `bindings`; `modelCallable: false` only prevents Agent control.
 
 ## Optional foreground delegation
 

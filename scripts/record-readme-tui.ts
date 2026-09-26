@@ -23,7 +23,7 @@ const palette = join(evidenceDir, "tui-quickstart-palette.png");
 const terminalLog = join(evidenceDir, "terminal.log");
 
 mkdirSync(join(cwd, ".pi/forge/prompt-stacks"), { recursive: true });
-mkdirSync(join(cwd, ".pi/forge/instruction-modes"), { recursive: true });
+mkdirSync(join(cwd, ".pi/forge/capabilities"), { recursive: true });
 mkdirSync(home, { recursive: true });
 mkdirSync(join(home, ".config"), { recursive: true });
 mkdirSync(agentDir, { recursive: true });
@@ -39,10 +39,10 @@ const stack = {
   autoActivate: true,
   mode: "replace",
   tools: {
-    allow: ["read", "ls", "forge_system_update", "bash", "edit"],
-    initial: ["read", "ls", "forge_system_update"],
+    allow: ["read", "ls", "forge_capability", "bash", "edit"],
+    initial: ["read", "ls", "forge_capability"],
   },
-  instructionModes: [{ id: "write-tools", ref: "project:write-tools", modelCallable: true }],
+  capabilities: [{ id: "write-tools", ref: "project:write-tools", modelCallable: true }],
   items: [
     {
       kind: "block",
@@ -55,17 +55,17 @@ const stack = {
     { kind: "slot", id: "history", name: "Chat history", enabled: true, slot: "chat-history" },
   ],
 };
-const mode = {
+const capability = {
   schemaVersion: 1,
-  type: "pi-forge.instruction-mode",
+  type: "pi-forge.capability",
   id: "write-tools",
   name: "Write tools",
   description: "Enable shell and edit for task commands.",
-  content: "Use bash and edit only as needed; disable this mode when finished.",
+  content: "Use bash and edit only as needed; disable this capability when finished.",
   tools: { add: ["bash", "edit"], remove: [] },
 };
 writeFileSync(join(cwd, ".pi/forge/prompt-stacks/read-first.json"), `${JSON.stringify(stack, null, 2)}\n`);
-writeFileSync(join(cwd, ".pi/forge/instruction-modes/write-tools.json"), `${JSON.stringify(mode, null, 2)}\n`);
+writeFileSync(join(cwd, ".pi/forge/capabilities/write-tools.json"), `${JSON.stringify(capability, null, 2)}\n`);
 // Isolated cosmetic theme and an inert local model entry: no real credentials or inference.
 const demoSettings = { quietStartup: true, theme: "readme-demo" };
 mkdirSync(join(agentDir, "themes"), { recursive: true });
@@ -117,8 +117,8 @@ const piArgs = [
 ];
 const demoCommands = [
   "/preset use project:read-first",
-  "/instruction use project:write-tools",
-  "/instruction status",
+  "/capability enable project:write-tools",
+  "/capability status",
 ];
 const terminalShell =
   `cd ${shellQuote(cwd)} && printf '\\033]11;#111827\\007\\033]10;#e5e7eb\\007' && export PI_CODING_AGENT_DIR=${shellQuote(agentDir)} HOME=${shellQuote(home)} TERM=xterm-256color COLORTERM=true NODE_OPTIONS=${shellQuote(`--import=${networkGuard}`)} && exec ${commandsToShell(piArgs)}`;
@@ -236,11 +236,11 @@ try {
   importKeyframe("keyframe-preset.png");
   mark("captured-preset-use", { command: commands.commands[0] });
   await submitCommand(commands.commands[1]!, 2_200);
-  importKeyframe("keyframe-instruction-use.png");
-  mark("captured-instruction-use", { command: commands.commands[1] });
+  importKeyframe("keyframe-capability-use.png");
+  mark("captured-capability-use", { command: commands.commands[1] });
   await submitCommand(commands.commands[2]!, 2_400);
   importKeyframe("keyframe-status-final.png");
-  mark("captured-instruction-status-final", { command: commands.commands[2] });
+  mark("captured-capability-status-final", { command: commands.commands[2] });
   await sleep(2_500);
   mark("capture-stop");
   await cleanup();
@@ -281,14 +281,14 @@ try {
       inertModel: "offline-demo (not a real provider)",
       networkGuard: "fetch and net.Socket.connect blocked; empty network-attempts.jsonl asserted",
       noUserSettingsOrAuthModified: true,
-      syntheticResources: [".pi/forge/prompt-stacks/read-first.json", ".pi/forge/instruction-modes/write-tools.json"],
+      syntheticResources: [".pi/forge/prompt-stacks/read-first.json", ".pi/forge/capabilities/write-tools.json"],
     },
     captureMetadata: {
       providerRequests: 0,
       modelRequests: 0,
       externalRequests: [],
-      expectedToolsBefore: ["read", "ls", "forge_system_update"],
-      expectedToolsAfter: ["read", "ls", "forge_system_update", "bash", "edit"],
+      expectedToolsBefore: ["read", "ls", "forge_capability"],
+      expectedToolsAfter: ["read", "ls", "forge_capability", "bash", "edit"],
       actionLog,
       note: "Commands and holds are captured actions; expected tool lists are derived from the synthetic fixture, not screenshot assertions.",
     },

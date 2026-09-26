@@ -30,7 +30,7 @@ function fixture() {
 test("forge root shares UI lifecycle, strict parsing, nested completion and help without inference", async () => {
 	const f = fixture(), c = f.commands.forge;
 	await c.handler("", f.ctx);
-	assert.match(f.editors.at(-1)!.text, /\/instruction help/);
+	assert.match(f.editors.at(-1)!.text, /\/capability help/);
 	assert.deepEqual(f.calls, []);
 	for (const args of ["ui", "ui restart", "ui stop"]) await c.handler(args, f.ctx);
 	assert.deepEqual(f.calls, ["open", "restart", "stop"]);
@@ -113,7 +113,7 @@ test("migration typo is rejected before writes and canonical roots coexist", asy
 	const cwd = mkdtempSync(join(tmpdir(), "forge-cli-migrate-")); const h = createHarness(), { ctx, notifications } = createContext(cwd);
 	writeLegacyStack(cwd, "old.json", { schemaVersion: 1, type: "pi-forge.prompt-stack", id: "old", items: [] });
 	await startSession(h, ctx);
-	assert.ok(h.commands.forge && h.commands.instruction && h.commands.preset && h.commands.profile);
+	assert.ok(h.commands.forge && h.commands.capability && h.commands.preset && h.commands.profile);
 	assert.equal(h.commands["system-update"], undefined);
 	await h.commands.preset.handler("migrate-stacks --dryrun", ctx);
 	assert.equal(existsSync(join(cwd, ".pi", "forge", "prompt-stacks", "old.json")), false);

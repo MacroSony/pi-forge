@@ -1,6 +1,6 @@
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { getPiBasePrompt, projectPresetSystemPrompt } from "./instruction-projection.ts";
+import { getPiBasePrompt, projectPresetSystemPrompt } from "./capability-projection.ts";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
 	getLatestUserMessage,
@@ -32,13 +32,13 @@ export interface LifecycleDeps {
 	bindActiveState(ctx: ExtensionContext): void;
 	disposeActiveState(): void;
 	recordProviderResponseUsage(message: AssistantMessage): void;
-	disposeInstructions?(): void;
-	prepareInstructionRestore?(ctx: ExtensionContext): void;
-	restoreInstructions?(ctx: ExtensionContext, options?: { deferToolPolicy?: boolean }): void;
-	projectInstructions?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
-	prepareInstructionMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
-	commitEndInstructionAnchors?(ctx: ExtensionContext): void;
-	setInstructionAgentBusy?(busy: boolean): void;
+	disposeCapabilities?(): void;
+	prepareCapabilityRestore?(ctx: ExtensionContext): void;
+	restoreCapabilities?(ctx: ExtensionContext, options?: { deferToolPolicy?: boolean }): void;
+	projectCapabilities?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+	prepareCapabilityMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+	commitEndCapabilityAnchors?(ctx: ExtensionContext): void;
+	setCapabilityAgentBusy?(busy: boolean): void;
 	toolPromptOptions?(options: BuildSystemPromptOptions): BuildSystemPromptOptions;
 }
 
@@ -53,7 +53,7 @@ export function registerLifecycleHandlers(
 
 	pi.on("session_shutdown", async () => {
 		runFailed = false;
-		deps.setInstructionAgentBusy?.(false);
+		deps.setCapabilityAgentBusy?.(false);
 		// Publish a final cleared active-state snapshot before teardown so optional
 		// consumers do not retain appearance context from the retiring session.
 		// Active-state is optional, so a throwing transport/listener must never
@@ -66,7 +66,7 @@ export function registerLifecycleHandlers(
 		let firstError: unknown;
 		for (const step of [
 			// A shared editor may outlive this runtime; stale hosts must stop accepting controls.
-			() => deps.disposeInstructions?.(),
+			() => deps.disposeCapabilities?.(),
 			// Pi carries the old runtime's active built-in tool names into a
 			// replacement runtime. Restore the pre-policy set before reload/session
 			// replacement so the replacement can capture a complete baseline.
@@ -87,7 +87,7 @@ export function registerLifecycleHandlers(
 
 	pi.on("session_start", async (event, ctx) => {
 		runFailed = false;
-		deps.setInstructionAgentBusy?.(false);
+		deps.setCapabilityAgentBusy?.(false);
 		startupToolPolicyPending = true;
 		// Suspend before any workspace reload so intermediate snapshots cannot be
 		// published under the still-bound old session id.
@@ -118,7 +118,7 @@ export function registerLifecycleHandlers(
 
 	pi.on("session_tree", async (_event, ctx) => {
 		runFailed = false;
-		deps.setInstructionAgentBusy?.(false);
+		deps.setCapabilityAgentBusy?.(false);
 		deps.suspendActiveState();
 		try {
 			await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -134,7 +134,7 @@ export function registerLifecycleHandlers(
 
 	pi.on("session_compact", async (_event, ctx) => {
 		runFailed = false;
-		deps.setInstructionAgentBusy?.(false);
+		deps.setCapabilityAgentBusy?.(false);
 		deps.suspendActiveState();
 		try {
 			await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -166,7 +166,7 @@ export function registerLifecycleHandlers(
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		runFailed = false;
-		deps.setInstructionAgentBusy?.(true);
+		deps.setCapabilityAgentBusy?.(true);
 		compileCycle.currentSystemPromptOptions = event.systemPromptOptions;
 		deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
 		compileCycle.currentLatestUserMessage = event.prompt;
@@ -187,7 +187,7 @@ export function registerLifecycleHandlers(
 		try {
 			deps.syncActiveToolPolicy(ctx);
 			let messages = event.messages;
-			messages = deps.prepareInstructionMessages?.(messages, ctx) ?? messages;
+			messages = deps.prepareCapabilityMessages?.(messages, ctx) ?? messages;
 			const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
 			if (active && compileCycle.currentSystemPromptOptions) {
 				const options = deps.toolPromptOptions?.(compileCycle.currentSystemPromptOptions) ?? compileCycle.currentSystemPromptOptions;
@@ -218,7 +218,7 @@ export function registerLifecycleHandlers(
 				}
 				messages = projectPresetSystemPrompt(messages, compileCycle.currentCompiledSystemPrompt ?? "");
 			}
-			messages = deps.projectInstructions?.(messages, ctx) ?? messages;
+			messages = deps.projectCapabilities?.(messages, ctx) ?? messages;
 			return messages === event.messages ? undefined : { messages };
 		} catch (error) {
 			// Pi logs hook exceptions and may otherwise dispatch the unmodified context.
@@ -244,13 +244,13 @@ export function registerLifecycleHandlers(
 		// This is a safe low-level boundary, not the end of Pi's outer run.
 		// agent_before_settle may still request a continuation without another
 		// before_agent_start. Keep the compiled preset inputs until final settlement.
-		if (!runFailed && ctx) deps.commitEndInstructionAnchors?.(ctx);
+		if (!runFailed && ctx) deps.commitEndCapabilityAnchors?.(ctx);
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		try {
-			deps.setInstructionAgentBusy?.(false);
-			if (!runFailed && ctx) deps.commitEndInstructionAnchors?.(ctx);
+			deps.setCapabilityAgentBusy?.(false);
+			if (!runFailed && ctx) deps.commitEndCapabilityAnchors?.(ctx);
 		} finally {
 			resetCompileCycle(compileCycle);
 		}
@@ -272,8 +272,8 @@ async function restoreBranchScopedRuntime(
 	deps: LifecycleDeps,
 	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
-	deps.setInstructionAgentBusy?.(false);
-	deps.prepareInstructionRestore?.(ctx);
+	deps.setCapabilityAgentBusy?.(false);
+	deps.prepareCapabilityRestore?.(ctx);
 	const restoredProfile = getRestoredProfileProvenance(ctx);
 	compileCycle.currentCompilationContext = undefined;
 	compileCycle.currentCompilationRuntime = undefined;
@@ -286,7 +286,7 @@ async function restoreBranchScopedRuntime(
 	deps.restorePersistedActiveId(restoredActiveId);
 	await deps.reloadStacks(ctx, restoredActiveId, { ...options, deferToolPolicy: true });
 	workspace.setLastAppliedProfile(restoredProfile);
-	deps.restoreInstructions?.(ctx, options);
+	deps.restoreCapabilities?.(ctx, options);
 }
 
 function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {

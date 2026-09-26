@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compileMessages } from "../src/compiler.ts";
-import { INSTRUCTION_DELIVERY_TYPE } from "../src/instruction-protocol.ts";
+import { CAPABILITY_DELIVERY_TYPE } from "../src/capability-protocol.ts";
 import type { PromptRuntime, PromptStack } from "../src/types.ts";
 
 function runtime(): PromptRuntime {
@@ -31,7 +31,7 @@ function system(content: string): AgentMessage {
 function deliveryAnchor(throughEventId: string): AgentMessage {
 	return {
 		role: "custom",
-		customType: INSTRUCTION_DELIVERY_TYPE,
+		customType: CAPABILITY_DELIVERY_TYPE,
 		content: "instruction-delivery-marker",
 		data: { schemaVersion: 1, throughEventId },
 		timestamp: Date.now(),

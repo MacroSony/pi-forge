@@ -2,7 +2,7 @@ import { createResourceCatalog } from "./catalog.js";
 import { hasAgentProfileErrors } from "./agent-profile.js";
 import { readAgentProfilesScoped, readGlobalAgentProfiles } from "./repositories/agent-profile.js";
 import { readGlobalPromptStacks, readPromptStacksScoped } from "./repositories/prompt-stack.js";
-import { readGlobalInstructionModes, readInstructionModesScoped } from "./repositories/instruction-mode.js";
+import { readGlobalCapabilities, readCapabilitiesScoped } from "./repositories/capability.js";
 import { chooseDefaultStack, isDisabledPromptStackId } from "./loader.js";
 import { formatResourceKey, parseResourceSelector } from "./resource-identity.js";
 import { createForgeExtensionState, reloadForgeExtensions, unloadForgeExtensions } from "./forge-extensions.js";
@@ -67,7 +67,7 @@ export class ForgeWorkspace {
             // Populate completion/catalog data on explicit workspace reload, not on
             // keystrokes. Active snapshots are still restored from session history,
             // never reconstructed from these current library definitions.
-            instructionModes: trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes(),
+            capabilities: trusted ? readCapabilitiesScoped(cwd) : readGlobalCapabilities(),
             activeStackId,
             active,
             lastAppliedProfile: options.lastAppliedProfile ?? this.current?.lastAppliedProfile,
@@ -79,11 +79,11 @@ export class ForgeWorkspace {
         this.notifyListeners();
         return this.current;
     }
-    reloadInstructionModes(cwd, trusted = true) {
+    reloadCapabilities(cwd, trusted = true) {
         if (!this.current || this.current.cwd !== cwd)
             throw new Error("Forge workspace does not match this session.");
-        const instructionModes = trusted ? readInstructionModesScoped(cwd) : readGlobalInstructionModes();
-        return this.publish({ ...this.current, instructionModes, capturedAt: new Date().toISOString() });
+        const capabilities = trusted ? readCapabilitiesScoped(cwd) : readGlobalCapabilities();
+        return this.publish({ ...this.current, capabilities, capturedAt: new Date().toISOString() });
     }
     reloadProfiles(cwd, trusted = true) {
         if (!this.current)

@@ -47,7 +47,7 @@ Item IDs must be unique. Unsupported slots and missing required custom registrat
 
 Item position only matters within each channel: all `system` items join the system prompt in their relative order, and all non-system items become messages in their relative order. A `system` item placed after non-system items therefore has no effect on placement and produces a validation warning; roles are never silently converted. Use a `user` item for in-conversation injection.
 
-## Modes
+## Capabilities
 
 - `replace` replaces Pi's base system prompt; empty output falls back to the base.
 - `append` places stack system text after Pi's base.
@@ -76,7 +76,7 @@ Item position only matters within each channel: all `system` items join the syst
   "includeLastUserMessage": false,
   "stripAssistantThinking": true,
   "includeSummaries": true,
-  "toolMode": "keep",
+  "toolCapability": "keep",
   "roles": ["user", "assistant"],
   "maxMessages": 40,
   "maxChars": 20000
@@ -87,7 +87,7 @@ Item position only matters within each channel: all `system` items join the syst
 - `stripAssistantThinking` removes prior thinking blocks but preserves visible assistant text, tool calls, and results. It does not change the live loop or stored transcript.
 - `includeSummaries: false` excludes branch/compaction summaries.
 - `roles` keeps only selected roles.
-- `toolMode: "drop"` removes prior tool traffic.
+- `toolCapability: "drop"` removes prior tool traffic.
 - `maxMessages` and `maxChars` keep recent history within limits.
 
 When filtering would separate a tool call from its result, pi-forge removes dangling entries rather than sending inconsistent provider history.
@@ -125,8 +125,8 @@ The `tools` policy optionally accepts an `initial` list:
   - When `initial` is omitted, pi-forge preserves legacy behavior: a selective allow chooses matching registered tools; unrestricted/deny policies retain or filter the restorable session baseline, not the entire catalog.
   - When `initial: []` is set explicitly, zero tools are active initially.
 - **Ceiling enforcement:** The `allow`/`deny` ceiling remains authoritative and exclusive. Initial tools must fall within permitted bounds: listing a tool that is blocked by allow/deny produces a validation error.
-- **Extension and mod tools:** Dynamically registered extension tools are allowed by default if they satisfy the allow/deny policy, but when `initial` is specified, they remain registered and inactive until explicitly added by `initial`, by an active instruction mode, or through runtime tooling.
-- **Preset baseline behavior:** Configured initial tools serve as the active base for as long as the preset remains active—not a one-time reset per turn. Calling `/instruction off` or `/instruction reset` returns the session to the preset defaults (plus any remaining active modes). Disabling restores the reconciled session baseline; switching recomputes under the new Preset and remaining unbound modes.
+- **Extension and mod tools:** Dynamically registered extension tools are allowed by default if they satisfy the allow/deny policy, but when `initial` is specified, they remain registered and inactive until explicitly added by `initial`, by an active capability, or through runtime tooling.
+- **Preset baseline behavior:** Configured initial tools serve as the active base for as long as the preset remains active—not a one-time reset per turn. Calling `/capability disable` or `/capability reset` returns the session to the preset defaults (plus any remaining active capabilities). Disabling restores the reconciled session baseline; switching recomputes under the new Preset and remaining unbound capabilities.
 - **Compatibility:** Stacks declaring `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline), so the field is not downgrade-compatible. Development continues on the 0.5.4 tree with the target 0.5.5 release bump pending; host requirement remains Pi `>=0.87.0 <0.88.0`.
 
 Tool policy changes Pi's active tool list, is reasserted before input/turns, and has a tool-call guard. It preserves external additions in the restorable baseline and restores that baseline when policy no longer applies or the extension shuts down.

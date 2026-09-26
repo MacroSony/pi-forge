@@ -9,17 +9,17 @@
     "allow": [
       "read",
       "ls",
-      "forge_system_update",
+      "forge_capability",
       "bash",
       "edit"
     ],
     "initial": [
       "read",
       "ls",
-      "forge_system_update"
+      "forge_capability"
     ]
   },
-  "instructionModes": [
+  "capabilities": [
     {
       "id": "write-tools",
       "ref": "project:write-tools",
@@ -33,7 +33,7 @@
       "name": "Worker Role",
       "enabled": true,
       "role": "system",
-      "content": "You are a helpful software engineer assistant. Discover paths with ls then read. When the task needs shell commands or edits, use forge_system_update to enable the write-tools binding, then disable it when finished."
+      "content": "You are a helpful software engineer assistant. Discover paths with ls then read. When the task needs shell commands or edits, use forge_capability with the enable action for the write-tools binding, then use its disable action when finished."
     },
     {
       "kind": "slot",

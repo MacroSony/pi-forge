@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { isInstructionControlMessage } from "./instruction-protocol.ts";
+import { isCapabilityControlMessage } from "./capability-protocol.ts";
 import type {
 	PromptRegexEffect,
 	PromptRegexFrequency,
@@ -366,7 +366,7 @@ function transformMessages(messages: AgentMessage[], rule: CompiledRegexRule, st
 function eligibleMessageIndexes(messages: AgentMessage[], rule: CompiledRegexRule): number[] {
 	const indexes: number[] = [];
 	for (const [index, message] of messages.entries()) {
-		if (isInstructionControlMessage(message)) continue;
+		if (isCapabilityControlMessage(message)) continue;
 		if (rule.roles && !rule.roles.includes(String((message as { role?: unknown }).role))) continue;
 		const depth = messages.length - 1 - index;
 		if (rule.minDepth !== undefined && depth < rule.minDepth) continue;
@@ -377,7 +377,7 @@ function eligibleMessageIndexes(messages: AgentMessage[], rule: CompiledRegexRul
 }
 
 function transformMessage(message: AgentMessage, rule: CompiledRegexRule, stats: RegexStats): AgentMessage {
-	if (isInstructionControlMessage(message)) return message;
+	if (isCapabilityControlMessage(message)) return message;
 	const content = (message as { content?: unknown }).content;
 	if (typeof content === "string") {
 		const result = transformString(content, rule);

@@ -7,7 +7,7 @@ import {
 	AGENT_PROFILE_TYPE,
 	type AgentProfile,
 } from "../agent-profile.ts";
-import { isInstructionStateMutation, isInstructionUseRequest } from "../instruction-state.ts";
+import { isCapabilityStateMutation, isCapabilityEnableRequest } from "../capability-state.ts";
 import { ContributionService } from "./contrib-service.ts";
 import type { PromptStack } from "../types.ts";
 import { renderEditorHtml } from "./page.ts";
@@ -355,32 +355,32 @@ async function handleRequest(
 		return;
 	}
 
-	if (parts[1] === "instruction-modes" && (parts.length === 2 || parts.length === 3)) {
+	if (parts[1] === "capabilities" && (parts.length === 2 || parts.length === 3)) {
 		const action = req.method === "GET" ? (parts.length === 2 ? "list" : "get")
 			: req.method === "POST" && parts.length === 2 ? "create"
 			: req.method === "POST" && parts[2] === "effective" ? "effective"
 			: req.method === "PUT" && parts.length === 3 ? "save"
 			: req.method === "DELETE" && parts.length === 3 ? "delete" : undefined;
-		if (!action) { sendJson(res, 405, {ok: false, error: "Unsupported mode operation."}); return; }
+		if (!action) { sendJson(res, 405, {ok: false, error: "Unsupported capability operation."}); return; }
 		const body = req.method === "GET" ? undefined : await readJsonBody(req);
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
-		if (!hostNow.modeOperation) { sendJson(res, 503, {ok: false, error: "Instruction mode resources unavailable."}); return; }
+		if (!hostNow.capabilityOperation) { sendJson(res, 503, {ok: false, error: "Capability resources unavailable."}); return; }
 		if (action === "create" || action === "save" || action === "delete") {
 			try {
 				if (hostNow.isProjectTrusted?.() !== true) { sendJson(res, 403, {ok: false, error: "Project is not trusted."}); return; }
 			} catch { sendJson(res, 503, {ok: false, error: "Session replaced. Refresh before writing."}); return; }
 		}
-		sendOperation(res, hostNow.modeOperation(action, parts[2], body));
+		sendOperation(res, hostNow.capabilityOperation(action, parts[2], body));
 		return;
 	}
 
-	if (req.method === "GET" && parts[1] === "instructions" && parts[2] === "available" && parts.length === 3) {
+	if (req.method === "GET" && parts[1] === "capability-state" && parts[2] === "available" && parts.length === 3) {
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
-		if (!hostNow.readInstructionChoices) {
-			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+		if (!hostNow.readCapabilityChoices) {
+			sendJson(res, 503, { ok: false, error: "Capability runtime is unavailable." });
 			return;
 		}
-		const result = hostNow.readInstructionChoices();
+		const result = hostNow.readCapabilityChoices();
 		if (!result.ok) {
 			sendJson(res, result.status, { ok: false, error: result.error });
 			return;
@@ -389,15 +389,15 @@ async function handleRequest(
 		return;
 	}
 
-	if (req.method === "GET" && parts[1] === "instructions" && parts[2] === "preview" && parts.length === 3) {
+	if (req.method === "GET" && parts[1] === "capability-state" && parts[2] === "preview" && parts.length === 3) {
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
-		sendOperation(res, hostNow.previewInstructions
-			? hostNow.previewInstructions()
-			: { ok: false, status: 503, error: "Instruction runtime is unavailable." });
+		sendOperation(res, hostNow.previewCapabilities
+			? hostNow.previewCapabilities()
+			: { ok: false, status: 503, error: "Capability runtime is unavailable." });
 		return;
 	}
 
-	if (req.method === "POST" && parts[1] === "instructions" && parts[2] === "use" && parts.length === 3) {
+	if (req.method === "POST" && parts[1] === "capability-state" && parts[2] === "enable" && parts.length === 3) {
 		const body = await readJsonBody(req);
 		host = getCurrentHost ? getCurrentHost() : host;
 		// Resolve the host only after consuming the body: session replacement during
@@ -405,22 +405,22 @@ async function handleRequest(
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
 		try {
 			if (hostNow.isProjectTrusted?.() !== true) {
-				sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to activate instructions." });
+				sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to activate capabilities." });
 				return;
 			}
 		} catch {
-			sendJson(res, 503, { ok: false, error: "Instruction session is unavailable. Refresh after session replacement." });
+			sendJson(res, 503, { ok: false, error: "Capability session is unavailable. Refresh after session replacement." });
 			return;
 		}
-		if (!isInstructionUseRequest(body)) {
-			sendJson(res, 400, { ok: false, error: "Invalid instruction activation payload." });
+		if (!isCapabilityEnableRequest(body)) {
+			sendJson(res, 400, { ok: false, error: "Invalid capability activation payload." });
 			return;
 		}
-		if (!hostNow.useInstruction) {
-			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+		if (!hostNow.enableCapability) {
+			sendJson(res, 503, { ok: false, error: "Capability runtime is unavailable." });
 			return;
 		}
-		const result = hostNow.useInstruction(body);
+		const result = hostNow.enableCapability(body);
 		if (!result.ok) {
 			sendJson(res, result.status, { ok: false, error: result.error });
 			return;
@@ -429,13 +429,13 @@ async function handleRequest(
 		return;
 	}
 
-	if (req.method === "GET" && parts[1] === "instructions" && parts.length === 2) {
+	if (req.method === "GET" && parts[1] === "capability-state" && parts.length === 2) {
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
-		if (!hostNow.readInstructions) {
-			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+		if (!hostNow.readCapabilityState) {
+			sendJson(res, 503, { ok: false, error: "Capability runtime is unavailable." });
 			return;
 		}
-		const result = hostNow.readInstructions();
+		const result = hostNow.readCapabilityState();
 		if (!result.ok) {
 			sendJson(res, result.status, { ok: false, error: result.error });
 			return;
@@ -444,28 +444,28 @@ async function handleRequest(
 		return;
 	}
 
-	if (req.method === "POST" && parts[1] === "instructions" && parts.length === 2) {
+	if (req.method === "POST" && parts[1] === "capability-state" && parts.length === 2) {
 		const body = await readJsonBody(req);
 		const hostNow = getCurrentHost ? getCurrentHost() : host;
 		try {
 			if (hostNow.isProjectTrusted?.() !== true) {
-				sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to mutate instructions." });
+				sendJson(res, 403, { ok: false, error: "Project is not trusted; refusing to mutate capabilities." });
 				return;
 			}
 		} catch {
 			// Pi invalidates captured contexts during replacement/reload.
-			sendJson(res, 503, { ok: false, error: "Instruction session is unavailable. Refresh after session replacement." });
+			sendJson(res, 503, { ok: false, error: "Capability session is unavailable. Refresh after session replacement." });
 			return;
 		}
-		if (!isInstructionStateMutation(body)) {
-			sendJson(res, 400, { ok: false, error: "Invalid instruction state mutation payload." });
+		if (!isCapabilityStateMutation(body)) {
+			sendJson(res, 400, { ok: false, error: "Invalid capability state mutation payload." });
 			return;
 		}
-		if (!hostNow.mutateInstructions) {
-			sendJson(res, 503, { ok: false, error: "Instruction runtime is unavailable." });
+		if (!hostNow.mutateCapabilityState) {
+			sendJson(res, 503, { ok: false, error: "Capability runtime is unavailable." });
 			return;
 		}
-		const result = hostNow.mutateInstructions(body);
+		const result = hostNow.mutateCapabilityState(body);
 		if (!result.ok) {
 			sendJson(res, result.status, { ok: false, error: result.error });
 			return;

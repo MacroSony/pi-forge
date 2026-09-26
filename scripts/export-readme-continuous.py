@@ -11,7 +11,7 @@ def run(args):
 def info(p):return {'path':str(p.relative_to(ROOT)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
 for locale in ['en','zh-CN']:
  manifest['locales'][locale]={}
- for scene in ['context','mode','diff']:
+ for scene in ['context','capability','diff']:
   folder=ROOT/('docs' if scene=='save' else 'media')/locale
   video=folder/(scene+'.mp4')
   evidence=json.loads((folder/(scene+'.evidence.json')).read_text())

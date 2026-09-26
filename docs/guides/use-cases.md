@@ -36,7 +36,7 @@ Keep independent project files:
   translator.json
 ```
 
-Switch with `/preset use coder`, `/preset use writer`, or `/preset use translator`. Capture a profile when a mode also needs a specific model and thinking level.
+Switch with `/preset use coder`, `/preset use writer`, or `/preset use translator`. Capture a profile when a capability also needs a specific model and thinking level.
 
 ## Read-only scout
 
@@ -46,7 +46,7 @@ Tool policy constrains model tool calls but is not an operating-system sandbox. 
 
 ## Read first, enable command/edit tools on demand
 
-The [Read-first Worker pair](../reference/instruction-modes.md#read-first-worker) keeps the minimal-worker shape: one role block and chat history. Defaults are `read` and `ls` plus `forge_system_update`; one explicitly authorized binding adds `bash` and `edit`. Follow the paired-file setup and ownership/sandbox caveats before trying it.
+The [Read-first Worker pair](../reference/capabilities.md#read-first-worker) keeps the minimal-worker shape: one role block and chat history. Defaults are `read` and `ls` plus `forge_capability`; one explicitly authorized binding adds `bash` and `edit`. Follow the paired-file setup and ownership/sandbox caveats before trying it.
 
 ## Surgical patcher
 

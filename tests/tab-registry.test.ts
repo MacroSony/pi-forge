@@ -39,7 +39,7 @@ test("tab registry keeps the legacy items workspace and the three vue tabs", () 
 	for (const id of ["regex", "policy", "bindings", "stack"]) {
 		assert.equal(isEditorVueTab(id), true);
 	}
-	assert.deepEqual(getEditorTab("bindings")?.stackFields, ["instructionModes"]);
+	assert.deepEqual(getEditorTab("bindings")?.stackFields, ["capabilities"]);
 	assert.equal(isEditorVueTab("items"), false);
 	assert.equal(isEditorVueTab("unknown-tab"), false);
 });
@@ -57,7 +57,7 @@ test("registry metadata reproduces the buttons previously hardcoded in App.vue",
 			items: { id: "items", labelKey: "tab.items", icon: "☰", titleKey: "tab.itemsTitle", mount: "legacy", stackFields: [], internalDock: false },
 			regex: { id: "regex", labelKey: "tab.regex", icon: ".*", titleKey: "tab.regexTitle", mount: "vue", stackFields: ["regex"], internalDock: false },
 			policy: { id: "policy", labelKey: "tab.policy", icon: "⊕", titleKey: "tab.policyTitle", mount: "vue", stackFields: ["tools", "skills"], internalDock: false },
-			bindings: { id: "bindings", labelKey: "tab.bindings", icon: "☍", titleKey: "tab.bindingsTitle", mount: "vue", stackFields: ["instructionModes"], internalDock: false },
+			bindings: { id: "bindings", labelKey: "tab.bindings", icon: "☍", titleKey: "tab.bindingsTitle", mount: "vue", stackFields: ["capabilities"], internalDock: false },
 			stack: { id: "stack", labelKey: "tab.stack", icon: "{}", titleKey: "tab.stackTitle", mount: "vue", stackFields: ["context", "variables", "parameters"], internalDock: false },
 		},
 	);

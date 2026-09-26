@@ -1,0 +1,43 @@
+/** Exact input validation is shared by HTTP and direct application callers. */
+export function isCapabilityStateMutation(value) {
+    if (!plain(value))
+        return false;
+    const keys = value.action === "disable" ? ["action", "activationId", "guard"] : ["action", "guard"];
+    if (value.action !== "disable" && value.action !== "reset")
+        return false;
+    if (Object.keys(value).some((key) => !keys.includes(key)))
+        return false;
+    if (value.action === "disable" && !text(value.activationId, 128))
+        return false;
+    const guard = value.guard;
+    return plain(guard) && Object.keys(guard).length === 3
+        && Object.keys(guard).every((key) => ["sessionId", "leafId", "revision"].includes(key))
+        && text(guard.sessionId, 1024) && (guard.leafId === null || text(guard.leafId, 1024))
+        && text(guard.revision, 256);
+}
+/** Exact validation for the guarded, human-only activation operation. */
+export function isCapabilityEnableRequest(value) {
+    if (!plain(value) || Object.keys(value).length !== 4)
+        return false;
+    if (Object.keys(value).some((key) => !["guard", "kind", "id", "fingerprint"].includes(key)))
+        return false;
+    if (value.kind !== "capability" && value.kind !== "binding")
+        return false;
+    if (!text(value.id, 128) || !text(value.fingerprint, 256))
+        return false;
+    return isGuard(value.guard);
+}
+function isGuard(value) {
+    return plain(value) && Object.keys(value).length === 3
+        && Object.keys(value).every((key) => ["sessionId", "leafId", "revision"].includes(key))
+        && text(value.sessionId, 1024) && (value.leafId === null || text(value.leafId, 1024))
+        && text(value.revision, 256);
+}
+function text(value, max) {
+    return typeof value === "string" && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
+}
+function plain(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value)
+        && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+//# sourceMappingURL=capability-state.js.map

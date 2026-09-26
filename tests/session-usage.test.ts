@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 // The helper installs the hermetic SDK/fetch setup before loading Forge.
-import { createInstructionAgentHarness } from "./helpers/instruction-agent-harness.ts";
+import { createCapabilityAgentHarness } from "./helpers/capability-agent-harness.ts";
 import {
 	FORGE_NESTED_USAGE_KEY,
 	cacheHitRate,
@@ -149,7 +149,7 @@ test("nested usage accepts the contract and rejects malformed reports", () => {
 
 test("real SDK readState is read-only and observes usage on the next leaf", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-session-usage-"));
-	const harness = await createInstructionAgentHarness({ cwd, native: true });
+	const harness = await createCapabilityAgentHarness({ cwd, native: true });
 	try {
 		await harness.prompt("/preset ui");
 		const server = (globalThis as any).__piForgeWebEditor?.byCwd?.[cwd]?.server;
@@ -160,7 +160,7 @@ test("real SDK readState is read-only and observes usage on the next leaf", asyn
 
 		const entriesBefore = structuredClone(harness.sessionManager.getBranch());
 		const inferencesBefore = harness.streamContexts.length;
-		const initial = await getJson(`${serverUrl.origin}/api/instructions`, token);
+		const initial = await getJson(`${serverUrl.origin}/api/capability-state`, token);
 		assert.equal(initial.status, 200);
 		assert.equal(initial.body.state.cacheUsage.main.session.requests, 0);
 		assert.deepEqual(harness.sessionManager.getBranch(), entriesBefore, "readState must not append session entries");
@@ -177,7 +177,7 @@ test("real SDK readState is read-only and observes usage on the next leaf", asyn
 
 		const entriesAfterPrompt = structuredClone(harness.sessionManager.getBranch());
 		const inferencesAfterPrompt = harness.streamContexts.length;
-		const next = await getJson(`${serverUrl.origin}/api/instructions`, token);
+		const next = await getJson(`${serverUrl.origin}/api/capability-state`, token);
 		assert.equal(next.status, 200);
 		assert.equal(next.body.state.cacheUsage.main.session.requests, 1);
 		const persisted = summarizeSessionCacheUsage(harness.sessionManager.getBranch()).main.lastRequest;

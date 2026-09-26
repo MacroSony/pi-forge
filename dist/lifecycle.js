@@ -1,4 +1,4 @@
-import { getPiBasePrompt, projectPresetSystemPrompt } from "./instruction-projection.js";
+import { getPiBasePrompt, projectPresetSystemPrompt } from "./capability-projection.js";
 import { getLatestUserMessage, } from "./compiler.js";
 import { PromptCompilationContext, dedupeDiagnostics } from "./compiler.js";
 import { applyFinalizeRegexRulesToMessage, applyRequestFrequencyRulesToMessages, hasRequestFrequencyRules } from "./regex.js";
@@ -11,7 +11,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     let runFailed = false;
     pi.on("session_shutdown", async () => {
         runFailed = false;
-        deps.setInstructionAgentBusy?.(false);
+        deps.setCapabilityAgentBusy?.(false);
         // Publish a final cleared active-state snapshot before teardown so optional
         // consumers do not retain appearance context from the retiring session.
         // Active-state is optional, so a throwing transport/listener must never
@@ -24,7 +24,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         let firstError;
         for (const step of [
             // A shared editor may outlive this runtime; stale hosts must stop accepting controls.
-            () => deps.disposeInstructions?.(),
+            () => deps.disposeCapabilities?.(),
             // Pi carries the old runtime's active built-in tool names into a
             // replacement runtime. Restore the pre-policy set before reload/session
             // replacement so the replacement can capture a complete baseline.
@@ -46,7 +46,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     });
     pi.on("session_start", async (event, ctx) => {
         runFailed = false;
-        deps.setInstructionAgentBusy?.(false);
+        deps.setCapabilityAgentBusy?.(false);
         startupToolPolicyPending = true;
         // Suspend before any workspace reload so intermediate snapshots cannot be
         // published under the still-bound old session id.
@@ -78,7 +78,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     });
     pi.on("session_tree", async (_event, ctx) => {
         runFailed = false;
-        deps.setInstructionAgentBusy?.(false);
+        deps.setCapabilityAgentBusy?.(false);
         deps.suspendActiveState();
         try {
             await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -94,7 +94,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     });
     pi.on("session_compact", async (_event, ctx) => {
         runFailed = false;
-        deps.setInstructionAgentBusy?.(false);
+        deps.setCapabilityAgentBusy?.(false);
         deps.suspendActiveState();
         try {
             await restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps);
@@ -123,7 +123,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
     });
     pi.on("before_agent_start", async (event, ctx) => {
         runFailed = false;
-        deps.setInstructionAgentBusy?.(true);
+        deps.setCapabilityAgentBusy?.(true);
         compileCycle.currentSystemPromptOptions = event.systemPromptOptions;
         deps.refreshWebEditorHost(ctx, event.systemPromptOptions);
         compileCycle.currentLatestUserMessage = event.prompt;
@@ -143,7 +143,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         try {
             deps.syncActiveToolPolicy(ctx);
             let messages = event.messages;
-            messages = deps.prepareInstructionMessages?.(messages, ctx) ?? messages;
+            messages = deps.prepareCapabilityMessages?.(messages, ctx) ?? messages;
             const active = workspace.snapshotKnown ? workspace.snapshot().active : undefined;
             if (active && compileCycle.currentSystemPromptOptions) {
                 const options = deps.toolPromptOptions?.(compileCycle.currentSystemPromptOptions) ?? compileCycle.currentSystemPromptOptions;
@@ -176,7 +176,7 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
                 }
                 messages = projectPresetSystemPrompt(messages, compileCycle.currentCompiledSystemPrompt ?? "");
             }
-            messages = deps.projectInstructions?.(messages, ctx) ?? messages;
+            messages = deps.projectCapabilities?.(messages, ctx) ?? messages;
             return messages === event.messages ? undefined : { messages };
         }
         catch (error) {
@@ -206,13 +206,13 @@ export function registerLifecycleHandlers(pi, workspace, compileCycle, deps) {
         // agent_before_settle may still request a continuation without another
         // before_agent_start. Keep the compiled preset inputs until final settlement.
         if (!runFailed && ctx)
-            deps.commitEndInstructionAnchors?.(ctx);
+            deps.commitEndCapabilityAnchors?.(ctx);
     });
     pi.on("agent_settled", async (_event, ctx) => {
         try {
-            deps.setInstructionAgentBusy?.(false);
+            deps.setCapabilityAgentBusy?.(false);
             if (!runFailed && ctx)
-                deps.commitEndInstructionAnchors?.(ctx);
+                deps.commitEndCapabilityAnchors?.(ctx);
         }
         finally {
             resetCompileCycle(compileCycle);
@@ -228,8 +228,8 @@ function disposeActiveStateSafely(deps) {
     }
 }
 async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, options) {
-    deps.setInstructionAgentBusy?.(false);
-    deps.prepareInstructionRestore?.(ctx);
+    deps.setCapabilityAgentBusy?.(false);
+    deps.prepareCapabilityRestore?.(ctx);
     const restoredProfile = getRestoredProfileProvenance(ctx);
     compileCycle.currentCompilationContext = undefined;
     compileCycle.currentCompilationRuntime = undefined;
@@ -242,7 +242,7 @@ async function restoreBranchScopedRuntime(ctx, workspace, compileCycle, deps, op
     deps.restorePersistedActiveId(restoredActiveId);
     await deps.reloadStacks(ctx, restoredActiveId, { ...options, deferToolPolicy: true });
     workspace.setLastAppliedProfile(restoredProfile);
-    deps.restoreInstructions?.(ctx, options);
+    deps.restoreCapabilities?.(ctx, options);
 }
 function shouldAutoActivateForSessionStart(event, ctx) {
     if (event.reason === "new")

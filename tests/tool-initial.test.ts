@@ -64,19 +64,19 @@ test("initial selection is the preset base, while modes add permitted inactive t
 		["read"],
 	);
 
-	runtime.setInstructionModes([{ add: ["grep"], remove: ["read"] }]);
+	runtime.setCapabilities([{ add: ["grep"], remove: ["read"] }]);
 	runtime.sync();
 	assert.deepEqual(fake.active(), ["grep"]);
 	assert.deepEqual(runtime.previewToolNames(active.stack), ["grep"]);
 
-	runtime.setInstructionModes([]);
+	runtime.setCapabilities([]);
 	runtime.sync();
 	assert.deepEqual(fake.active(), ["read"]);
 
 	active = loaded(stack({ initial: [], allow: ["read", "grep"] }));
 	runtime.sync();
 	assert.deepEqual(fake.active(), []);
-	runtime.setInstructionModes([{ add: ["grep"], remove: [] }]);
+	runtime.setCapabilities([{ add: ["grep"], remove: [] }]);
 	runtime.sync();
 	assert.deepEqual(fake.active(), ["grep"]);
 });
@@ -139,7 +139,7 @@ test("catalog default baseline is read-only and excludes mode-only tool addition
 	const active = loaded(stack({ initial: ["read"] }));
 	const runtime = createToolPolicyRuntime(fake.pi, () => active);
 	runtime.sync();
-	runtime.setInstructionModes([{ add: ["paint"], remove: [] }]);
+	runtime.setCapabilities([{ add: ["paint"], remove: [] }]);
 	runtime.sync();
 	const before = runtime.snapshot();
 	const tools = runtime.policyResources({ toolSnippets: {}, skills: [] } as any).tools;

@@ -55,7 +55,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]` copies legacy stacks into the forge storage location.
 - `default.json` auto-activation unless `autoActivate` is `false`.
 - Branch-aware persisted active stack restore from session entries.
-- Persisted `/preset use none` / `off` opt-out.
+- Persisted `/preset use none` / `disable` opt-out.
 - Invalid stacks with error diagnostics are skipped by automatic selection.
 - Raw stack fields are shape-checked before recovery normalization, including behavior-changing booleans/enums, defaults, context, variables, and item fields.
 - Stack validation for duplicate item IDs, duplicate stack IDs, unsupported slots, missing chat-history slots, and ignored items.
@@ -172,14 +172,15 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset reload`
 - `/preset ui [stop|restart]`
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
-- `/instruction list`
-- `/instruction bindings`
-- `/instruction use <[scope:]id>`
-- `/instruction use-bound <id>`
-- `/instruction status`
-- `/instruction off <activation-or-mode-id>`
-- `/instruction reset`
-- `/instruction add <text>`
+- `/capability add <text>`
+- `/capability list`
+- `/capability bindings`
+- `/capability enable <[scope:]id>`
+- `/capability enable-bound <id>`
+- `/capability disable <activation-or-capability-id>`
+- `/capability status`
+- `/capability reset`
+- `/capability help`
 - `/intercept`
 - `/payload next [save=<path>]`
 
@@ -246,59 +247,59 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - The main web editor no longer ships a delegation card; delegation configuration is owned by the optional `@zihanw/pi-forge-subagents` package through `.pi/forge/subagents.json`.
 - Smoke tests cover editor server token checks, bundled page/script markers, save, payload arm/capture/clear, create/fork, native JSON import, collision handling, delete, and stop behavior.
 
-## Instruction Modes and System Updates
+## Capabilities and System Updates
 
 - Upstream host requirement: Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; no dual 0.86 runtime support claim).
-- File-backed instruction mode definitions stored in `.pi/forge/instruction-modes/<id>.json` (project scope) and `~/.pi/forge/instruction-modes/<id>.json` (global scope) with schema `schemaVersion: 1`, `type: "pi-forge.instruction-mode"`.
+- File-backed capability definitions stored in `.pi/forge/capabilities/<id>.json` (project scope) and `~/.pi/forge/capabilities/<id>.json` (global scope) with schema `schemaVersion: 1`, `type: "pi-forge.capability"`.
 - Literal text content (up to 100,000 characters) without macro, template, or script evaluation.
-- Tool modification patches supporting `add` and `remove` arrays (tool IDs ≤ 128 characters, no whitespace/controls/wildcards, up to 256 tools per array). Modes support `add` and `remove` ONLY; candidate `only`/allowlist is not implemented.
+- Tool modification patches supporting `add` and `remove` arrays (tool IDs ≤ 128 characters, no whitespace/controls/wildcards, up to 256 tools per array). Capabilities support `add` and `remove` ONLY; candidate `only`/allowlist is not implemented.
 - Fail-closed project-over-global shadowing for bare IDs; invalid local definitions fail closed with diagnostics and never fall back to global definitions.
 - Scoped selectors (`project:<id>` and `global:<id>`) for targeting exact definitions.
-- Local execution with zero inference cost: `/instruction` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
-- Unified `context_with_system` lifecycle: whole compiler, base prompt replacement, and instruction mode projection pipeline moved to `context_with_system` without an internal two-phase split.
+- Local execution with zero inference cost: `/capability` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
+- Unified `context_with_system` lifecycle: whole compiler, base prompt replacement, and capability projection pipeline moved to `context_with_system` without an internal two-phase split.
 - Canonical session projection via `buildSessionProjection`: runtime, preview, and anchor locator helpers reflect turn-level `context_edit` omissions, replacements, and `sourceEntry` tracking without mutating raw session JSONL history on disk.
 - Leading System prompt preservation: SDK incoming leading System message always remains first; Forge prefix plain metadata delivery anchors are inserted immediately after it.
 - Settlement lifecycle and continuations: `agent_end` acts as an anchor commit boundary after tool batches or turns; compile cycle and busy fence reset only on `agent_settled` so `agent_before_settle` continuations preserve compiled Preset inputs.
 - Immediate executable tool policy synchronization (`setActiveTools`) paired with next-model-request prompt text and section declaration delivery. Running tool batches are not killed mid-flight.
-- Top-level Preset policy precedence: mode additions cannot enable tools denied by the active Preset (`tools.deny`); tool removals win globally across all active modes.
-- Tool baseline recovery: restores session tools to a pristine baseline upon mode deactivation, adopting a conservative baseline for legacy sessions without a recorded baseline.
-- Delivery via plain `custom` session entries carrying cursor-only metadata (`pi-forge-instruction-delivery` with `{ schemaVersion: 1, throughEventId }`), replacing transcript `sendMessage` steering and `custom_message` carriers.
+- Top-level Preset policy precedence: capability additions cannot enable tools denied by the active Preset (`tools.deny`); tool removals win globally across all active capabilities.
+- Tool baseline recovery: restores session tools to a pristine baseline upon capability disable, adopting a conservative baseline when a session has no recorded baseline.
+- Delivery via plain `custom` session entries carrying cursor-only metadata (`pi-forge-capability-delivery` with `{ schemaVersion: 1, throughEventId }`), replacing transcript `sendMessage` steering and `custom_message` carriers.
 - Pre-compilation ordinal materialization into ephemeral in-memory markers at exact session positions matching canonical projection order.
-- Request-only projection to native `SystemMessage.sections` (`forge-instruction-<id>`) when supported by the provider, or fallback attributed user timeline updates (`[pi-forge instruction update]`).
+- Request-only projection to native `SystemMessage.sections` (`forge-capability-<id>`) when supported by the provider, or fallback attributed user timeline updates (`[pi-forge capability update]`).
 - Compaction input characterization: metadata delivery anchors and request-only rule text do not enter summarizer inputs while dialogue history is preserved.
-- Backward compatibility: legacy `custom_message` delivery entries remain readable and recoverable without disk migration or summary rewrites.
+- Breaking pre-release rename: no legacy aliases or readers are provided for the former instruction-mode schema, directories, or continuing capability state. Convert development configuration and start a new session; old JSONL and summaries are not rewritten.
 - Provider-managed prompt cache warning: prompt caching and tool transport are downstream provider-managed; no guarantee of zero KV cache invalidation or exact cache hits.
 
-## Preset Instruction Mode Bindings
+## Preset Capability Bindings
 
-- Declarative `instructionModes` binding list in the Preset schema.
-- Qualified mode references (`project:<id>`, `global:<id>`), unique binding IDs (≤ 128 characters), and opt-in `modelCallable: boolean` (defaults to `false`).
+- Declarative `capabilities` binding list in the Preset schema.
+- Qualified capability references (`project:<id>`, `global:<id>`), unique binding IDs (≤ 128 characters), and opt-in `modelCallable: boolean` (defaults to `false`).
 - Finite overrides: either content replacement (`content`) or paragraph append (`appendContent` with two newlines), and independent whole-array replacement for `tools.add` and/or `tools.remove`.
-- Source-effective preview via the shared server resolver (`resolveInstructionModeBindings`).
+- Source-effective preview via the shared server resolver (`resolveCapabilityBindings`).
 - Stale-save guard using `sourceRevision` checking against raw file bytes, rejecting concurrent or external edits (409 Conflict) whenever bindings are present or modified.
 - Same-Preset reload preserves immutable active snapshots; switching Presets retires old bound activations while retaining manual/unbound rules.
 - Revocation behavior: disabling `modelCallable` does not retroactively erase active snapshots; human CLI or Web deactivation is the recovery path.
 
-## Agent Instruction Controls
+## Agent Capability Controls
 
-- Model-callable tool `forge_system_update` registered when an active Preset includes bound modes.
-- Fixed parameter schema: `{ action: "list" | "status" | "use" | "off", id?: string }` (ID ≤ 128 characters).
+- Model-callable tool `forge_capability` registered when an active Preset includes bound capabilities.
+- Fixed parameter schema: `{ action: "list" | "status" | "enable" | "disable", id?: string }` (ID ≤ 128 characters).
 - Re-verifies project trust, active Preset existence, binding existence, `modelCallable: true`, and current tool policy on every call.
-- Strict actor ownership: agent can only activate authorized bindings; agent `off` can only stop its own agent-owned activations; agent cannot stop human rules, reset instructions, add arbitrary prompt text, or remove `forge_system_update`.
+- Strict actor ownership: agent can only activate authorized bindings; agent `disable` can only stop its own agent-owned activations; agent cannot stop human rules, reset capabilities, add arbitrary prompt text, or remove `forge_capability`.
 - Repeated use is idempotent and does not take over ownership from user to agent.
 - Fences against disposed runtimes, restoring sessions, and cross-session re-entry.
 
-## Web Editor Modes and Session Activity
+## Web Editor Capabilities and Session Activity
 
-- Top-level **Modes** surface for project and global instruction mode CRUD with validation diagnostics.
-- Mode writes and deletions require `sourceRevision` checking against raw file bytes; 409 Conflict on stale views preserves user drafts.
-- Mode saves never activate definitions into the active session.
-- Dedicated peer **Mode bindings** tab in the Preset editor with binding configuration, `modelCallable` toggle, finite overrides, and live source vs effective preview.
-- Global **Session instructions** summary opens the non-modal **Current session** workspace, pairing controls with the active saved Preset/session projection and showing active instructions, actor attribution (`user`/`agent`), collapsible frozen snapshots, tool deltas, effective tools, delivery status (`none`/`pending`/`prepared`), and presentation mode.
-- Human activation picker with available modes (`GET /api/instructions/available`) categorized into Library modes (unbound) and Current preset (bound).
+- Top-level **Capabilities** surface for project and global capability CRUD with validation diagnostics.
+- Capability writes and deletions require `sourceRevision` checking against raw file bytes; 409 Conflict on stale views preserves user drafts.
+- Capability saves never activate definitions into the active session.
+- Dedicated peer **Capability bindings** tab in the Preset editor with binding configuration, `modelCallable` toggle, finite overrides, and live source vs effective preview.
+- Global **Session capabilities** summary opens the non-modal **Current session** workspace, pairing controls with the active saved Preset/session projection and showing active capabilities, actor attribution (`user`/`agent`), collapsible frozen snapshots, tool deltas, effective tools, delivery status (`none`/`pending`/`prepared`), and presentation mode.
+- Human activation picker with available capabilities (`GET /api/capability-state/available`) categorized into Library capabilities (unbound) and Current preset (bound).
 - Explicit pre-activation preview displaying label, ID, badge, fingerprint, tool diff, problem banner, and full literal content.
-- Bodyguard activation (`POST /api/instructions/use`) requiring session guard (`sessionId`, `leafId`, `revision`) and source fingerprint validation, rejecting stale or modified sources (409 Conflict) without automatic retry or inference.
-- Read-only resource discovery and Preview never mutate tool policies, commit session events, or mark pending instructions as prepared.
+- Bodyguard activation (`POST /api/capability-state/enable`) requiring session guard (`sessionId`, `leafId`, `revision`) and source fingerprint validation, rejecting stale or modified sources (409 Conflict) without automatic retry or inference.
+- Read-only resource discovery and Preview never mutate tool policies, commit session events, or mark pending capabilities as prepared.
 - Quiet state polling (every 3 seconds while visible, and on focus) with zero inference; catalog discovery occurs on workspace entry, explicit refresh and mutation follow-up, not each status poll.
 
-The [Read-first Worker example](instruction-modes.md#read-first-worker) demonstrates default reading tools plus a model-authorized `bash`/`edit` mode. It is a tool-selection pattern, not a sandbox.
+The [Read-first Worker example](capabilities.md#read-first-worker) demonstrates default reading tools plus a model-authorized `bash`/`edit` capability. It is a tool-selection pattern, not a sandbox.

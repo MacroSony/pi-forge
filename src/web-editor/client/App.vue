@@ -2,9 +2,9 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
-import InstructionModeBrowser from "./components/InstructionModeBrowser.vue";
+import CapabilityBrowser from "./components/CapabilityBrowser.vue";
 import ProfileBrowser from "./components/ProfileBrowser.vue";
-import SessionInstructions from "./components/SessionInstructions.vue";
+import SessionCapabilities from "./components/SessionCapabilities.vue";
 import { startContributionTabs } from "./contrib-tab-host.ts";
 import { startContextDiffTabs } from "./context-diff-tab-host.ts";
 import { editorLocale, setEditorLocale, t, translateDom, type EditorLocale } from "./i18n.ts";
@@ -15,7 +15,7 @@ let stopLegacyEditor: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let contextDiffTabs: ReturnType<typeof startContextDiffTabs> | undefined;
 let refreshLegacyLocale: (() => void) | undefined;
-const activeSurface = ref<"stacks" | "profiles" | "modes" | "session" | "settings">("stacks");
+const activeSurface = ref<"stacks" | "profiles" | "capabilities" | "session" | "settings">("stacks");
 const hasContributionSettings = ref(false);
 const api = createEditorApi(new URLSearchParams(location.search).get("token") || "");
 type LocaleSetting = EditorLocale | "auto";
@@ -123,17 +123,17 @@ onUnmounted(() => {
 				{{ t("nav.profiles") }}
 			</button>
 			<button
-				id="modesSurfaceBtn"
+				id="capabilitiesSurfaceBtn"
 				type="button"
-				:class="{ active: activeSurface === 'modes' }"
-				:aria-current="activeSurface === 'modes' ? 'page' : undefined"
-				@click="activeSurface = 'modes'"
+				:class="{ active: activeSurface === 'capabilities' }"
+				:aria-current="activeSurface === 'capabilities' ? 'page' : undefined"
+				@click="activeSurface = 'capabilities'"
 			>
-				{{ t("nav.modes") }}
+				{{ t("nav.capabilities") }}
 			</button>
 			<button id="sessionSurfaceBtn" type="button" :class="{ active: activeSurface === 'session' }"
 				:aria-current="activeSurface === 'session' ? 'page' : undefined" @click="activeSurface = 'session'">
-				{{ t("instructions.workspaceTitle") }}
+				{{ t("sessionCapabilities.workspaceTitle") }}
 			</button>
 			<button
 				v-show="hasContributionSettings"
@@ -168,7 +168,7 @@ onUnmounted(() => {
 				<option value="zh-CN">中文</option>
 			</select>
 		</nav>
-		<SessionInstructions :active="activeSurface === 'session'" @open="activeSurface = 'session'" />
+		<SessionCapabilities :active="activeSurface === 'session'" @open="activeSurface = 'session'" />
 		<section v-show="activeSurface === 'stacks'" class="editor-surface">
 			<div v-once class="legacy-editor-root">
 
@@ -271,7 +271,7 @@ onUnmounted(() => {
 			</div>
 		</section>
 		<ProfileBrowser v-show="activeSurface === 'profiles'" :active="activeSurface === 'profiles'" />
-		<InstructionModeBrowser v-show="activeSurface === 'modes'" :active="activeSurface === 'modes'" />
+		<CapabilityBrowser v-show="activeSurface === 'capabilities'" :active="activeSurface === 'capabilities'" />
 		<section v-show="activeSurface === 'settings'" id="settingsSurface" class="settings-surface">
 			<header class="settings-surface-head">
 				<div>

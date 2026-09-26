@@ -46,8 +46,8 @@ export function createVariableAccess(_runtime: PromptRuntime, stack: PromptStack
 }
 
 export function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
-	// The caller supplies the effective loadout (defaults plus active modes),
-	// not a catalog. Applying tools.initial again would hide mode-added tools.
+	// The caller supplies the effective loadout (defaults plus active capabilities),
+	// not a catalog. Applying tools.initial again would hide capability-added tools.
 	return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
 

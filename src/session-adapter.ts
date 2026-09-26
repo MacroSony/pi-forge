@@ -1,15 +1,15 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isAgentProfileProvenance, type AgentProfileProvenance } from "./agent-profile.ts";
 import type { PromptStackDiagnostic } from "./types.ts";
-import { decodeInstructionEvent, reduceInstructionEvents, type InstructionEvent } from "./instruction-events.ts";
+import { decodeCapabilityEvent, reduceCapabilityEvents, type CapabilityEvent } from "./capability-events.ts";
 import {
-	INSTRUCTION_DELIVERY_TYPE,
-	INSTRUCTION_EVENT_ENTRY,
-	INSTRUCTION_TOOLS_ENTRY,
-	type InstructionAnchorData,
-	type InstructionHistory,
-} from "./instruction-protocol.ts";
-import { validateInstructionAnchorData } from "./instruction-anchors.ts";
+	CAPABILITY_DELIVERY_TYPE,
+	CAPABILITY_EVENT_ENTRY,
+	CAPABILITY_TOOLS_ENTRY,
+	type CapabilityAnchorData,
+	type CapabilityHistory,
+} from "./capability-protocol.ts";
+import { validateCapabilityAnchorData } from "./capability-anchors.ts";
 import type { ToolPolicySnapshot } from "./runtime/tool-policy-runtime.ts";
 
 export const STATE_ENTRY_TYPE = "pi-forge-prompt-stack-state";
@@ -73,15 +73,15 @@ export function persistProfileProvenance(pi: ExtensionAPI, provenance: AgentProf
 	pi.appendEntry(PROFILE_ENTRY_TYPE, { provenance });
 }
 
-export interface InstructionSessionHistory extends InstructionHistory {
+export interface CapabilitySessionHistory extends CapabilityHistory {
 	tools?: ToolPolicySnapshot;
 	/** First-occurrence event index covered by a stored anchor, not a delivery acknowledgment. */
 	lastAnchoredIndex: number;
 }
 
 /** Branch-local semantic history; compaction positions, not wall clocks, cut the checkpoint. */
-export function readInstructionSession(ctx: ExtensionContext): InstructionSessionHistory {
-	const events: InstructionEvent[] = [];
+export function readCapabilitySession(ctx: ExtensionContext): CapabilitySessionHistory {
+	const events: CapabilityEvent[] = [];
 	let checkpointThrough: string | undefined;
 	let toolsData: unknown;
 	let lastNewEventId: string | undefined;
@@ -95,33 +95,38 @@ export function readInstructionSession(ctx: ExtensionContext): InstructionSessio
 		const entry = raw as { type?: unknown; customType?: unknown; data?: unknown; details?: unknown };
 		if (entry.type === "compaction") checkpointThrough = lastNewEventId;
 		if (entry.type === "custom") {
-			if (entry.customType === INSTRUCTION_EVENT_ENTRY) {
-				const decoded = decodeInstructionEvent(entry.data);
-				if (!decoded.ok) throw new Error(`Invalid Forge instruction history: ${decoded.error}`);
+			if (entry.customType === "pi-forge-instruction-event" || entry.customType === "pi-forge-instruction-tools" || entry.customType === "pi-forge-instruction-delivery") {
+				throw new Error("This session contains legacy pre-capability state. Start a new session; old capability state is not restored.");
+			}
+			if (entry.customType === CAPABILITY_EVENT_ENTRY) {
+				const decoded = decodeCapabilityEvent(entry.data);
+				if (!decoded.ok) throw new Error(`Invalid Forge capability history: ${decoded.error}`);
 				events.push(decoded.event);
 				if (!seenEvents.has(decoded.event.eventId)) {
 					seenEvents.add(decoded.event.eventId);
 					lastNewEventId = decoded.event.eventId;
 					eventIndexMap.set(decoded.event.eventId, events.length - 1);
 				}
-			} else if (entry.customType === INSTRUCTION_TOOLS_ENTRY) {
+			} else if (entry.customType === CAPABILITY_TOOLS_ENTRY) {
 				toolsData = entry.data;
-			} else if (entry.customType === INSTRUCTION_DELIVERY_TYPE) {
-				const anchorData = validateInstructionAnchorData(entry.data);
+			} else if (entry.customType === CAPABILITY_DELIVERY_TYPE) {
+				const anchorData = validateCapabilityAnchorData(entry.data);
 				const cursorIndex = eventIndexMap.get(anchorData.throughEventId);
 				if (cursorIndex === undefined) {
 					throw new Error(
-						`Invalid Forge instruction delivery anchor: unknown or future cursor "${anchorData.throughEventId}"`,
+						`Invalid Forge capability delivery anchor: unknown or future cursor "${anchorData.throughEventId}"`,
 					);
 				}
 				if (cursorIndex < lastAnchoredIndex) {
 					throw new Error(
-						`Invalid Forge instruction delivery anchor: out-of-order cursor "${anchorData.throughEventId}" (index ${cursorIndex} < ${lastAnchoredIndex})`,
+						`Invalid Forge capability delivery anchor: out-of-order cursor "${anchorData.throughEventId}" (index ${cursorIndex} < ${lastAnchoredIndex})`,
 					);
 				}
 				lastAnchoredIndex = cursorIndex;
 			}
-		} else if (entry.type === "custom_message" && entry.customType === INSTRUCTION_DELIVERY_TYPE) {
+		} else if (entry.type === "custom_message" && entry.customType === "pi-forge-instruction-delivery") {
+			throw new Error("This session contains legacy pre-capability delivery state. Start a new session; old capability state is not restored.");
+		} else if (entry.type === "custom_message" && entry.customType === CAPABILITY_DELIVERY_TYPE) {
 			const details = entry.details;
 			if (details && typeof details === "object" && "throughEventId" in details) {
 				const cursorId = (details as { throughEventId?: unknown }).throughEventId;
@@ -136,38 +141,38 @@ export function readInstructionSession(ctx: ExtensionContext): InstructionSessio
 			}
 		}
 	}
-	const reduced = reduceInstructionEvents(events);
-	if (!reduced.ok) throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
+	const reduced = reduceCapabilityEvents(events);
+	if (!reduced.ok) throw new Error(`Invalid Forge capability event ${reduced.index}: ${reduced.error}`);
 	return {
 		events,
 		checkpointThrough,
 		lastAnchoredIndex,
-		...(toolsData === undefined ? {} : { tools: decodeInstructionTools(toolsData) }),
+		...(toolsData === undefined ? {} : { tools: decodeCapabilityTools(toolsData) }),
 	};
 }
 
-export function persistInstructionDelivery(pi: ExtensionAPI, throughEventId: string): void {
-	const data: InstructionAnchorData = {
+export function persistCapabilityDelivery(pi: ExtensionAPI, throughEventId: string): void {
+	const data: CapabilityAnchorData = {
 		schemaVersion: 1,
 		throughEventId,
 	};
-	validateInstructionAnchorData(data);
-	pi.appendEntry(INSTRUCTION_DELIVERY_TYPE, data);
+	validateCapabilityAnchorData(data);
+	pi.appendEntry(CAPABILITY_DELIVERY_TYPE, data);
 }
 
-export function persistInstructionEvent(pi: ExtensionAPI, event: InstructionEvent): void {
-	const decoded = decodeInstructionEvent(event);
+export function persistCapabilityEvent(pi: ExtensionAPI, event: CapabilityEvent): void {
+	const decoded = decodeCapabilityEvent(event);
 	if (!decoded.ok) throw new Error(decoded.error);
-	pi.appendEntry(INSTRUCTION_EVENT_ENTRY, decoded.event);
+	pi.appendEntry(CAPABILITY_EVENT_ENTRY, decoded.event);
 }
 
-export function persistInstructionTools(pi: ExtensionAPI, snapshot: ToolPolicySnapshot): void {
+export function persistCapabilityTools(pi: ExtensionAPI, snapshot: ToolPolicySnapshot): void {
 	const data = { schemaVersion: 1, baseline: [...snapshot.baseline], lastApplied: [...snapshot.lastApplied] };
-	decodeInstructionTools(data);
-	pi.appendEntry(INSTRUCTION_TOOLS_ENTRY, data);
+	decodeCapabilityTools(data);
+	pi.appendEntry(CAPABILITY_TOOLS_ENTRY, data);
 }
 
-function decodeInstructionTools(raw: unknown): ToolPolicySnapshot {
+function decodeCapabilityTools(raw: unknown): ToolPolicySnapshot {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid Forge tool baseline.");
 	const data = raw as Record<string, unknown>;
 	if (data.schemaVersion !== 1 || Object.keys(data).some((key) => !["schemaVersion", "baseline", "lastApplied"].includes(key))) {

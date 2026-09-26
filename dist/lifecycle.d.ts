@@ -25,15 +25,15 @@ export interface LifecycleDeps {
     bindActiveState(ctx: ExtensionContext): void;
     disposeActiveState(): void;
     recordProviderResponseUsage(message: AssistantMessage): void;
-    disposeInstructions?(): void;
-    prepareInstructionRestore?(ctx: ExtensionContext): void;
-    restoreInstructions?(ctx: ExtensionContext, options?: {
+    disposeCapabilities?(): void;
+    prepareCapabilityRestore?(ctx: ExtensionContext): void;
+    restoreCapabilities?(ctx: ExtensionContext, options?: {
         deferToolPolicy?: boolean;
     }): void;
-    projectInstructions?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
-    prepareInstructionMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
-    commitEndInstructionAnchors?(ctx: ExtensionContext): void;
-    setInstructionAgentBusy?(busy: boolean): void;
+    projectCapabilities?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+    prepareCapabilityMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
+    commitEndCapabilityAnchors?(ctx: ExtensionContext): void;
+    setCapabilityAgentBusy?(busy: boolean): void;
     toolPromptOptions?(options: BuildSystemPromptOptions): BuildSystemPromptOptions;
 }
 export declare function registerLifecycleHandlers(pi: ExtensionAPI, workspace: ForgeWorkspace, compileCycle: CompileCycleState, deps: LifecycleDeps): void;

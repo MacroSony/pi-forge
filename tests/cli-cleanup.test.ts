@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { instructionModesDir } from "../src/repositories/instruction-mode.ts";
+import { capabilitiesDir } from "../src/repositories/capability.ts";
 import { createContext, createHarness, startSession, writeProfile, writeStack } from "./helpers/index-command-harness.ts";
 
-test("instruction command works and its unpublished alias is unregistered", async () => {
+test("capability command works and its unpublished alias is unregistered", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-cli-cleanup-"));
-	mkdirSync(instructionModesDir(cwd), { recursive: true });
-	writeFileSync(join(instructionModesDir(cwd), "review.json"), JSON.stringify({
+	mkdirSync(capabilitiesDir(cwd), { recursive: true });
+	writeFileSync(join(capabilitiesDir(cwd), "review.json"), JSON.stringify({
 		schemaVersion: 1,
-		type: "pi-forge.instruction-mode",
+		type: "pi-forge.capability",
 		id: "review",
 		name: "Review Mode",
 		content: "Review changes",
@@ -23,27 +23,30 @@ test("instruction command works and its unpublished alias is unregistered", asyn
 		id: "base",
 		autoActivate: true,
 		items: [{ kind: "slot", id: "history", enabled: true, slot: "chat-history" }],
-		instructionModes: [{ ref: "review", id: "human-review", modelCallable: false }],
+		capabilities: [{ ref: "review", id: "human-review", modelCallable: false }],
 	});
 	const harness = createHarness();
 	const context = createContext(cwd);
 	const { ctx } = context;
 	await startSession(harness, ctx);
 
-	await harness.commands.instruction.handler("list", ctx);
-	const complete = harness.commands.instruction.getArgumentCompletions!;
+	await harness.commands.capability.handler("list", ctx);
+	const complete = harness.commands.capability.getArgumentCompletions!;
 	const beforeTools = harness.getActiveTools();
 	const beforeAppends = harness.appended.length;
-	assert.deepEqual(complete("u"), complete("use"));
-	assert.ok(complete("use ").some((item: { value: string }) => item.value === "use project:review"));
-	assert.ok(complete("use-bound ").some((item: { value: string; label: string }) => item.value === "use-bound human-review" && /human-only/.test(item.label)));
+	assert.deepEqual(complete("e"), complete("enable"));
+	assert.ok(complete("enable ").some((item: { value: string }) => item.value === "enable project:review"));
+	assert.ok(complete("enable-bound ").some((item: { value: string; label: string }) => item.value === "enable-bound human-review" && /human-only/.test(item.label)));
 	assert.deepEqual(harness.getActiveTools(), beforeTools);
 	assert.equal(harness.appended.length, beforeAppends); // completion itself is read-only.
 
-	assert.ok(harness.commands.instruction);
+	assert.ok(harness.commands.capability);
+	assert.equal(harness.commands.instruction, undefined, "legacy /instruction command must not be registered");
 	assert.equal(harness.commands["system-update"], undefined);
-	await harness.commands.instruction.handler("help", ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /\/instruction\b/);
+	assert.equal(harness.tools.forge_system_update, undefined, "legacy forge_system_update tool must not be registered");
+	assert.equal(harness.getAllTools().some((tool: { name: string }) => tool.name === "forge_system_update"), false);
+	await harness.commands.capability.handler("help", ctx);
+	assert.match(context.editors.at(-1)?.text ?? "", /\/capability\b/);
 	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /system-update|legacy alias/);
 });
 
@@ -90,42 +93,42 @@ test("profile completion accepts explicit scope prefixes and rejects extra selec
 });
 
 test("real SDK instruction completion tracks bindings, refresh, activations, trust and disposal without inference", async () => {
-	const { createInstructionAgentControlHarness } = await import("./helpers/instruction-agent-control-harness.ts");
+	const { createCapabilityAgentControlHarness } = await import("./helpers/capability-agent-control-harness.ts");
 	const { initTheme } = await import("@earendil-works/pi-coding-agent"); initTheme();
 	const { rmSync } = await import("node:fs");
 	const cwd = mkdtempSync(join(tmpdir(), "forge-cli-sdk-"));
-	let h: Awaited<ReturnType<typeof createInstructionAgentControlHarness>> | undefined;
+	let h: Awaited<ReturnType<typeof createCapabilityAgentControlHarness>> | undefined;
 	try {
-		mkdirSync(instructionModesDir(cwd), { recursive: true });
-		const mode = { schemaVersion: 1, type: "pi-forge.instruction-mode", id: "listing", content: "", tools: { add: ["ls"], remove: [] } };
-		writeFileSync(join(instructionModesDir(cwd), "listing.json"), JSON.stringify(mode));
+		mkdirSync(capabilitiesDir(cwd), { recursive: true });
+		const mode = { schemaVersion: 1, type: "pi-forge.capability", id: "listing", content: "", tools: { add: ["ls"], remove: [] } };
+		writeFileSync(join(capabilitiesDir(cwd), "listing.json"), JSON.stringify(mode));
 		for (const id of ["a", "b"]) writeStack(cwd, `${id}.json`, {
 			schemaVersion: 2, type: "pi-forge.prompt-stack", id, autoActivate: false,
-			tools: { allow: ["read", "forge_system_update", "ls"], initial: ["read", "forge_system_update"] },
+			tools: { allow: ["read", "forge_capability", "ls"], initial: ["read", "forge_capability"] },
 			items: [{ kind: "slot", id: "history", slot: "chat-history" }],
-			instructionModes: [{ id: `human-${id}`, ref: "project:listing", modelCallable: false }],
+			capabilities: [{ id: `human-${id}`, ref: "project:listing", modelCallable: false }],
 		});
-		h = await createInstructionAgentControlHarness({ cwd, native: true, initialTools: [], allowedTools: ["read", "forge_system_update", "ls"] });
-		const command = h.extensionsResult.extensions.flatMap((e: any) => [...e.commands.entries()]).find(([name]: any) => name === "instruction")[1];
+		h = await createCapabilityAgentControlHarness({ cwd, native: true, initialTools: [], allowedTools: ["read", "forge_capability", "ls"] });
+		const command = h.extensionsResult.extensions.flatMap((e: any) => [...e.commands.entries()]).find(([name]: any) => name === "capability")![1];
 		const complete = command.getArgumentCompletions;
 		await h.prompt("/preset use project:a");
-		assert.deepEqual((await complete("use-bound ")).map((x: any) => x.value), ["use-bound human-a"]);
+		assert.deepEqual((await complete("enable-bound ")).map((x: any) => x.value), ["enable-bound human-a"]);
 		const before = JSON.stringify(h.manager.getEntries());
-		for (let i = 0; i < 20; i++) await complete("use project:");
+		for (let i = 0; i < 20; i++) await complete("enable project:");
 		assert.equal(JSON.stringify(h.manager.getEntries()), before);
-		await h.prompt("/instruction use-bound human-a");
-		const active = await complete("off "); assert.equal(active.length, 1);
-		assert.match(active[0].value, /^off [a-f0-9-]{36}$/); assert.match(active[0].label, /listing/);
-		await h.prompt(`/instruction ${active[0].value}`); assert.deepEqual(await complete("off "), []);
-		writeFileSync(join(instructionModesDir(cwd), "new.json"), JSON.stringify({ ...mode, id: "new" }));
-		assert.deepEqual(await complete("use project:new"), []);
-		await h.prompt("/instruction list"); assert.equal((await complete("use project:new")).length, 1);
+		await h.prompt("/capability enable-bound human-a");
+		const active = await complete("disable "); assert.equal(active.length, 1);
+		assert.match(active[0].value, /^disable [a-f0-9-]{36}$/); assert.match(active[0].label, /listing/);
+		await h.prompt(`/capability ${active[0].value}`); assert.deepEqual(await complete("disable "), []);
+		writeFileSync(join(capabilitiesDir(cwd), "new.json"), JSON.stringify({ ...mode, id: "new" }));
+		assert.deepEqual(await complete("enable project:new"), []);
+		await h.prompt("/capability list"); assert.equal((await complete("enable project:new")).length, 1);
 		await h.prompt("/preset use project:b");
-		assert.deepEqual((await complete("use-bound ")).map((x: any) => x.value), ["use-bound human-b"]);
+		assert.deepEqual((await complete("enable-bound ")).map((x: any) => x.value), ["enable-bound human-b"]);
 		h.settingsManager.setProjectTrusted(false);
-		assert.deepEqual(await complete("use "), []); assert.deepEqual(await complete("use-bound "), []);
+		assert.deepEqual(await complete("enable "), []); assert.deepEqual(await complete("enable-bound "), []);
 		assert.equal(h.streamContexts.length, 0); assert.equal(h.fetchAttempts, 0);
 		await h.dispose(); h = undefined;
-		assert.deepEqual(await complete("use "), []);
+		assert.deepEqual(await complete("enable "), []);
 	} finally { await h?.dispose(); rmSync(cwd, { recursive: true, force: true }); }
 });

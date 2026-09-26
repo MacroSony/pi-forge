@@ -2,14 +2,14 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/reference/session-cache.md)
 
-Target: Forge 0.5.5 (unreleased). The nested-usage contract is experimental and may evolve before its first producer ships. Forge tracks and summarizes read-only prompt-cache metrics for the active session branch. These metrics appear in the Web editor's **Current session** instructions panel and are exposed in the instruction runtime state.
+Target: Forge 0.5.5 (unreleased). The nested-usage contract is experimental and may evolve before its first producer ships. Forge tracks and summarizes read-only prompt-cache metrics for the active session branch. These metrics appear in the Web editor's **Current session** capabilities panel and are exposed in the capability runtime state.
 
 ## Read-only architecture
 
 Cache usage metrics are computed on demand from provider-reported usage that Pi has already persisted in messages along the active branch:
 
 - **Zero side effects:** Forge never initiates model inference, appends session entries, edits prompt text, inserts `cache_control` breakpoints, or triggers prompt warming for usage tracking.
-- **Reused polling:** The Web client receives cache metrics through its existing visibility-based polling (`GET /api/instructions`); no extra network requests or timers are introduced.
+- **Reused polling:** The Web client receives cache metrics through its existing visibility-based polling (`GET /api/capability-state`); no extra network requests or timers are introduced.
 - **Root-to-leaf branch traversal:** Metrics reflect the active branch from root to leaf.
   - **Main session requests:** Counted from `assistant` messages carrying non-zero persisted usage (`input + output + cacheRead + cacheWrite > 0`). Requests with zero reported usage (such as aborted turns or failed calls without provider usage) are excluded.
   - **Latest reported request:** The latest assistant message with non-zero usage; a later aborted or unreported request does not replace it.

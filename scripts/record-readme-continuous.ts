@@ -20,7 +20,7 @@ const globalDir=mkdtempSync(join(tmpdir(),'forge-video-global-'));
 const oldGlobal=process.env.PI_FORGE_GLOBAL_DIR, oldConfig=process.env.PI_FORGE_GLOBAL_CONFIG_PATH;
 process.env.PI_FORGE_GLOBAL_DIR=join(globalDir,'resources');process.env.PI_FORGE_GLOBAL_CONFIG_PATH=join(globalDir,'config.json');
 const {createContext,createHarness,latestEditorUrl,startSession,writeStack}=await import('../tests/helpers/index-command-harness.ts');
-const {createInstructionAgentHarness}=await import('../tests/helpers/instruction-agent-harness.ts'); // blocks Node network, isolates SDK credentials
+const {createCapabilityAgentHarness}=await import('../tests/helpers/capability-agent-harness.ts'); // blocks Node network, isolates SDK credentials
 const xd=(...args:string[])=>execFileSync('xdotool',args,{env,stdio:'ignore',timeout:5000});
 let px=790,py=650;
 async function move(x:number,y:number,duration=650){
@@ -70,8 +70,8 @@ async function makeBrowser(url:URL){
  return {browser,page,errors,external,geometry};
 }
 const locales=(process.env.LOCALES??'en,zh-CN').split(',');
-const scenes=(process.env.SCENES??'context,diff,mode').split(',');
-assert.ok(scenes.every(s=>['context','diff','mode'].includes(s)), 'Supported scenes: context,diff,mode');
+const scenes=(process.env.SCENES??'context,diff,capability').split(',');
+assert.ok(scenes.every(s=>['context','diff','capability'].includes(s)), 'Supported scenes: context,diff,capability');
 try{
 for(const locale of locales)for(const scene of scenes){
  const zh=locale==='zh-CN';const outdir=join(ROOT,scene==='save'?'docs':'media',locale);mkdirSync(outdir,{recursive:true});
@@ -93,9 +93,9 @@ for(const locale of locales)for(const scene of scenes){
  let h:any,c:any,ui:any,rec:ChildProcess|undefined,sdk:any;let verification:any={};
  try{
   let url:URL;
-  if(scene==='mode'){
-   mkdirSync(join(root,'instruction-modes'),{recursive:true});writeFileSync(join(root,'instruction-modes','explore.json'),JSON.stringify({schemaVersion:1,type:'pi-forge.instruction-mode',id:'explore',name:zh?'探索模式':'Explore mode',content:zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.',tools:{add:['grep','find'],remove:[]}}));
-   sdk=await createInstructionAgentHarness({cwd,native:true,allowedTools:['read','grep','find','fake_driver'],initialTools:[],responses:[]});sdk.session.setActiveToolsByName(['read']);sdk.manager.appendMessage({role:'system',content:'',sections:{tools:'',rules:''},timestamp:Date.now()} as any);sdk.session.refreshContext();await sdk.prompt('/preset ui');url=new URL((globalThis as any).__piForgeWebEditor.byCwd[cwd].server.url);
+  if(scene==='capability'){
+   mkdirSync(join(root,'capabilities'),{recursive:true});writeFileSync(join(root,'capabilities','explore.json'),JSON.stringify({schemaVersion:1,type:'pi-forge.capability',id:'explore',name:zh?'探索能力':'Explore capability',content:zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.',tools:{add:['grep','find'],remove:[]}}));
+   sdk=await createCapabilityAgentHarness({cwd,native:true,allowedTools:['read','grep','find','fake_driver'],initialTools:[],responses:[]});sdk.session.setActiveToolsByName(['read']);sdk.manager.appendMessage({role:'system',content:'',sections:{tools:'',rules:''},timestamp:Date.now()} as any);sdk.session.refreshContext();await sdk.prompt('/preset ui');url=new URL((globalThis as any).__piForgeWebEditor.byCwd[cwd].server.url);
   }else{
    h=createHarness({activeTools:['read'],allTools:['read','grep','find']});c=createContext(cwd,[],{leafId:null});c.ctx.sessionManager.getSessionId=()=>`demo-${scene}`;
    c.ctx.getSystemPromptOptions=()=>({cwd,selectedTools:h.getActiveTools(),toolSnippets:{},promptGuidelines:[],contextFiles:[{path:'AGENTS.md',content:project}],skills:[]}) as any;
@@ -106,9 +106,9 @@ for(const locale of locales)for(const scene of scenes){
    await click(page.locator('#previewTabBtn'),'Open Preview');await page.locator('.context-diff-compiled').waitFor();await click(page.locator('#focus-toggle'),'Widen panel before recording');
    await page.waitForFunction((n:string)=>document.querySelector('.context-diff-compiled')?.textContent?.includes(n),role.split('\n')[0]);await move(790,650,350);await wait(500);
   }
-  if(scene==='mode'){
-   await click(page.locator('#sessionSurfaceBtn'),'Current session');const panel=page.locator('[data-session-instructions]');
-   await panel.locator('option[value="mode:project:explore"]').waitFor({state:'attached'});
+  if(scene==='capability'){
+   await click(page.locator('#sessionSurfaceBtn'),'Current session');const panel=page.locator('[data-session-capabilities]');
+   await panel.locator('option[value="capability:project:explore"]').waitFor({state:'attached'});
    await page.waitForFunction((n:string)=>document.querySelector('.session-inspector .context-diff-compiled')?.textContent?.includes(n),role.split('\n')[0]);
    assert.deepEqual(sdk.getActiveToolNames(),['read']);await move(790,650,350);await wait(500);
   }
@@ -129,28 +129,28 @@ for(const locale of locales)for(const scene of scenes){
    const before=await page.locator('#contextDiffPanel').boundingBox();await click(page.locator('.context-diff-mode-tabs [role=tab]').nth(1),'Draft diff');
    await page.locator('.git-line.added').first().waitFor();await page.locator('.git-line.removed').first().waitFor();const after=await page.locator('#contextDiffPanel').boundingBox();assert.equal(after?.x,before?.x);assert.equal(after?.width,before?.width);assert.equal(await page.locator('#itemContent').isVisible(),true);assert.equal(await page.locator('#dirtyBadge').isVisible(),true);mark('verified-diff-without-resize');await move(790,650,500);await wait(3000);
    verification={dirty:true,realAddedRemoved:true,editorVisible:true,panelGeometryUnchanged:true};
-  }else if(scene==='mode'){
-   const panel=page.locator('[data-session-instructions]');const projection=page.locator('.session-inspector .context-diff-compiled');
-   const modeText=zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.';
-   const toolTags=async()=>(await panel.locator('[data-instructions-tool-tag]').allTextContents()).map((t:string)=>t.replace(/^\+\s*/, '').trim());
-   const select=panel.locator('[data-instructions-picker-select]');await click(select,'Choose Explore mode');xd('key','End');await wait(300);xd('key','Return');
-   await page.waitForFunction(()=>{const e=document.querySelector('[data-instructions-picker-select]') as HTMLSelectElement;return e?.value==='mode:project:explore';});await wait(600);await click(panel.locator('[data-instructions-use-btn]'),'Use Explore mode');
+  }else if(scene==='capability'){
+   const panel=page.locator('[data-session-capabilities]');const projection=page.locator('.session-inspector .context-diff-compiled');
+   const capabilityText=zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.';
+   const toolTags=async()=>(await panel.locator('[data-capabilities-tool-tag]').allTextContents()).map((t:string)=>t.replace(/^\+\s*/, '').trim());
+   const select=panel.locator('[data-capabilities-picker-select]');await click(select,'Choose Explore capability');xd('key','End');await wait(300);xd('key','Return');
+   await page.waitForFunction(()=>{const e=document.querySelector('[data-capabilities-picker-select]') as HTMLSelectElement;return e?.value==='capability:project:explore';});await wait(600);await click(panel.locator('[data-capabilities-enable-btn]'),'Enable Explore capability');
    await panel.locator('.active-item-card').waitFor();assert.deepEqual(sdk.getActiveToolNames(),['read','grep','find']);assert.deepEqual(await toolTags(),['read','grep','find']);
-   await page.waitForFunction((n:string)=>document.querySelector('.session-inspector .context-diff-compiled')?.textContent?.includes(n),modeText);
-   assert.match(await panel.locator('[data-instructions-recent-change]').innerText(),/grep/);assert.match(await panel.locator('[data-instructions-recent-change]').innerText(),/find/);
-   mark('verified-tools-and-instruction-added');await wait(1400);
-   await click(panel.locator('[data-item-locate]'),'Locate instruction');
-   await page.waitForFunction(()=>{const e=document.querySelector('.session-inspector .instruction-location-match');const p=document.querySelector('.session-inspector .context-diff-compiled');if(!e||!p)return false;const r=e.getBoundingClientRect(),b=p.getBoundingClientRect();return r.top>=b.top&&r.bottom<=b.bottom+1;});
-   assert.match(await projection.locator('.instruction-location-match').innerText(),new RegExp(modeText.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
-   assert.equal(await panel.locator('.instructions-controls').isVisible(),true);assert.equal(await page.locator('dialog[open]').count(),0);
+   await page.waitForFunction((n:string)=>document.querySelector('.session-inspector .context-diff-compiled')?.textContent?.includes(n),capabilityText);
+   assert.match(await panel.locator('[data-capabilities-recent-change]').innerText(),/grep/);assert.match(await panel.locator('[data-capabilities-recent-change]').innerText(),/find/);
+   mark('verified-tools-and-capability-added');await wait(1400);
+   await click(panel.locator('[data-item-locate]'),'Locate capability');
+   await page.waitForFunction(()=>{const e=document.querySelector('.session-inspector .capability-location-match');const p=document.querySelector('.session-inspector .context-diff-compiled');if(!e||!p)return false;const r=e.getBoundingClientRect(),b=p.getBoundingClientRect();return r.top>=b.top&&r.bottom<=b.bottom+1;});
+   assert.match(await projection.locator('.capability-location-match').innerText(),new RegExp(capabilityText.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+   assert.equal(await panel.locator('.capabilities-controls').isVisible(),true);assert.equal(await page.locator('dialog[open]').count(),0);
    mark('verified-locate-with-controls-visible');await move(790,650,350);await wait(1900);
-   await page.screenshot({path:join(outdir,'mode-active-proof.png')});
-   await click(panel.locator('[data-item-deactivate-btn]'),'Off');await panel.locator('[data-instructions-empty]').waitFor();assert.deepEqual(sdk.getActiveToolNames(),['read']);assert.deepEqual(await toolTags(),['read']);
+   await page.screenshot({path:join(outdir,'capability-active-proof.png')});
+   await click(panel.locator('[data-item-disable-btn]'),'Disable');await panel.locator('[data-capabilities-empty]').waitFor();assert.deepEqual(sdk.getActiveToolNames(),['read']);assert.deepEqual(await toolTags(),['read']);
    await projection.locator('.named-section-notice.removed').waitFor();mark('verified-tools-restored-and-removal-projected');
    await click(panel.locator('[data-locate-recent]'),'Locate stopped update');
-   await page.waitForFunction(()=>{const es=document.querySelectorAll('.session-inspector .instruction-location-match');const e=es[es.length-1],p=document.querySelector('.session-inspector .context-diff-compiled');if(!e||!p)return false;const r=e.getBoundingClientRect(),b=p.getBoundingClientRect();return !!e.querySelector('.named-section-notice.removed')&&r.top>=b.top&&r.bottom<=b.bottom+1;});
+   await page.waitForFunction(()=>{const es=document.querySelectorAll('.session-inspector .capability-location-match');const e=es[es.length-1],p=document.querySelector('.session-inspector .context-diff-compiled');if(!e||!p)return false;const r=e.getBoundingClientRect(),b=p.getBoundingClientRect();return !!e.querySelector('.named-section-notice.removed')&&r.top>=b.top&&r.bottom<=b.bottom+1;});
    await move(790,650,350);await wait(2400);
-   assert.equal(sdk.streamContexts.length,0);assert.equal(sdk.fetchAttempts,0);verification={toolsBefore:['read'],toolsActive:['read','grep','find'],toolsOff:['read'],instructionAdded:modeText,realRemovalProjected:true,locateBothUpdatesVisible:true,controlsStayVisible:true,noModal:true,modelRequests:0,sdkFetches:0};
+   assert.equal(sdk.streamContexts.length,0);assert.equal(sdk.fetchAttempts,0);verification={toolsBefore:['read'],toolsActive:['read','grep','find'],toolsOff:['read'],capabilityAdded:capabilityText,realRemovalProjected:true,locateBothUpdatesVisible:true,controlsStayVisible:true,noModal:true,modelRequests:0,sdkFetches:0};
   }else{
    assert.equal(await page.locator('#resourceName').innerText(),zh?'日常开发':'Daily work');await click(page.locator('.stack-row').filter({hasText:zh?'代码审查':'Code Review'}),'Select inactive Code Review');
    await page.waitForFunction((n:string)=>document.querySelector('#resourceName')?.textContent===n,zh?'代码审查':'Code Review');await wait(2000);

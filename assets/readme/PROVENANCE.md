@@ -1,5 +1,20 @@
 # README media
 
+## September 26 Capabilities rename
+
+All ten currently embedded WebUI GIFs (five scenes in each language) were re-recorded from the renamed development source based on `9f3bbb4`. They now show Capabilities and Enable/Disable; `capability-tools.gif` replaces the README reference to `mode-tools.gif`. Historical files, including the old mode and TUI clips, are retained rather than silently relabelled.
+
+Context, Draft diff and Capability recordings use the continuous recorder (1440×900, 15fps exports); Tools and Regex use their dedicated recorder (1200×750, 15fps exports). Both use native pointer actions and continuous X11 capture, with only the disclosed pointer halo. The Capability scene checks actual SDK tool selection `read → read,grep,find → read` and locates both the update and removal in projected context. All projects and sessions are disposable fixtures; no real provider inference, personal history, or cache-hit claim is involved. English/Chinese final keyframes were reviewed against the current UI. The legacy TUI clip was not re-recorded and remains unembedded.
+
+```bash
+npm run build
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-capability-media LOCALES=en,zh-CN SCENES=context,diff,capability node scripts/record-readme-continuous.ts
+python3 scripts/export-readme-continuous.py /tmp/forge-capability-media
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-tools-regex node scripts/record-readme-tools-regex.ts
+```
+
+Current output scene names are `context`, `diff`, and `capability`; copy reviewed outputs to `context-composition.gif`, `edit-draft-diff.gif`, and `capability-tools.gif` respectively. The sections below document earlier captures, not the current embedded footage.
+
 ## September 26 README refresh
 
 The concept header `../pi-forge-header-concept-1.png` is restored unchanged. The duplicate overview screenshot is no longer embedded; old image files remain available. Installation precedes all demo GIFs.
@@ -46,11 +61,11 @@ Requires the checkout's development dependencies, Xvfb, xdotool, ffmpeg, Google 
 
 ```bash
 npm run build
-PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-readme-v3 LOCALES=en,zh-CN SCENES=context,diff,mode node scripts/record-readme-continuous.ts
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-readme-v3 LOCALES=en,zh-CN SCENES=context,diff,capability node scripts/record-readme-continuous.ts
 python3 scripts/export-readme-continuous.py /tmp/forge-readme-v3
 ```
 
-Output is `media/<locale>/{context,mode,diff}.{mp4,gif}`, proof images and semantic evidence; `manifest.json` records dimensions/durations/hashes. Copy approved GIFs to the corresponding names above and `context-poster.png` to `editor-overview-v3.png`. New recordings have fresh synthetic session IDs; pixel-identical reproduction is not promised.
+Output is `media/<locale>/{context,capability,diff}.{mp4,gif}`, proof images and semantic evidence; `manifest.json` records dimensions/durations/hashes. Copy approved GIFs to the corresponding names above and `context-poster.png` to `editor-overview-v3.png`. New recordings have fresh synthetic session IDs; pixel-identical reproduction is not promised.
 
 ## Retained legacy media (not referenced by current README)
 

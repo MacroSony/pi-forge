@@ -5,11 +5,11 @@ import { createEditorApi } from "../api.ts";
 import { t } from "../i18n.ts";
 import type {
 	EditorPromptStack,
-	EffectiveInstructionModeBinding,
-	EffectiveInstructionModesResponse,
-	InstructionModeBinding,
-	InstructionModeCollection,
-	InstructionModeEntry,
+	EffectiveCapabilityBinding,
+	EffectiveCapabilitiesResponse,
+	CapabilityBinding,
+	CapabilityCollection,
+	CapabilityEntry,
 	WebEditorPolicyResource,
 	WebEditorResources,
 } from "../types.ts";
@@ -30,21 +30,21 @@ const emit = defineEmits<{
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = createEditorApi(token);
 
-const availableModes = ref<InstructionModeEntry[]>([]);
-const modesLoading = ref(false);
-const modesError = ref("");
-const effectiveBindings = ref<EffectiveInstructionModeBinding[]>([]);
+const availableCapabilities = ref<CapabilityEntry[]>([]);
+const capabilitiesLoading = ref(false);
+const capabilitiesError = ref("");
+const effectiveBindings = ref<EffectiveCapabilityBinding[]>([]);
 const previewLoading = ref(false);
 const previewError = ref("");
 const catalogTools = ref<WebEditorPolicyResource[]>([]);
 const catalogLoading = ref(false);
 const catalogError = ref("");
 // The host draft is plain: do not proxy stored identities when filtering this view state.
-const expandedBindings = shallowRef<InstructionModeBinding[]>([]);
-const bindingKeys = new WeakMap<InstructionModeBinding, string>();
+const expandedBindings = shallowRef<CapabilityBinding[]>([]);
+const bindingKeys = new WeakMap<CapabilityBinding, string>();
 let nextBindingKey = 0;
 
-function bindingKey(binding: InstructionModeBinding): string {
+function bindingKey(binding: CapabilityBinding): string {
 	let key = bindingKeys.get(binding);
 	if (!key) {
 		key = `binding-${++nextBindingKey}`;
@@ -53,7 +53,7 @@ function bindingKey(binding: InstructionModeBinding): string {
 	return key;
 }
 
-function toggleRowAdvanced(binding: InstructionModeBinding): void {
+function toggleRowAdvanced(binding: CapabilityBinding): void {
 	if (expandedBindings.value.includes(binding)) {
 		expandedBindings.value = expandedBindings.value.filter((item) => item !== binding);
 	} else {
@@ -61,17 +61,17 @@ function toggleRowAdvanced(binding: InstructionModeBinding): void {
 	}
 }
 
-function isRowAdvancedOpen(binding: InstructionModeBinding): boolean {
+function isRowAdvancedOpen(binding: CapabilityBinding): boolean {
 	return expandedBindings.value.includes(binding);
 }
 
-function modeForRef(ref: string): InstructionModeEntry | undefined {
-	return availableModes.value.find((m) => m.selector === ref || m.mode?.id === ref);
+function modeForRef(ref: string): CapabilityEntry | undefined {
+	return availableCapabilities.value.find((m) => m.selector === ref || m.capability?.id === ref);
 }
 
 function modeName(ref: string): string {
 	const entry = modeForRef(ref);
-	return entry?.mode?.name || "";
+	return entry?.capability?.name || "";
 }
 
 function modeScope(ref: string): "project" | "global" | "" {
@@ -82,12 +82,12 @@ function modeScope(ref: string): "project" | "global" | "" {
 	return "";
 }
 
-function bindingProblem(binding: InstructionModeBinding): string {
+function bindingProblem(binding: CapabilityBinding): string {
 	if (!binding.ref) return t("binding.unresolvedRef");
 	if (props.presetScope === "global" && (binding.ref.startsWith("project:") || modeScope(binding.ref) === "project")) {
-		return t("binding.noGlobalModesHint");
+		return t("binding.noGlobalCapabilitiesHint");
 	}
-	if (availableModes.value.length > 0 && !modeForRef(binding.ref)) {
+	if (availableCapabilities.value.length > 0 && !modeForRef(binding.ref)) {
 		return t("binding.unresolvedRef");
 	}
 	return "";
@@ -96,14 +96,14 @@ function bindingProblem(binding: InstructionModeBinding): string {
 let isUnmounted = false;
 let previewGeneration = 0;
 let previewRequestId = 0;
-let modesRequestId = 0;
+let capabilitiesRequestId = 0;
 let catalogRequestId = 0;
 
 function teardown(): void {
 	isUnmounted = true;
 	previewGeneration++;
 	previewRequestId++;
-	modesRequestId++;
+	capabilitiesRequestId++;
 	catalogRequestId++;
 }
 
@@ -135,8 +135,8 @@ function isQualifiedRef(ref: string): boolean {
 
 // Invalid persisted input must remain visible rather than crash the editor or
 // get silently normalized into a different authorization grant.
-const editableBindings = computed(() => props.stack.instructionModes === undefined ||
-	(Array.isArray(props.stack.instructionModes) && props.stack.instructionModes.every(binding => {
+const editableBindings = computed(() => props.stack.capabilities === undefined ||
+	(Array.isArray(props.stack.capabilities) && props.stack.capabilities.every(binding => {
 		if (!binding || typeof binding !== "object" || Array.isArray(binding) || typeof binding.ref !== "string") return false;
 		if (binding.modelCallable !== undefined && typeof binding.modelCallable !== "boolean") return false;
 		const overrides = binding.overrides;
@@ -146,34 +146,34 @@ const editableBindings = computed(() => props.stack.instructionModes === undefin
 		return [tools?.add, tools?.remove].every(names => names === undefined || (Array.isArray(names) && names.every(name => typeof name === "string")));
 	})));
 
-const eligibleModes = computed(() => {
+const eligibleCapabilities = computed(() => {
 	const scoped = props.presetScope === "global"
-		? availableModes.value.filter((m) => m.scope === "global")
-		: availableModes.value;
+		? availableCapabilities.value.filter((m) => m.scope === "global")
+		: availableCapabilities.value;
 	// Do not manufacture or offer bare/malformed refs. Existing invalid raw
 	// values are rendered separately below and remain untouched.
 	return scoped.filter((mode) => isQualifiedRef(mode.selector) && !mode.diagnostics?.some(d => d.level === "error"));
 });
 
-async function loadAvailableModes(): Promise<void> {
-	const reqId = ++modesRequestId;
-	modesLoading.value = true;
-	modesError.value = "";
+async function loadAvailableCapabilities(): Promise<void> {
+	const reqId = ++capabilitiesRequestId;
+	capabilitiesLoading.value = true;
+	capabilitiesError.value = "";
 	try {
-		const res = await api<InstructionModeCollection>("/api/instruction-modes");
-		if (isUnmounted || reqId !== modesRequestId) return;
-		availableModes.value = res.modes || [];
+		const res = await api<CapabilityCollection>("/api/capabilities");
+		if (isUnmounted || reqId !== capabilitiesRequestId) return;
+		availableCapabilities.value = res.capabilities || [];
 	} catch (err) {
-		if (isUnmounted || reqId !== modesRequestId) return;
-		modesError.value = err instanceof Error ? err.message : String(err);
+		if (isUnmounted || reqId !== capabilitiesRequestId) return;
+		capabilitiesError.value = err instanceof Error ? err.message : String(err);
 	} finally {
-		if (reqId === modesRequestId && !isUnmounted) {
-			modesLoading.value = false;
+		if (reqId === capabilitiesRequestId && !isUnmounted) {
+			capabilitiesLoading.value = false;
 		}
 	}
 }
 
-const canAddBinding = computed(() => editableBindings.value && !modesLoading.value && !modesError.value && eligibleModes.value.length > 0);
+const canAddBinding = computed(() => editableBindings.value && !capabilitiesLoading.value && !capabilitiesError.value && eligibleCapabilities.value.length > 0);
 
 let previewCoalescePending = false;
 
@@ -190,16 +190,16 @@ function scheduleEffectivePreview(): void {
 	});
 }
 
-async function refreshModes(): Promise<void> {
-	await loadAvailableModes();
-	if (!isUnmounted && !modesError.value) scheduleEffectivePreview();
+async function refreshCapabilities(): Promise<void> {
+	await loadAvailableCapabilities();
+	if (!isUnmounted && !capabilitiesError.value) scheduleEffectivePreview();
 }
 
 const addBindingTitle = computed(() => {
 	if (!editableBindings.value) return t("binding.invalidRaw");
-	if (modesLoading.value) return t("binding.addDisabledLoading");
-	if (modesError.value) return t("binding.addDisabledError");
-	if (eligibleModes.value.length === 0) {
+	if (capabilitiesLoading.value) return t("binding.addDisabledLoading");
+	if (capabilitiesError.value) return t("binding.addDisabledError");
+	if (eligibleCapabilities.value.length === 0) {
 		return props.presetScope === "global"
 			? t("binding.addDisabledGlobalScope")
 			: t("binding.addDisabledEmpty");
@@ -213,7 +213,7 @@ async function fetchEffectivePreview(): Promise<void> {
 	// binding must invalidate an older in-flight response.
 	const reqId = ++previewRequestId;
 	const currentGen = previewGeneration;
-	const bindings = props.stack.instructionModes;
+	const bindings = props.stack.capabilities;
 	if (!editableBindings.value) { effectiveBindings.value = []; previewLoading.value = false; previewError.value = t("binding.invalidRaw"); return; }
 	if (!bindings || bindings.length === 0) {
 		effectiveBindings.value = [];
@@ -226,7 +226,7 @@ async function fetchEffectivePreview(): Promise<void> {
 	previewError.value = "";
 
 	try {
-		const res = await api<EffectiveInstructionModesResponse>("/api/instruction-modes/effective", {
+		const res = await api<EffectiveCapabilitiesResponse>("/api/capabilities/effective", {
 			method: "POST",
 			body: {
 				presetSelector: props.presetSelector,
@@ -246,13 +246,13 @@ async function fetchEffectivePreview(): Promise<void> {
 }
 
 onMounted(() => {
-	void loadAvailableModes();
+	void loadAvailableCapabilities();
 	void loadCatalog();
 	scheduleEffectivePreview();
 });
 
 watch(
-	() => props.stack.instructionModes,
+	() => props.stack.capabilities,
 	() => {
 		scheduleEffectivePreview();
 	},
@@ -266,16 +266,16 @@ watch(
 	},
 );
 
-function ensureBindingsArray(): InstructionModeBinding[] {
-	if (!Array.isArray(props.stack.instructionModes)) {
-		props.stack.instructionModes = [];
+function ensureBindingsArray(): CapabilityBinding[] {
+	if (!Array.isArray(props.stack.capabilities)) {
+		props.stack.capabilities = [];
 	}
-	return props.stack.instructionModes;
+	return props.stack.capabilities;
 }
 
 function addBinding(): void {
 	if (!canAddBinding.value) return;
-	const candidate = eligibleModes.value[0]?.selector;
+	const candidate = eligibleCapabilities.value[0]?.selector;
 	if (!candidate || !isQualifiedRef(candidate)) return;
 	const list = ensureBindingsArray();
 	list.push({
@@ -289,7 +289,7 @@ function addBinding(): void {
 	});
 }
 
-function removeBinding(binding: InstructionModeBinding): void {
+function removeBinding(binding: CapabilityBinding): void {
 	const list = ensureBindingsArray();
 	const index = list.indexOf(binding);
 	if (index < 0) return;
@@ -301,16 +301,16 @@ function removeBinding(binding: InstructionModeBinding): void {
 	scheduleEffectivePreview();
 }
 
-function setBindingRef(binding: InstructionModeBinding, value: string): void {
+function setBindingRef(binding: CapabilityBinding, value: string): void {
 	// A malformed existing ref is intentionally preserved in its raw form;
 	// only a qualified selector offered by this control can replace it.
-	if (!isQualifiedRef(value) || !eligibleModes.value.some((mode) => mode.selector === value)) return;
+	if (!isQualifiedRef(value) || !eligibleCapabilities.value.some((mode) => mode.selector === value)) return;
 	binding.ref = value;
 	emit("change");
 	scheduleEffectivePreview();
 }
 
-function setBindingId(binding: InstructionModeBinding, value: string): void {
+function setBindingId(binding: CapabilityBinding, value: string): void {
 	const trimmed = value.trim();
 	if (trimmed) {
 		binding.id = trimmed;
@@ -321,7 +321,7 @@ function setBindingId(binding: InstructionModeBinding, value: string): void {
 	scheduleEffectivePreview();
 }
 
-function setModelCallable(binding: InstructionModeBinding, value: boolean): void {
+function setModelCallable(binding: CapabilityBinding, value: boolean): void {
 	if (value) {
 		binding.modelCallable = true;
 	} else {
@@ -331,7 +331,7 @@ function setModelCallable(binding: InstructionModeBinding, value: boolean): void
 	scheduleEffectivePreview();
 }
 
-function cleanOverrides(binding: InstructionModeBinding): void {
+function cleanOverrides(binding: CapabilityBinding): void {
 	if (!binding.overrides) return;
 	if (binding.overrides.tools) {
 		if (
@@ -352,13 +352,13 @@ function cleanOverrides(binding: InstructionModeBinding): void {
 	}
 }
 
-function contentOverrideMode(binding: InstructionModeBinding): "none" | "replace" | "append" {
+function contentOverrideMode(binding: CapabilityBinding): "none" | "replace" | "append" {
 	if (binding.overrides?.content !== undefined) return "replace";
 	if (binding.overrides?.appendContent !== undefined) return "append";
 	return "none";
 }
 
-function setContentOverrideMode(binding: InstructionModeBinding, mode: "none" | "replace" | "append"): void {
+function setContentOverrideMode(binding: CapabilityBinding, mode: "none" | "replace" | "append"): void {
 	if (mode === "none") {
 		if (binding.overrides) {
 			delete binding.overrides.content;
@@ -382,7 +382,7 @@ function setContentOverrideMode(binding: InstructionModeBinding, mode: "none" | 
 	scheduleEffectivePreview();
 }
 
-function setContentOverrideText(binding: InstructionModeBinding, text: string): void {
+function setContentOverrideText(binding: CapabilityBinding, text: string): void {
 	if (!binding.overrides) binding.overrides = {};
 	if (binding.overrides.content !== undefined) {
 		binding.overrides.content = text;
@@ -393,15 +393,15 @@ function setContentOverrideText(binding: InstructionModeBinding, text: string): 
 	scheduleEffectivePreview();
 }
 
-function toolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove"): "omitted" | "custom" {
+function toolsOverrideMode(binding: CapabilityBinding, kind: "add" | "remove"): "omitted" | "custom" {
 	return binding.overrides?.tools?.[kind] === undefined ? "omitted" : "custom";
 }
 
-function toolsOverrideIsEmpty(binding: InstructionModeBinding, kind: "add" | "remove"): boolean {
+function toolsOverrideIsEmpty(binding: CapabilityBinding, kind: "add" | "remove"): boolean {
 	return binding.overrides?.tools?.[kind]?.length === 0;
 }
 
-function setToolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "remove", mode: "omitted" | "custom"): void {
+function setToolsOverrideMode(binding: CapabilityBinding, kind: "add" | "remove", mode: "omitted" | "custom"): void {
 	if (mode === "omitted") {
 		if (binding.overrides?.tools) {
 			delete binding.overrides.tools[kind];
@@ -419,12 +419,12 @@ function setToolsOverrideMode(binding: InstructionModeBinding, kind: "add" | "re
 	scheduleEffectivePreview();
 }
 
-function toolsListString(binding: InstructionModeBinding, kind: "add" | "remove"): string {
+function toolsListString(binding: CapabilityBinding, kind: "add" | "remove"): string {
 	const list = binding.overrides?.tools?.[kind];
 	return Array.isArray(list) ? list.join(", ") : "";
 }
 
-function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remove", text: string): void {
+function setToolsListString(binding: CapabilityBinding, kind: "add" | "remove", text: string): void {
 	binding.overrides = binding.overrides || {};
 	binding.overrides.tools = binding.overrides.tools || {};
 	const parts = text.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -433,7 +433,7 @@ function setToolsListString(binding: InstructionModeBinding, kind: "add" | "remo
 	scheduleEffectivePreview();
 }
 
-function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "remove", list: string[]): void {
+function setToolsOverrideList(binding: CapabilityBinding, kind: "add" | "remove", list: string[]): void {
 	binding.overrides = binding.overrides || {};
 	binding.overrides.tools = binding.overrides.tools || {};
 	binding.overrides.tools[kind] = [...list];
@@ -451,30 +451,30 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 			</div>
 			<span class="action-spacer"></span>
 			<button
-				id="refreshModesBtn"
+				id="refreshCapabilitiesBtn"
                 class="icon"
-                :aria-label="t('binding.refreshModesTitle')"
+                :aria-label="t('binding.refreshCapabilitiesTitle')"
 				type="button"
 				data-binding-refresh-btn
 				data-icon="↻"
-				:disabled="modesLoading"
-				:title="t('binding.refreshModesTitle')"
-				@click="refreshModes"
+				:disabled="capabilitiesLoading"
+				:title="t('binding.refreshCapabilitiesTitle')"
+				@click="refreshCapabilities"
 			>
 			</button>
 		</div>
 
-		<div v-if="modesLoading" class="catalog-status-line" data-binding-catalog-loading>
-			{{ t("binding.loadingModes") }}
+		<div v-if="capabilitiesLoading" class="catalog-status-line" data-binding-catalog-loading>
+			{{ t("binding.loadingCapabilities") }}
 		</div>
-		<div v-else-if="modesError" class="catalog-error-line" data-binding-catalog-error>
-			<span>{{ t("binding.loadModesError") }}: {{ modesError }}</span>
-			<button type="button" class="inline-retry-btn" data-binding-retry-btn @click="refreshModes">
-				{{ t("binding.retryLoadModes") }}
+		<div v-else-if="capabilitiesError" class="catalog-error-line" data-binding-catalog-error>
+			<span>{{ t("binding.loadCapabilitiesError") }}: {{ capabilitiesError }}</span>
+			<button type="button" class="inline-retry-btn" data-binding-retry-btn @click="refreshCapabilities">
+				{{ t("binding.retryLoadCapabilities") }}
 			</button>
 		</div>
-		<div v-else-if="eligibleModes.length === 0" class="catalog-hint-line" data-binding-no-eligible>
-			{{ presetScope === 'global' && availableModes.length > 0 ? t('binding.noGlobalModesHint') : t('binding.noEligibleModesHint') }}
+		<div v-else-if="eligibleCapabilities.length === 0" class="catalog-hint-line" data-binding-no-eligible>
+			{{ presetScope === 'global' && availableCapabilities.length > 0 ? t('binding.noGlobalCapabilitiesHint') : t('binding.noEligibleCapabilitiesHint') }}
 		</div>
 
 		<div v-if="previewLoading" class="preview-status-line">
@@ -485,14 +485,14 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 		</div>
 
 		<pre v-if="!editableBindings" class="binding-empty">{{ t("binding.invalidRaw") }}
-{{ JSON.stringify(stack.instructionModes, null, 2) }}</pre>
-		<div v-else-if="!stack.instructionModes || stack.instructionModes.length === 0" class="binding-empty">
+{{ JSON.stringify(stack.capabilities, null, 2) }}</pre>
+		<div v-else-if="!stack.capabilities || stack.capabilities.length === 0" class="binding-empty">
 			{{ t("binding.noBindings") }}
 		</div>
 
 		<div v-else class="binding-list">
 			<div
-				v-for="(binding, index) in stack.instructionModes"
+				v-for="(binding, index) in stack.capabilities"
 				:key="bindingKey(binding)"
 				class="binding-card"
 				data-binding-row
@@ -507,15 +507,15 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 							:title="binding.ref"
 							@change="setBindingRef(binding, ($event.target as HTMLSelectElement).value)"
 						>
-							<option v-if="!eligibleModes.some(m => m.selector === binding.ref)" :value="binding.ref">
+							<option v-if="!eligibleCapabilities.some(m => m.selector === binding.ref)" :value="binding.ref">
 								{{ binding.ref }}
 							</option>
 							<option
-								v-for="mode in eligibleModes"
+								v-for="mode in eligibleCapabilities"
 								:key="mode.selector"
 								:value="mode.selector"
 							>
-								{{ mode.selector }}{{ mode.mode.name ? ` (${mode.mode.name})` : '' }}
+								{{ mode.selector }}{{ mode.capability.name ? ` (${mode.capability.name})` : '' }}
 							</option>
 						</select>
 					</label>
@@ -694,11 +694,11 @@ function setToolsOverrideList(binding: InstructionModeBinding, kind: "add" | "re
 						<div class="preview-content-grid">
 							<div class="preview-column">
 								<span class="preview-column-title">{{ t("binding.sourceContent") }}</span>
-								<pre class="preview-pre" data-binding-source-content>{{ effectiveBindings[index].source.content || '(' + t('modes.noContent') + ')' }}</pre>
+								<pre class="preview-pre" data-binding-source-content>{{ effectiveBindings[index].source.content || '(' + t('capabilities.noContent') + ')' }}</pre>
 							</div>
 							<div class="preview-column">
 								<span class="preview-column-title">{{ t("binding.effectiveContent") }}</span>
-								<pre class="preview-pre" data-binding-effective-content>{{ effectiveBindings[index].effective.content || '(' + t('modes.noContent') + ')' }}</pre>
+								<pre class="preview-pre" data-binding-effective-content>{{ effectiveBindings[index].effective.content || '(' + t('capabilities.noContent') + ')' }}</pre>
 							</div>
 						</div>
 

@@ -1,11 +1,11 @@
 import { basename } from "node:path";
-import { MAX_INSTRUCTION_MODE_BINDINGS } from "../instruction-modes.js";
+import { MAX_CAPABILITY_BINDINGS } from "../capabilities.js";
 import { applyResourcePolicy, hasResourcePolicy } from "../policy.js";
 import { validateRegexConfig } from "../regex.js";
-import { isValidToolName } from "./instruction-mode.js";
+import { isValidToolName } from "./capability.js";
 import { isValidResourceId, parseResourceSelector } from "../resource-identity.js";
 import { SUPPORTED_SLOTS } from "../types.js";
-import { validateInstructionModeBinding } from "./instruction-mode.js";
+import { validateCapabilityBinding } from "./capability.js";
 const VALID_ROLES = new Set(["system", "user", "assistant", "custom"]);
 const VALID_CHAT_HISTORY_TOOL_MODES = new Set(["keep", "drop"]);
 /**
@@ -109,6 +109,9 @@ function normalizeStack(raw, filePath, diagnostics) {
             message: "state is no longer supported and was ignored; use stack.variables and template interpolation instead.",
         });
     }
+    if (obj.instructionModes !== undefined) {
+        diagnostics.push({ level: "error", message: "Preset instructionModes is no longer supported; rename it to capabilities." });
+    }
     return {
         schemaVersion,
         type: obj.type === "pi-forge.prompt-stack" ? "pi-forge.prompt-stack" : undefined,
@@ -124,12 +127,12 @@ function normalizeStack(raw, filePath, diagnostics) {
         variables: schemaVersion === 1 ? normalizeStringRecord(obj.variables) : undefined,
         parameters: schemaVersion === 2 ? normalizeParameterRecord(obj.parameters, diagnostics) : undefined,
         regex: normalizeRegexConfig(obj.regex, diagnostics),
-        instructionModes: normalizeInstructionModes(obj.instructionModes),
+        capabilities: normalizeCapabilities(obj.capabilities),
         items,
         import: isPlainObject(obj.import) ? obj.import : undefined,
     };
 }
-function normalizeInstructionModes(value) {
+function normalizeCapabilities(value) {
     if (value === undefined)
         return undefined;
     if (!Array.isArray(value))
@@ -277,7 +280,10 @@ function validateRawPromptStackShape(raw, scope) {
     validateRawContext(raw.context, diagnostics);
     validateRawVariables(raw.variables, diagnostics);
     validateRawParameters(raw, diagnostics);
-    validateRawInstructionModes(raw.instructionModes, diagnostics, scope);
+    if (raw.instructionModes !== undefined) {
+        diagnostics.push({ level: "error", message: "Preset instructionModes is no longer supported; rename it to capabilities." });
+    }
+    validateRawCapabilities(raw.capabilities, diagnostics, scope);
     if (!Array.isArray(raw.items))
         return diagnostics;
     for (const [index, item] of raw.items.entries()) {
@@ -320,22 +326,22 @@ function validateRawPromptStackShape(raw, scope) {
     }
     return diagnostics;
 }
-function validateRawInstructionModes(value, diagnostics, scope) {
+function validateRawCapabilities(value, diagnostics, scope) {
     if (value === undefined)
         return;
     if (!Array.isArray(value)) {
-        diagnostics.push({ level: "error", message: "Preset instructionModes must be an array when provided." });
+        diagnostics.push({ level: "error", message: "Preset capabilities must be an array when provided." });
         return;
     }
-    if (value.length > MAX_INSTRUCTION_MODE_BINDINGS) {
+    if (value.length > MAX_CAPABILITY_BINDINGS) {
         diagnostics.push({
             level: "error",
-            message: `Preset instructionModes cannot exceed ${MAX_INSTRUCTION_MODE_BINDINGS} bindings (got ${value.length}).`,
+            message: `Preset capabilities cannot exceed ${MAX_CAPABILITY_BINDINGS} bindings (got ${value.length}).`,
         });
     }
     const ownerScope = scope ?? "project";
     for (const item of value) {
-        const itemDiags = validateInstructionModeBinding(item, ownerScope);
+        const itemDiags = validateCapabilityBinding(item, ownerScope);
         for (const diag of itemDiags) {
             diagnostics.push({ level: diag.level, message: diag.message });
         }
@@ -355,7 +361,7 @@ function validateRawInstructionModes(value, diagnostics, scope) {
         if (seenIds.has(effectiveId)) {
             diagnostics.push({
                 level: "error",
-                message: `Duplicate instruction mode binding id: ${effectiveId}`,
+                message: `Duplicate capability binding id: ${effectiveId}`,
             });
         }
         seenIds.add(effectiveId);

@@ -1,13 +1,13 @@
-import type { LoadedInstructionMode } from "./codecs/instruction-mode.ts";
+import type { LoadedCapability } from "./codecs/capability.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type AgentProfileProvenance, type LoadedAgentProfile, type ResolvedAgentProfile } from "./agent-profile.ts";
 import { type AgentProfileApplicationResult, type AgentProfileCurrentRuntime } from "./profile-service.ts";
-import { type InstructionAvailableResult, type InstructionStateResult } from "./instruction-state.ts";
+import { type CapabilityAvailableResult, type CapabilityStateResult } from "./capability-state.ts";
 import type { ContextDiffView } from "./context-diff-history.ts";
 import type { LoadedPromptStack, PromptStack, PromptStackDiagnostic } from "./types.ts";
 import type { WebEditorLocale, WebEditorHost, WebEditorOperationResult, WebEditorPayloadSnapshot, WebEditorPolicyResources, WebEditorPreview, WebEditorStackSummary } from "./web-editor/index.ts";
 export interface WebHostRuntime {
-    readInstructionModes?(): readonly LoadedInstructionMode[];
+    readCapabilities?(): readonly LoadedCapability[];
     getStacks(): LoadedPromptStack[];
     getActive(): LoadedPromptStack | undefined;
     getActiveId(): string | undefined;
@@ -32,10 +32,10 @@ export interface WebHostRuntime {
     armPayload(savePath?: string): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     clearPayload(): WebEditorOperationResult<WebEditorPayloadSnapshot>;
     getContextDiff(): WebEditorOperationResult<ContextDiffView>;
-    readInstructions?(): InstructionStateResult;
-    readInstructionChoices?(): InstructionAvailableResult;
-    mutateInstructions?(input: unknown): InstructionStateResult;
-    useInstruction?(input: unknown): InstructionStateResult;
+    readCapabilityState?(): CapabilityStateResult;
+    readCapabilityChoices?(): CapabilityAvailableResult;
+    mutateCapabilityState?(input: unknown): CapabilityStateResult;
+    enableCapability?(input: unknown): CapabilityStateResult;
 }
 export declare function createWebEditorHost(ctx: ExtensionContext, runtime: WebHostRuntime): WebEditorHost;
 export declare function stackSummary(loaded: LoadedPromptStack, active: LoadedPromptStack | undefined): WebEditorStackSummary;

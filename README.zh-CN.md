@@ -19,7 +19,7 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 Node.js 需要 **22.19 或更高版本**。0.5.5 支持 Pi **0.87.x**（`>=0.87.0 <0.88.0`），已在 **0.87.0** 上验证。
 
 <!-- 发布提示：0.5.5 发布后移除本段；保留下方安装命令。 -->
-> **0.5.5 尚未发布。** 指令模式和可配置默认工具目前需要本地开发版。下方 npm 安装命令装到的仍是 0.5.4，它的功能和 Pi 版本要求与这里不同。
+> **0.5.5 尚未发布。** 能力和可配置默认工具目前需要本地开发版。下方 npm 安装命令装到的仍是 0.5.4，它的功能和 Pi 版本要求与这里不同。
 > 本地构建与加载方式见[开发配置（英文）](docs/development/setup.md#load-the-extension)。
 <!-- END RELEASE NOTE -->
 
@@ -34,7 +34,7 @@ pi install npm:@zihanw/pi-forge
 3. 改一个内容块或工具策略，在 **Preview** 里看结果。
 4. 点 **Save** 保存，再点 **Activate**，让当前会话用上这份预设。
 
-喜欢用终端？通过 `/preset use <id>` 选择预设，用 `/instruction use <mode>` 启用模式。你可以从 [Read-first Worker 示例](docs/zh-CN/reference/instruction-modes.md#read-first-worker)开始。
+喜欢用终端？通过 `/preset use <id>` 选择预设，用 `/capability enable <capability>` 启用能力。你可以从 [Read-first Worker 示例](docs/zh-CN/reference/capabilities.md#read-first-worker)开始。
 
 ## 功能
 
@@ -51,7 +51,7 @@ pi install npm:@zihanw/pi-forge
 
 ### 工具选择
 
-分别选择 Agent 可以使用哪些工具，以及默认启用哪些工具。允许或禁止列表限定权限范围；默认工具可以更少，其余已获准的工具留给模式按需启用。
+分别选择 Agent 可以使用哪些工具，以及默认启用哪些工具。允许或禁止列表限定权限范围；默认工具可以更少，其余已获准的工具留给能力按需启用。
 
 - **使用场景**：让代码审查 Agent 专注于阅读和搜索，不提供编辑文件或执行 shell 的工具。
 - **上手尝试**：在 **Policy** 中选择许可工具，并将默认工具设为 `read` 和 `ls`。把已获准的 `grep` 加入默认集，在 **Preview** 中查看工具列表；保存并启用预设后应用策略。
@@ -73,18 +73,18 @@ pi install npm:@zihanw/pi-forge
 
 ### 动态系统提示词与工具
 
-**指令模式（Instruction modes）**可以在对话中动态更新系统提示词和可用工具。让 Agent 从少量工具起步，需要时再加载对应任务的指令与工具，不必重启会话或切换预设。
+**能力（Capabilities）**可以在对话中动态更新系统提示词和可用工具。让 Agent 从少量工具起步，需要时再加载对应任务的指令与工具，不必重启会话或切换预设。
 
-- **使用场景**：Agent 先用 `read`、`ls` 阅读代码，准备修复问题时再自行启用已授权的编辑模式。
-- **上手尝试**：在 **Modes** 中创建模式，在预设的 **Bindings** 页签授权 Agent 使用。你也可以在 **当前会话** 中或通过 `/instruction use <mode>` 手动启用，查看指令和工具的变化。
+- **使用场景**：Agent 先用 `read`、`ls` 阅读代码，准备修复问题时再自行启用已授权的编辑能力。
+- **上手尝试**：在 **Capabilities** 中创建能力，在预设的 **Bindings** 页签授权 Agent 使用。你也可以在 **当前会话** 中或通过 `/capability enable <capability>` 手动启用，查看指令和工具的变化。
 
-更新在支持的模型上以原生会话中系统消息送达，其他模型则回退为带标记的用户消息（详见[投递模型说明](docs/zh-CN/reference/instruction-modes.md#投递模型native-与-fallback)）。
+更新在支持的模型上以原生会话中系统消息送达，其他模型则回退为带标记的用户消息（详见[投递模型说明](docs/zh-CN/reference/capabilities.md#投递模型native-与-fallback)）。
 
 在支持的 provider／模型组合上，新增或移除工具可以保留已有的提示词缓存前缀。新增与移除的支持范围不同，实际缓存命中不作保证；详见[支持情况与缓存实测](docs/zh-CN/reference/provider-support.md#实测缓存表现)。
 
-![启用并定位探索模式：工具与指令同步可见；停用恢复 read 并显示移除更新](assets/readme/zh-CN/mode-tools.gif)
+![启用并定位探索能力：工具与指令同步可见；停用恢复 read 并显示移除更新](assets/readme/zh-CN/capability-tools.gif)
 
-详见[指令模式参考](docs/zh-CN/reference/instruction-modes.md)。
+详见[能力参考](docs/zh-CN/reference/capabilities.md)。
 
 ### 预览与请求检查
 
@@ -101,7 +101,7 @@ pi install npm:@zihanw/pi-forge
 
 - [默认 Pi mirror](examples/default-prompt-stack.json)：从一份 Pi 风格的配置开始，内容已经拆成可编辑的文本块和运行时插槽。
 - [Minimal worker](examples/minimal-prompt-stack.json)：一行提示词、聊天记录，只留 `bash` 和 `edit` 两个工具。
-- [Read-first Worker](examples/read-first-worker-prompt-stack.json)＋[Write tools 模式](examples/instruction-modes/write-tools.json)：默认仅 `read`、`ls` 与模式控制工具，模型按需启用 `bash`／`edit`。[安装与边界](docs/zh-CN/reference/instruction-modes.md#read-first-worker)。
+- [Read-first Worker](examples/read-first-worker-prompt-stack.json)＋[Write tools 能力](examples/capabilities/write-tools.json)：默认仅 `read`、`ls` 与能力控制工具，模型按需启用 `bash`／`edit`。[安装与边界](docs/zh-CN/reference/capabilities.md#read-first-worker)。
 - [正则示例](examples/hack-prompt-stack.json)：拿两种示例 token 格式，演示发送前脱敏，以及清理已存储的会话文本。
 
 用 `/profile save reviewer` 将当前模型、思考强度和预设存为 Agent Profile，再用 `/profile use reviewer` 恢复。更多用法见[模式与用例（英文）](docs/guides/use-cases.md)。

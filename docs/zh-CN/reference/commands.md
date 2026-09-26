@@ -28,7 +28,7 @@
 | `/preset list` | 列出 preset 以及启用／校验状态。 |
 | `/preset status` | 显示选中的 preset 和诊断摘要。 |
 | `/preset use <id>` | 校验并选择 preset。 |
-| `/preset use none` | 在当前 session branch 禁用 preset；也接受 `off`。 |
+| `/preset use none` | 在当前 session branch 禁用 preset；也接受 `disable`。 |
 | `/preset preview [id]` | 编译并显示 preset，不发送 provider 请求；省略时使用选中的 preset。 |
 | `/preset validate [id]` | 省略参数时校验当前选中的 preset；指定参数时只校验该 preset，默认不会校验全部 preset。 |
 | `/preset diagnostics` | 显示 loader、runtime、policy、regex 和可信 extension 诊断。 |
@@ -58,23 +58,23 @@
 | `/profile forget` | 删除 last-applied provenance，不改变 runtime。 |
 | `/profile help` | 显示 profile 命令帮助。 |
 
-## 指令模式
+## 能力
 
-`/instruction` 用于管理会话指令模式。
+`/capability` 用于管理会话能力。
 
 | 命令 | 行为 |
 |---|---|
-| `/instruction add <text>` | 添加字面手动指令。 |
-| `/instruction list` | 显式重新发现并列出指令模式库。 |
-| `/instruction bindings` | 列出当前 preset 的绑定，包括人类专用绑定（`modelCallable: false`）。 |
-| `/instruction use <[scope:]id>` | 启用未绑定的库模式。 |
-| `/instruction use-bound <id>` | 启用当前 preset 的一个绑定。 |
-| `/instruction off <activation-id>` | 停用一个活动项。 |
-| `/instruction status` | 显示活动指令和生效工具。 |
-| `/instruction reset` | 停用全部活动指令和手动指令。 |
-| `/instruction help` | 显示用法和兼容性说明。 |
+| `/capability add <text>` | 添加字面手动指令。 |
+| `/capability list` | 显式重新发现并列出能力库。 |
+| `/capability bindings` | 列出当前 preset 的绑定，包括人类专用绑定（`modelCallable: false`）。 |
+| `/capability enable <[scope:]id>` | 启用未绑定的能力库项。 |
+| `/capability enable-bound <id>` | 启用当前 preset 的一个绑定。 |
+| `/capability disable <activation-id>` | 停用一个活动能力。 |
+| `/capability status` | 显示活动能力和生效工具。 |
+| `/capability reset` | 停用全部活动能力和手动指令。 |
+| `/capability help` | 显示用法和兼容性说明。 |
 
-补全使用当前 session 与最近发布的 workspace snapshot，不会在每次按键时扫描资源。需要显式刷新发现时使用 `/instruction list`。`bindings` 仍显示人类专用绑定；`modelCallable: false` 只禁止 Agent 控制，不会把它从人类列表中过滤掉。
+补全使用当前 session 与最近发布的 workspace snapshot，不会在每次按键时扫描资源。需要显式刷新发现时使用 `/capability list`。`bindings` 仍显示人类专用绑定；`modelCallable: false` 只禁止 Agent 控制，不会把它从人类列表中过滤掉。
 
 ## 可选前台委派
 

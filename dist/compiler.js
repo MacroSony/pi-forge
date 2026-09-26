@@ -2,7 +2,7 @@ import { forgeV1 } from "./forge-v1/index.js";
 import { applyRegexRulesToMessages, applyRegexRulesToString } from "./regex.js";
 import { ForgeTemplateRenderer } from "./template-render.js";
 import { getRegisteredSlot, renderSlotText } from "./slot-renderers.js";
-import { isInstructionControlMessage } from "./instruction-protocol.js";
+import { isCapabilityControlMessage } from "./capability-protocol.js";
 const ZERO_USAGE = {
     input: 0,
     output: 0,
@@ -249,13 +249,13 @@ function getChatHistoryMessages(messages, item, diagnostics) {
             result = result.filter((_message, index) => index !== lastUserIndex);
     }
     if (options.includeSummaries === false) {
-        const next = result.filter((message) => isInstructionControlMessage(message) || !isSummaryMessage(message));
+        const next = result.filter((message) => isCapabilityControlMessage(message) || !isSummaryMessage(message));
         addHistoryFilterDiagnostic(diagnostics, item.id, "summary", result.length, next.length);
         result = next;
     }
     if (isStringArray(options.roles) && options.roles.length > 0) {
         const allowedRoles = new Set(options.roles);
-        const next = result.filter((message) => isInstructionControlMessage(message) || allowedRoles.has(messageRole(message)));
+        const next = result.filter((message) => isCapabilityControlMessage(message) || allowedRoles.has(messageRole(message)));
         addHistoryFilterDiagnostic(diagnostics, item.id, "role", result.length, next.length);
         result = next;
         shouldRepairToolPairs = true;
@@ -319,7 +319,7 @@ function takeRecentMessagesWithinCount(messages, maxMessages) {
     let ordinaryCount = 0;
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
-        if (isInstructionControlMessage(message)) {
+        if (isCapabilityControlMessage(message)) {
             keepIndices.add(index);
         }
         else {
@@ -340,7 +340,7 @@ function takeRecentMessagesWithinChars(messages, maxChars) {
     let ordinaryExceeded = false;
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
-        if (isInstructionControlMessage(message)) {
+        if (isCapabilityControlMessage(message)) {
             keepIndices.add(index);
             continue;
         }
@@ -379,7 +379,7 @@ function dropToolHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
-        if (isInstructionControlMessage(message)) {
+        if (isCapabilityControlMessage(message)) {
             result.push(message);
             continue;
         }
@@ -412,7 +412,7 @@ function repairToolHistory(messages, diagnostics, itemId) {
     const includedCallIds = new Set();
     const includedResultIds = new Set();
     for (const message of messages) {
-        if (isInstructionControlMessage(message))
+        if (isCapabilityControlMessage(message))
             continue;
         for (const id of toolCallIdsForMessage(message))
             includedCallIds.add(id);
@@ -426,7 +426,7 @@ function repairToolHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
-        if (isInstructionControlMessage(message)) {
+        if (isCapabilityControlMessage(message)) {
             result.push(message);
             continue;
         }
@@ -555,7 +555,7 @@ function stripAssistantThinkingFromHistory(messages, diagnostics, itemId) {
     let changed = false;
     const result = [];
     for (const message of messages) {
-        if (isInstructionControlMessage(message)) {
+        if (isCapabilityControlMessage(message)) {
             result.push(message);
             continue;
         }

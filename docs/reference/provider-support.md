@@ -2,9 +2,9 @@
 
 [Documentation](../README.md) · [中文](../zh-CN/reference/provider-support.md)
 
-This page records how Pi 0.87.1 sends mid-conversation system updates and tool changes for each API, and which models in the Pi model catalog were flagged for them. It explains why an [instruction mode](instruction-modes.md#delivery-models-native-vs-fallback) may arrive as a native system update on one model and as a labeled user message on another.
+This page records how Pi 0.87.1 sends mid-conversation system updates and tool changes for each API, and which models in the Pi model catalog were flagged for them. It explains why a [capability](capabilities.md#delivery-models-native-vs-fallback) may arrive as a native system update on one model and as a labeled user message on another.
 
-> **Snapshot status:** Pi 0.87.1 (`@earendil-works/pi-ai` 0.87.1), local model catalog last checked 2026-09-21 to 2026-09-25, recorded 2026-09-26. Pi fetches the model catalog remotely and caches it in `~/.pi/agent/models-store.json`, so flags can change without a Pi upgrade. Run `/instruction status` to see which path the current model uses before relying on this table.
+> **Snapshot status:** Pi 0.87.1 (`@earendil-works/pi-ai` 0.87.1), local model catalog last checked 2026-09-21 to 2026-09-25, recorded 2026-09-26. Pi fetches the model catalog remotely and caches it in `~/.pi/agent/models-store.json`, so flags can change without a Pi upgrade. Run `/capability status` to see which path the current model uses before relying on this table.
 
 ## How the choice is made
 
@@ -12,7 +12,7 @@ Pi and Forge both read the current model's `compat` flags on every request:
 
 | Flag | Effect when `true` | Effect when absent or `false` |
 |---|---|---|
-| `supportsMidConvoSystemMessages` | Later system messages stay at their position in the conversation. Forge sends instruction text as native system sections. | Pi folds all system messages into the leading system prompt and sends the current tool list at request level. Forge sends instruction text as a labeled `[pi-forge instruction update]` user message. |
+| `supportsMidConvoSystemMessages` | Later system messages stay at their position in the conversation. Forge sends instruction text as native system sections. | Pi folds all system messages into the leading system prompt and sends the current tool list at request level. Forge sends instruction text as a labeled `[pi-forge capability update]` user message. |
 | `supportsMidConvoToolChanges` (Anthropic Messages) | Tool additions and removals are sent as `tool_addition` / `tool_removal` blocks inside the system update. | The whole current tool list is sent at request level. |
 | `supportsAdditionalTools` / `supportsToolSearch` (OpenAI Responses, Codex, Azure) | New tools are loaded in place (`additional_tools`, or a client-side tool search call and output). | The whole current tool list is sent at request level. |
 | `supportsMidConvoToolAdditions` (OpenAI Completions) | New tools are loaded in place by a system message that carries `tools`. | The whole current tool list is sent at request level. |
@@ -31,7 +31,7 @@ Tool flags only apply when `supportsMidConvoSystemMessages` is also enabled. The
 | Bedrock Converse | Always folded into the request-level system prompt. | Full current tool configuration. |
 | `pi-messages` | Passes the context to its backend unchanged; behavior depends on that backend. | Backend-defined. |
 
-Updates are rendered as `Updated system prompt section "<name>": ...` or `Removed system prompt section "<name>".`. [Tool-only modes](instruction-modes.md#delivery-models-native-vs-fallback) send no text update.
+Updates are rendered as `Updated system prompt section "<name>": ...` or `Removed system prompt section "<name>".`. [Tool-only capabilities](capabilities.md#delivery-models-native-vs-fallback) send no text update.
 
 ## Flagged models in the 2026-09 catalog
 
@@ -54,7 +54,7 @@ Not flagged in the same catalog, among others: `anthropic/claude-sonnet-5`, `cla
 
 These are single-session observations, not guarantees. Cache reuse is decided by the provider.
 
-- **`anthropic/claude-opus-5-5`, native path (OAuth through an auth extension):** adding, removing, and re-adding tools, including a mode the model enabled itself, kept the full cached prefix on all 18 follow-up requests. Requests with lower hit rates were writing new content, such as new tool definitions or large file reads, not losing earlier cache.
+- **`anthropic/claude-opus-5-5`, native path (OAuth through an auth extension):** adding, removing, and re-adding tools, including a capability the model enabled itself, kept the full cached prefix on all 18 follow-up requests. Requests with lower hit rates were writing new content, such as new tool definitions or large file reads, not losing earlier cache.
 - **`anthropic/claude-sonnet-5`, fallback path:** the request after a tool change read nothing from cache, because Pi rewrote the leading system prompt and tool list. The model also questioned the labeled user update before using the new tool.
 - **OpenAI Responses / Codex:** in earlier tests, a removal switched to the full tool list and cache reads dropped to zero; requests with only additions kept the prefix.
 
@@ -62,6 +62,6 @@ To keep caches stable, prefer a flagged model with native tool changes. On Respo
 
 ## Checking your own setup
 
-1. Run `/instruction status`. It reports `native system sections` or `attributed user updates` for the current model.
+1. Run `/capability status`. It reports `native system sections` or `attributed user updates` for the current model.
 2. To see the flags directly, look up the model under its provider in `~/.pi/agent/models-store.json` and read its `compat` object.
 3. Use `/forge payload next` to capture the actual next request if you need to confirm the wire format.

@@ -26,7 +26,7 @@ function findChromeExecutable(): string | undefined {
 	].find((path): path is string => !!path && existsSync(path));
 }
 
-test("ui-surfaces: mode scope label, profile name hierarchy, schema-form ids, and settings autosave locale safety", { timeout: 45_000 }, async (t) => {
+test("ui-surfaces: capability scope label, profile name hierarchy, schema-form ids, and settings autosave locale safety", { timeout: 45_000 }, async (t) => {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
 		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
 		return;
@@ -106,19 +106,19 @@ test("ui-surfaces: mode scope label, profile name hierarchy, schema-form ids, an
 		await page.goto(editorUrl.href, { waitUntil: "domcontentloaded" });
 		await page.locator(".stack-row.selected").waitFor();
 
-		// 1. Check Modes surface: Mode scope label must NOT be "Preset scope"
-		await page.locator("#modesSurfaceBtn").click();
-		await page.locator("#modeNewBtn").waitFor();
-		await page.locator("#modeNewBtn").click();
-		await page.locator("#modeScope").waitFor();
+		// 1. Check Capabilities surface: Capability scope label must NOT be "Preset scope"
+		await page.locator("#capabilitiesSurfaceBtn").click();
+		await page.locator("#capabilityNewBtn").waitFor();
+		await page.locator("#capabilityNewBtn").click();
+		await page.locator("#capabilityScope").waitFor();
 
-		// Visible label associated with #modeScope must not be "Preset scope"
-		const modeScopeLabel = await page.locator("label:has(#modeScope) span").textContent();
-		assert.notEqual(modeScopeLabel?.trim(), "Preset scope", "Mode scope visible label must not say 'Preset scope'");
-		assert.match(modeScopeLabel ?? "", /Mode scope|模式作用域/, "Mode scope visible label must say 'Mode scope'");
+		// Visible label associated with  #capabilityScope must not be "Preset scope"
+		const modeScopeLabel = await page.locator("label:has(#capabilityScope) span").textContent();
+		assert.notEqual(modeScopeLabel?.trim(), "Preset scope", "Capability scope visible label must not say 'Preset scope'");
+		assert.match(modeScopeLabel ?? "", /Capability scope|能力作用域/, "Capability scope visible label must say 'Capability scope'");
 
-		// Cancel out of mode create
-		await page.locator("#modeCancelBtn").click();
+		// Cancel out of capability create
+		await page.locator("#capabilityCancelBtn").click();
 
 		// 2. Check Profiles surface: Name primary, selector secondary
 		await page.locator("#profilesSurfaceBtn").click();

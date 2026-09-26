@@ -8,9 +8,9 @@ import vue from "@vitejs/plugin-vue";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { build } from "vite";
 import type {
-	InstructionMode,
-	InstructionModeCollection,
-	InstructionModeEntry,
+	Capability,
+	CapabilityCollection,
+	CapabilityEntry,
 	WebEditorPolicyResource,
 	WebEditorResources,
 } from "../src/web-editor/client/types.ts";
@@ -33,7 +33,7 @@ async function bundleFixture(root: string): Promise<{ js: string; css: string }>
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-forge-tool-picker-fixture-"));
 	const entryPath = join(tempDir, "entry.ts");
 	const policyEditorPath = resolve(root, "src/web-editor/client/components/PolicyEditor.vue");
-	const modeEditorPath = resolve(root, "src/web-editor/client/components/InstructionModeEditor.vue");
+	const capabilityEditorPath = resolve(root, "src/web-editor/client/components/CapabilityEditor.vue");
 	const bindingEditorPath = resolve(root, "src/web-editor/client/components/PresetBindingEditor.vue");
 	const toolPickerPath = resolve(root, "src/web-editor/client/components/ToolPicker.vue");
 	const i18nPath = resolve(root, "src/web-editor/client/i18n.ts");
@@ -42,14 +42,14 @@ async function bundleFixture(root: string): Promise<{ js: string; css: string }>
 		entryPath,
 		`import { createApp, defineComponent, h, ref } from "vue";
 import PolicyEditor from "${policyEditorPath}";
-import InstructionModeEditor from "${modeEditorPath}";
+import CapabilityEditor from "${capabilityEditorPath}";
 import PresetBindingEditor from "${bindingEditorPath}";
 import ToolPicker from "${toolPickerPath}";
 import { setEditorLocale } from "${i18nPath}";
 
 const TestHarness = defineComponent({
 	setup() {
-		const activeTab = ref<"policy" | "mode" | "binding" | "standalone">("policy");
+		const activeTab = ref<"policy" | "capability" | "binding" | "standalone">("policy");
 		const dirty = ref(false);
 		const testStack = ref({
 			schemaVersion: 2,
@@ -62,7 +62,7 @@ const TestHarness = defineComponent({
 			skills: {
 				allow: ["search_code"],
 			},
-			instructionModes: [
+			capabilities: [
 				{
 					ref: "project:review",
 					id: "review-binding",
@@ -112,7 +112,7 @@ const TestHarness = defineComponent({
 		return () => h("div", { class: "test-root" }, [
 			h("nav", { class: "test-nav" }, [
 				h("button", { id: "tabPolicyBtn", onClick: () => { activeTab.value = "policy"; } }, "Policy"),
-				h("button", { id: "tabModeBtn", onClick: () => { activeTab.value = "mode"; } }, "Mode"),
+				h("button", { id: "tabCapabilityBtn", onClick: () => { activeTab.value = "capability"; } }, "Capability"),
 				h("button", { id: "tabBindingBtn", onClick: () => { activeTab.value = "binding"; } }, "Binding"),
 				h("button", { id: "tabStandaloneBtn", onClick: () => { activeTab.value = "standalone"; } }, "Standalone"),
 				h("select", { id: "localeSelect", onChange: onLocaleChange }, [
@@ -127,8 +127,8 @@ const TestHarness = defineComponent({
 						resources: policyResources.value,
 						onChange: onStackChange,
 				  })
-				: activeTab.value === "mode"
-				? h(InstructionModeEditor, {
+				: activeTab.value === "capability"
+				? h(CapabilityEditor, {
 						mode: "create",
 						createScope: "project",
 						onDirtyChange: (isDirty: boolean) => { dirty.value = isDirty; },
@@ -227,17 +227,17 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		{ name: "bash_exec", description: "Execute bash command", source: "shell" },
 	];
 
-	const modes: InstructionModeEntry[] = [
+	const capabilities: CapabilityEntry[] = [
 		{
 			selector: "project:review",
 			scope: "project",
 			filePath: "/mock/review.json",
 			sourceRevision: "rev-1",
-			mode: {
+			capability: {
 				schemaVersion: 1,
-				type: "pi-forge.instruction-mode",
+				type: "pi-forge.capability",
 				id: "review",
-				name: "Review Mode",
+				name: "Review Capability",
 				content: "Review carefully",
 				tools: { add: ["lint"], remove: [] },
 			},
@@ -248,7 +248,7 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		const parsed = new URL(req.url || "/", "http://localhost");
 
 		// Track activation calls to verify live execution is never mutated
-		if (parsed.pathname.includes("/use") || parsed.pathname.includes("/activate")) {
+		if (parsed.pathname.includes("/capability-state/enable")) {
 			activationCalls.push(`${req.method} ${parsed.pathname}`);
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ ok: true }));
@@ -272,29 +272,29 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 			return;
 		}
 
-		if (parsed.pathname === "/api/instruction-modes" && req.method === "GET") {
-			const collection: InstructionModeCollection = {
+		if (parsed.pathname === "/api/capabilities" && req.method === "GET") {
+			const collection: CapabilityCollection = {
 				trusted: true,
-				modes,
+				capabilities,
 			};
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(collection));
 			return;
 		}
 
-		if (parsed.pathname === "/api/instruction-modes" && req.method === "POST") {
+		if (parsed.pathname === "/api/capabilities" && req.method === "POST") {
 			let body = "";
 			req.on("data", (chunk) => { body += chunk; });
 			req.on("end", () => {
 				const data = JSON.parse(body);
 				postWrites.push(data);
 				res.writeHead(200, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ ok: true, selector: `${data.scope}:${data.mode.id}` }));
+				res.end(JSON.stringify({ ok: true, selector: `${data.scope}:${data.capability.id}` }));
 			});
 			return;
 		}
 
-		if (parsed.pathname.startsWith("/api/instruction-modes/") && parsed.pathname.endsWith("/effective")) {
+		if (parsed.pathname.startsWith("/api/capabilities/") && parsed.pathname.endsWith("/effective")) {
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ bindings: [] }));
 			return;
@@ -543,27 +543,27 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		await page.locator("[data-custom-defaults-toggle]").uncheck();
 
 		// =========================================================================
-		// 6. INSTRUCTION MODE EDITOR: Catalog wiring, picker, and error fallback
+		// 6. CAPABILITY EDITOR: Catalog wiring, picker, and error fallback
 		// =========================================================================
-		await page.locator("#tabModeBtn").click();
-		await page.locator("#modeId").waitFor();
+		await page.locator("#tabCapabilityBtn").click();
+		await page.locator("#capabilityId").waitFor();
 
 		// Add tools using picker
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-trigger]").click();
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-panel]").waitFor();
-		await page.locator('[data-mode-tools-add-picker] [data-tool-group="filesystem"] [data-tool-group-checkbox]').click();
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-done]").click();
+		await page.locator("[data-capability-tools-add-picker] [data-tool-picker-trigger]").click();
+		await page.locator("[data-capability-tools-add-picker] [data-tool-picker-panel]").waitFor();
+		await page.locator('[data-capability-tools-add-picker] [data-tool-group="filesystem"] [data-tool-group-checkbox]').click();
+		await page.locator("[data-capability-tools-add-picker] [data-tool-picker-done]").click();
 
 		// Verify added to tags
-		const tags = await page.locator(".mode-tag.add").allTextContents();
+		const tags = await page.locator(".capability-tag.add").allTextContents();
 		assert.ok(tags.some((t) => t.includes("read")));
 		assert.ok(tags.some((t) => t.includes("write")));
-		assert.equal(await page.locator(".mode-dirty-badge").isVisible(), true);
+		assert.equal(await page.locator(".capability-dirty-badge").isVisible(), true);
 
 		// Simulate catalog 500 error: manual entry remains intact
 		shouldFailResources = true;
-		await page.locator("[data-mode-tools-add-picker] [data-tool-picker-trigger]").click();
-		const failPickerPanel = page.locator("[data-mode-tools-add-picker] [data-tool-picker-panel]");
+		await page.locator("[data-capability-tools-add-picker] [data-tool-picker-trigger]").click();
+		const failPickerPanel = page.locator("[data-capability-tools-add-picker] [data-tool-picker-panel]");
 		await failPickerPanel.waitFor();
 		await failPickerPanel.locator("[data-tool-picker-refresh]").click();
 		await failPickerPanel.locator("[data-tool-picker-error]").waitFor();
@@ -572,7 +572,7 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		await failPickerPanel.locator("[data-tool-manual-input]").fill("manual_offline_tool");
 		await failPickerPanel.locator("[data-tool-manual-btn]").click();
 		await failPickerPanel.locator("[data-tool-picker-done]").click();
-		const updatedTags = await page.locator(".mode-tag.add").allTextContents();
+		const updatedTags = await page.locator(".capability-tag.add").allTextContents();
 		assert.ok(updatedTags.some((t) => t.includes("manual_offline_tool")));
 		shouldFailResources = false;
 
@@ -597,22 +597,22 @@ test("source-grouped batch tool picker, custom defaults, and execution safety", 
 		await page.locator("[data-tool-picker-done]").click();
 
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
-		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, ["lint", "read"]);
+		assert.deepEqual(currentStack.capabilities[0].overrides.tools.add, ["lint", "read"]);
 
 		// Clear tools via custom text input to explicit empty []
 		await page.locator("[data-binding-tools-add-input]").first().fill("");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
-		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, []);
+		assert.deepEqual(currentStack.capabilities[0].overrides.tools.add, []);
 
 		// Switch to omitted
 		await page.locator("[data-binding-tools-add-mode]").first().selectOption("omitted");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
-		assert.equal(currentStack.instructionModes[0].overrides?.tools?.add, undefined);
+		assert.equal(currentStack.capabilities[0].overrides?.tools?.add, undefined);
 
 		// Switch back to custom initiates explicit empty []
 		await page.locator("[data-binding-tools-add-mode]").first().selectOption("custom");
 		currentStack = await page.evaluate(() => (window as any).__getTestStack());
-		assert.deepEqual(currentStack.instructionModes[0].overrides.tools.add, []);
+		assert.deepEqual(currentStack.capabilities[0].overrides.tools.add, []);
 
 		// =========================================================================
 		// 8. BILINGUAL LOCALIZATION (en vs zh-CN)

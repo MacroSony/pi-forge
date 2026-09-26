@@ -18,8 +18,8 @@ export function createVariableAccess(_runtime, stack) {
     };
 }
 export function selectedToolNames(stack, runtime) {
-    // The caller supplies the effective loadout (defaults plus active modes),
-    // not a catalog. Applying tools.initial again would hide mode-added tools.
+    // The caller supplies the effective loadout (defaults plus active capabilities),
+    // not a catalog. Applying tools.initial again would hide capability-added tools.
     return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
 export function slotTextFormat(item, options = {}) {
