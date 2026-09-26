@@ -11,6 +11,7 @@ export declare function isValidAgentProfileId(id: string): boolean;
 export declare function loadAgentProfiles(cwd: string): LoadedAgentProfile[];
 export declare function loadAgentProfilesScoped(cwd: string, globalDir?: string): LoadedAgentProfile[];
 export declare function loadGlobalAgentProfiles(globalDir?: string): LoadedAgentProfile[];
+export declare function findAutoActivateAgentProfileCandidates(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile[];
 export declare function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined;
 export declare function hasAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): boolean;
 export declare function resolveAgentProfile(loaded: LoadedAgentProfile, resources: AgentProfileResolutionResources): ResolvedAgentProfile;

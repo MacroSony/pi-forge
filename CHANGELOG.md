@@ -8,6 +8,12 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+- Keep Pi's incoming initial System message and its tool declarations at index zero when a Preset places authored messages before explicit or implicit history. Later System updates and Preview provenance remain ordered.
+- Confirm before discarding an unsaved Preset draft on import; preserve newer edits during file reading, resource creation, and reload. Reload reuses a discard confirmation only for the exact confirmed draft revision.
+- Disable Agent Profile draft controls while Save or Validate is pending, preventing edits from being lost when a successful save closes the editor.
+- Preflight surviving Capability tool patches against a prospective Preset before changing selection or retiring bound activations. Conflicting switches leave the current session unchanged and explain how to resolve the conflict; Web activation returns a conflict response. Create-and-activate discovers the new file without selecting it before this check.
+- Report the actual preflight diagnostics for a single invalid auto-activate Profile instead of incorrectly reporting multiple candidates; scope precedence and fail-closed activation are unchanged.
+
 ## [0.5.5] - 2026-09-26
 
 - **New Preset templates:** choose the existing Default Pi prompt, an Empty preset, or Minimal Worker. Empty keeps compiler base-prompt/history fallbacks; Minimal Worker matches the bundled bash/edit example. Template choice does not affect Import/Fork or persist as a schema field.

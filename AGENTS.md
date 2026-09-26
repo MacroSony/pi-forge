@@ -34,6 +34,10 @@ Under Pi 0.87, the entire compiler, base prompt, and capability pipeline operate
 
 Prefer removal and simplification. Move code when splitting packages; do not rewrite working behavior unless the lean plan requires it.
 
+## Post-0.5.5 regression patch scope
+
+The user authorized the leading-System, Preset Import/Reload draft-loss, Profile pending-save, conflicting Preset-switch, and invalid auto-profile diagnostics fixes, followed by another independent review. Keep the initial incoming System header first by identity with its compiler provenance; do not hoist later System deltas or change duplicate-history semantics. Preflight retained Capability patches before publishing/persisting a new Preset or retiring old bound activations; do not silently drop unbound user capabilities. Draft discard consent applies only to the captured revision, including asynchronous file reading/creation. Profile forms freeze during pending validation/save. Versioning, push, publish and installed-host reload remain separate from this source fix authorization.
+
 ## Working rules
 
 1. One implementation lane at a time, in the order listed in the lean plan and [roadmap](docs/development/roadmap.md).

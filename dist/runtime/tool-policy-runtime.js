@@ -92,12 +92,12 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             lastApplied: lastApplied ? [...lastApplied] : [...pi.getActiveTools()],
         };
     }
-    function validateCapabilities(patches) {
+    function validateCapabilities(patches, options) {
         if (!Array.isArray(patches)) {
             return "Capability capability patches must be an array.";
         }
         const registered = new Set(pi.getAllTools().map((tool) => tool.name));
-        const activeStack = getActiveStack();
+        const activeStack = options ? options.prospectiveStack : getActiveStack();
         const policy = activeStack?.stack.tools;
         const policyActive = hasResourcePolicy(policy);
         for (const patch of patches) {

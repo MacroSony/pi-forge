@@ -1,4 +1,4 @@
-import { chooseAutoActivateAgentProfile, hasAutoActivateAgentProfile, isResolvedAgentProfileUsable, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
+import { findAutoActivateAgentProfileCandidates, isResolvedAgentProfileUsable, renderAgentProfileDiagnostics, resolveAgentProfile, } from "../agent-profile.js";
 import { chooseDefaultStack } from "../loader.js";
 import { applyResolvedAgentProfile } from "../profile-service.js";
 import { formatResourceKey } from "../resource-identity.js";
@@ -21,19 +21,20 @@ export function createProfileRuntime(pi, workspace, deps) {
         if (!ctx.isProjectTrusted())
             return;
         const snapshot = workspace.snapshot();
-        const target = chooseAutoActivateAgentProfile(snapshot.profiles);
-        if (!target) {
-            if (hasAutoActivateAgentProfile(snapshot.profiles)) {
-                workspace.setActiveStack(undefined);
-                deps.updateStatus(ctx);
-                ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback preset was applied.", "error");
-                return;
-            }
+        const candidates = findAutoActivateAgentProfileCandidates(snapshot.profiles);
+        if (candidates.length === 0) {
             const fallback = chooseDefaultStack([...snapshot.stacks]);
             workspace.setActiveStack(fallback ? formatResourceKey(fallback.key) : undefined);
             deps.updateStatus(ctx);
             return;
         }
+        if (candidates.length > 1) {
+            workspace.setActiveStack(undefined);
+            deps.updateStatus(ctx);
+            ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback preset was applied.", "error");
+            return;
+        }
+        const target = candidates[0];
         const resolved = resolveProfile(target, ctx);
         if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
             workspace.setActiveStack(undefined);

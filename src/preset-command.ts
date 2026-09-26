@@ -15,6 +15,7 @@ import type { LoadedPromptStack } from "./types.ts";
 export interface PresetCommandDeps {
 	selectedActiveId(): string | undefined;
 	setActive(id: string | undefined, ctx?: ExtensionCommandContext): boolean;
+	lastActivationError?(): string | undefined;
 	reloadStacks(ctx: ExtensionCommandContext, preferredId?: string): Promise<void>;
 	openWebEditor(ctx: ExtensionCommandContext, mode?: "open" | "restart"): Promise<void>;
 	stopWebEditor(ctx: ExtensionCommandContext): Promise<void>;
@@ -125,7 +126,8 @@ async function handlePresetCommand(
 				? promptCacheWarningForStackSwitch(current, next, compileCycle, deps.latestContextDiffUsage())
 				: undefined;
 			if (!deps.setActive(id, ctx)) {
-				ctx.ui.notify(`Unknown preset: ${id}`, "error");
+				const error = deps.lastActivationError?.() ?? `Unknown preset: ${id}`;
+				ctx.ui.notify(error, "error");
 				return;
 			}
 			const active = workspace.snapshot().active;

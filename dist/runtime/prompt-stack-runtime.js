@@ -1,8 +1,10 @@
+import { createResourceCatalog } from "../catalog.js";
 import { isDisabledPromptStackId } from "../loader.js";
-import { formatResourceKey } from "../resource-identity.js";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.js";
 import { persistActiveSelection as persistActiveSelectionEntry } from "../session-adapter.js";
 export function createPromptStackRuntime(pi, workspace, compileCycle, deps) {
     let lastPersistedActiveId;
+    let lastActivationError;
     function dispose() {
         return workspace.disposeExtensions();
     }
@@ -26,22 +28,56 @@ export function createPromptStackRuntime(pi, workspace, compileCycle, deps) {
         persistActiveSelectionEntry(pi, canonical);
         lastPersistedActiveId = canonical;
     }
-    function setActive(id, ctx) {
+    function lastActivationErrorFn() {
+        return lastActivationError;
+    }
+    function resolveTargetStack(id) {
         if (!id || isDisabledPromptStackId(id)) {
-            workspace.setActiveStack(id);
-            persistActiveSelection();
-            if (ctx)
-                updateStatus(ctx);
-            deps.syncToolPolicy(ctx);
-            return true;
+            return { ok: true, target: undefined };
         }
-        if (ctx && !ctx.isProjectTrusted())
+        const parsed = parseResourceSelector(id);
+        if (!parsed.ok) {
+            return { ok: false, error: `Invalid preset selector: ${id}` };
+        }
+        const found = createResourceCatalog([...workspace.snapshot().stacks]).resolveSelector(parsed.selector);
+        if (!found) {
+            return { ok: false, error: `Unknown preset: ${id}` };
+        }
+        return { ok: true, target: found };
+    }
+    function setActive(id, ctx) {
+        lastActivationError = undefined;
+        const resolution = resolveTargetStack(id);
+        if (!resolution.ok) {
+            lastActivationError = resolution.error;
             return false;
-        if (!workspace.setActiveStack(id))
+        }
+        const target = resolution.target;
+        if (target && ctx && !ctx.isProjectTrusted()) {
+            lastActivationError = "Project is not trusted; refusing to activate a preset.";
             return false;
+        }
+        try {
+            const validationError = deps.validatePresetSwitch?.(target, ctx);
+            if (validationError) {
+                lastActivationError = `Cannot activate preset "${id ?? "none"}": ${validationError} Disable conflicting capabilities before switching presets.`;
+                return false;
+            }
+        }
+        catch (error) {
+            // Preflight is read-only: malformed restored state also leaves selection untouched.
+            lastActivationError = error instanceof Error ? error.message : String(error);
+            return false;
+        }
+        if (!workspace.setActiveStack(id)) {
+            lastActivationError = `Unknown preset: ${id}`;
+            return false;
+        }
         persistActiveSelection();
         if (ctx)
             updateStatus(ctx);
+        // Unexpected host failures must still propagate; do not disguise a partial
+        // commit as an ordinary preflight rejection. Known conflicts were checked above.
         deps.syncToolPolicy(ctx);
         return true;
     }
@@ -94,6 +130,6 @@ export function createPromptStackRuntime(pi, workspace, compileCycle, deps) {
         }
         ctx.ui.setStatus("pi-forge-diagnostics", undefined);
     }
-    return { dispose, activeId, selectedActiveId, restorePersistedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
+    return { dispose, activeId, selectedActiveId, restorePersistedActiveId, persistActiveSelection, setActive, lastActivationError: lastActivationErrorFn, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
 }
 //# sourceMappingURL=prompt-stack-runtime.js.map

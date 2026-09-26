@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { type ResolvedCapabilityBinding } from "../capabilities.ts";
 import { type ResourceKey } from "../resource-identity.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
+import type { LoadedPromptStack } from "../types.ts";
 import type { ToolPolicyRuntime } from "./tool-policy-runtime.ts";
 export type ReadBindingsResult = {
     ok: true;
@@ -63,6 +64,7 @@ export declare function createCapabilityRuntime(pi: ExtensionAPI, workspace: For
         deferToolPolicy?: boolean;
     }) => void;
     sync: (ctx?: ExtensionContext | undefined) => void;
+    validatePresetSwitch: (target: LoadedPromptStack | undefined, ctx?: ExtensionContext) => string | undefined;
     prepareMessages: (raw: AgentMessage[], ctx: ExtensionContext) => AgentMessage[];
     project: (messages: AgentMessage[], ctx: ExtensionContext) => AgentMessage[];
     commitEndAnchors: (ctx: ExtensionContext) => void;

@@ -148,12 +148,19 @@ export function createWebEditorHost(ctx, runtime) {
         clearPayload: () => runtime.clearPayload(),
         getContextDiff: () => runtime.getContextDiff(),
         activateStack: (selector) => {
-            if (!runtime.setActive(selector))
-                return { ok: false, status: 404, error: `Unknown preset: ${selector}` };
+            if (!runtime.setActive(selector)) {
+                const error = runtime.lastActivationError?.() ?? `Unknown preset: ${selector}`;
+                const status = !ctx.isProjectTrusted() ? 403 : resolveStack(runtime, selector) ? 409 : 404;
+                return { ok: false, status, error };
+            }
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
         disableStacks: () => {
-            runtime.setActive("none");
+            if (!runtime.setActive("none")) {
+                const error = runtime.lastActivationError?.() ?? "Failed to disable preset";
+                const status = !ctx.isProjectTrusted() ? 403 : 409;
+                return { ok: false, status, error };
+            }
             return { ok: true, activeId: runtime.getActiveId(), stacks: stackSummaries(runtime.getStacks(), runtime.getActive()) };
         },
         reloadStacks: async () => {
@@ -639,9 +646,14 @@ async function createStackFile(ctx, runtime, stack, options) {
     }
     const previousSelection = runtime.getSelectedActiveId();
     const createdSelector = formatResourceKey({ scope, id: stack.id });
-    await runtime.reloadStacks(options.activate ? createdSelector : (previousSelection ?? "none"));
-    if (options.activate)
-        runtime.setActive(createdSelector);
+    // Discover the new file without selecting it before activation preflight.
+    await runtime.reloadStacks(previousSelection ?? "none");
+    if (options.activate) {
+        if (!runtime.setActive(createdSelector)) {
+            const error = `Preset "${createdSelector}" was created, but activation failed: ${runtime.lastActivationError?.() ?? "Could not activate created preset."}`;
+            return { ok: false, status: 409, error };
+        }
+    }
     const created = runtime.getStacks().find((candidate) => candidate.scope === scope && candidate.filePath === targetPath);
     if (!created)
         return { ok: false, status: 500, error: "Created preset could not be reloaded." };

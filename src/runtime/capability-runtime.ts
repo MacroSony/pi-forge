@@ -15,7 +15,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { createResourceCatalog } from "../catalog.ts";
 import { createCapabilitySnapshot, reduceCapabilityEvents, MAX_ID_LENGTH, type ActiveCapability, type CapabilityEvent } from "../capability-events.ts";
 import { resolveCapability, resolveCapabilityBindings, type ResolvedCapabilityBinding } from "../capabilities.ts";
-import { isUsableCapability } from "../codecs/capability.ts";
+import { isUsableCapability, type CapabilityToolPatch } from "../codecs/capability.ts";
 import { projectCapabilityMessages } from "../capability-projection.ts";
 import { isCapabilityDelivery } from "../capability-protocol.ts";
 import { formatResourceKey, parseResourceSelector, type ResourceKey } from "../resource-identity.ts";
@@ -37,6 +37,7 @@ import {
 	readCapabilitySession,
 } from "../session-adapter.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
+import type { LoadedPromptStack } from "../types.ts";
 import type { ToolPolicyRuntime, ToolPolicySnapshot } from "./tool-policy-runtime.ts";
 
 export type ReadBindingsResult =
@@ -188,6 +189,26 @@ export function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorksp
 		restoredTools = undefined;
 		tools.sync(ctx);
 		rememberTools(ctx);
+	}
+
+	function validatePresetSwitch(target: LoadedPromptStack | undefined, ctx?: ExtensionContext): string | undefined {
+		const targetCtx = ctx ?? context;
+		if (!targetCtx) return undefined;
+		const { state } = view(targetCtx);
+		const prospectivePresetKey = target ? formatResourceKey(target.key) : undefined;
+		const survivingPatches: CapabilityToolPatch[] = [];
+		for (const item of state.active) {
+			const source = item.snapshot.source;
+			if (source.kind === "capability" && source.binding && formatResourceKey(source.binding.preset) !== prospectivePresetKey) {
+				// Bound to another/old preset; will be retired upon switch
+				continue;
+			}
+			survivingPatches.push(item.snapshot.tools);
+		}
+		if (!targetCtx.isProjectTrusted() && survivingPatches.length > 0) {
+			return "Active capabilities require a trusted project. Use /capability reset to clear them, or trust the project.";
+		}
+		return tools.validateCapabilities(survivingPatches, { prospectiveStack: target });
 	}
 
 	function pendingEvents(ctx: ExtensionContext): CapabilityEvent[] {
@@ -1017,7 +1038,7 @@ export function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorksp
 		agentBusy = false;
 	}
 
-	return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
+	return { prepareRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
 }
 
 function sourceLabel(item: ActiveCapability): string {

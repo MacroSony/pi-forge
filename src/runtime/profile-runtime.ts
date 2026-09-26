@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-	chooseAutoActivateAgentProfile,
-	hasAutoActivateAgentProfile,
+	findAutoActivateAgentProfileCandidates,
 	isResolvedAgentProfileUsable,
 	renderAgentProfileDiagnostics,
 	resolveAgentProfile,
@@ -46,20 +45,22 @@ export function createProfileRuntime(
 		// activate global presets during a fresh session.
 		if (!ctx.isProjectTrusted()) return;
 		const snapshot = workspace.snapshot();
-		const target = chooseAutoActivateAgentProfile(snapshot.profiles);
-		if (!target) {
-			if (hasAutoActivateAgentProfile(snapshot.profiles)) {
-				workspace.setActiveStack(undefined);
-				deps.updateStatus(ctx);
-				ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback preset was applied.", "error");
-				return;
-			}
+		const candidates = findAutoActivateAgentProfileCandidates(snapshot.profiles);
+		if (candidates.length === 0) {
 			const fallback = chooseDefaultStack([...snapshot.stacks]);
 			workspace.setActiveStack(fallback ? formatResourceKey(fallback.key) : undefined);
 			deps.updateStatus(ctx);
 			return;
 		}
 
+		if (candidates.length > 1) {
+			workspace.setActiveStack(undefined);
+			deps.updateStatus(ctx);
+			ctx.ui.notify("pi-forge: multiple agent profiles request auto-activation; no profile or fallback preset was applied.", "error");
+			return;
+		}
+
+		const target = candidates[0]!;
 		const resolved = resolveProfile(target, ctx);
 		if (!isResolvedAgentProfileUsable(resolved) || !resolved.model) {
 			workspace.setActiveStack(undefined);

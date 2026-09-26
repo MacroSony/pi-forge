@@ -1,10 +1,16 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createResourceCatalog } from "../catalog.ts";
 import { isDisabledPromptStackId } from "../loader.ts";
-import { formatResourceKey } from "../resource-identity.ts";
+import { formatResourceKey, parseResourceSelector } from "../resource-identity.ts";
 import { persistActiveSelection as persistActiveSelectionEntry } from "../session-adapter.ts";
 import type { CompileCycleState } from "../compile-cycle.ts";
 import type { ForgeWorkspace } from "../workspace.ts";
-import type { PromptStackDiagnostic } from "../types.ts";
+import type { LoadedPromptStack, PromptStackDiagnostic } from "../types.ts";
+
+export interface PromptStackRuntimeDeps {
+	syncToolPolicy(ctx?: ExtensionContext): void;
+	validatePresetSwitch?(target: LoadedPromptStack | undefined, ctx?: ExtensionContext): string | undefined;
+}
 
 export interface PromptStackRuntime {
 	dispose(): PromptStackDiagnostic[];
@@ -13,6 +19,7 @@ export interface PromptStackRuntime {
 	restorePersistedActiveId(id?: string): void;
 	persistActiveSelection(): void;
 	setActive(id: string | undefined, ctx?: ExtensionContext): boolean;
+	lastActivationError(): string | undefined;
 	reloadStacks(ctx: ExtensionContext, preferredId?: string, options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean }): Promise<void>;
 	updateStatus(ctx: ExtensionContext): void;
 	notifyActivePreset(ctx: ExtensionContext, detail: string): void;
@@ -23,11 +30,10 @@ export function createPromptStackRuntime(
 	pi: ExtensionAPI,
 	workspace: ForgeWorkspace,
 	compileCycle: CompileCycleState,
-	deps: {
-		syncToolPolicy(ctx?: ExtensionContext): void;
-	},
+	deps: PromptStackRuntimeDeps,
 ): PromptStackRuntime {
 	let lastPersistedActiveId: string | undefined;
+	let lastActivationError: string | undefined;
 
 	function dispose(): PromptStackDiagnostic[] {
 		return workspace.disposeExtensions();
@@ -55,19 +61,62 @@ export function createPromptStackRuntime(
 		lastPersistedActiveId = canonical;
 	}
 
-	function setActive(id: string | undefined, ctx?: ExtensionContext): boolean {
+	function lastActivationErrorFn(): string | undefined {
+		return lastActivationError;
+	}
+
+	function resolveTargetStack(id: string | undefined): { ok: true; target: LoadedPromptStack | undefined } | { ok: false; error: string } {
 		if (!id || isDisabledPromptStackId(id)) {
-			workspace.setActiveStack(id);
-			persistActiveSelection();
-			if (ctx) updateStatus(ctx);
-			deps.syncToolPolicy(ctx);
-			return true;
+			return { ok: true, target: undefined };
+		}
+		const parsed = parseResourceSelector(id);
+		if (!parsed.ok) {
+			return { ok: false, error: `Invalid preset selector: ${id}` };
+		}
+		const found = createResourceCatalog<LoadedPromptStack>([...workspace.snapshot().stacks]).resolveSelector(parsed.selector);
+		if (!found) {
+			return { ok: false, error: `Unknown preset: ${id}` };
+		}
+		return { ok: true, target: found };
+	}
+
+	function setActive(id: string | undefined, ctx?: ExtensionContext): boolean {
+		lastActivationError = undefined;
+
+		const resolution = resolveTargetStack(id);
+		if (!resolution.ok) {
+			lastActivationError = resolution.error;
+			return false;
 		}
 
-		if (ctx && !ctx.isProjectTrusted()) return false;
-		if (!workspace.setActiveStack(id)) return false;
+		const target = resolution.target;
+
+		if (target && ctx && !ctx.isProjectTrusted()) {
+			lastActivationError = "Project is not trusted; refusing to activate a preset.";
+			return false;
+		}
+
+		try {
+			const validationError = deps.validatePresetSwitch?.(target, ctx);
+			if (validationError) {
+				lastActivationError = `Cannot activate preset "${id ?? "none"}": ${validationError} Disable conflicting capabilities before switching presets.`;
+				return false;
+			}
+		} catch (error) {
+			// Preflight is read-only: malformed restored state also leaves selection untouched.
+			lastActivationError = error instanceof Error ? error.message : String(error);
+			return false;
+		}
+
+		if (!workspace.setActiveStack(id)) {
+			lastActivationError = `Unknown preset: ${id}`;
+			return false;
+		}
+
 		persistActiveSelection();
 		if (ctx) updateStatus(ctx);
+		// Unexpected host failures must still propagate; do not disguise a partial
+		// commit as an ordinary preflight rejection. Known conflicts were checked above.
 		deps.syncToolPolicy(ctx);
 		return true;
 	}
@@ -127,5 +176,5 @@ export function createPromptStackRuntime(
 		ctx.ui.setStatus("pi-forge-diagnostics", undefined);
 	}
 
-	return { dispose, activeId, selectedActiveId, restorePersistedActiveId, persistActiveSelection, setActive, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
+	return { dispose, activeId, selectedActiveId, restorePersistedActiveId, persistActiveSelection, setActive, lastActivationError: lastActivationErrorFn, reloadStacks, updateStatus, notifyActivePreset, recordCompileDiagnostics };
 }

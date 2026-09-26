@@ -126,6 +126,26 @@ export function createCapabilityRuntime(pi, workspace, tools) {
         tools.sync(ctx);
         rememberTools(ctx);
     }
+    function validatePresetSwitch(target, ctx) {
+        const targetCtx = ctx ?? context;
+        if (!targetCtx)
+            return undefined;
+        const { state } = view(targetCtx);
+        const prospectivePresetKey = target ? formatResourceKey(target.key) : undefined;
+        const survivingPatches = [];
+        for (const item of state.active) {
+            const source = item.snapshot.source;
+            if (source.kind === "capability" && source.binding && formatResourceKey(source.binding.preset) !== prospectivePresetKey) {
+                // Bound to another/old preset; will be retired upon switch
+                continue;
+            }
+            survivingPatches.push(item.snapshot.tools);
+        }
+        if (!targetCtx.isProjectTrusted() && survivingPatches.length > 0) {
+            return "Active capabilities require a trusted project. Use /capability reset to clear them, or trust the project.";
+        }
+        return tools.validateCapabilities(survivingPatches, { prospectiveStack: target });
+    }
     function pendingEvents(ctx) {
         const history = readCapabilitySession(ctx);
         const checkpoint = history.events.findIndex(event => event.eventId === history.checkpointThrough);
@@ -959,7 +979,7 @@ export function createCapabilityRuntime(pi, workspace, tools) {
         restoredTools = undefined;
         agentBusy = false;
     }
-    return { prepareRestore, restore, sync, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
+    return { prepareRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
 }
 function sourceLabel(item) {
     return item.snapshot.source.kind === "manual" ? "manual" : formatResourceKey(item.snapshot.source.key);

@@ -95,7 +95,8 @@ async function handlePresetCommand(workspace, compileCycle, deps, args, ctx) {
                 ? promptCacheWarningForStackSwitch(current, next, compileCycle, deps.latestContextDiffUsage())
                 : undefined;
             if (!deps.setActive(id, ctx)) {
-                ctx.ui.notify(`Unknown preset: ${id}`, "error");
+                const error = deps.lastActivationError?.() ?? `Unknown preset: ${id}`;
+                ctx.ui.notify(error, "error");
                 return;
             }
             const active = workspace.snapshot().active;

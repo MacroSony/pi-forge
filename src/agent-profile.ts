@@ -57,39 +57,32 @@ export function loadGlobalAgentProfiles(globalDir: string = globalAgentProfilesD
 	return readGlobals(globalDir);
 }
 
-export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined {
+export function findAutoActivateAgentProfileCandidates(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile[] {
 	// Project auto-activation has explicit precedence. An invalid or ambiguous
 	// project candidate fails closed instead of falling back to a global one.
 	const projectCandidates = profiles.filter((loaded) => loaded.scope === "project" && loaded.profile.autoActivate === true);
 	if (projectCandidates.length > 0) {
-		return projectCandidates.length === 1 && !hasAgentProfileErrors(projectCandidates[0]!.diagnostics)
-			? projectCandidates[0]
-			: undefined;
+		return projectCandidates;
 	}
 	const projectIds = new Set(
 		profiles.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.profile.id),
 	);
 	// Global candidates shadowed by a same-ID project profile must not activate:
 	// normal resolution would never see them either.
-	const globalCandidates = profiles.filter(
+	return profiles.filter(
 		(loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true && !projectIds.has(loaded.profile.id),
 	);
-	return globalCandidates.length === 1 && !hasAgentProfileErrors(globalCandidates[0]!.diagnostics)
-		? globalCandidates[0]
+}
+
+export function chooseAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): LoadedAgentProfile | undefined {
+	const candidates = findAutoActivateAgentProfileCandidates(profiles);
+	return candidates.length === 1 && !hasAgentProfileErrors(candidates[0]!.diagnostics)
+		? candidates[0]
 		: undefined;
 }
 
 export function hasAutoActivateAgentProfile(profiles: readonly LoadedAgentProfile[]): boolean {
-	// Shadow-aware: a global auto-activate profile whose ID exists in project
-	// scope is not a candidate (see chooseAutoActivateAgentProfile), so it must
-	// not count as requesting activation either.
-	if (profiles.some((loaded) => loaded.scope === "project" && loaded.profile.autoActivate === true)) return true;
-	const projectIds = new Set(
-		profiles.filter((loaded) => loaded.scope === "project").map((loaded) => loaded.profile.id),
-	);
-	return profiles.some(
-		(loaded) => loaded.scope === "global" && loaded.profile.autoActivate === true && !projectIds.has(loaded.profile.id),
-	);
+	return findAutoActivateAgentProfileCandidates(profiles).length > 0;
 }
 
 export function resolveAgentProfile(

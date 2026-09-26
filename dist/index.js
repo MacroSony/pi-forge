@@ -57,6 +57,7 @@ export default function piForge(pi) {
     let profileRuntime;
     const stackRuntime = createPromptStackRuntime(pi, workspace, compileCycle, {
         syncToolPolicy: instructions.sync,
+        validatePresetSwitch: instructions.validatePresetSwitch,
     });
     profileRuntime = createProfileRuntime(pi, workspace, {
         setActive: (id, ctx) => stackRuntime.setActive(id, ctx),
@@ -73,6 +74,7 @@ export default function piForge(pi) {
         getActiveId: stackRuntime.activeId,
         getSelectedActiveId: stackRuntime.selectedActiveId,
         setActive: (id) => stackRuntime.setActive(id, ctx),
+        lastActivationError: stackRuntime.lastActivationError,
         reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
         buildPreview: (target) => buildPreview(ctx, target, toolPolicy.previewOptions(promptOptions, target.stack)),
         getPolicyResources: () => toolPolicy.policyResources(promptOptions),
@@ -143,6 +145,7 @@ export default function piForge(pi) {
     registerPresetCommand(pi, workspace, compileCycle, {
         selectedActiveId: stackRuntime.selectedActiveId,
         setActive: stackRuntime.setActive,
+        lastActivationError: stackRuntime.lastActivationError,
         reloadStacks: stackRuntime.reloadStacks,
         openWebEditor: webEditorRuntime.open,
         stopWebEditor: webEditorRuntime.stop,

@@ -16,7 +16,9 @@ export interface ToolPolicyRuntime {
     policyResources(options: BuildSystemPromptOptions): WebEditorPolicyResources;
     snapshot(): ToolPolicySnapshot;
     setCapabilities(patches: readonly CapabilityToolPatch[], restored?: ToolPolicySnapshot): void;
-    validateCapabilities(patches: readonly CapabilityToolPatch[]): string | undefined;
+    validateCapabilities(patches: readonly CapabilityToolPatch[], options?: {
+        prospectiveStack: LoadedPromptStack | undefined;
+    }): string | undefined;
 }
 export declare function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => LoadedPromptStack | undefined): ToolPolicyRuntime;
 export declare function reconcileToolPolicyBaseline(baseline: string[], lastApplied: string[], current: string[]): string[];
