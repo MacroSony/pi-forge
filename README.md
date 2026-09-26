@@ -2,72 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Quick start](#install-and-first-run)
 
+![pi-forge - Context editor and inspection workbench for Pi](assets/pi-forge-header-concept-1.png)
+
 **A context editor and inspection workbench for Pi.**
 
 pi-forge provides visual context composition, tool selection, reusable configurations, and request inspection for [Pi](https://github.com/earendil-works/pi).
 
-## Why I built it
-
-I wanted to configure both the content and composition of an agent’s input: system instructions, tool descriptions, project files, examples, and conversation history.
-
-Inspired by my experience with SillyTavern's presets, I built pi-forge to edit these components in Pi and inspect the requests sent to the model.
-
-![A code-review Preset with blocks, slots, editable instructions and compiled Preview](assets/readme/en/editor-overview-v3.png)
-
-## Features
-
-### Context composition
-
-A Preset combines text **blocks** with runtime **slots** for tools, skills, project files, and conversation history. Blocks can contain instructions or example messages. Items support ordering and individual enablement; Preview shows the compiled result.
-
-Replace Pi's base system prompt, append to it, or prepend to it. History options can filter roles, limit retained context, or strip prior thinking from model input without rewriting the stored conversation.
-
-![Drag system blocks to reorder them, then toggle project context; Preview follows](assets/readme/en/context-composition.gif)
-
-### Tool selection and text transforms
-
-- Set per-Preset tool `allow` or `deny` patterns instead of relying on an instruction to avoid a tool. These remain the permission ceiling for tools a Mode may enable.
-- Choose a smaller default active tool set with `tools.initial`, then enable other permitted, registered tools through Modes when needed. Leave it unset to keep the existing selection behavior.
-- Filter the skill listing rendered by Forge.
-- Reuse immutable parameters through templates such as `{{ parameters.style }}`, alongside runtime values and custom macros.
-- Apply deterministic Regex rules to outgoing text or completed assistant/tool-result text in the transcript.
-
-### Session instruction modes
-
-**Instruction modes** add or stop session rules and adjust executable tools without switching Presets. A typical use is enabling permitted search tools during code exploration while retaining a smaller default tool set.
-
-Create reusable definitions in **Modes** and configure Preset authorization in its peer **Bindings** tab. In **Current session**, the picker separates unbound library modes from current-Preset bindings; CLI `/instruction use` and `use-bound` make the same distinction. `/system-update` remains an exact compatibility alias. You can explicitly authorize individual bindings for Agent control with `modelCallable`; adding a mode to the library does not grant that permission.
-
-Saving a Mode does not activate it, and editing its definition does not replace an already-active snapshot. Turning it off recomputes tools from the Preset's base selection and remaining Modes; it does not erase history, undo file changes, or interrupt running tools. See [Instruction modes](docs/reference/instruction-modes.md) for setup and lifecycle details.
-
-How an update reaches the model depends on Pi's metadata for the current model. Models marked as accepting mid-conversation system messages receive native system updates; other models receive a labeled user message instead. Models from the same provider can differ, and switching with `/model` affects later requests. `/instruction status` shows which path is in use; see [Delivery models](docs/reference/instruction-modes.md#delivery-models-native-vs-fallback).
-
-**Current session** places mode/tool controls beside the session projection. Inspect net tool changes and locate related instruction updates without closing the controls. This view uses the active saved Preset, not the editor draft or a captured provider request.
-
-![Use and locate Explore mode: tools and instruction changes together; Off restores read and projects a removal](assets/readme/en/mode-tools.gif)
-
-### Preview and request inspection
-
-- **Preview** compiles the current draft without making a model request.
-- **Draft diff** compares unsaved edits with the saved Preset.
-- **Run diff** compares successive provider turns, with size estimates kept separate from reported token/cache usage when available.
-- **Payload capture** shows a redacted view of the next provider request through the editor or `/forge payload next`.
-
-Cache notices also flag timestamp-sensitive macros and estimate the possible prompt-cache impact of Preset/Profile switches. Cache reuse belongs to the SDK/provider, so Mode or tool changes never guarantee a cache hit.
-
-![An unsaved instruction change compared with the saved Preset](assets/readme/en/edit-draft-diff.gif)
-
-### Recommended CLI names
-
-Use `/forge ui` for the workspace, `/forge payload` for request-hook capture, and `/instruction` for session instruction modes. `/preset` and `/profile` keep their existing roots. Compatibility entries remain available: `/preset ui` maps to `/forge ui`, `/payload` and `/intercept` arm the next payload capture, and `/system-update` maps to `/instruction`.
-
-`/forge` with no arguments shows help. Command arguments are strict; unknown flags are rejected. `/forge payload next save="path with spaces.json"` accepts an optional save path; existing files require `--overwrite` (which is valid only with `save=<path>`). `cancel` only cancels a pending capture and does not erase capture/history data. Capture occurs at the provider hook, so later plugin shaping may differ from the final wire body.
-
-## Reusable configurations
-
-An **Agent Profile** stores a model, thinking level, and Preset reference. Apply it with `/profile use <id>`. Presets and Profiles have project or global scope; project resources take precedence for matching IDs.
-
-Maintain separate configurations for coding, reviewing, writing, or roleplay.
+[Context composition](#context-composition) · [Tool selection](#tool-selection) · [Regex transformations](#regex-transformations) · [Instruction modes](#dynamic-system-prompts-and-tools) · [Request inspection](#preview-and-request-inspection)
 
 ## Install and first run
 
@@ -83,48 +24,94 @@ pi install npm:@zihanw/pi-forge
 
 Restart Pi after installing or updating. In a trusted project:
 
-1. Run `/preset ui` to open the local editor.
+1. Run `/forge ui` to open the local editor.
 2. Choose **New preset** to start from the default Pi-mirror layout.
 3. Edit a block or policy and check **Preview**.
 4. **Save** your changes, then **Activate** the Preset for the current session.
 
-Saving an inactive Preset does not select it. Saving the active Preset reloads its changes; active Mode snapshots remain unchanged.
+Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Mode with `/instruction use <mode>`. The demo below shows a synthetic read-first setup; try the [Read-first Worker example](docs/reference/instruction-modes.md#read-first-worker) yourself.
 
-You can also select one with `/preset use <id>`, or disable the current Preset with `/preset use none`. To reuse your current model, thinking level, and Preset together:
+![Select a Preset and enable instructions and editing tools from the Pi terminal](assets/readme/tui-quickstart.gif)
 
-```text
-/profile save reviewer
-/profile use reviewer
-```
+## Features
 
-## Presets, modes and profiles
+### Context composition
 
-| Resource | What it holds |
-|---|---|
-| **Preset** | Context layout, tool defaults and policy, Mode bindings and Agent authorization, skill-list filtering, Regex rules, and parameters |
-| **Instruction mode** | Reusable session instructions and/or tool additions/removals; activated as a snapshot in a Session |
-| **Agent Profile** | Model, thinking level, and a reference to a Preset |
+Build your agent’s context from editable text blocks and slots for tools, skills, project files, and conversation history. Reorder or toggle them and see the result in Preview.
 
-The **Stack** is the ordered Block/Slot composition inside a Preset. Ordering works within two channels: system items form the system prompt; non-system items form messages. Moving a system block below chat history does not inject it into that history.
+- **Use case**: Give a code-review agent your project guidelines and selected context, instead of keeping one oversized prompt for every task.
+- **Try it**: In the editor’s **Stack**, edit or drag a block, toggle project context, and check **Preview**.
 
-A Profile applies once. Later manual model or thinking-level changes remain in effect; the selected Preset continues enforcing its tool policy.
+![Drag system blocks to reorder them, then toggle project context; Preview follows](assets/readme/en/context-composition.gif)
+
+See [Web editor guide](docs/guides/web-editor.md) and [Stack schema](docs/reference/stack-schema.md).
+
+### Tool selection
+
+Choose which tools an agent may use and which are available by default. An allowlist or denylist sets the permission limit; a smaller default set keeps other permitted tools available for Modes to enable later.
+
+- **Use case**: Keep a review agent focused on reading and searching, without giving it editing or shell tools.
+- **Try it**: In **Policy**, choose the permitted tools and a default set such as `read` and `ls`. Add the already-permitted `grep` to the defaults and check the tool list in **Preview**; save and activate to apply the policy.
+
+![Tool selection with policy defaults read/ls and adding grep](assets/readme/en/tool-selection.gif)
+
+See [Tool policy reference](docs/reference/stack-schema.md#tool-and-skill-policy).
+
+### Regex transformations
+
+Find and replace text in model input or completed assistant/tool output using reusable regex rules.
+
+- **Use case**: Replace a known sensitive marker in selected prompt text before sending it, or clean repetitive boilerplate from responses.
+- **Try it**: In **Regex**, set up an outgoing rule matching the synthetic `SAMPLE_TOKEN`, replacing it with `[REDACTED]`, and targeting system text. The demo toggles this preconfigured rule and compares **Preview**.
+
+![Regex transformation redacting outgoing synthetic SAMPLE_TOKEN](assets/readme/en/regex-transforms.gif)
+
+See [Regex transformation reference](docs/reference/stack-schema.md#regex-transforms).
+
+### Dynamic system prompts and tools
+
+**Instruction modes** update system instructions and available tools mid-conversation. Start an agent with minimal tools, then let it load task-specific instructions and tools when needed—without restarting the session or switching Presets.
+
+- **Use case**: Let an agent explore code with `read` and `ls`, then enable an authorized editing Mode when it is ready to apply a fix.
+- **Try it**: Create a Mode in **Modes** and authorize agent access in the Preset’s **Bindings** tab. You can also enable it yourself in **Current session** or with `/instruction use <mode>`, and inspect the resulting instructions and tools.
+
+Updates reach the model as native mid-conversation system updates on supported models, with a labeled user-message fallback otherwise (see [delivery details](docs/reference/instruction-modes.md#delivery-models-native-vs-fallback)).
+
+![Use and locate Explore mode: tools and instruction changes together; Off restores read and projects a removal](assets/readme/en/mode-tools.gif)
+
+See [Instruction modes reference](docs/reference/instruction-modes.md).
+
+### Preview and request inspection
+
+See what your edits change before calling a model, then inspect captured requests and reported usage when debugging a run.
+
+- **Use case**: Check whether a prompt edit adds the intended instructions, or compare successive requests when a run behaves differently than expected.
+- **Try it**: In `/forge ui`, switch to **Preview** to view compiled messages, open **Draft diff** to see unsaved changes, or run `/forge payload next` in the terminal to inspect the next outgoing request.
+
+![An unsaved instruction change compared with the saved Preset](assets/readme/en/edit-draft-diff.gif)
+
+**Current session** also shows turn and branch cache-hit rates, with main-model and reported nested-tool usage kept separate. These are recorded usage metrics, not a complete bill. See [cache usage](docs/reference/session-cache.md), [debugging](docs/guides/debugging.md), and [commands](docs/reference/commands.md).
+
+## Why I built it
+
+I wanted to configure both the content and composition of an agent’s input: system instructions, tool descriptions, project files, examples, and conversation history.
+
+Inspired by my experience with SillyTavern's presets, I built pi-forge to edit these components in Pi and inspect the requests sent to the model.
 
 ## Examples
 
 - [Default Pi mirror](examples/default-prompt-stack.json) — A Pi-style starting point, split into editable blocks and runtime slots.
 - [Minimal worker](examples/minimal-prompt-stack.json) — One line of instructions, chat history, and only `bash` plus `edit`.
-- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools mode](examples/instruction-modes/write-tools.json) — start with `read`, `ls`, and the mode control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/instruction-modes.md#read-first-worker).
+- [Read-first Worker](examples/read-first-worker-prompt-stack.json) + [Write tools mode](examples/instruction-modes/write-tools.json) — Start with `read`, `ls`, and the mode control tool; let the model enable `bash`/`edit` on demand. [Setup and limits](docs/reference/instruction-modes.md#read-first-worker).
 - [Regex examples](examples/hack-prompt-stack.json) — Outgoing redaction paired with stored-transcript cleanup for two sample token patterns.
 
-See [patterns and use cases](docs/guides/use-cases.md) for more ways to build on them.
+Save your current model, thinking level, and Preset as an Agent Profile with `/profile save reviewer`; restore it with `/profile use reviewer`. See [patterns and use cases](docs/guides/use-cases.md) for more ideas.
 
 ## Optional subagents
 
-The matching development `@zihanw/pi-forge-subagents` package contributes the `/forge subagent plan` execution-plan command and lets an agent discover authorized Profiles with `forge_subagent_profiles` and delegate one-shot tasks with `forge_subagent`. The legacy `/subagent` command remains a separate low-level smoke helper.
+The optional companion [`pi-forge-subagents`](https://github.com/MacroSony/pi-forge-subagents) package lets your agent delegate focused tasks—such as a code review or parallel investigation—to subagents configured with authorized Profiles. The agent uses `forge_subagent` to delegate; Forge itself does not require this package.
 
-Profiles must be explicitly enabled. `/forge-agent run` always asks for human approval and the selected backend may write; the model-callable `forge_subagent` path is separate and can be unattended only with explicit trusted-project authorization. Isolation depends on the selected backend—tool restrictions alone are not an OS sandbox. Use matching local development sources until the coordinated release; this does not claim a published package pairing.
-
-Read the [delegation guide](docs/guides/delegation.md) before enabling it.
+Use matching local development sources pending coordinated release. Subagents operate with backend-dependent write permissions and isolation (tool restrictions alone are not an OS sandbox). See the [delegation guide](docs/guides/delegation.md) before enabling delegation.
 
 ## Notes and documentation
 
@@ -132,6 +119,7 @@ Read the [delegation guide](docs/guides/delegation.md) before enabling it.
 - `replace` mode replaces Pi's base system prompt. Include any tool guidance, skills, or project context you still want.
 - Skill filtering only changes Forge's rendered listing; it does not disable explicit skill invocation. Tool policy is not filesystem or process isolation.
 - Regex only handles the text and patterns you select. `finalize` overwrites stored assistant/tool-result text and does not preserve the original. Payload captures are redacted and may be truncated; they can still contain private conversation content.
+- For stack structure, resource schemas, and command details, see the documentation links below.
 
 [Getting started](docs/getting-started.md) · [Web editor](docs/guides/web-editor.md) · [Commands](docs/reference/commands.md) · [Schema and policy](docs/reference/stack-schema.md) · [Debugging](docs/guides/debugging.md) · [All documentation](docs/README.md)
 
