@@ -7,6 +7,7 @@ import test from "node:test";
 import vue from "@vitejs/plugin-vue";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { build } from "vite";
+import { formatImportSpecifier } from "../tests/helpers/browser-fixture-path.ts";
 import type {
 	Capability,
 	CapabilityCollection,
@@ -41,11 +42,11 @@ async function bundleFixture(root: string): Promise<{ js: string; css: string }>
 	writeFileSync(
 		entryPath,
 		`import { createApp, defineComponent, h, ref } from "vue";
-import PolicyEditor from "${policyEditorPath}";
-import CapabilityEditor from "${capabilityEditorPath}";
-import PresetBindingEditor from "${bindingEditorPath}";
-import ToolPicker from "${toolPickerPath}";
-import { setEditorLocale } from "${i18nPath}";
+import PolicyEditor from ${formatImportSpecifier(policyEditorPath)};
+import CapabilityEditor from ${formatImportSpecifier(capabilityEditorPath)};
+import PresetBindingEditor from ${formatImportSpecifier(bindingEditorPath)};
+import ToolPicker from ${formatImportSpecifier(toolPickerPath)};
+import { setEditorLocale } from ${formatImportSpecifier(i18nPath)};
 
 const TestHarness = defineComponent({
 	setup() {

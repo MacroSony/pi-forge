@@ -7,6 +7,7 @@ import test from "node:test";
 import vue from "@vitejs/plugin-vue";
 import { chromium, type Browser } from "playwright-core";
 import { build } from "vite";
+import { formatImportSpecifier, isSamePath } from "../tests/helpers/browser-fixture-path.ts";
 import type { CapabilityChoice, CapabilityStateView, CapabilityEnableRequest } from "../src/capability-state.ts";
 
 function findChromeExecutable(): string | undefined {
@@ -30,7 +31,7 @@ async function bundleSessionCapabilities(root: string): Promise<{ js: string; cs
 
 	writeFileSync(
 		entryPath,
-		`import { createApp } from "vue";\nimport SessionCapabilities from "${componentPath}";\ncreateApp(SessionCapabilities).mount("#app");\n`,
+		`import { createApp } from "vue";\nimport SessionCapabilities from ${formatImportSpecifier(componentPath)};\ncreateApp(SessionCapabilities).mount("#app");\n`,
 	);
 
 	try {
@@ -41,7 +42,7 @@ async function bundleSessionCapabilities(root: string): Promise<{ js: string; cs
 			logLevel: "silent",
 			// Controls/guard fixture; the real inspector is exercised by the built-App tests.
 			plugins: [{ name: "isolated-session-inspector", enforce: "pre", load(id) {
-				if (id === resolve(root, "src/web-editor/client/components/ContextDiffPanel.vue")) return '<template><div data-inspector-stub /></template>';
+				if (isSamePath(id, resolve(root, "src/web-editor/client/components/ContextDiffPanel.vue"))) return '<template><div data-inspector-stub /></template>';
 			} }, vue()],
 			define: {
 				"process.env.NODE_ENV": JSON.stringify("production"),
