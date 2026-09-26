@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import {
-	chmodSync,
+import fs, {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -274,55 +274,87 @@ test("8. duplicate across scopes: project-over-global with same id is valid shad
 	}
 });
 
-test("9. unreadable path: unreadable directory throws Error fail-closed instead of returning []", () => {
-	const env = setupTestEnv();
-	mkdirSync(env.projectDir, { recursive: true });
-	try {
-		chmodSync(env.projectDir, 0o000);
+// Synchronous, path-specific mocks stay inside this test process. Synchronize
+// named builtin imports both after replacement and after restoration.
+for (const code of ["EACCES", "EPERM"] as const) {
+	test(`9. unreadable path (${code}): unreadable directory throws Error fail-closed instead of returning []`, (t) => {
+		const env = setupTestEnv();
+		mkdirSync(env.projectDir, { recursive: true });
+		const fixtureFile = join(env.projectDir, "fixture.json");
+		writeFileSync(fixtureFile, createValidModeJson("fixture"));
 
-		assert.throws(
-			() => {
-				readCapabilitiesScoped(env.cwd, env.globalDir);
-			},
-			(err: any) => {
-				return err instanceof Error && (err.message.includes("permission") || (err as any).code === "EACCES");
-			},
-		);
-	} finally {
+		const denied = Object.assign(new Error(`${code}: probe access denied`), { code });
+		const originalReaddirSync = fs.readdirSync;
 		try {
-			chmodSync(env.projectDir, 0o755);
-		} catch {
-			// ignore
-		}
-		env.cleanup();
-	}
-});
+			t.mock.method(fs, "readdirSync", (...args: unknown[]) => {
+				if (String(args[0]) === env.projectDir) throw denied;
+				return Reflect.apply(originalReaddirSync, fs, args);
+			});
+			syncBuiltinESMExports();
 
-test("10. unreadable file: unreadable file inside readable directory is retained as fault", () => {
-	const env = setupTestEnv();
-	try {
+			assert.throws(
+				() => {
+					readCapabilitiesScoped(env.cwd, env.globalDir);
+				},
+				(err: unknown) => err === denied,
+			);
+		} finally {
+			t.mock.restoreAll();
+			syncBuiltinESMExports();
+			try {
+				const loaded = readCapabilitiesScoped(env.cwd, env.globalDir);
+				assert.equal(loaded.length, 1);
+				assert.equal(loaded[0]?.capability.id, "fixture");
+				assert.equal(isUsableCapability(loaded[0]!), true);
+			} finally {
+				env.cleanup();
+			}
+		}
+	});
+}
+
+for (const code of ["EACCES", "EPERM"] as const) {
+	test(`10. unreadable file (${code}): unreadable file inside readable directory is retained as fault`, (t) => {
+		const env = setupTestEnv();
 		mkdirSync(env.projectDir, { recursive: true });
 		const unreadableFile = join(env.projectDir, "no-read.json");
 		writeFileSync(unreadableFile, createValidModeJson("no-read"));
-		chmodSync(unreadableFile, 0o000);
 
+		const denied = Object.assign(new Error(`${code}: probe access denied`), { code });
+		const originalReadFileSync = fs.readFileSync;
 		try {
+			t.mock.method(fs, "readFileSync", (...args: unknown[]) => {
+				if (String(args[0]) === unreadableFile) throw denied;
+				return Reflect.apply(originalReadFileSync, fs, args);
+			});
+			syncBuiltinESMExports();
+
 			const loaded = readCapabilitiesScoped(env.cwd, env.globalDir);
 			assert.equal(loaded.length, 1);
 			assert.equal(loaded[0]?.capability.id, "no-read");
 			assert.equal(isUsableCapability(loaded[0]!), false);
 			assert.ok(
 				loaded[0]!.diagnostics.some(
-					(d) => d.level === "error" && d.message.includes("Failed to read capability"),
+					(d) =>
+						d.level === "error" &&
+						d.message.includes("Failed to read capability") &&
+						d.message.includes(code),
 				),
 			);
 		} finally {
-			chmodSync(unreadableFile, 0o644);
+			t.mock.restoreAll();
+			syncBuiltinESMExports();
+			try {
+				const loaded = readCapabilitiesScoped(env.cwd, env.globalDir);
+				assert.equal(loaded.length, 1);
+				assert.equal(loaded[0]?.capability.id, "no-read");
+				assert.equal(isUsableCapability(loaded[0]!), true);
+			} finally {
+				env.cleanup();
+			}
 		}
-	} finally {
-		env.cleanup();
-	}
-});
+	});
+}
 
 test("11. symlink handling: follows symlinks to valid instruction capability files", () => {
 	const env = setupTestEnv();

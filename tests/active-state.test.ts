@@ -328,7 +328,7 @@ test("suspension suppresses publishes and request replies until bind resumes", (
 	assert.equal(transport.events().at(-1)!.stackKey, "global:next");
 });
 
-test("clear publication is reentrancy-safe across switch, dispose, and invalid sessions", () => {
+test("clear publication is reentrancy-safe across switch, dispose, and invalid sessions", async (t) => {
 	type Scenario = {
 		name: string;
 		operation: (publisher: ForgeActiveStatePublisher) => void;
@@ -353,7 +353,7 @@ test("clear publication is reentrancy-safe across switch, dispose, and invalid s
 	];
 
 	for (const scenario of scenarios) {
-		test(`reentrant clear: ${scenario.name}`, () => {
+		await t.test(`reentrant clear: ${scenario.name}`, () => {
 			const transport = new MemoryTransport();
 			const publisher = createPublisher(transport, () => ({ stackKey: "global:base" }));
 			publisher.bindSession({ sessionId: "session-a", cwd: "/tmp/a" });
