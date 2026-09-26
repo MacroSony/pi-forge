@@ -214,7 +214,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
    - **Native 投递：** 当模型服务商声明支持会话中系统消息（`compat.supportsMidConvoSystemMessages === true`）时，增量以 `SystemMessage.sections`（以 `forge-instruction-<id>` 为 key）注入，关闭时发送 null patch。Native 投递完全依赖服务商 capability 标记，并非所有提供商都支持。
    - **Fallback 投递：** 对不支持原生系统更新的模型，增量以带来源标记的时间线用户消息（`[pi-forge instruction update]`）投递。Forge 绝不折叠或篡改首条 leading system prompt，不把用户/工具对话提升为系统权限。
    - **纯工具模式：** 正文为空或只有空白的模式在两条路径下都不发文字更新：启用时不发分段，停用时不发移除通知，compaction checkpoint 里也不包含它。只有工具变化进入请求，**当前会话**中也不提供“在上下文中定位”按钮。
-   - **如何判断走哪条路径：** 每次请求都按 Pi 模型目录中当前模型的 `compat` 条目决定；该目录由 Pi 拉取并缓存在本地，可能随更新变化。服务商名称、认证方式或认证扩展都不决定这一点，同一服务商的不同型号也可能不同。例如 2026-09-26 在 Pi 0.87.1 下观察到的目录中，`anthropic/claude-opus-4-8`、`claude-opus-5`、`claude-opus-5-5` 带有该标记，`anthropic/claude-sonnet-5` 没有。用 `/model` 切换后，之后的请求随之改变投递方式。`/instruction status` 和 Agent 的 `status` 动作会显示 `native system sections` 或 `attributed user updates`；测试原生更新或缓存行为前请先确认。
+   - **如何判断走哪条路径：** 每次请求都按 Pi 模型目录中当前模型的 `compat` 条目决定；该目录由 Pi 拉取并缓存在本地，可能随更新变化。服务商名称、认证方式或认证扩展都不决定这一点，同一服务商的不同型号也可能不同。例如 2026-09-26 在 Pi 0.87.1 下观察到的目录中，`anthropic/claude-opus-4-8`、`claude-opus-5`、`claude-opus-5-5` 带有该标记，`anthropic/claude-sonnet-5` 没有。用 `/model` 切换后，之后的请求随之改变投递方式。`/instruction status` 和 Agent 的 `status` 动作会显示 `native system sections` 或 `attributed user updates`；测试原生更新或缓存行为前请先确认。各 API 的行为和 Pi 0.87.1 时带标记的模型见[服务商支持情况](provider-support.md)。
    - **Fallback 的附带影响：** 对未标记的模型，Pi 还会把它自己的工具变更声明折回首条 system 消息和顶层工具列表，因此工具变化会改写下一次请求的开头，这部分缓存前缀无法复用。部分模型可能把带标记的用户更新当作不可信文本，先质疑再使用新工具。
 
 ## 状态恢复与验证边界
@@ -234,7 +234,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 - **前置扩展上下文改写：** Pi 允许 hook 改写消息。当可见元数据锚点或未锚定事件需要定位时，Forge 要求输入与规范会话投影有唯一的有序对应，否则中止而非猜测（fail-closed）。Pi 可能先保存排队的 custom 消息、但暂不放入工具续跑上下文：Forge 仅容许位置能唯一确定的 custom 消息缺省，忽略其重新生成的外层时间戳；保留传入对象，不擅自把缺省对话补回请求。前置改写因而可能与该定位方式冲突；简单后移不保证组合安全。通用插件、warming、自动 overflow 兼容性仍未全面验收。
 - **上游缺陷与协议限制：** 上游 Pi 元数据分块及语义截断缺陷（semantic-cut defect）未被修复，压缩检查点位置保持不变。旧会话中的 `custom_message` 载体条目保持原样不进行自动迁移；若对此类会话执行压缩，旧载体仍可能污染摘要输入。不支持也不承诺 OMP（Oh My Pi）。
 - **系统提示词 Getter：** `ctx.getSystemPrompt()` 和 SDK 接口返回 Pi 的原始基础提示词，而非 Forge 编译后的完整请求。请使用 `/forge payload`（裸 `/payload` 仍兼容）或 Run context diff 查看实际编译结果。Forge 不声称已同步 SDK getter。在生命周期 hook 中强行返回完整 `systemPrompt` 的第三方扩展会引发投影冲突，不被支持。
-- **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界。支持追加的 Codex 传输在保留历史没有移除/重复声明时可追加全新工具以保留请求前缀，但不保证命中；移除或同名再声明会回退到当前全量工具表；pi-forge 提供保守的 Provider 托管与缓存预警，不提供权限绕过或缓存保障（不保证零 KV 缓存失效）。
+- **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界。支持追加的 Codex 传输在保留历史没有移除/重复声明时可追加全新工具以保留请求前缀，但不保证命中；移除或同名再声明会回退到当前全量工具表；Anthropic 原生工具变化等各 API 行为见[服务商支持情况](provider-support.md)；pi-forge 提供保守的 Provider 托管与缓存预警，不提供权限绕过或缓存保障（不保证零 KV 缓存失效）。
 - **沙盒免责：** 指令模式不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
 
 ## 交付状态（0.5.5-core）

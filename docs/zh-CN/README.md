@@ -24,6 +24,7 @@
 
 - [命令参考](reference/commands.md)
 - [指令模式 (system-update)](reference/instruction-modes.md)
+- [各服务商对会话中更新的支持情况](reference/provider-support.md)：Pi 0.87.1 快照
 - [Stack schema 与策略（英文）](../reference/stack-schema.md)
 - [Macros 与 slots（英文）](../reference/macros-and-slots.md)
 - [配置（英文）](../reference/configuration.md)
