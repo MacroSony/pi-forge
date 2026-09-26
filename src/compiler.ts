@@ -171,6 +171,19 @@ function compileMessagesWithRenderer(
 		messages = merged.messages;
 		messageSources = merged.sources;
 	}
+
+	// Pi's initial System (prompt + initial tool declarations) is a protocol
+	// header, not movable conversation history. Filters/regex preserve control
+	// message identity, so move only that exact incoming head and its provenance.
+	// Never mistake a later System delta for the initial header.
+	if (originalMessages[0]?.role === "system") {
+		const leadingIndex = messages.indexOf(originalMessages[0]);
+		if (leadingIndex > 0) {
+			messages.unshift(messages.splice(leadingIndex, 1)[0]!);
+			messageSources.unshift(messageSources.splice(leadingIndex, 1)[0]!);
+		}
+	}
+
 	return { messages, messageSources, diagnostics };
 }
 
