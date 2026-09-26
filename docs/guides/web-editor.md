@@ -36,7 +36,7 @@ The editor interface is available in English and Chinese. Use the language selec
 
 The Preset workspace provides:
 
-- creation from the default Pi-mirror layout;
+- preset creation with template choices (Default Pi prompt, Empty, Minimal Worker);
 - an ordered **Stack** tab for Block/Slot composition;
 - a **Policy** tab for tool/skill allow/deny resource policy and custom default tools (`tools.initial`);
 - a peer **Capability bindings** tab for associating capabilities (Preset metadata no longer contains bindings);
@@ -101,7 +101,16 @@ Capability bindings are managed in the peer **Capability bindings** tab:
 - **Capabilities surface:** Saving a capability updates its library definition only and does not enable it in the current session.
 - **Presets:** Saving an **inactive** Preset updates its configuration file without selecting or activating it. Crucially, saving the **currently active** Preset refreshes its policy immediately in the active session (synchronizing live tool and capability authorization policy), without replacing frozen active capability snapshots.
 
-Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking Profile references or the active selection. The **New preset**, **Import**, and **Fork** dialogs collect name, ID, and target scope (default `Project`) before writing: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Those paths keep their pre-0.5.3 names for compatibility. The dashed creation entry sits below the Preset list; **Add content / slot** below the item list lets you choose Block or Slot. Less-used capture, fork, import, export, and delete actions live under **More** so the Stack and Preview/Diff panes keep the available viewport. Preset rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy resources remain editable in place.
+Existing IDs are immutable during edit. Use **More → Fork** to create a different ID without breaking Profile references or the active selection. The **New preset**, **Import**, and **Fork** dialogs collect name, ID, and target scope (default `Project`) before writing: `Global` targets the user-global `~/.pi/forge/prompt-stacks`, `Project` targets `.pi/forge/prompt-stacks`. Those paths keep their pre-0.5.3 names for compatibility.
+
+The **New preset** dialog offers three initial templates:
+- **Default Pi prompt:** Preserves Pi's built-in prompt layout with movable slots, tools, guidelines, docs, project context, skills, and chat history.
+- **Empty:** Starts with no preset items or tool/skills policies (`items: []`). This does not mean zero context or tools; Pi automatically retains its base system prompt and history when no composed system prompt is provided.
+- **Minimal Worker:** Mirrors the DeepSeek Harness minimal shape (`examples/minimal-prompt-stack.json`) with a single-line system persona ('You are a helpful software engineer assistant.'), chat history with summaries disabled, and restricted tools (`bash` and `edit` only).
+
+Choosing a template automatically updates the suggested preset name as long as it has not been customized by the user. The **Import** and **Fork** dialogs continue to use the supplied or loaded source preset, not a creation template.
+
+The dashed creation entry sits below the Preset list; **Add content / slot** below the item list lets you choose Block or Slot. Less-used capture, fork, import, export, and delete actions live under **More** so the Stack and Preview/Diff panes keep the available viewport. Preset rows show a `global` badge, and save/delete routes use `global:<id>` for exact global mutations. Legacy resources remain editable in place.
 
 Saves, imports, forks, and deletes reload Preset state into the current Pi session. When another surface changes a referenced Preset, returning to Profiles refreshes Profile resolution.
 

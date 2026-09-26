@@ -931,6 +931,16 @@ html, body {
   font-size: 12px;
   font-weight: 600;
 }
+/* New-preset choices share the existing resource dialog and scroll container. */
+.template-options { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 6px; }
+.template-option { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); cursor: pointer; }
+.template-option:hover { border-color: var(--line-strong); }
+.template-option:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); }
+.template-option input[type="radio"] { margin: 2px 0 0; width: auto; flex: none; cursor: pointer; accent-color: var(--accent); }
+.template-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.template-option-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.template-option-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.template-option-desc { font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.4; }
 .resource-form-note {
   margin: 6px 0 2px;
   padding: 8px;

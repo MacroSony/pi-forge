@@ -28,7 +28,7 @@
 
 支持：
 
-- 从默认 Pi mirror 新建预设；
+- 从模板新建预设（默认 Pi 提示词镜像、空白预设、极简工作者）；
 - 在 **堆栈**（Stack）tab 中编排有序的 Block/Slot；
 - 在 **策略**（Policy）tab 中配置工具与技能的 allow/deny 资源策略及自定义默认工具（`tools.initial`）；
 - 在独立的同级 **能力绑定**（Capability bindings）tab 中关联能力（Preset 元数据面板不再包含绑定）；
@@ -89,7 +89,16 @@ Profile 编辑按 Provider／Model、Thinking／Preset 分组，不可变身份�
 - **能力界面：** 保存能力仅更新能力库文件定义，绝不会在当前会话中自动启用该能力。
 - **预设编辑：** 保存**未激活**的 Preset 仅更新其磁盘文件，不会选中或激活它；**关键**：保存**当前已激活**的 Preset 会立即刷新其实时工具策略与能力授权，但不会替换已冻结的活动能力快照。
 
-已有 ID 在编辑时不可修改；需要新 ID 时使用 **Fork**，避免破坏 Profile 引用和当前选择。新建、导入和 fork 的小表单在写入前一起确认名称、ID 与目标 scope（默认 `project`）：选择 `global` 写入用户全局 `~/.pi/forge/prompt-stacks`, 选择 `project` 写入项目 `.pi/forge/prompt-stacks`；这些目录名在 0.5.3 中为兼容性暂时保留。预设列表下方放置虚线新建入口，条目列表下方通过“添加内容／插槽”选择 Block 或 Slot。列表会为全局预设显示 `global` badge；保存和删除通过 `global:<id>` 路由精确作用于全局文件。保存、导入、fork 和删除后会刷新当前 Pi 会话中的 Forge 资源，不重启 Pi 进程。
+已有 ID 在编辑时不可修改；需要新 ID 时使用 **Fork**，避免破坏 Profile 引用和当前选择。新建、导入和 fork 的小表单在写入前一起确认名称、ID 与目标 scope（默认 `project`）：选择 `global` 写入用户全局 `~/.pi/forge/prompt-stacks`, 选择 `project` 写入项目 `.pi/forge/prompt-stacks`；这些目录名在 0.5.3 中为兼容性暂时保留。
+
+**新建预设**对话框提供三种起始模板：
+- **默认 Pi 提示词：** 完整镜像所有默认块与插槽，保留可移动的工具、规范、文档、项目上下文、技能与聊天历史；
+- **空白预设：** 条目为空（`items: []`），不设置工具或技能策略；此时 Pi 会自动保留其基础系统提示词与历史记录（并非零上下文或无工具）；
+- **极简工作者：** 匹配 `examples/minimal-prompt-stack.json` 的极简结构：包含单行系统提示词（“You are a helpful software engineer assistant.”）、关闭摘要的聊天历史，并仅限使用 `bash` 与 `edit` 工具。
+
+选择模板会自动同步更新建议名称（只要用户未手动修改过名称）。导入与 Fork 对话框不显示模板选择器，继续使用导入内容或当前载入的源预设，不套用新建模板。
+
+预设列表下方放置虚线新建入口，条目列表下方通过“添加内容／插槽”选择 Block 或 Slot。列表会为全局预设显示 `global` badge；保存和删除通过 `global:<id>` 路由精确作用于全局文件。保存、导入、fork 和删除后会刷新当前 Pi 会话中的 Forge 资源，不重启 Pi 进程。
 
 ### 兼容性说明
 

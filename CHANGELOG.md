@@ -8,6 +8,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased] - 0.5.5-core
 
+- **New Preset templates:** choose the existing Default Pi prompt, an Empty preset, or Minimal Worker. Empty keeps compiler base-prompt/history fallbacks; Minimal Worker matches the bundled bash/edit example. Template choice does not affect Import/Fork or persist as a schema field.
+- **Capability completion consistency:** unique IDs complete without a scope prefix, while collisions and explicit scope prefixes stay qualified; labels retain resource provenance.
+
 - **Breaking pre-release Capabilities rename:** Instruction modes are now Capabilities. Use `/capability` with `add`, `list`, `bindings`, `enable`, `enable-bound`, `disable`, `status`, `reset`, and `help`; the Agent tool is `forge_capability` with `list`, `status`, `enable`, and `disable`. Existing development configs must convert to `capabilities` resources and new sessions; old directories, schemas, aliases, and continuing capability state are not supported. This is not a published compatibility claim.
 
 - **Session prompt-cache usage:** document read-only branch prompt-cache hit rates (turn and session) derived from persisted message usage, separate main vs nested reporting, and the experimental v1 `toolResult.details.forgeNestedUsage` contract.

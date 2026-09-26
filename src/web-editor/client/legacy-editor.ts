@@ -8,6 +8,11 @@ import { applyEditorTheme, editorTheme } from "./theme.ts";
 import { createVueTabHost } from "./vue-tab-host.ts";
 import { activateEditorView, subscribeEditorView } from "./editor-view-coordinator.ts";
 import { t, type MessageKey } from "./i18n.ts";
+import {
+  createPresetFromTemplate,
+  PRESET_TEMPLATES,
+  type NewPresetTemplateId,
+} from "./preset-templates.ts";
 import type {
   EditorPromptStack,
   PromptStackDiagnostic,
@@ -632,6 +637,7 @@ function showStackModal(title: any, meta: any, body: any, options: any = {}): Pr
     const result = options.onSubmit?.(event.target as HTMLFormElement);
     closeStackModal(result);
   };
+  options.onMounted?.(pane);
   const promise = new Promise((resolve) => {
     stackModalResolver = resolve;
   });
@@ -804,9 +810,31 @@ async function createAndOpenStack(stack: any, activate: any, actionLabel: any, e
   setSemanticStatus(actionLabel, { id: displayId }, "success");
 }
 
+function renderTemplateSelectorHtml(): string {
+  let optionsHtml = "";
+  for (const tpl of PRESET_TEMPLATES) {
+    const isDefault = tpl.id === "default";
+    optionsHtml +=
+      '<label class="template-option" for="template-' + attr(tpl.id) + '">' +
+      '<input type="radio" id="template-' + attr(tpl.id) + '" name="template" value="' + attr(tpl.id) + '"' + (isDefault ? " checked" : "") + ">" +
+      '<span class="template-option-content">' +
+      '<strong class="template-option-title">' + escapeHtml(t(tpl.labelKey)) + "</strong>" +
+      '<span class="template-option-desc">' + escapeHtml(t(tpl.descKey)) + "</span>" +
+      "</span></label>";
+  }
+  return (
+    '<label id="stackResourceTemplateLabel" class="resource-form-label">' + escapeHtml(t("polish.workspace.templateLabel")) + "</label>" +
+    '<div class="template-options" role="radiogroup" aria-labelledby="stackResourceTemplateLabel">' +
+    optionsHtml +
+    "</div>"
+  );
+}
+
 function resourceFormHtml(kind: "new" | "import" | "fork", id: string, name: string, firstPreset: boolean): string {
   const submitKey = kind === "import" ? "polish.workspace.resourceImportSubmit" : kind === "fork" ? "polish.workspace.resourceForkSubmit" : "polish.workspace.resourceSubmit";
+  const templateSection = kind === "new" ? renderTemplateSelectorHtml() : "";
   return '<form id="stackResourceForm" class="resource-form">' +
+    templateSection +
     '<label for="stackResourceName">' + escapeHtml(t("polish.workspace.resourceName")) + '</label>' +
     '<input id="stackResourceName" name="name" type="text" value="' + attr(name) + '" autocomplete="off" required>' +
     '<label for="stackResourceId">' + escapeHtml(t("polish.workspace.resourceId")) + '</label>' +
@@ -823,7 +851,11 @@ function resourceFormHtml(kind: "new" | "import" | "fork", id: string, name: str
     '</div></form>';
 }
 
-async function collectResourceTarget(kind: "new" | "import" | "fork", id: string, name: string): Promise<{ id: string; name: string; scope: "project" | "global" } | null> {
+async function collectResourceTarget(
+  kind: "new" | "import" | "fork",
+  id: string,
+  name: string,
+): Promise<{ id: string; name: string; scope: "project" | "global"; template?: NewPresetTemplateId } | null> {
   const result = await showStackModal(
     t(kind === "new" ? "polish.workspace.newResourceTitle" : kind === "import" ? "polish.workspace.importResourceTitle" : "polish.workspace.forkResourceTitle"),
     t("polish.workspace.resourceMeta"),
@@ -831,12 +863,33 @@ async function collectResourceTarget(kind: "new" | "import" | "fork", id: string
     {
       dialogClass: "resource-modal",
       initialFocus: "#stackResourceName",
+      onMounted: (pane: HTMLElement) => {
+        if (kind !== "new") return;
+        const nameInput = pane.querySelector<HTMLInputElement>("#stackResourceName");
+        if (!nameInput) return;
+        let nameEdited = false;
+        nameInput.addEventListener("input", () => { nameEdited = true; });
+        const radios = pane.querySelectorAll<HTMLInputElement>('input[name="template"]');
+        radios.forEach((radio) => {
+          radio.addEventListener("change", () => {
+            const chosenId = radio.value as NewPresetTemplateId;
+            const tpl = PRESET_TEMPLATES.find((t) => t.id === chosenId);
+            if (!tpl) return;
+            if (!nameEdited) {
+              const nextName = t(tpl.nameKey);
+              nameInput.value = nextName;
+            }
+          });
+        });
+      },
       onSubmit: (form: HTMLFormElement) => {
         const fields = new FormData(form);
+        const template = (fields.get("template") as NewPresetTemplateId) || undefined;
         return {
           id: String(fields.get("id") || ""),
           name: String(fields.get("name") || ""),
           scope: fields.get("scope") === "global" ? "global" : "project",
+          ...(kind === "new" && template ? { template } : {}),
         };
       },
     },
@@ -853,136 +906,15 @@ function normalizeResourceId(value: string): string | null {
 
 async function createNewStack() {
   if (dirty && !confirm(t("confirm.discardChanges"))) return;
-  const target = await collectResourceTarget("new", uniqueStackId("new-preset"), "Default Pi Prompt Mirror");
+  const initialName = t("polish.workspace.templateDefaultName");
+  const target = await collectResourceTarget("new", uniqueStackId("new-preset"), initialName);
   if (!target) return;
   const id = normalizeResourceId(target.id);
   if (!id) return;
-  const stack = defaultNewStack(id, target.name.trim() || id);
+  const template = target.template || "default";
+  const stack = createPresetFromTemplate(template, id, target.name.trim() || id, { autoActivate: stacks.length === 0 });
   const activate = stacks.length === 0 || confirm(t("confirm.activateNewStack"));
   await createAndOpenStack(stack, activate, "status.created", { scope: target.scope });
-}
-
-function defaultNewStack(id: any, name: any) {
-  return {
-    schemaVersion: 2,
-    type: "pi-forge.prompt-stack",
-    id,
-    name,
-    description: "Recreates Pi's built-in prompt layout with pi-forge slots, exposing tools, guidelines, docs, append-system-prompt, project context, skills, date/cwd, and chat history as movable pieces.",
-    autoActivate: stacks.length === 0,
-    mode: "replace",
-    defaults: {
-      syntheticMessagesVisible: false,
-      unresolvedMacroPolicy: "warn",
-    },
-    context: {
-      allowDuplicateChatHistory: false,
-    },
-    tools: {
-      allow: ["*"],
-    },
-    skills: {
-      allow: ["*"],
-    },
-    items: [
-      {
-        kind: "block",
-        id: "main-role",
-        name: "Pi Default Role",
-        enabled: true,
-        role: "system",
-        source: {
-          package: "@earendil-works/pi-coding-agent",
-          file: "dist/core/system-prompt.js",
-        },
-        content: "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
-      },
-      {
-        kind: "slot",
-        id: "tools",
-        name: "Available Tools",
-        enabled: true,
-        role: "system",
-        slot: "tools",
-        options: {
-          format: "plain",
-          onlyWithSnippets: true,
-        },
-      },
-      {
-        kind: "block",
-        id: "custom-tools-note",
-        name: "Custom Tools Note",
-        enabled: true,
-        role: "system",
-        content: "In addition to the tools above, you may have access to other custom tools depending on the project.",
-      },
-      {
-        kind: "slot",
-        id: "tool-guidelines",
-        name: "Guidelines",
-        enabled: true,
-        role: "system",
-        slot: "tool-guidelines",
-        options: {
-          format: "plain",
-          heading: "Guidelines:",
-          includePiDefaultGuidelines: true,
-          piStyle: true,
-        },
-      },
-      {
-        kind: "slot",
-        id: "pi-docs",
-        name: "Pi Documentation Guidance",
-        enabled: true,
-        role: "system",
-        slot: "pi-docs",
-      },
-      {
-        kind: "slot",
-        id: "append-system-prompt",
-        name: "User Append System Prompt",
-        enabled: true,
-        role: "system",
-        slot: "append-system-prompt",
-      },
-      {
-        kind: "slot",
-        id: "project-context",
-        name: "Project Context",
-        enabled: true,
-        role: "system",
-        slot: "project-context",
-      },
-      {
-        kind: "slot",
-        id: "skills",
-        name: "Available Skills",
-        enabled: true,
-        role: "system",
-        slot: "skills",
-        options: {
-          requireReadTool: true,
-        },
-      },
-      {
-        kind: "slot",
-        id: "date-cwd",
-        name: "Date and Working Directory",
-        enabled: true,
-        role: "system",
-        slot: "date-cwd",
-      },
-      {
-        kind: "slot",
-        id: "chat-history",
-        name: "Chat History",
-        enabled: true,
-        slot: "chat-history",
-      },
-    ],
-  };
 }
 
 async function importStackJson() {

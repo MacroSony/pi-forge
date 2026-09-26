@@ -21,7 +21,7 @@ mkdir -p .pi/forge/prompt-stacks
 cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 ```
 
-如果不是在仓库 clone 中，可以打开 `/preset ui` 新建 stack；编辑器使用同样的默认布局。
+无需复制文件，也可以打开 `/forge ui` 新建预设；0.5.5 开发版支持选择默认 Pi 提示词镜像、空白预设（Pi 仍保留基础提示词与历史）或极简工作者模板（仅限 `bash` 与 `edit`）。
 
 ```text
 /preset reload
