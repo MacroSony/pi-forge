@@ -8,7 +8,11 @@
 
 pi-forge provides visual context composition, tool selection, reusable configurations, and request inspection for [Pi](https://github.com/earendil-works/pi).
 
+> Inspired by SillyTavern’s presets, I built pi-forge to customize both what goes into an agent’s context and how it is assembled—and inspect what actually reaches the model.
+
 [Context composition](#context-composition) · [Tool selection](#tool-selection) · [Regex transformations](#regex-transformations) · [Instruction modes](#dynamic-system-prompts-and-tools) · [Request inspection](#preview-and-request-inspection)
+
+> **Optional subagents**: [pi-forge-subagents](https://github.com/MacroSony/pi-forge-subagents) — Delegate tasks to agents with their own model and preset.
 
 ## Install and first run
 
@@ -29,9 +33,7 @@ Restart Pi after installing or updating. In a trusted project:
 3. Edit a block or policy and check **Preview**.
 4. **Save** your changes, then **Activate** the Preset for the current session.
 
-Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Mode with `/instruction use <mode>`. The demo below shows a synthetic read-first setup; try the [Read-first Worker example](docs/reference/instruction-modes.md#read-first-worker) yourself.
-
-![Select a Preset and enable instructions and editing tools from the Pi terminal](assets/readme/tui-quickstart.gif)
+Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Mode with `/instruction use <mode>`. Try the [Read-first Worker example](docs/reference/instruction-modes.md#read-first-worker) yourself.
 
 ## Features
 
@@ -91,12 +93,6 @@ See what your edits change before calling a model, then inspect captured request
 ![An unsaved instruction change compared with the saved Preset](assets/readme/en/edit-draft-diff.gif)
 
 **Current session** also shows turn and branch cache-hit rates, with main-model and reported nested-tool usage kept separate. These are recorded usage metrics, not a complete bill. See [cache usage](docs/reference/session-cache.md), [debugging](docs/guides/debugging.md), and [commands](docs/reference/commands.md).
-
-## Why I built it
-
-I wanted to configure both the content and composition of an agent’s input: system instructions, tool descriptions, project files, examples, and conversation history.
-
-Inspired by my experience with SillyTavern's presets, I built pi-forge to edit these components in Pi and inspect the requests sent to the model.
 
 ## Examples
 

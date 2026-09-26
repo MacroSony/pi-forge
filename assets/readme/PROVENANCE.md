@@ -4,9 +4,11 @@
 
 The concept header `../pi-forge-header-concept-1.png` is restored unchanged. The duplicate overview screenshot is no longer embedded; old image files remain available. Installation precedes all demo GIFs.
 
-New continuous recordings, based on source `6a197e6` plus the local unpublished-alias removal:
+Follow-up review: the TUI clip was removed from both READMEs because its command/status flow did not clearly communicate the benefit. The file and recorder are retained as historical material; the five WebUI feature GIFs remain in use. The personal motivation is now a short opening note, with a prominent optional-subagents link before installation.
 
-- `tui-quickstart.gif`: real Pi 0.87.1 TUI, 1000×540, about 12.75s. `/preset use project:read-first` → `/instruction use project:write-tools` → `/instruction status`. This uses synthetic read-first resources, not a verbatim copy of the checked-in example. Real Forge operations change selected tools from read/ls/control to also bash/edit. No model response is shown or implied.
+Recordings produced for this refresh, based on source `6a197e6` plus the local unpublished-alias removal:
+
+- `tui-quickstart.gif` (retained, not embedded in README): real Pi 0.87.1 TUI, 1000×540, about 12.75s. `/preset use project:read-first` → `/instruction use project:write-tools` → `/instruction status`. This uses synthetic read-first resources, not a verbatim copy of the checked-in example. Real Forge operations change selected tools from read/ls/control to also bash/edit. No model response is shown or implied.
 - `<locale>/tool-selection.gif`: real Policy picker, defaults read/ls → read/ls/grep, Save/Activate, compiled Preview tool list. Permission ceiling already includes grep; this is a default-selection edit, not an authorization bypass. About 12.94s.
 - `<locale>/regex-transforms.gif`: enable a preconfigured outgoing system-text rule, then inspect `SAMPLE_TOKEN` → `[REDACTED]` in Preview. About 8.07s. Only synthetic text is used; no general secret-detection guarantee.
 

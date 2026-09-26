@@ -8,7 +8,11 @@
 
 pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文编排、工具选择、配置复用和请求检查。
 
+> 受 SillyTavern 预设的启发，我开发了 pi-forge，既用来定制 Agent 上下文的内容与组装方式，也用来检查实际发送给模型的请求。
+
 [上下文编排](#上下文编排) · [工具选择](#工具选择) · [正则文本变换](#正则文本变换) · [动态指令与工具](#动态系统提示词与工具) · [预览与请求检查](#预览与请求检查)
+
+> **Optional subagents（可选）**：[pi-forge-subagents](https://github.com/MacroSony/pi-forge-subagents) —— 将任务委派给拥有独立模型与预设的子代理。
 
 ## 安装与第一次使用
 
@@ -30,9 +34,7 @@ pi install npm:@zihanw/pi-forge
 3. 改一个内容块或工具策略，在 **Preview** 里看结果。
 4. 点 **Save** 保存，再点 **Activate**，让当前会话用上这份预设。
 
-喜欢用终端？通过 `/preset use <id>` 选择预设，用 `/instruction use <mode>` 启用模式。下面用临时示例演示“先读后改”；你可以从 [Read-first Worker 示例](docs/zh-CN/reference/instruction-modes.md#read-first-worker)开始。
-
-![在 Pi 终端中选择预设，再按需启用指令和编辑工具](assets/readme/tui-quickstart.gif)
+喜欢用终端？通过 `/preset use <id>` 选择预设，用 `/instruction use <mode>` 启用模式。你可以从 [Read-first Worker 示例](docs/zh-CN/reference/instruction-modes.md#read-first-worker)开始。
 
 ## 功能
 
@@ -92,12 +94,6 @@ pi install npm:@zihanw/pi-forge
 ![未保存的指令修改与已保存预设的差异](assets/readme/zh-CN/edit-draft-diff.gif)
 
 **当前会话**还会显示本轮和当前分支的缓存命中率，主模型与已上报的嵌套工具用量分开统计。这是已记录的用量，不是完整账单。详见[缓存用量](docs/zh-CN/reference/session-cache.md)、[调试指南（英文）](docs/guides/debugging.md)与[命令参考](docs/zh-CN/reference/commands.md)。
-
-## 为什么做这个插件
-
-我希望同时配置 Agent 输入的内容与组合方式，包括系统指令、工具说明、项目文件、示例消息和聊天记录。
-
-受 SillyTavern 预设使用体验的启发，我开发了 pi-forge，用于在 Pi 中编辑这些组成部分，并检查实际发送给模型的请求。
 
 ## 示例
 
