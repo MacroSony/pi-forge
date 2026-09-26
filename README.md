@@ -79,6 +79,8 @@ See [Regex transformation reference](docs/reference/stack-schema.md#regex-transf
 
 Updates reach the model as native mid-conversation system updates on supported models, with a labeled user-message fallback otherwise (see [delivery details](docs/reference/instruction-modes.md#delivery-models-native-vs-fallback)).
 
+On supported provider/model combinations, adding or removing tools can preserve the cached prompt prefix. Support differs for additions and removals, and cache hits are not guaranteed; see [provider support and cache observations](docs/reference/provider-support.md#observed-cache-behavior).
+
 ![Use and locate Explore mode: tools and instruction changes together; Off restores read and projects a removal](assets/readme/en/mode-tools.gif)
 
 See [Instruction modes reference](docs/reference/instruction-modes.md).

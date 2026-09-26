@@ -80,6 +80,8 @@ pi install npm:@zihanw/pi-forge
 
 更新在支持的模型上以原生会话中系统消息送达，其他模型则回退为带标记的用户消息（详见[投递模型说明](docs/zh-CN/reference/instruction-modes.md#投递模型native-与-fallback)）。
 
+在支持的 provider／模型组合上，新增或移除工具可以保留已有的提示词缓存前缀。新增与移除的支持范围不同，实际缓存命中不作保证；详见[支持情况与缓存实测](docs/zh-CN/reference/provider-support.md#实测缓存表现)。
+
 ![启用并定位探索模式：工具与指令同步可见；停用恢复 read 并显示移除更新](assets/readme/zh-CN/mode-tools.gif)
 
 详见[指令模式参考](docs/zh-CN/reference/instruction-modes.md)。
