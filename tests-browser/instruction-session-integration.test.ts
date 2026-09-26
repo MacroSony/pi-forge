@@ -51,10 +51,10 @@ test(`built editor uses projected text and separate tools without management inf
 		const seedMsg = {role: "system" as const, content: "", sections: {tools: "Base tool descriptions", rules: "Base rules"}, timestamp: Date.now()};
 		harness.manager.appendMessage(seedMsg);
 		harness.session.refreshContext();
-		await quietPrompt("/system-update use project:review");
+		await quietPrompt("/instruction use project:review");
 		await quietPrompt("Ordinary user dialogue after mode activation.");
 		assert.equal(harness.streamContexts.length, 2);
-		await quietPrompt("/system-update add 回答简洁，保留必要的风险说明。");
+		await quietPrompt("/instruction add 回答简洁，保留必要的风险说明。");
 		await quietPrompt("Ordinary user dialogue after rule update.");
 		assert.equal(harness.streamContexts.length, 3);
 		await quietPrompt("/preset ui");
@@ -221,7 +221,7 @@ test(`built editor uses projected text and separate tools without management inf
 		await page.locator("#sessionSurfaceBtn").click();
 		await panel.locator("[data-instructions-reset-btn]").click();
 		await panel.locator("[data-instructions-reset-confirm-group]").waitFor();
-		await quietPrompt("/system-update add NEW_RULE_WHILE_CONFIRMING");
+		await quietPrompt("/instruction add NEW_RULE_WHILE_CONFIRMING");
 		await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 		await page.waitForFunction(() => document.querySelectorAll("[data-session-instructions] .active-item-card").length === 2);
 		assert.equal(await panel.locator("[data-instructions-reset-confirm-group]").count(), 0, "real CLI change invalidates the pending browser confirmation");

@@ -4,16 +4,13 @@ const INSTRUCTION_USAGE = "/instruction add <text> | list | bindings | use <[sco
 const INSTRUCTION_VERBS = ["add", "list", "bindings", "use", "use-bound", "off", "status", "reset", "help"];
 export function registerInstructionCommand(pi, runtime) {
     const command = {
-        description: "Manage session instruction modes (no inference); /system-update is a legacy alias",
+        description: "Manage session instruction modes (no inference)",
         getArgumentCompletions: (prefix) => instructionArgumentCompletions(runtime, prefix),
         handler: async (args, ctx) => {
             await handleInstructionCommand(runtime, args, ctx);
         },
     };
-    // Keep the legacy registration as a true alias: the handler and completion
-    // projection are intentionally the same functions, not two command paths.
     pi.registerCommand("instruction", command);
-    pi.registerCommand("system-update", command);
 }
 async function handleInstructionCommand(runtime, args, ctx) {
     const { operation, value } = parseInstructionInvocation(args);
@@ -156,7 +153,6 @@ function instructionHelp() {
         "off completes exact active activation IDs; the label identifies the source and actor.",
         "Completions use the current session and last published workspace snapshot only.",
         "Run /instruction list to explicitly reload the instruction-mode library; no watcher or per-keystroke scan is used.",
-        "/system-update is the legacy alias for /instruction.",
     ].join("\n");
 }
 //# sourceMappingURL=instruction-command.js.map

@@ -230,7 +230,7 @@ test("instruction mode editor: CRUD, 409 dirty preservation, binding edit and pr
 	const server = createHttpServer((req, res) => {
 		const url = new URL(req.url || "/", "http://127.0.0.1");
 
-		if (url.pathname.includes("activate") || url.pathname.includes("apply") || url.pathname.includes("system-update")) {
+		if (url.pathname.includes("activate") || url.pathname.includes("apply")) {
 			activationCalls.push(url.pathname);
 		}
 

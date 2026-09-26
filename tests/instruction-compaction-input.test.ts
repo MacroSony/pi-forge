@@ -76,7 +76,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 			try {
 				// Turn 1: activate review mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Assistant acknowledges review mode is now active"]);
 				await h.prompt("Turn 1 prompt: check my code");
 
@@ -211,12 +211,12 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 			try {
 				// Turn 1: activate review mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Turn 1 assistant: mode activated"]);
 				await h.prompt("Turn 1 prompt");
 
 				// Turn 2: deactivate review mode
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				h.setResponses(["Turn 2 assistant: mode deactivated"]);
 				await h.prompt("Turn 2 prompt");
 
@@ -267,7 +267,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 				// Summarizer DID NOT see the off slash command (slash commands handled locally, not in transcript)
 				assert.ok(
-					!promptText.includes("/system-update off review"),
+					!promptText.includes("/instruction off review"),
 					"off slash command is handled locally and is NOT in transcript",
 				);
 
@@ -337,7 +337,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 			try {
 				// Turn 1: activate review mode in fallback mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Assistant acknowledges review mode in fallback"]);
 				await h.prompt("Turn 1 prompt: check my code");
 
@@ -471,12 +471,12 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 			try {
 				// Turn 1: activate review mode in fallback mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Turn 1 assistant in fallback: mode activated"]);
 				await h.prompt("Turn 1 prompt");
 
 				// Turn 2: deactivate review mode in fallback mode
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				h.setResponses(["Turn 2 assistant in fallback: mode deactivated"]);
 				await h.prompt("Turn 2 prompt");
 
@@ -526,7 +526,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 
 				// Summarizer did NOT see the off slash command
 				assert.ok(
-					!promptText.includes("/system-update off review"),
+					!promptText.includes("/instruction off review"),
 					"off slash command is handled locally and is NOT in transcript",
 				);
 
@@ -617,7 +617,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				await h.prompt("Turn 1 baseline prompt " + "word ".repeat(50));
 
 				// Turn 2: activate review mode before compaction
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Turn 2 assistant with mode active"]);
 				await h.prompt("Turn 2 prompt");
 
@@ -673,7 +673,7 @@ test("Characterize real SDK compaction input and postcompact context", async (su
 				assert.ok(checkpointIndex < summaryIndex, "checkpoint precedes summary");
 
 				// Now, activate a second mode (audit) AFTER compaction
-				await h.prompt("/system-update use audit");
+				await h.prompt("/instruction use audit");
 				h.setResponses(["Turn 4 assistant with audit mode"]);
 				await h.prompt("Turn 4 prompt");
 

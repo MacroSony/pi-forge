@@ -20,8 +20,8 @@ test("live tools and base prompts track an off performed in a run that started w
 		writeFileSync(join(root, "instruction-modes", "review.json"), JSON.stringify({ schemaVersion: 1, type: "pi-forge.instruction-mode", id: "review", content: "REVIEW", tools: { add: [], remove: ["fake_write"] } }));
 		const h = await createInstructionAgentHarness({ cwd, native: true });
 		try {
-			await h.prompt("/system-update use review");
-			h.setOnDriver(async () => { await h.prompt("/system-update off review"); });
+			await h.prompt("/instruction use review");
+			h.setOnDriver(async () => { await h.prompt("/instruction off review"); });
 			h.setResponses([{ toolCalls: [{ name: "fake_driver" }] }, "done"]);
 			await h.prompt("stop the review mode mid-run");
 			assert.equal(h.streamContexts.length, 2);

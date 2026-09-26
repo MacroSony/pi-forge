@@ -84,8 +84,8 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			const env = setupHermeticProject();
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
-				// 1.1 Idle /system-update use review should not trigger provider request
-				await harness.prompt("/system-update use review");
+				// 1.1 Idle /instruction use review should not trigger provider request
+				await harness.prompt("/instruction use review");
 				assert.equal(harness.streamContexts.length, 0, "idle use command must not trigger provider call");
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write should be gated off");
 
@@ -111,7 +111,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.equal(writeExecutions.length, 0, "blocked tool call must not execute fake_write");
 
 				// 1.3 Off restores fake_write and subsequent execution succeeds
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				assert.ok(harness.getActiveToolNames().includes("fake_write"), "fake_write restored after off");
 
 				harness.setResponses([
@@ -151,7 +151,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: false });
 			try {
 				// Turn 1: activate review in fallback mode
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 				harness.setResponses(["Fallback turn 1 acknowledged"]);
 				await harness.prompt("Turn 1 prompt");
 
@@ -177,7 +177,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.ok(String(userUpdates1[0].content).includes("REVIEW_ONLY"));
 
 				// Turn 2: deactivate review mode
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				harness.setResponses(["Fallback turn 2 acknowledged"]);
 				await harness.prompt("Turn 2 prompt");
 
@@ -196,8 +196,8 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				);
 
 				// Turn 3: repeat use and off cycle; verify no leftover residue
-				await harness.prompt("/system-update use review");
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction use review");
+				await harness.prompt("/instruction off review");
 				harness.setResponses(["Fallback turn 3 acknowledged"]);
 				await harness.prompt("Turn 3 prompt");
 
@@ -218,7 +218,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 	);
 
 	await suite.test(
-		"3. mid-run fake_driver triggers session.prompt('/system-update use review') then off, capturing 3 stream contexts and tool gate transitions",
+		"3. mid-run fake_driver triggers session.prompt('/instruction use review') then off, capturing 3 stream contexts and tool gate transitions",
 		async () => {
 			const env = setupHermeticProject();
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
@@ -227,10 +227,10 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				harness.setOnDriver(async () => {
 					driverStep++;
 					if (driverStep === 1) {
-						await harness.session.prompt("/system-update use review");
+						await harness.session.prompt("/instruction use review");
 						return "activated-review-midrun";
 					} else if (driverStep === 2) {
-						await harness.session.prompt("/system-update off review");
+						await harness.session.prompt("/instruction off review");
 						return "deactivated-review-midrun";
 					}
 					return "done";
@@ -278,9 +278,9 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
 				// 4.1 Manual add without active preset
-				await harness.prompt("/system-update add MANUAL_SPECIAL_DIRECTIVE");
+				await harness.prompt("/instruction add MANUAL_SPECIAL_DIRECTIVE");
 				// 4.2 Stacking mode
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 
 				harness.setResponses(["Both active"]);
 				await harness.prompt("Check active stack");
@@ -293,7 +293,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "tool gate from mode must be active");
 
 				// 4.3 Reset clears both manual and mode instructions
-				await harness.prompt("/system-update reset");
+				await harness.prompt("/instruction reset");
 				assert.ok(harness.getActiveToolNames().includes("fake_write"), "tools recomputed after reset");
 
 				harness.setResponses(["After reset"]);
@@ -329,7 +329,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			});
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 
 				// Mutate file on disk
 				const modePath = join(env.cwd, ".pi", "forge", "instruction-modes", "review.json");
@@ -353,11 +353,11 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.ok(!prompt1.includes("MUTATED_DISK_CONTENT"), "disk mutation must not alter live snapshot");
 
 				// Prompting use review while active issues warning and retains snapshot
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 
 				// Reload snapshot via off then use
-				await harness.prompt("/system-update off review");
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction off review");
+				await harness.prompt("/instruction use review");
 
 				// Prompt 2: new snapshot reflects disk changes
 				harness.setResponses(["Response 2"]);
@@ -409,7 +409,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.equal(initialEventCount, 0);
 
 				// 6.1 Unknown mode rejected
-				await harness.prompt("/system-update use definitely_unknown_mode_9999");
+				await harness.prompt("/instruction use definitely_unknown_mode_9999");
 				assert.deepEqual(harness.getActiveToolNames(), baselineTools, "tools unchanged on unknown mode");
 				assert.equal(
 					readInstructionSession(cmdCtx).events.length,
@@ -418,7 +418,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				);
 
 				// 6.2 Invalid local shadows global mode without fallback
-				await harness.prompt("/system-update use shadow_target");
+				await harness.prompt("/instruction use shadow_target");
 				assert.deepEqual(harness.getActiveToolNames(), baselineTools, "tools unchanged on shadowed fault");
 				assert.equal(
 					readInstructionSession(cmdCtx).events.length,
@@ -467,7 +467,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				const baseline = [...denyHarness.getActiveToolNames()];
 				const denyCmdCtx = (denyHarness.session as any)._extensionRunner.createCommandContext();
 
-				await denyHarness.prompt("/system-update use add_write");
+				await denyHarness.prompt("/instruction use add_write");
 
 				assert.deepEqual(denyHarness.getActiveToolNames(), baseline, "no tool change: fake_write remains inactive");
 				assert.equal(
@@ -499,7 +499,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			});
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
-				await harness.prompt("/system-update use tool_only");
+				await harness.prompt("/instruction use tool_only");
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write removed by tool-only mode");
 
 				harness.setResponses(["Tool-only acknowledged"]);
@@ -523,7 +523,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			const env = setupHermeticProject();
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 
 				// 8.1 Turn 1: native model
 				harness.setResponses(["Native response 1"]);
@@ -591,7 +591,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 	);
 
 	await suite.test(
-		"9. /system-update status output accurately presents instruction count, presentation mode, and delivery state",
+		"9. /instruction status output accurately presents instruction count, presentation mode, and delivery state",
 		async () => {
 			const env = setupHermeticProject();
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
@@ -602,7 +602,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			};
 			try {
 				// 9.1 Initial status when no instructions active: 0 mode, native label, none delivery, 0 provider requests
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 0, "status command must not trigger provider call");
 				const log1 = capturedLogs[capturedLogs.length - 1] ?? "";
 				assert.match(log1, /Instruction modes: 0;/, "initial status reports 0 mode");
@@ -610,8 +610,8 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				assert.match(log1, /;\s*none/, "initial delivery state is none");
 
 				// 9.2 Status after mode use: 1 mode, pending next request, 0 provider requests
-				await harness.prompt("/system-update use review");
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction use review");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 0, "status after use must not trigger provider call");
 				const log2 = capturedLogs[capturedLogs.length - 1] ?? "";
 				assert.match(log2, /Instruction modes: 1;/, "reports 1 mode active");
@@ -622,7 +622,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				await harness.prompt("Check status after prompt");
 				assert.equal(harness.streamContexts.length, 1, "prompt executes exactly 1 provider turn");
 
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 1, "status after prompt does not increase provider count");
 				const log3 = capturedLogs[capturedLogs.length - 1] ?? "";
 				assert.match(log3, /Instruction modes: 1;/, "reports 1 mode active");
@@ -639,14 +639,14 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				};
 				await harness.session.setModel(fallbackModel);
 
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 1, "status after model switch does not increase provider count");
 				const log4 = capturedLogs[capturedLogs.length - 1] ?? "";
 				assert.match(log4, /attributed user updates;/, "reports fallback label after model switch");
 
 				// 9.5 Deactivate mode: status reports 0 modes after off
-				await harness.prompt("/system-update off review");
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction off review");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 1, "status after off does not increase provider count");
 				const log5 = capturedLogs[capturedLogs.length - 1] ?? "";
 				assert.match(log5, /Instruction modes: 0;/, "reports 0 mode after off");
@@ -688,20 +688,20 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
 			try {
-				await harness.prompt("/system-update use review");
-				await harness.prompt("/system-update use audit");
+				await harness.prompt("/instruction use review");
+				await harness.prompt("/instruction use audit");
 
 				// Both active: both fake_write and fake_read removed
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write removed by both");
 				assert.ok(!harness.getActiveToolNames().includes("fake_read"), "fake_read removed by audit");
 
 				// Deactivate audit: fake_read restored, but fake_write still removed by review
-				await harness.prompt("/system-update off audit");
+				await harness.prompt("/instruction off audit");
 				assert.ok(harness.getActiveToolNames().includes("fake_read"), "fake_read restored after audit off");
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write still removed by review");
 
 				// Deactivate review: fake_write now restored
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				assert.ok(harness.getActiveToolNames().includes("fake_write"), "fake_write restored after review off");
 
 				assert.equal(harness.fetchAttempts, 0);
@@ -742,10 +742,10 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				harness.setOnDriver(async () => {
 					driverStep++;
 					if (driverStep === 1) {
-						await harness.session.prompt("/system-update use remove_write");
+						await harness.session.prompt("/instruction use remove_write");
 						return "step1-remove-write";
 					} else if (driverStep === 2) {
-						await harness.session.prompt("/system-update off remove_write");
+						await harness.session.prompt("/instruction off remove_write");
 						return "step2-restore-write";
 					}
 					return "done";
@@ -828,7 +828,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				harness.session.refreshContext();
 
 				// Turn 1: activate review mode and verify foreign sections survive preset projection and instruction projection
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 				harness.setResponses(["Turn 1 response"]);
 				await harness.prompt("Prompt 1 with foreign sections");
 
@@ -846,7 +846,7 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				);
 
 				// Turn 2: deactivate mode and verify foreign sections still preserved
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				harness.setResponses(["Turn 2 response"]);
 				await harness.prompt("Prompt 2 after off");
 
@@ -878,10 +878,10 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 			try {
 				let callbackRan = false;
 				harness.setResponses([
-					// Busy provider response callback: invoke /system-update add during active provider call
+					// Busy provider response callback: invoke /instruction add during active provider call
 					async () => {
 						callbackRan = true;
-						await harness.prompt("/system-update add BUSY_RULE");
+						await harness.prompt("/instruction add BUSY_RULE");
 						// Return final stop response without tool calls
 						return "First turn completed without tools.";
 					},
@@ -941,10 +941,10 @@ test("Instruction Agent Acceptance Suite (serial to prevent global directory rac
 				harness.setOnDriver(async () => {
 					driverStep++;
 					if (driverStep === 1) {
-						await harness.session.prompt("/system-update use review");
+						await harness.session.prompt("/instruction use review");
 						return "step1-use-review";
 					} else if (driverStep === 2) {
-						await harness.session.prompt("/system-update off review");
+						await harness.session.prompt("/instruction off review");
 						return "step2-off-review";
 					}
 					return "done";

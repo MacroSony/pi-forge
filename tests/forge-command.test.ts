@@ -109,12 +109,12 @@ test("payload save parses quoted paths, rejects unknown flags and requires expli
 	assert.equal(f.state.interceptNextProviderPayload, false);
 });
 
-test("migration typo is rejected before writes, old and canonical root aliases coexist", async () => {
+test("migration typo is rejected before writes and canonical roots coexist", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "forge-cli-migrate-")); const h = createHarness(), { ctx, notifications } = createContext(cwd);
 	writeLegacyStack(cwd, "old.json", { schemaVersion: 1, type: "pi-forge.prompt-stack", id: "old", items: [] });
 	await startSession(h, ctx);
-	assert.ok(h.commands.forge && h.commands.instruction && h.commands["system-update"] && h.commands.preset && h.commands.profile);
-	assert.equal(h.commands.instruction.handler, h.commands["system-update"].handler);
+	assert.ok(h.commands.forge && h.commands.instruction && h.commands.preset && h.commands.profile);
+	assert.equal(h.commands["system-update"], undefined);
 	await h.commands.preset.handler("migrate-stacks --dryrun", ctx);
 	assert.equal(existsSync(join(cwd, ".pi", "forge", "prompt-stacks", "old.json")), false);
 	assert.match(notifications.at(-1)!.message, /Unknown|Usage/);

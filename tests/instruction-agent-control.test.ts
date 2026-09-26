@@ -464,7 +464,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				// Safe recovery: restore trust, human off succeeds
 				harness.settingsManager.isProjectTrusted = () => true;
 				(harness.session as any).settingsManager.isProjectTrusted = () => true;
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				const historyRecovered = readInstructionSession(harness.session as any);
 				assert.equal(historyRecovered.events.length, 2, "human recovery succeeds once trust restored");
 			} finally {
@@ -569,7 +569,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				assert.equal(historyAfter.events.length, 1, "agent off was rejected, no deactivate event");
 
 				// But human CLI off can still deactivate it for safe recovery!
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				const historyAfterHuman = readInstructionSession(harness.session as any);
 				assert.equal(historyAfterHuman.events.length, 2, "human off succeeds as recovery");
 				assert.equal(historyAfterHuman.events[1].op, "deactivate");
@@ -861,7 +861,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 
 			try {
 				// 8.1 Human activates bound mode via CLI use-bound
-				await harness.prompt("/system-update use-bound review");
+				await harness.prompt("/instruction use-bound review");
 
 				const history1 = readInstructionSession(harness.session as any);
 				assert.equal(history1.events.length, 1);
@@ -890,7 +890,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				assert.match(text1, /user-owned/i, "agent off on user-owned mode must be rejected");
 
 				// 8.2 Human adds manual instruction
-				await harness.prompt("/system-update add Human manual rule");
+				await harness.prompt("/instruction add Human manual rule");
 				const history2 = readInstructionSession(harness.session as any);
 				assert.equal(history2.events.length, 2);
 				const manualActId = (history2.events[1] as any).snapshot.activationId;
@@ -917,8 +917,8 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				assert.match(text2, /user-owned|manual/i, "agent off on manual must be rejected");
 
 				// 8.3 Human turns off user-bound mode, leaving session clean
-				await harness.prompt(`/system-update off ${userBoundActId}`);
-				await harness.prompt(`/system-update off ${manualActId}`);
+				await harness.prompt(`/instruction off ${userBoundActId}`);
+				await harness.prompt(`/instruction off ${manualActId}`);
 
 				// 8.4 Agent activates review mode
 				harness.setResponses([
@@ -939,7 +939,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				assert.equal(agentAct.actor, "agent");
 
 				// User repeated use via use-bound: idempotent, does NOT change actor to user!
-				await harness.prompt("/system-update use-bound review");
+				await harness.prompt("/instruction use-bound review");
 				const history4 = readInstructionSession(harness.session as any);
 				assert.equal(
 					history4.events.length,
@@ -948,7 +948,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				);
 
 				// Human user can turn off agent-activated mode
-				await harness.prompt("/system-update off review");
+				await harness.prompt("/instruction off review");
 				const history5 = readInstructionSession(harness.session as any);
 				const lastEvent = history5.events[history5.events.length - 1];
 				assert.equal(lastEvent.op, "deactivate");
@@ -1034,10 +1034,10 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 
 			try {
 				// Calling status and bindings via CLI does not invoke provider
-				await harness.prompt("/system-update status");
+				await harness.prompt("/instruction status");
 				assert.equal(harness.streamContexts.length, 0, "status must not invoke provider");
 
-				await harness.prompt("/system-update bindings");
+				await harness.prompt("/instruction bindings");
 				assert.equal(harness.streamContexts.length, 0, "bindings must not invoke provider");
 
 				// Tool call turn executes exactly the scripted turn and follow-up
@@ -1122,7 +1122,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				await harness.prompt("Activate review in P1");
 
 				// Human adds unbound manual instruction
-				await harness.prompt("/system-update add Human persistent guidance");
+				await harness.prompt("/instruction add Human persistent guidance");
 
 				const historyBefore = readInstructionSession(harness.session as any);
 				assert.equal(historyBefore.events.length, 2);
@@ -1147,7 +1147,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				const capturedLogs: string[] = [];
 				console.log = (...args: unknown[]) => capturedLogs.push(args.map(String).join(" "));
 				try {
-					await harness.prompt("/system-update status");
+					await harness.prompt("/instruction status");
 					const lastLog = capturedLogs[capturedLogs.length - 1] ?? "";
 					assert.match(
 						lastLog,
@@ -1166,7 +1166,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				// Now switch back to preset-one and test same-preset reload
 				await harness.prompt("/preset use preset-one");
 				// Activate bound mode again
-				await harness.prompt("/system-update use-bound review");
+				await harness.prompt("/instruction use-bound review");
 
 				// Modify review mode content on disk
 				const modesDir = join(env.cwd, ".pi", "forge", "instruction-modes");
@@ -1192,7 +1192,7 @@ test("Instruction Agent Authorized Control Suite (serial to prevent global direc
 				capturedLogs.length = 0;
 				console.log = (...args: unknown[]) => capturedLogs.push(args.map(String).join(" "));
 				try {
-					await harness.prompt("/system-update status");
+					await harness.prompt("/instruction status");
 					const lastLog = capturedLogs[capturedLogs.length - 1] ?? "";
 					assert.match(
 						lastLog,

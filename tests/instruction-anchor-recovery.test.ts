@@ -39,7 +39,7 @@ test("legacy carrier coverage is read without rewriting entries or duplicating n
 	const cwd = mkdtempSync(join(tmpdir(), "forge-legacy-anchor-"));
 	const manager = SessionManager.inMemory(cwd);
 	manager.appendCustomEntry(INSTRUCTION_EVENT_ENTRY, activation("legacy"));
-	manager.appendCustomMessageEntry(INSTRUCTION_DELIVERY_TYPE, "Forge instruction state changed. Use /system-update status to inspect it.", false,
+	manager.appendCustomMessageEntry(INSTRUCTION_DELIVERY_TYPE, "Forge instruction state changed. Use /instruction status to inspect it.", false,
 		{ schemaVersion: 1, throughEventId: "legacy" });
 	const original = JSON.stringify(manager.getBranch());
 	assert.equal(read(manager).lastAnchoredIndex, 0);
@@ -50,7 +50,7 @@ test("legacy carrier coverage is read without rewriting entries or duplicating n
 		assert.equal(h.streamContexts.length, 1);
 		assert.equal(manager.getBranch().filter(e => e.type === "custom" && e.customType === INSTRUCTION_DELIVERY_TYPE).length, 0);
 		assert.ok(h.streamContexts[0]!.messages.some(m => m.role === "system" && JSON.stringify(m.sections ?? {}).includes("RULE-legacy")));
-		assert.ok(manager.getBranch().some(e => e.type === "custom_message" && e.content === "Forge instruction state changed. Use /system-update status to inspect it."));
+		assert.ok(manager.getBranch().some(e => e.type === "custom_message" && e.content === "Forge instruction state changed. Use /instruction status to inspect it."));
 		assert.equal(h.fetchAttempts, 0);
 	} finally { await h.dispose(); rmSync(cwd, { recursive: true, force: true }); }
 });
@@ -78,7 +78,7 @@ test("agent_end defers a pending anchor after an aborted response retains a part
 	const h = await createInstructionAgentHarness({ cwd, native: true });
 	try {
 		h.setResponses([async () => {
-			await h.prompt("/system-update add FINAL_UNRESOLVED_RULE");
+			await h.prompt("/instruction add FINAL_UNRESOLVED_RULE");
 			return fauxAssistantMessage([fauxToolCall("fake_read", {}, { id: "unfinished" })], { stopReason: "aborted" });
 		}]);
 		await h.prompt("Stop at the tool call boundary");

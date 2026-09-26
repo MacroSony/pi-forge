@@ -172,14 +172,14 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - `/preset reload`
 - `/preset ui [stop|restart]`
 - `/preset migrate-stacks [--dry-run] [--overwrite] [--delete-legacy]`
-- `/system-update list`
-- `/system-update bindings`
-- `/system-update use <[scope:]id>`
-- `/system-update use-bound <id>`
-- `/system-update status`
-- `/system-update off <activation-or-mode-id>`
-- `/system-update reset`
-- `/system-update add <text>`
+- `/instruction list`
+- `/instruction bindings`
+- `/instruction use <[scope:]id>`
+- `/instruction use-bound <id>`
+- `/instruction status`
+- `/instruction off <activation-or-mode-id>`
+- `/instruction reset`
+- `/instruction add <text>`
 - `/intercept`
 - `/payload next [save=<path>]`
 
@@ -254,7 +254,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tool modification patches supporting `add` and `remove` arrays (tool IDs ≤ 128 characters, no whitespace/controls/wildcards, up to 256 tools per array). Modes support `add` and `remove` ONLY; candidate `only`/allowlist is not implemented.
 - Fail-closed project-over-global shadowing for bare IDs; invalid local definitions fail closed with diagnostics and never fall back to global definitions.
 - Scoped selectors (`project:<id>` and `global:<id>`) for targeting exact definitions.
-- Local execution with zero inference cost: `/system-update` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
+- Local execution with zero inference cost: `/instruction` commands and Web activity panel actions update internal session state and tool policy without invoking model inference or consuming API tokens.
 - Unified `context_with_system` lifecycle: whole compiler, base prompt replacement, and instruction mode projection pipeline moved to `context_with_system` without an internal two-phase split.
 - Canonical session projection via `buildSessionProjection`: runtime, preview, and anchor locator helpers reflect turn-level `context_edit` omissions, replacements, and `sourceEntry` tracking without mutating raw session JSONL history on disk.
 - Leading System prompt preservation: SDK incoming leading System message always remains first; Forge prefix plain metadata delivery anchors are inserted immediately after it.

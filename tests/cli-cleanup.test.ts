@@ -6,7 +6,7 @@ import test from "node:test";
 import { instructionModesDir } from "../src/repositories/instruction-mode.ts";
 import { createContext, createHarness, startSession, writeProfile, writeStack } from "./helpers/index-command-harness.ts";
 
-test("instruction aliases share help and read-only completion projections", async () => {
+test("instruction command works and its unpublished alias is unregistered", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-cli-cleanup-"));
 	mkdirSync(instructionModesDir(cwd), { recursive: true });
 	writeFileSync(join(instructionModesDir(cwd), "review.json"), JSON.stringify({
@@ -40,8 +40,11 @@ test("instruction aliases share help and read-only completion projections", asyn
 	assert.deepEqual(harness.getActiveTools(), beforeTools);
 	assert.equal(harness.appended.length, beforeAppends); // completion itself is read-only.
 
-	await harness.commands["system-update"].handler("help", ctx);
-	assert.match(context.editors.at(-1)?.text ?? "", /legacy alias/);
+	assert.ok(harness.commands.instruction);
+	assert.equal(harness.commands["system-update"], undefined);
+	await harness.commands.instruction.handler("help", ctx);
+	assert.match(context.editors.at(-1)?.text ?? "", /\/instruction\b/);
+	assert.doesNotMatch(context.editors.at(-1)?.text ?? "", /system-update|legacy alias/);
 });
 
  test("preset completion scopes and strict argument validation avoid sentinel leakage", async () => {
@@ -113,7 +116,7 @@ test("real SDK instruction completion tracks bindings, refresh, activations, tru
 		await h.prompt("/instruction use-bound human-a");
 		const active = await complete("off "); assert.equal(active.length, 1);
 		assert.match(active[0].value, /^off [a-f0-9-]{36}$/); assert.match(active[0].label, /listing/);
-		await h.prompt(`/system-update ${active[0].value}`); assert.deepEqual(await complete("off "), []);
+		await h.prompt(`/instruction ${active[0].value}`); assert.deepEqual(await complete("off "), []);
 		writeFileSync(join(instructionModesDir(cwd), "new.json"), JSON.stringify({ ...mode, id: "new" }));
 		assert.deepEqual(await complete("use project:new"), []);
 		await h.prompt("/instruction list"); assert.equal((await complete("use project:new")).length, 1);

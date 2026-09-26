@@ -517,7 +517,7 @@ test("session instructions panel handles untrusted and problem states safely", {
 		// Verify untrusted banner with CLI hint is displayed
 		const untrustedBanner = page.locator("[data-instructions-untrusted-banner]");
 		await untrustedBanner.waitFor();
-		assert.match(await untrustedBanner.textContent() || "", /\/system-update reset/);
+		assert.match(await untrustedBanner.textContent() || "", /\/instruction reset/);
 
 		// Verify modification operations are disabled
 		const deactivateBtn = page.locator("[data-item-deactivate-btn]");
@@ -1026,7 +1026,7 @@ test("session instructions panel: zh-CN localization for badges and warnings", {
 		const untrustedBanner = page.locator("[data-instructions-untrusted-banner]");
 		assert.match(
 			await untrustedBanner.textContent() || "",
-			/在Pi中信任项目，或使用 \/system-update reset 恢复/,
+			/在Pi中信任项目，或使用 \/instruction reset 恢复/,
 		);
 
 		const presentationElem = page.locator("[data-instructions-presentation]");

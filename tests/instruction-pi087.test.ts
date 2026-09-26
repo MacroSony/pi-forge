@@ -167,7 +167,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 					assert.ok(harness.getActiveToolNames().includes("fake_write"), "initial tools include fake_write");
 
 					// Activate instruction mode via Forge command
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.equal(harness.streamContexts.length, 0, "idle activation does not dispatch to provider");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write is immediately gated off");
 
@@ -216,7 +216,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 					assert.ok(harness.getActiveToolNames().includes("fake_write"), "initial tools include fake_write");
 
 					// Activate instruction mode in fallback mode
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.equal(harness.streamContexts.length, 0, "idle activation does not dispatch to provider");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write is immediately gated off in fallback");
 
@@ -257,7 +257,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 					assert.ok(harness.getActiveToolNames().includes("fake_write"), "initial tools include fake_write");
 
 					// Activate instruction mode
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.equal(harness.streamContexts.length, 0, "idle activation does not dispatch to provider");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write is immediately gated off");
 
@@ -400,7 +400,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 					assert.ok(harness.getActiveToolNames().includes("fake_write"), "initial tools include fake_write");
 
 					// Activate instruction mode in fallback mode
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.equal(harness.streamContexts.length, 0, "idle activation does not dispatch to provider");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write is immediately gated off in fallback");
 
@@ -566,7 +566,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 
 				try {
 					// Activate instruction mode
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write gated after mode activation");
 
 					harness.setResponses(["Original assistant turn 1 to be replaced", "Second turn assistant reply"]);
@@ -655,7 +655,7 @@ test("Pi 0.87 Regression Suite (Canonical Projection & context_with_system Integ
 
 				try {
 					// Activate instruction mode
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write gated after mode activation");
 
 					harness.setResponses([
@@ -724,7 +724,7 @@ test("Pi0.87 actionable continuations preserve the compiled preset across low-le
 					else pi.on("agent_before_settle", continueOnce);
 				}] });
 				try {
-					await harness.prompt("/system-update use review");
+					await harness.prompt("/instruction use review");
 					harness.setResponses(["RAW_BOUNDARY_REPLY", "FINISHED_BOUNDARY_CONTINUATION"]);
 					await harness.prompt("One user turn with an explicit extension continuation");
 					assert.equal(harness.beforeAgentStartEvents.length, 1, "this is a continuation, not a second user prompt");
@@ -750,10 +750,10 @@ test("Pi0.87 automatic retry retains Preset and pending rules while omitting the
 			const harness = await createInstructionAgentHarness({ cwd: env.cwd, native });
 			try {
 				harness.settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 1, baseDelayMs: 1, maxAgentDelayMs: 20, provider: { maxRetries: 0 } } });
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 				harness.setResponses([
 					async () => {
-						await harness.prompt("/system-update add RETRY_PENDING_RULE");
+						await harness.prompt("/instruction add RETRY_PENDING_RULE");
 						return { text: "ABANDONED_ATTEMPT_TEXT", stopReason: "error", errorMessage: "503 Service Unavailable" };
 					},
 					"RETRY_SUCCEEDED",

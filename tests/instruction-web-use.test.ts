@@ -249,7 +249,7 @@ test("Instruction Web Use HTTP & SDK Suite", async (suite) => {
 			const unboundChoice = availRes.json().choices.find((c: any) => c.kind === "mode" && c.id === "project:review");
 
 			// 1. Manual CLI activity
-			await harness.prompt("/system-update add MANUAL_CLI_TEST");
+			await harness.prompt("/instruction add MANUAL_CLI_TEST");
 			const useResCli = await httpRequest(useUrl, {
 				method: "POST", headers: auth,
 				body: { guard: oldGuard, kind: "mode", id: "project:review", fingerprint: unboundChoice.fingerprint },

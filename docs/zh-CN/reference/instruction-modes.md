@@ -1,8 +1,8 @@
-# 指令模式（`/instruction`；`/system-update` 兼容别名）
+# 指令模式（`/instruction`）
 
 [中文文档](../README.md) · [English](../../reference/instruction-modes.md)
 
-Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。`/instruction` 是推荐的 CLI 命令名；`/system-update` 保持为完全兼容的别名。本文档涵盖模式配置、所有权作用域、CLI 操作、Web 资源编辑、Preset 授权与 Agent 控制、投递模型、状态恢复边界与兼容性限制。
+Pi-forge 引入了指令模式（Instruction Modes）：会话级动态提示词指令与动态工具门控。`/instruction` 是 CLI 命令名。本文档涵盖模式配置、所有权作用域、CLI 操作、Web 资源编辑、Preset 授权与 Agent 控制、投递模型、状态恢复边界与兼容性限制。
 
 ## 环境要求与安装
 
@@ -81,7 +81,7 @@ Agent 的 list/status 回复不复制完整规则正文：list 提供作者填�
 
 ## 命令行操作
 
-通过推荐的 `/instruction` 管理会话指令。`/system-update` 保持为使用相同 handler 和 completions 的兼容别名：
+通过 `/instruction` 管理会话指令：
 
 | 命令 | 行为 |
 |---|---|
@@ -243,7 +243,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影指令增�
 0.5.5 核心功能源码已在所有规划的开发通道中全量交付：
 
 - 模式基础编解码器、多范围解析、会话事件与不可变快照 Reducer。
-- 人工 CLI 操作集（`/instruction` add、list、bindings、use、use-bound、off、status、reset；`/system-update` 保持为别名）。
+- 人工 CLI 操作集（`/instruction` add、list、bindings、use、use-bound、off、status、reset）。
 - 纯元数据锚点投影机制与编译前序数物化。
 - Web 会话指令活动面板与带守卫的人类启用选择器（`GET /api/instructions/available`, `POST /api/instructions/use`）。
 - Live Preset 绑定在独立的同级“模式绑定”tab 中支持（`instructionModes`），具备有限覆盖、折叠的高级面板及 `modelCallable: true` 显式授权。

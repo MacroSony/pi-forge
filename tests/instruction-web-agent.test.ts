@@ -185,8 +185,8 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 
 			try {
 				// 1.1 Activate mode from file and add manual mode via CLI
-				await harness.prompt("/system-update use review");
-				await harness.prompt("/system-update add MANUAL_SPECIAL_DIRECTIVE");
+				await harness.prompt("/instruction use review");
+				await harness.prompt("/instruction add MANUAL_SPECIAL_DIRECTIVE");
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write must be gated off by review mode");
 
 				// 1.2 Start real Web server via /preset ui
@@ -291,7 +291,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.equal(baselineInferences, 0, "baseline inferences must be 0");
 
 				// Activate review mode (removes fake_write)
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"), "fake_write gated off by review mode");
 
 				// Read initial state
@@ -362,7 +362,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.equal(harness.streamContexts.length, baselineInferences, "409 guard errors must not trigger inference");
 
 				// 2.4 409 Conflict when CLI mode change produces a stale revision; state is not written
-				await harness.prompt("/system-update add EXTRA_CLI_RULE");
+				await harness.prompt("/instruction add EXTRA_CLI_RULE");
 				const staleRes = await httpRequest(apiUrl, {
 					method: "POST",
 					headers: { "x-pi-forge-token": token },
@@ -430,7 +430,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.equal(harness.streamContexts.length, baselineInferences);
 
 				// 3.2 Branch A: activate review mode
-				await harness.prompt("/system-update use review");
+				await harness.prompt("/instruction use review");
 				const branchALeaf = harness.sessionManager.getLeafId();
 				assert.notEqual(branchALeaf, baselineLeaf);
 				assert.ok(!harness.getActiveToolNames().includes("fake_write"));
@@ -448,7 +448,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				assert.ok(harness.getActiveToolNames().includes("fake_write"), "fake_write restored at baseline leaf");
 
 				// 3.4 Create Branch B from baseline
-				await harness.prompt("/system-update add BRANCH_B_RULE");
+				await harness.prompt("/instruction add BRANCH_B_RULE");
 				const branchBLeaf = harness.sessionManager.getLeafId();
 				assert.notEqual(branchBLeaf, baselineLeaf);
 				assert.notEqual(branchBLeaf, branchALeaf);
@@ -516,7 +516,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 			try {
 				// 4.1 h1: start in env.cwd, activate review mode and open UI
 				h1 = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
-				await h1.prompt("/system-update use review");
+				await h1.prompt("/instruction use review");
 				assert.ok(!h1.getActiveToolNames().includes("fake_write"), "fake_write gated off by review mode");
 
 				const { port, token } = await openPresetUi(h1, env.cwd);
@@ -610,7 +610,7 @@ test("Instruction Web Agent Suite (serial to prevent global directory and port r
 				h2 = undefined;
 
 				h3 = await createInstructionAgentHarness({ cwd: env.cwd, native: true });
-				await h3.prompt("/system-update add NEWSESSION_RULE");
+				await h3.prompt("/instruction add NEWSESSION_RULE");
 
 				const getRes3 = await httpRequest<{ ok: boolean; state: InstructionStateView }>(apiUrl, {
 					headers: { "x-pi-forge-token": token },
@@ -666,7 +666,7 @@ for (const native of [true, false]) {
   const env = setupHermeticProject();
   const harness = await createInstructionAgentHarness({cwd: env.cwd, native, responses: ['Intentional preview comparison turn.']});
   try {
-   await harness.prompt('/system-update use review');
+   await harness.prompt('/instruction use review');
    const {port, token} = await openPresetUi(harness, env.cwd);
    const root = `http://127.0.0.1:${port}`;
    const headers = {'x-pi-forge-token': token};
@@ -705,7 +705,7 @@ for (const native of [true, false]) {
    assert.equal((await state()).delivery, 'prepared');
    assert.match(JSON.stringify(harness.streamContexts.at(-1)), /REVIEW_MODE_CONTENT/);
    await preview();
-   await harness.prompt('/system-update off review');
+   await harness.prompt('/instruction off review');
    assert.equal((await state()).delivery, 'pending');
    const off = await preview();
    assert.ok(off.preview.selectedTools.includes('fake_write'));

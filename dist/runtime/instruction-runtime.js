@@ -115,7 +115,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             current = view(ctx);
         }
         if (!ctx.isProjectTrusted() && current.state.active.length) {
-            throw new Error("Active instruction modes require a trusted project. Use /system-update reset to clear them, or trust the project.");
+            throw new Error("Active instruction modes require a trusted project. Use /instruction reset to clear them, or trust the project.");
         }
         const patches = current.state.active.map((item) => item.snapshot.tools);
         const error = tools.validateInstructionModes(patches);
@@ -503,7 +503,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             return "Instructions stopped; tools recomputed. Historical messages and completed work are not undone.";
         }
         if (!value.trim())
-            throw new Error(`Usage: /system-update ${command} <${command === "add" ? "text" : "id"}>`);
+            throw new Error(`Usage: /instruction ${command} <${command === "add" ? "text" : "id"}>`);
         if (command === "use-bound") {
             const res = useBound(ctx, value.trim(), "user");
             if (!res.ok)
@@ -517,7 +517,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
             if (!matches.length)
                 return "No matching active instruction (already off or unknown ID).";
             if (matches.length !== 1)
-                throw new Error("Ambiguous mode name; use the activation ID from /system-update status.");
+                throw new Error("Ambiguous mode name; use the activation ID from /instruction status.");
             commit(ctx, { ...common, op: "deactivate", activationId: matches[0].snapshot.activationId });
             return `Stopped ${matches[0].snapshot.activationId}; tools recomputed, stop notice pending next request.`;
         }
@@ -697,7 +697,7 @@ export function createInstructionRuntime(pi, workspace, tools) {
         const delivery = snapshot.content.trim().length === 0
             ? "tools prepared; tool-only mode, no instruction text is sent."
             : "tools prepared, instruction pending next model request.";
-        return `Selected ${snapshot.activationId}; ${delivery} Use /system-update off ${snapshot.activationId} to stop.`;
+        return `Selected ${snapshot.activationId}; ${delivery} Use /instruction off ${snapshot.activationId} to stop.`;
     }
     function deactivateBound(ctx, id, actor = "user") {
         if (disposed || restoring || (context !== undefined && !sameContext(context, ctx))) {

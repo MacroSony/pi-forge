@@ -287,10 +287,10 @@ test("initial policy ceiling, immutable mode snapshots, shared additions, reset,
 		assert.ok(h2.getActiveToolNames().includes("fake_write"));
 
 		await h2.prompt("/preset use empty");
-		await h2.prompt("/system-update use-bound shared-a");
-		await h2.prompt("/system-update use-bound shared-b");
+		await h2.prompt("/instruction use-bound shared-a");
+		await h2.prompt("/instruction use-bound shared-b");
 		assert.ok(h2.getActiveToolNames().includes("fake_write"));
-		await h2.prompt("/system-update reset");
+		await h2.prompt("/instruction reset");
 		assert.deepEqual(h2.getActiveToolNames(), [], "reset honors empty preset initial rather than restoring a stale baseline");
 		assert.equal(h2.fetchAttempts, 0);
 	} finally {

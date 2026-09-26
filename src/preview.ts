@@ -86,7 +86,7 @@ export function buildPreview(
 		throw new Error(`Invalid Forge instruction event ${reduced.index}: ${reduced.error}`);
 	}
 	if (!trusted && reduced.active.length > 0) {
-		throw new Error("Active instruction modes require a trusted project. Use /system-update reset to clear them, or trust the project.");
+		throw new Error("Active instruction modes require a trusted project. Use /instruction reset to clear them, or trust the project.");
 	}
 
 	const native = (ctx.model?.compat as { supportsMidConvoSystemMessages?: boolean } | undefined)?.supportsMidConvoSystemMessages === true;

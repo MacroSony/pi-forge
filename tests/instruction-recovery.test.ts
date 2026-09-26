@@ -70,7 +70,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 			let sessionFile = "";
 			try {
 				// 1.1 Activate mode which removes fake_write
-				await h1.prompt("/system-update use review");
+				await h1.prompt("/instruction use review");
 				assert.ok(!h1.getActiveToolNames().includes("fake_write"), "fake_write should be gated off in h1");
 
 				// 1.2 Produce assistant message to flush SessionManager entries to disk
@@ -157,7 +157,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				assert.ok(!streamTools.includes("fake_write"), "stream tools must not include fake_write");
 
 				// 1.4 Deactivate mode: system prompt no longer contains rule and fake_write is restored
-				await h2.prompt("/system-update off review");
+				await h2.prompt("/instruction off review");
 				assert.ok(h2.getActiveToolNames().includes("fake_write"), "fake_write restored after off without manual intervention");
 
 				const historyAfterOff = readInstructionSession(cmdCtx2);
@@ -263,7 +263,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 
 			try {
 				// Turn 1: activate review mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Turn 1 response"]);
 				await h.prompt("Turn 1 prompt");
 
@@ -300,7 +300,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				assert.equal(sysMessagesWithRule.length, 1, "only one system message carries the rule");
 
 				// Turn 4: turn off review mode after compaction
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				h.setResponses(["Turn 4 response after off"]);
 				await h.prompt("Turn 4 prompt");
 
@@ -345,12 +345,12 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 
 			try {
 				// Turn 1: activate mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Turn 1 response"]);
 				await h.prompt("Turn 1 prompt");
 
 				// Turn 2: deactivate mode
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				h.setResponses(["Turn 2 response"]);
 				await h.prompt("Turn 2 prompt");
 
@@ -396,7 +396,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				assert.ok(h.getActiveToolNames().includes("fake_write"), "fake_write active at pre-activation leaf");
 
 				// 4.2 Turn 1: activate review mode
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				h.setResponses(["Active mode turn response"]);
 				await h.prompt("Active mode prompt");
 				const activeLeaf = h.sessionManager.getLeafId();
@@ -434,7 +434,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				);
 
 				// 4.5 In this branch descendant, turn off mode
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				assert.ok(h.getActiveToolNames().includes("fake_write"), "fake_write restored after off in descendant branch");
 
 				// 4.6 Navigate back to activeLeaf (the parent state before off was issued)
@@ -623,7 +623,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 			// 3. Delivery marker cursor
 			sm.appendCustomMessageEntry(
 				INSTRUCTION_DELIVERY_TYPE,
-				"Forge instruction state changed. Use /system-update status to inspect it.",
+				"Forge instruction state changed. Use /instruction status to inspect it.",
 				false,
 				{ schemaVersion: 1, throughEventId: "event-act-crash-1" },
 			);
@@ -663,7 +663,7 @@ test("Instruction Recovery Acceptance Suite (serialized disk, compaction, branch
 				assert.ok(!streamTools.includes("fake_write"), "stream tools must not include fake_write");
 
 				// 4. Deactivate mode: must restore original baseline and fake_write
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				assert.ok(h.getActiveToolNames().includes("fake_write"), "fake_write must be restored after off");
 
 				const historyAfterOff = readInstructionSession(cmdCtx);

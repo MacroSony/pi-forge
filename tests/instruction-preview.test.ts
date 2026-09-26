@@ -159,7 +159,7 @@ function makeCarrierEntry(id: string, throughEventId: string, timestamp = 1500) 
 		type: "custom_message",
 		id,
 		customType: INSTRUCTION_DELIVERY_TYPE,
-		content: "Forge instruction state changed. Use /system-update status to inspect it.",
+		content: "Forge instruction state changed. Use /instruction status to inspect it.",
 		display: false,
 		details: {
 			schemaVersion: 1,

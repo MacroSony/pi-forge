@@ -60,7 +60,7 @@ Use migration dry runs before overwriting or deleting anything.
 
 ## Instruction modes
 
-`/instruction` is the canonical command. `/system-update` is an exact compatibility alias with the same handler and completions.
+`/instruction` is the command for managing session instruction modes.
 
 | Command | Behavior |
 |---|---|

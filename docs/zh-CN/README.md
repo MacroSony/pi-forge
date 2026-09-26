@@ -23,7 +23,7 @@
 ## 参考
 
 - [命令参考](reference/commands.md)
-- [指令模式 (system-update)](reference/instruction-modes.md)
+- [指令模式 (instruction)](reference/instruction-modes.md)
 - [会话缓存用量](reference/session-cache.md)：提示词缓存命中率与嵌套工具用量契约
 - [各服务商对会话中更新的支持情况](reference/provider-support.md)：Pi 0.87.1 快照
 - [Stack schema 与策略（英文）](../reference/stack-schema.md)

@@ -14,7 +14,7 @@ const { getCurrentSystemPrompt } = await import("@earendil-works/pi-ai");
 
 const DELIVERY_TYPE = "pi-forge-instruction-delivery";
 const EVENT_TYPE = "pi-forge-instruction-event";
-const OWNED_CARRIER_TEXT = "Forge instruction state changed. Use /system-update status to inspect it.";
+const OWNED_CARRIER_TEXT = "Forge instruction state changed. Use /instruction status to inspect it.";
 
 function textOf(message: any): string {
 	if (typeof message?.content === "string") return message.content;
@@ -140,13 +140,13 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 				await h.prompt("SEED_USER_FACT");
 				const callsBeforeCommands = h.streamContexts.length;
 
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				assert.equal(h.streamContexts.length, callsBeforeCommands, "idle update must not infer");
 				await peerApi.sendMessage(
 					{ customType: "legitimate-peer", content: "GENUINE_PEER_FACT", display: false },
 					{ triggerTurn: false },
 				);
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				assert.equal(h.streamContexts.length, callsBeforeCommands, "second idle update must not infer");
 
 				h.setResponses(["AFTER_TWO_UPDATES"]);
@@ -179,10 +179,10 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			let step = 0;
 			h.setOnDriver(async () => {
 				step++;
-				if (step === 1) await h.prompt("/system-update use review");
-				else if (step === 2) await h.prompt("/system-update off review");
-				else if (step === 3) await h.prompt("/system-update use review");
-				else if (step === 4) await h.prompt("/system-update off review");
+				if (step === 1) await h.prompt("/instruction use review");
+				else if (step === 2) await h.prompt("/instruction off review");
+				else if (step === 3) await h.prompt("/instruction use review");
+				else if (step === 4) await h.prompt("/instruction off review");
 				return `driver-step-${step}`;
 			});
 			h.setResponses([
@@ -229,7 +229,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 		await withHarness(env, { native: true }, async (h) => {
 			h.setResponses([
 				async () => {
-					await h.prompt("/system-update use review");
+					await h.prompt("/instruction use review");
 					return "FINAL_ASSISTANT_RESPONSE_AFTER_COMMAND";
 				},
 			]);
@@ -263,7 +263,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 				native,
 				extensionFactories: [(pi: any) => { peerApi = pi; }],
 			}, async (h) => {
-				await h.prompt("/system-update use review");
+				await h.prompt("/instruction use review");
 				await peerApi.sendMessage(
 					{ customType: "legitimate-peer", content: "GENUINE_PEER_FACT", display: false },
 					{ triggerTurn: false },
@@ -299,7 +299,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 				}
 				assert.ok(!h.getActiveToolNames().includes("fake_write"));
 
-				await h.prompt("/system-update off review");
+				await h.prompt("/instruction off review");
 				h.setResponses(["POST_OFF_COMPACT"]);
 				await h.prompt("POST_OFF_COMPACT_USER");
 				h.setResponses([
@@ -341,7 +341,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 		await withHarness(env, { native: true }, async (h) => {
 			h.setResponses(["OLD_HISTORY_ASSISTANT"]);
 			await h.prompt("OLD_HISTORY_SENTINEL");
-			await h.prompt("/system-update use review");
+			await h.prompt("/instruction use review");
 			h.setResponses([
 				{ toolCalls: [{ name: "fake_read", id: "followup-read" }] },
 				"FOLLOWUP_COMPLETED",
@@ -377,7 +377,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			h1.setResponses(["BASELINE_ASSISTANT"]);
 			await h1.prompt("BASELINE_USER");
 			cleanLeaf = h1.manager.getLeafId()!;
-			await h1.prompt("/system-update use review");
+			await h1.prompt("/instruction use review");
 			h1.setResponses(["ACTIVE_ASSISTANT"]);
 			await h1.prompt("ACTIVE_USER");
 			activeLeaf = h1.manager.getLeafId()!;
@@ -422,7 +422,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 				} : undefined);
 			}],
 		}, async (h) => {
-			await h.prompt("/system-update use review");
+			await h.prompt("/instruction use review");
 			assertPlainAnchors(h, 1);
 			h.setResponses([() => {
 				providerCalls++;
@@ -485,10 +485,10 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			const env = setupProject();
 			await withHarness(env, { native }, async (h) => {
 				h.setOnDriver(async () => {
-					await h.prompt("/system-update use review");
-					await h.prompt("/system-update off review");
-					await h.prompt("/system-update use review");
-					await h.prompt("/system-update off review");
+					await h.prompt("/instruction use review");
+					await h.prompt("/instruction off review");
+					await h.prompt("/instruction use review");
+					await h.prompt("/instruction off review");
 					assertPlainAnchors(h, 0); // All four intents remain pending during this one batch.
 					return "FOUR_PENDING_EVENTS";
 				});
@@ -536,7 +536,7 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 			const manager = SessionManager.inMemory(env.cwd);
 			manager.appendCustomEntry(EVENT_TYPE, activationEvent("event-crash-window", "crash-window", "CRASH_WINDOW_RULE"));
 			await withHarness(env, { native, sessionManager: manager }, async (h) => {
-				await h.prompt("/system-update off crash-window");
+				await h.prompt("/instruction off crash-window");
 				const anchorsAfterOff = assertPlainAnchors(h, 2);
 				assert.deepEqual(anchorsAfterOff.map((entry) => entry.data.throughEventId),
 					["event-crash-window", branchOf(h).find((entry) => entry.customType === EVENT_TYPE && (entry as any).data?.op === "deactivate")?.data?.eventId]);
@@ -593,12 +593,12 @@ test("plain custom metadata anchors: real SDK regression suite", async (suite) =
 		await withHarness(env, { native: true,
 			beforeForgeExtensionFactories: [(pi: any) => { pi.on("context_with_system", (event: any) => { incomingContexts.push(structuredClone(event.messages)); }); }],
 			extensionFactories: [(pi: any) => { peerApi = pi; }] }, async h => {
-			await h.prompt("/system-update use review");
+			await h.prompt("/instruction use review");
 			h.setOnDriver(async () => {
 				peerApi.sendMessage({customType: "legitimate-peer", content: "QUEUED_PEER_FACT", display: false},
 					{deliverAs: "steer", triggerTurn: false});
 				await new Promise(resolve => setTimeout(resolve, 25));
-				await h.prompt("/system-update add QUEUED_RULE_TWO");
+				await h.prompt("/instruction add QUEUED_RULE_TWO");
 				return "COMPLETE_BATCH";
 			});
 			h.setResponses([{toolCalls: [{name: "fake_driver", id: "delayed-peer"}]}, "AFTER_PEER"]);

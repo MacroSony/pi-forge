@@ -60,7 +60,7 @@
 
 ## 指令模式
 
-`/instruction` 是推荐命令。`/system-update` 是保持相同 handler 和 completions 的兼容别名。
+`/instruction` 用于管理会话指令模式。
 
 | 命令 | 行为 |
 |---|---|

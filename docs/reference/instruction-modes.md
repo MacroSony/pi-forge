@@ -1,8 +1,8 @@
-# Instruction modes (`/instruction`; `/system-update` compatibility alias)
+# Instruction modes (`/instruction`)
 
 [Documentation](../README.md) · [中文](../zh-CN/reference/instruction-modes.md)
 
-Pi-forge introduces instruction modes: session-scoped prompt directives paired with dynamic tool selection. `/instruction` is the canonical CLI name; `/system-update` remains an exact compatibility alias. This reference details configuration, CLI usage, Web editing, Agent controls, delivery models, recovery boundaries, and compatibility limits.
+Pi-forge introduces instruction modes: session-scoped prompt directives paired with dynamic tool selection. `/instruction` is the CLI command. This reference details configuration, CLI usage, Web editing, Agent controls, delivery models, recovery boundaries, and compatibility limits.
 
 ## Requirements and installation
 
@@ -81,7 +81,7 @@ A minimal paired example: [Preset](../../examples/read-first-worker-prompt-stack
 
 ## Commands
 
-Manage active instructions through the canonical `/instruction` command. `/system-update` remains an exact compatibility alias with the same handler and completions:
+Manage active instructions through the `/instruction` command:
 
 | Command | Behavior |
 |---|---|
@@ -93,7 +93,7 @@ Manage active instructions through the canonical `/instruction` command. `/syste
 | `/instruction off <activation-or-mode-id>` | Deactivate an active mode by activation UUID or mode ID. |
 | `/instruction reset` | Deactivate all active instruction modes and manual directives (user only). |
 | `/instruction add <text>` | Append a manual literal instruction rule to the active session without tool changes. |
-| `/instruction help` | Show command usage and compatibility notes. |
+| `/instruction help` | Show command usage and command details. |
 
 Completions use the current session and last published workspace snapshot. They do not perform discovery on every keystroke. Run `/instruction list` when an explicit discovery refresh is needed. Human-only bindings remain in `bindings`; `modelCallable: false` prevents Agent control but does not filter the binding from human inspection or activation.
 
@@ -170,7 +170,7 @@ The panel includes a human activation picker section:
 
 - **Visibility-based polling with zero inference:** The web client quietly polls `GET /api/instructions` every 3 seconds only while visible (`document.visibilityState === "visible"`), on window focus, or via manual refresh. Catalog reads (`/api/instructions/available`) happen on workspace entry, explicit refresh and mutation follow-up, not every status poll. Unchanged background checks do not toggle loading/disable controls. The session projection follows semantic state changes and ignores late responses after leaving. All queries are local reads with zero LLM inference cost.
 - **Manual reconciliation on error or conflict:** Errors, stale state, or 409 Conflicts mark the view as stale and require manual review. Mutations do not blindly retry.
-- **Project trust requirement:** Modifying session instructions requires an explicitly trusted project (`isProjectTrusted() === true`). Untrusted sessions reject mutations with `403 Forbidden`; CLI recovery (`/instruction reset`, with `/system-update` retained as an alias) remains available.
+- **Project trust requirement:** Modifying session instructions requires an explicitly trusted project (`isProjectTrusted() === true`). Untrusted sessions reject mutations with `403 Forbidden`; CLI recovery via `/instruction reset` remains available.
 - **State guard and lifecycle protection:** Mutations enforce derived guards (`sessionId`, `leafId`, `revision`). Unmounted or disposed runtimes return `503 Service Unavailable`.
 
 ### Local developer testing and host reload
@@ -243,7 +243,7 @@ Active state is derived deterministically from session events and delivery curso
 The 0.5.5 core functional implementation is delivered in source across all planned lanes:
 
 - Foundation codecs, scoped discovery, semantic events, and immutable snapshot reducer.
-- Human CLI commands (`/instruction` add, list, bindings, use, use-bound, off, status, reset; `/system-update` remains an alias).
+- Human CLI commands (`/instruction` add, list, bindings, use, use-bound, off, status, reset).
 - Formal plain metadata delivery anchor projection with pre-compilation ordinal materialization.
 - Web Session instructions activity panel and guarded human activation picker (`GET /api/instructions/available`, `POST /api/instructions/use`).
 - Live Preset bindings (`instructionModes`) in dedicated peer Mode bindings tab, with finite overrides, collapsed advanced view, and opt-in `modelCallable: true`.
