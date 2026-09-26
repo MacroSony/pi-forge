@@ -218,14 +218,14 @@ function updateActionState() {
   });
 }
 
-async function loadStacks(preferId: any = selectedId) {
+async function loadStacks(preferId: any = selectedId, options: any = {}) {
   const generation = ++resourceLoadGeneration;
   const selectionGeneration = stackLoadGeneration;
   const [data, resources] = await Promise.all([
     api("/api/stacks"),
     api("/api/resources"),
   ]);
-  if (!editorStarted || generation !== resourceLoadGeneration) return;
+  if (!editorStarted || generation !== resourceLoadGeneration) return false;
   stacks = data.stacks || [];
   editorResources = normalizeEditorResources(resources);
   cwd = data.cwd || "";
@@ -233,9 +233,11 @@ async function loadStacks(preferId: any = selectedId) {
   el("cwd").title = cwd;
   renderStackList();
   const next = stacks.find((stack: any) => (stack.selector || stack.id) === preferId) || stacks.find((stack: any) => stack.active) || stacks[0];
-  if (selectionGeneration !== stackLoadGeneration) return;
-  if (next) await selectStack(next.selector || next.id, { keepDirty: false });
-  else renderEmpty();
+  if (selectionGeneration !== stackLoadGeneration) return false;
+  if (next) return await selectStack(next.selector || next.id, { keepDirty: false, ...options });
+  if (!confirmDraftDiscard(options)) return false;
+  renderEmpty();
+  return true;
 }
 
 async function refreshStackRuntimeState() {
@@ -259,14 +261,19 @@ function handleProfileApplied() {
   run(refreshStackRuntimeState);
 }
 
+function confirmDraftDiscard(options: { keepDirty?: boolean; confirmedRevision?: number } = {}): boolean {
+  const discardConfirmed = options.confirmedRevision !== undefined && options.confirmedRevision === draftRevision;
+  return !dirty || !!options.keepDirty || discardConfirmed || confirm(t("confirm.discardChanges"));
+}
+
 async function selectStack(id: any, options: any = {}) {
-  if (dirty && !options.keepDirty && !confirm(t("confirm.discardChanges"))) return;
+  if (!confirmDraftDiscard(options)) return false;
   const generation = ++stackLoadGeneration;
   const revision = draftRevision;
   const data = await api("/api/stacks/" + encodeURIComponent(id));
   // The old editor remains usable while loading. Typing after navigation was
   // requested is new work, not covered by the earlier discard confirmation.
-  if (!editorStarted || generation !== stackLoadGeneration || revision !== draftRevision) return;
+  if (!editorStarted || generation !== stackLoadGeneration || revision !== draftRevision) return false;
   selectedId = id;
   const loadedStack = structuredClone(data.stack) as EditorPromptStack;
   currentStack = loadedStack;
@@ -296,6 +303,7 @@ async function selectStack(id: any, options: any = {}) {
   renderAll(data.diagnostics || []);
   setSemanticStatus("status.loaded", { id: loadedStack.id });
   notifyDraftChanged();
+  return true;
 }
 
 function renderAll(diagnostics: any = []) {
@@ -799,15 +807,23 @@ async function createStackRemote(stack: any, options: any = {}) {
   }
 }
 
-async function createAndOpenStack(stack: any, activate: any, actionLabel: any, extraOptions: any = {}) {
+function captureDraftBoundary() {
+  return { generation: stackLoadGeneration, revision: draftRevision };
+}
+
+async function createAndOpenStack(stack: any, activate: any, actionLabel: any, extraOptions: any, boundary: ReturnType<typeof captureDraftBoundary>) {
   const data = await createStackRemote(stack, { ...extraOptions, activate });
-  stacks = data.stacks || stacks;
-  selectedId = data.stack?.selector || data.stack?.id || stack.id;
-  dirty = false;
-  renderDirtyState();
-  await selectStack(selectedId, { keepDirty: true });
+  if (!editorStarted) return false;
+  if (data?.stacks) stacks = data.stacks;
+  renderStackList();
+  const { generation, revision } = boundary;
+  if (generation !== stackLoadGeneration || revision !== draftRevision) return false;
+  const targetId = data.stack?.selector || data.stack?.id || stack.id;
+  const opened = await selectStack(targetId, { confirmedRevision: revision });
+  if (!opened) return false;
   const displayId = data.stack?.id || stack.id;
   setSemanticStatus(actionLabel, { id: displayId }, "success");
+  return true;
 }
 
 function renderTemplateSelectorHtml(): string {
@@ -905,6 +921,7 @@ function normalizeResourceId(value: string): string | null {
 }
 
 async function createNewStack() {
+  const boundary = captureDraftBoundary();
   if (dirty && !confirm(t("confirm.discardChanges"))) return;
   const initialName = t("polish.workspace.templateDefaultName");
   const target = await collectResourceTarget("new", uniqueStackId("new-preset"), initialName);
@@ -914,7 +931,7 @@ async function createNewStack() {
   const template = target.template || "default";
   const stack = createPresetFromTemplate(template, id, target.name.trim() || id, { autoActivate: stacks.length === 0 });
   const activate = stacks.length === 0 || confirm(t("confirm.activateNewStack"));
-  await createAndOpenStack(stack, activate, "status.created", { scope: target.scope });
+  await createAndOpenStack(stack, activate, "status.created", { scope: target.scope }, boundary);
 }
 
 async function importStackJson() {
@@ -925,6 +942,11 @@ async function importStackJson() {
 async function handleImportFile(event: any) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const boundary = captureDraftBoundary();
+  if (dirty && !confirm(t("confirm.discardChanges"))) {
+    event.target.value = "";
+    return;
+  }
   const text = await file.text();
   const imported = JSON.parse(text);
   if (!imported || typeof imported !== "object" || Array.isArray(imported)) throw new Error(t("error.importNotObject"));
@@ -936,18 +958,26 @@ async function handleImportFile(event: any) {
   const initialId = typeof stack.id === "string" ? stack.id : fallbackId;
   const initialName = typeof stack.name === "string" ? stack.name : initialId;
   const target = await collectResourceTarget("import", initialId, initialName);
-  if (!target) return;
+  if (!target) {
+    event.target.value = "";
+    return;
+  }
   const id = normalizeResourceId(target.id);
-  if (!id) return;
+  if (!id) {
+    event.target.value = "";
+    return;
+  }
   stack.id = id;
   stack.name = target.name.trim() || id;
   if (!stack.schemaVersion) stack.schemaVersion = 1;
   if (!stack.type) stack.type = "pi-forge.prompt-stack";
   const activate = confirm(t("confirm.activateImportedStack"));
-  await createAndOpenStack(stack, activate, "status.imported", { scope: target.scope });
+  await createAndOpenStack(stack, activate, "status.imported", { scope: target.scope }, boundary);
+  event.target.value = "";
 }
 
 async function forkStack() {
+  const boundary = captureDraftBoundary();
   const source = stackForSubmit();
   const target = await collectResourceTarget("fork", uniqueForkId(source.id || "preset"), ((source.name || source.id || "Preset") + " fork"));
   if (!target) return;
@@ -958,7 +988,7 @@ async function forkStack() {
   fork.name = target.name.trim() || id;
   fork.autoActivate = false;
   const activate = confirm(t("confirm.activateFork"));
-  await createAndOpenStack(fork, activate, "status.forked", { scope: target.scope });
+  await createAndOpenStack(fork, activate, "status.forked", { scope: target.scope }, boundary);
 }
 
 async function exportStackJson() {
@@ -1062,12 +1092,15 @@ async function deleteCurrentStack() {
 }
 
 async function reloadFromDisk() {
+  const confirmedRevision = dirty ? draftRevision : undefined;
   if (dirty && !confirm(t("confirm.discardChanges"))) return;
+  const generation = stackLoadGeneration;
   const data = await api("/api/reload", { method: "POST" });
+  if (!editorStarted || generation !== stackLoadGeneration) return;
   stacks = data.stacks || [];
   renderStackList();
-  await loadStacks(selectedId);
-  setSemanticStatus("status.reloaded", {}, "success");
+  const reloaded = await loadStacks(selectedId, { confirmedRevision });
+  if (reloaded) setSemanticStatus("status.reloaded", {}, "success");
 }
 
 function stackForSubmit() {

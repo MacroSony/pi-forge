@@ -124,7 +124,7 @@ function normalizeProfilePromptStackReference(reference: string | null, targetSc
 }
 
 function changeCreateScope(nextScope: "project" | "global"): void {
-	if (props.mode !== "create" || nextScope === draft.scope) return;
+	if (busy.value || props.mode !== "create" || nextScope === draft.scope) return;
 	const previousScope = draft.scope;
 	const reference = draft.promptStack.trim();
 	if (reference && !reference.includes(":")) {
@@ -168,11 +168,13 @@ onMounted(() => window.addEventListener("beforeunload", handleBeforeUnload));
 onBeforeUnmount(() => window.removeEventListener("beforeunload", handleBeforeUnload));
 
 function requestCancel(): void {
+	if (busy.value) return;
 	if (dirty.value && !window.confirm(t("profileEditor.confirmDiscard"))) return;
 	emit("cancel");
 }
 
 async function validateDraft(): Promise<WebEditorProfileValidation | undefined> {
+	if (busy.value) return undefined;
 	busy.value = true;
 	error.value = "";
 	status.value = "";
@@ -201,6 +203,7 @@ async function validateDraft(): Promise<WebEditorProfileValidation | undefined> 
 }
 
 async function saveDraft(): Promise<void> {
+	if (busy.value) return;
 	busy.value = true;
 	error.value = "";
 	status.value = "";
@@ -250,7 +253,7 @@ async function saveDraft(): Promise<void> {
 		<div class="profile-form">
 			<label class="profile-field profile-field-wide">
 				<span>{{ t("metadata.name") }}</span>
-				<input id="profileName" v-model="draft.name" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
+				<input id="profileName" v-model="draft.name" :disabled="busy" :placeholder="t('profileEditor.namePlaceholder')" autocomplete="off">
 			</label>
 			<template v-if="mode === 'create'">
 				<label class="profile-field">
@@ -258,6 +261,7 @@ async function saveDraft(): Promise<void> {
 					<input
 						id="profileId"
 						v-model="draft.id"
+						:disabled="busy"
 						:placeholder="t('profileEditor.idPlaceholder')"
 						autocomplete="off"
 					>
@@ -268,6 +272,7 @@ async function saveDraft(): Promise<void> {
 					<select
 						id="profileScope"
 						:value="draft.scope"
+						:disabled="busy"
 						:title="t('profiles.scopeTitle')"
 						@change="changeCreateScope(($event.target as HTMLSelectElement).value as 'project' | 'global')"
 					>
@@ -278,14 +283,14 @@ async function saveDraft(): Promise<void> {
 			</template>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.modelProvider") }}</span>
-				<input id="profileModelProvider" v-model="draft.provider" list="profileProviderOptions" autocomplete="off">
+				<input id="profileModelProvider" v-model="draft.provider" :disabled="busy" list="profileProviderOptions" autocomplete="off">
 				<datalist id="profileProviderOptions">
 					<option v-for="provider in providerOptions" :key="provider" :value="provider"></option>
 				</datalist>
 			</label>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.modelId") }}</span>
-				<input id="profileModelId" v-model="draft.modelId" list="profileModelOptions" autocomplete="off">
+				<input id="profileModelId" v-model="draft.modelId" :disabled="busy" list="profileModelOptions" autocomplete="off">
 				<datalist id="profileModelOptions">
 					<option
 						v-for="model in modelOptions"
@@ -300,13 +305,13 @@ async function saveDraft(): Promise<void> {
 			</label>
 			<label class="profile-field">
 				<span>{{ t("profileEditor.thinkingLevel") }}</span>
-				<select id="profileThinkingLevel" v-model="draft.thinkingLevel">
+				<select id="profileThinkingLevel" v-model="draft.thinkingLevel" :disabled="busy">
 					<option v-for="level in thinkingLevels" :key="level" :value="level">{{ level }}</option>
 				</select>
 			</label>
 			<label class="profile-field">
 				<span>{{ t("profiles.promptStack") }}</span>
-				<select id="profilePromptStack" v-model="draft.promptStack">
+				<select id="profilePromptStack" v-model="draft.promptStack" :disabled="busy">
 					<option value="">{{ t("common.none") }}</option>
 					<option v-for="stack in promptStackOptions" :key="stack.selector" :value="stack.value">
 						{{ stack.name ? `${stack.value} — ${stack.name}` : stack.value }}
@@ -321,10 +326,10 @@ async function saveDraft(): Promise<void> {
 				<div class="profile-advanced-content">
 					<label class="profile-field profile-field-wide">
 						<span>{{ t("metadata.description") }}</span>
-						<textarea id="profileDescription" v-model="draft.description" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
+						<textarea id="profileDescription" v-model="draft.description" :disabled="busy" :placeholder="t('profileEditor.descriptionPlaceholder')"></textarea>
 					</label>
 					<label class="profile-check profile-field-wide">
-						<input id="profileAutoActivate" v-model="draft.autoActivate" type="checkbox">
+						<input id="profileAutoActivate" v-model="draft.autoActivate" :disabled="busy" type="checkbox">
 						<span>
 							<strong>{{ t("profileEditor.autoActivate") }}</strong>
 							<small>{{ t("profileEditor.autoActivateHint", { scope: editScope }) }}</small>
