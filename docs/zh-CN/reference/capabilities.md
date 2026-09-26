@@ -6,7 +6,7 @@ Pi-forge 引入了能力（Capabilities）：会话级动态提示词指令与�
 
 ## 环境要求与安装
 
-- **宿主版本：** Pi `>=0.87.0 <0.88.0`（仓库开发 SDK 固定为 `0.87.0`，peer 范围为 `>=0.87.0 <0.88.0`；最低 SDK 0.87 保持不变；不声称对 0.86 的双重运行时支持；当前开发树软件包版本仍为 0.5.4，目标发布为 0.5.5，版本号尚未调整）。
+- **宿主版本：** Pi `>=0.87.0 <0.88.0`（仓库开发 SDK 固定为 `0.87.0`，peer 范围为 `>=0.87.0 <0.88.0`；最低 SDK 0.87 保持不变；不声称对 0.86 的双重运行时支持）。能力功能需要 Forge 0.5.5。
 - **项目信任：** 激活能力、预设绑定或添加手动指令需要项目处于受信任状态（`isProjectTrusted()`）。
 - **兼容性限制：** 包含 `tools.initial` 的配置需要新版 Forge 支持；旧版 Forge 会忽略 `initial`，因而配置不具备向下降级兼容性。
 
@@ -70,7 +70,7 @@ Agent 的 list/status 回复不复制完整规则正文：list 提供作者填�
 
 ### Read-first Worker
 
-一个最小配对示例：[预设](../../../examples/read-first-worker-prompt-stack.json)＋[Write tools 能力](../../../examples/capabilities/write-tools.json)。使用匹配的 0.5.5 开发版；旧发布版可能忽略 `tools.initial`。
+一个最小主包示例：[预设](../../../examples/read-first-worker-prompt-stack.json)＋[Write tools 能力](../../../examples/capabilities/write-tools.json)。使用 Forge 0.5.5；旧发布版可能忽略 `tools.initial`。可选 subagent 执行仍是独立且尚未完成的 release。
 
 1. 在可信的临时项目中，将预设复制为 `.pi/forge/prompt-stacks/read-first-worker.json`，能力复制为 `.pi/forge/capabilities/write-tools.json`。先检查是否已有同名文件，不覆盖自己的资源。仅导入预设不会顺带安装引用的能力。
 2. 用已加载 Forge 的全新 Pi 会话，执行 `/preset reload`，再执行 `/preset use project:read-first-worker`。示例 `autoActivate: false`，绑定明确指向**项目作用域**；放到全局时，能力也须放全局并修改 `ref`。
@@ -238,7 +238,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影能力增�
 - **Provider 托管与缓存保守预警：** 工具传输序列化与提示词前缀缓存命中由下游提供商完全托管。工具策略变更、提示词前缀波动及会话压缩均会破坏缓存边界。支持追加的 Codex 传输在保留历史没有移除/重复声明时可追加全新工具以保留请求前缀，但不保证命中；移除或同名再声明会回退到当前全量工具表；Anthropic 原生工具变化等各 API 行为见[服务商支持情况](provider-support.md)；pi-forge 提供保守的 Provider 托管与缓存预警，不提供权限绕过或缓存保障（不保证零 KV 缓存失效）。
 - **沙盒免责：** 能力不提供操作系统级沙盒或权限隔离。示例 `review.json` 移除了 `bash`、`powershell`、`write` 和 `edit`，但未封禁外部 MCP 工具或 subagent，不能视为真正沙盒。请根据具体运行环境配置相应的执行工具移除列表。
 
-## 交付状态（0.5.5-core）
+## 交付状态（0.5.5）
 
 0.5.5 核心功能源码已在所有规划的开发通道中全量交付：
 
@@ -253,7 +253,7 @@ Forge 在每次发起模型请求时通过两阶段拼装动态投影能力增�
 - Parent 核心防护：源版本一致性保障、外部新增绑定防脏写检测、生命周期与重入安全围栏。
 - 工具补丁仅支持 `add` 与 `remove`；候选的 `only`/allowlist 未实现。
 - 提供保守的 Provider 托管与缓存预警；兼容的 Codex 传输在保留历史没有移除/重复声明时可追加全新工具以保留前缀（不保证缓存命中）；移除/同名重加回退全量当前工具表；不进行自动旧数据迁移，不重写历史摘要；无 Pi split patch；不声称 forceprompt、warming、autooverflow 或远程模型验收保证。
-- 2026-09-24 UI 收口时（提交 `89c6ba2`）本地构建、完整 Node／浏览器／打包验证已通过；这不等于远端提供商验收或已发布。目标版本为 0.5.5，开发元数据仍为 0.5.4，配套发布准备待收尾。宿主仍要求 Pi `>=0.87.0 <0.88.0`；发布、推送和宿主 reload 需单独授权。
+- 2026-09-24 UI 收口时（提交 `89c6ba2`）本地构建、完整 Node／浏览器／打包验证已通过；这是有日期的本地结果，不是当前 CI 证据、远端提供商验收或 npm 已发布的证明。宿主仍要求 Pi `>=0.87.0 <0.88.0`；可选 runtime／subagent 集成及其生成者接入工作独立测试和发布。
 
 
 文件路径校验会拒绝检查时已存在的符号链接，但不能隔离另一个本地进程并发替换目录的攻击；源版本比较也不是跨进程锁。不要把资源编辑用于不可信进程可竞争修改的共享目录。

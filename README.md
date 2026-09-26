@@ -18,9 +18,7 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 Requires Node.js **22.19 or newer**. The 0.5.5 line supports Pi **0.87.x** (`>=0.87.0 <0.88.0`), tested with **0.87.0**.
 
-<!-- RELEASE NOTE: remove this block when 0.5.5 is published; keep the install command below. -->
-> **0.5.5 is not published yet.** Capabilities and configurable default tools currently require the local development build. The npm install command below still installs 0.5.4, whose features and Pi requirements differ. For a local build, see [development setup](docs/development/setup.md#load-the-extension).
-<!-- END RELEASE NOTE -->
+> **Version note:** This README describes Forge **0.5.5**. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
 
 ```bash
 pi install npm:@zihanw/pi-forge

@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/reference/session-cache.md)
 
-Target: Forge 0.5.5 (unreleased). The nested-usage contract is experimental and may evolve before its first producer ships. Forge tracks and summarizes read-only prompt-cache metrics for the active session branch. These metrics appear in the Web editor's **Current session** capabilities panel and are exposed in the capability runtime state.
+Available in Forge 0.5.5. The nested-usage contract is experimental; producer integration is owned and released independently by optional tools. Forge tracks and summarizes read-only prompt-cache metrics for the active session branch. These metrics appear in the Web editor's **Current session** capabilities panel and are exposed in the capability runtime state.
 
 ## Read-only architecture
 

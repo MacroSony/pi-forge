@@ -10,7 +10,7 @@
 
 `/preset ui restart` 会替换 server，`/preset ui stop` 会关闭它。
 
-编辑器绑定在带 session token 的可用 `127.0.0.1` 端口；多个项目可以同时运行。读取、预览和 payload 检查在合适范围内可用；写入要求 Pi 信任项目，并且文件被限制在 Pi Forge 的预设/Profile 存储内。可以在 `.pi/forge/config.json` 中设置偏好端口：
+编辑器绑定在带 session token 的可用 `127.0.0.1` 端口；多个项目可以同时运行。读取、预览和 payload 检查在合适范围内可用；写入要求 Pi 信任项目，内置 Web 写入被限制在 Pi Forge 的预设/Profile、Capability 和可信 Forge 配置存储内。可以在 `.pi/forge/config.json` 中设置偏好端口：
 
 ```json
 {
@@ -102,7 +102,7 @@ Profile 编辑按 Provider／Model、Thinking／Preset 分组，不可变身份�
 
 ### 兼容性说明
 
-使用 `tools.initial` 的预设需要新版 Forge 支持。旧版 Forge 可能忽略 `tools.initial` 并恢复旧选择逻辑（选择性 allow 匹配目录，不限/deny 保留或过滤会话基线）（不支持向下降级兼容）。这些变化面向即将发布的 0.5.5；发布准备前，开发包版本仍为 0.5.4。宿主要求保持 Pi `>=0.87.0 <0.88.0` 不变。
+使用 `tools.initial` 的预设需要新版 Forge 支持。旧版 Forge 可能忽略 `tools.initial` 并恢复旧选择逻辑（选择性 allow 匹配目录，不限/deny 保留或过滤会话基线）（不支持向下降级兼容）。这些变化需要 Forge 0.5.5；宿主要求保持 Pi `>=0.87.0 <0.88.0` 不变。
 
 ## Agent profile 工作区
 

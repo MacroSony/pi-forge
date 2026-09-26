@@ -25,7 +25,7 @@ mkdir -p .pi/forge/prompt-stacks
 cp examples/default-prompt-stack.json .pi/forge/prompt-stacks/default.json
 ```
 
-Open `/forge ui` to create a preset without copying a file. In the 0.5.5 development build, you can choose the default Pi mirror layout, an empty preset (where Pi retains its base prompt and history), or a minimal worker template (`bash` and `edit` only).
+Open `/forge ui` to create a preset without copying a file. In Forge 0.5.5, you can choose the default Pi mirror layout, an empty preset (where Pi retains its base prompt and history), or a minimal worker template (`bash` and `edit` only).
 
 Reload and activate it:
 

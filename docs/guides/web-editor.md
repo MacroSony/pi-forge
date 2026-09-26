@@ -14,7 +14,7 @@ Use `/preset ui restart` to replace its server or `/preset ui stop` to close it.
 
 The editor binds to an available `127.0.0.1` port and uses a session token. Multiple Pi projects can run editors simultaneously. Lifecycle reinitialization reuses the existing editor URL for the same project when possible.
 
-Reads, preview, resources, and payload inspection remain available as appropriate, but writes require Pi to trust the project. Files are constrained to Pi Forge's Preset/Profile storage. Never expose or proxy the editor URL to an untrusted network.
+Reads, preview, resources, and payload inspection remain available as appropriate, but writes require Pi to trust the project. Built-in Web writes are constrained to Pi Forge's Preset/Profile, Capability, and trusted Forge configuration storage. Never expose or proxy the editor URL to an untrusted network.
 
 Choose a preferred port in `.pi/forge/config.json`:
 
@@ -116,7 +116,7 @@ Saves, imports, forks, and deletes reload Preset state into the current Pi sessi
 
 ### Compatibility
 
-Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). These changes target the upcoming 0.5.5 release; the development package version is still 0.5.4 pending release preparation. The host requirement remains Pi `>=0.87.0 <0.88.0`.
+Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). These changes require Forge 0.5.5; the host requirement remains Pi `>=0.87.0 <0.88.0`.
 
 ## Agent-profile workspace
 

@@ -44,9 +44,9 @@ Request: `{ profile, task: { text }, access: ForgePromptAccessFacts, backend: Fo
 
 For Presets containing `tools.initial`, both the host and the optional package must understand the field. The host filters the registered backend catalog to those concrete names (including an explicitly empty set), applies the existing allow/deny ceiling, then applies request access. The optional package independently recomputes this selection when validating the execution plan; `plan.tool-negotiation` must continue to reject disagreement. Omitting `initial` preserves legacy selection.
 
-This requires the Forge **0.5.5 development implementation** together with the **post-0.5.3 optional-package fix**. Published `pi-forge-subagents` 0.5.3 is not compatible with `tools.initial`: it ignores the field during its independent negotiation. Use matching local checkouts until the paired releases are available; the existing broad package dependency range is not a feature-compatibility guarantee.
+Forge 0.5.5 provides the host-side `tools.initial` support. Published `pi-forge-subagents` 0.5.3 is not compatible with `tools.initial`: it ignores the field during its independent negotiation. Use matching local optional-package checkouts until the optional package raises its Forge dependency floor to `^0.5.5` and completes its own release; the existing broad package dependency range is not a feature-compatibility guarantee.
 
-Release gate: publish the fixed optional package under a new version (planned **0.5.4**) alongside Forge **0.5.5**, raise its Forge dependency floor to **0.5.5**, update lockfiles/dev SDK pins, and rerun the real cross-package and packed execution tests. Development package versions remain 0.5.4 / 0.5.3 until that coordinated release preparation; no package is published by these tests.
+This is an optional-package release gate, not a gate on the main Forge 0.5.5 release. The optional package must update its own manifests, runtime sequencing, backend/continuation coverage, lockfiles, and cross-package packed tests through its separately authorized process. No optional package or runtime publication is claimed here.
 
 ## Fingerprints
 

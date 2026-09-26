@@ -6,7 +6,7 @@ Pi-forge introduces capabilities: session-scoped prompt directives paired with d
 
 ## Requirements and installation
 
-- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim; development package version remains 0.5.4; target release 0.5.5, version bump pending).
+- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim). Capabilities require Forge 0.5.5.
 - **Project trust:** Activating capabilities, preset bindings, or manual directives requires a trusted project (`isProjectTrusted()`).
 - **Compatibility:** Configurations utilizing `tools.initial` require a Forge version with this support; older Forge versions may ignore `initial`, so configurations are not downgrade-compatible.
 
@@ -70,7 +70,7 @@ Agent list/status replies intentionally omit full rule bodies: list returns auth
 
 ### Read-first Worker
 
-A minimal paired example: [Preset](../../examples/read-first-worker-prompt-stack.json) and [Write tools capability](../../examples/capabilities/write-tools.json). Use the matching 0.5.5-development build; older published Forge may ignore `tools.initial`.
+A minimal main-package example pair: [Preset](../../examples/read-first-worker-prompt-stack.json) and [Write tools capability](../../examples/capabilities/write-tools.json). Use Forge 0.5.5; older published Forge may ignore `tools.initial`. Optional subagent execution remains an independent unfinished release.
 
 1. In a trusted scratch project, copy the Preset to `.pi/forge/prompt-stacks/read-first-worker.json` and the capability to `.pi/forge/capabilities/write-tools.json`. Check for existing files first; do not overwrite your own resources. Importing the Preset alone does not install its referenced capability.
 2. Start a fresh Pi session with Forge loaded, run `/preset reload`, then `/preset use project:read-first-worker`. The example has `autoActivate: false` and uses a **project-scoped** binding; a global copy needs a global capability and an updated `ref`.
@@ -238,7 +238,7 @@ Active state is derived deterministically from session events and delivery curso
 - **Provider-managed tool transport and prompt caching:** Tool transport serialization and prompt prefix cache reuse are downstream provider-managed. Tool policy additions/removals, fallback formatting, and compaction alter prompt boundaries. For compatible Codex transports, clean first-time tool additions can retain request prefixes; removals or same-name redeclarations anywhere in retained history switch to full-current-tool serialization. Anthropic native tool changes and other per-API behavior are summarized in [Provider support](provider-support.md). Provider cache hits are not guaranteed. Pi-forge issues conservative provider-managed cache warnings and makes no permission bypass or caching guarantees (zero KV cache invalidation is not guaranteed).
 - **Sandbox disclaimer:** Capabilities provide no OS-level sandboxing or process isolation. The demo `review.json` removes `bash`, `powershell`, `write`, and `edit`, but does not block external MCP tools or subagents. Configure tool removals matching your specific execution tools.
 
-## Implementation status (0.5.5-core)
+## Implementation status (0.5.5)
 
 The 0.5.5 core functional implementation is delivered in source across all planned lanes:
 
@@ -253,7 +253,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
 - Conservative provider-managed prompt cache warnings; compatible Codex additional-tool delivery can preserve prefixes for new names when retained history has no removals/redeclarations; tool removal/redeclaration falls back to the current full tool list (not guaranteed cache hits); no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Local build and full Node/browser/package verification passed at the 2026-09-24 UI closeout (commit `89c6ba2`); this is not remote-provider acceptance or publication. The target release is 0.5.5; development package metadata remains 0.5.4 pending coordinated release preparation. Pi `>=0.87.0 <0.88.0` remains required. Publishing, git push and host reload are separate user-authorized actions.
+- Local build and full Node/browser/package verification passed at the 2026-09-24 UI closeout (commit `89c6ba2`); this is a dated local result, not current CI evidence, remote-provider acceptance, or npm publication. Pi `>=0.87.0 <0.88.0` remains required; optional runtime/subagent integration and its producer work are independently tested and released.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

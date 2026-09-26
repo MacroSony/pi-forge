@@ -103,7 +103,7 @@ Subagent execution moved out of the main package into the optional `@zihanw/pi-f
 
 ## Upstream Pi 0.87 migration
 
-The upcoming pi-forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 runtime support is not provided (repo dev SDK is pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; development package version remains 0.5.4; 0.5.5 is not published).
+Forge 0.5.5 requires upstream Pi `>=0.87.0 <0.88.0`. Dual 0.86 runtime support is not provided (repo dev SDK is pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`). Main and optional packages release independently.
 
 **Restart Pi after upgrading:** Updating the global installation does not replace the core in already-running processes. If the session predates the upgrade, exit and start Pi again before resuming it; extension-only `/reload` does not upgrade the running core. Use the new `/preset ui` URL; old server tokens are not retained.
 

@@ -4,9 +4,9 @@
 
 > **Experimental:** This API and its backends may change independently of stable prompt-stack and profile behavior.
 
-The optional `@zihanw/pi-forge-subagents` package executes an explicitly authorized agent profile as a separate, clean, one-shot Pi process. It runs in the foreground and returns a bounded report to the parent conversation.
+The optional `@zihanw/pi-forge-subagents` package executes an explicitly authorized agent profile through a selected backend. The default read-only backends use a separate, clean, one-shot Pi process; write-capable backends have different boundaries described below. The documented flow runs in the foreground and returns a bounded report to the parent conversation.
 
-> **Default-tool compatibility:** Presets using `tools.initial` require the Forge 0.5.5 development implementation and the matching post-0.5.3 subagents fix. Published subagents 0.5.3 is not compatible with this field. Until the paired releases are available, use matching local checkouts; see [tool-selection compatibility](../reference/subagent-host-port.md#tool-selection-compatibility).
+> **Default-tool compatibility:** Forge 0.5.5 provides `tools.initial`; the independently published optional subagents 0.5.3 is not compatible with this field. Until the optional package raises its Forge floor to `^0.5.5` and ships its separate fix, use matching local checkouts; see [tool-selection compatibility](../reference/subagent-host-port.md#tool-selection-compatibility). This optional compatibility work is not a main-package release gate.
 
 
 ## Enable a profile
@@ -46,7 +46,7 @@ Humans use:
 
 `plan` resolves the profile and stack, compiles and validates the exact immutable provider-bound plan, displays it, and discards it without provider transport.
 
-Profile selectors accept the same grammar everywhere: `reviewer` (project first), `project:reviewer`, or `global:reviewer`. When both scopes expose the same ID, the project profile keeps the concise selector and the global profile remains callable as `global:<id>`.
+Profile selectors use the same grammar everywhere: `reviewer`, `project:reviewer`, or `global:reviewer`. For delegation, a bare ID selects `project:<id>`; use an explicit `global:<id>` selector for a global profile. Same-ID profiles remain separate and do not inherit delegation policy from one another.
 
 The parent model uses `forge_subagent_profiles` to discover enabled profiles and `forge_subagent` to invoke one. A restrictive parent stack must allow both tool names. Discovery is local/no-egress and reports metadata, resolution readiness, effective backend/timeout, approval mode, and whether parent tool policy permits invocation.
 
@@ -54,18 +54,20 @@ Projects with only a few frequently used profiles can set `summaryInToolDescript
 
 ## Parallel invocation
 
-`forge_subagent` is a parallel-execution tool: the parent model may issue several calls in one turn, and they prepare and run concurrently. Interactive approval dialogs are serialized one at a time because Pi's selector/editor UI is a single slot—a second concurrent dialog would clear the first and leave it unresolved—so each call waits its turn for the dialog and then executes immediately, letting approved runs overlap. Unattended invocation needs no dialog and is fully concurrent. Each run is an independent `pi` subprocess and provider request; a burst of parallel calls multiplies provider cost and process load, so keep the parent tool policy conservative until a configurable concurrency cap lands.
+`forge_subagent` is a parallel-execution tool: the parent model may issue several calls in one turn, and they prepare and run concurrently. Interactive approval dialogs are serialized one at a time because Pi's selector/editor UI is a single slot—a second concurrent dialog would clear the first and leave it unresolved—so each call waits its turn for the dialog and then executes immediately, letting approved runs overlap. Unattended invocation needs no dialog and is fully concurrent. Fresh-process backends create an independent child process and provider request; `pi-inprocess` instead runs in the host runtime. A burst of parallel calls multiplies provider cost and process load, so keep the parent tool policy conservative until a configurable concurrency cap lands.
 
 ## Backends and precedence
 
-Two fresh-process backends are registered:
+Matching development versions of the optional subagents package and runtime expose four backend IDs. These notes describe unfinished optional-package source, not a finalized companion release; the main Forge 0.5.5 package does not require them.
 
-- `pi-subprocess-readonly` is the default and uses `pi --mode text --print`.
-- `pi-rpc-readonly` uses `pi --mode rpc`.
+- `pi-subprocess-readonly` is the default and uses `pi --mode text --print`. It exposes the `read`/`grep`/`find`/`ls` allowlist and is shared-user: the allowlist is not an OS sandbox.
+- `pi-rpc-readonly` uses `pi --mode rpc` with the same shared-user read-only policy; only the process protocol differs.
+- `pi-inprocess` runs in the host model runtime with the invoking user's full privileges. It is a workspace-write backend and can expose `read`/`grep`/`find`/`ls`/`edit`/`write`/`bash` when the sealed access level and stack policy allow them; it has no OS sandbox. It is the backend for extension-registered providers that cannot be used in fresh children.
+- `pi-bwrap-write` is an opt-in Linux Bubblewrap backend. It provides an isolated `workspace-write` mount for the selected workspace and can expose `read`/`grep`/`find`/`ls`/`edit`/`write`/`bash` when allowed. Writes go directly to that workspace; they are not staged for a separate approval/apply step. Bubblewrap and, by default, a git workspace are required.
 
-Both execute the same sealed prompt and shared-user read-only policy; only their process protocol differs. There is no fallback if the selected backend is unavailable.
+There is no fallback if the selected backend is unavailable. Fresh-process backends reject extension-registered providers as non-portable; use `pi-inprocess` for those providers. Do not read the development matrix or the `tools.initial` compatibility fix as a claim that the paired companion release is already published.
 
-Interactive backend precedence is: per-run override, project profile override, project default, user default, built-in default. Unattended model invocation is pinned to the effective configured backend and rejects a per-call override. Timeout follows profile, project, user, then the 60-second built-in default; valid values are 1,000–3,600,000 ms. Host timeout is best effort.
+For human runs, backend precedence is: explicit per-run `--backend`, matching profile override, trusted project default, global default, then the built-in `pi-subprocess-readonly`. An interactive model invocation may also supply a per-call backend override; an unattended model invocation is pinned to the effective profile/configured backend and rejects that override. Timeout follows matching profile override, trusted project default, global default, then the 60-second built-in default; valid values are 1,000–3,600,000 ms. Host timeout is best effort.
 
 ## Approval and unattended invocation
 
@@ -79,28 +81,25 @@ To authorize the parent model without per-run approval:
 }
 ```
 
-This affects only `forge_subagent`; `/forge-agent run` remains interactive. It is ignored in untrusted projects and malformed values fail closed. Treat this project `subagents.json` as an authorization file: do not enable or commit it unless every parent agent allowed to call `forge_subagent` may send the compiled prompt and readable file contents to the selected provider without asking again.
+This affects only `forge_subagent`; `/forge-agent run` remains interactive. The flag may come from global defaults or a trusted project file, with the project value taking precedence. With the unreleased companion fix, an absent flag inherits; an explicitly non-boolean value sets that layer to `false` and emits a warning. A valid boolean in a higher-priority layer still overrides normally. If an entire config file is unreadable, malformed, or not a JSON object, that file is ignored with a warning and an earlier valid layer may remain effective. An untrusted project's project settings are ignored, and the execution trust gate blocks delegation runs from that project. Treat `subagents.json` as an authorization file: do not enable or commit unattended invocation unless every permitted parent agent may send the compiled prompt and readable file contents to the selected provider without asking again.
 
 ## Child context and output
 
-The child receives a clean conversation, the exact profile model/thinking/stack, and the delegated task as a protected final user message. It does not automatically receive parent history.
+An ordinary new child starts with a clean conversation, the exact profile model/thinking/stack, and the delegated task as a protected final user message. It does not automatically receive parent history. Explicit retained-child continuation and background execution are separate development features documented in the [companion package](https://github.com/MacroSony/pi-forge-subagents).
 
-Candidate tools are `read`, `grep`, `find`, and `ls`, further restricted by stack tool policy. The child loads no write/edit/shell tools, skills, prompt templates, project context files, or third-party extensions.
+For `pi-subprocess-readonly` and `pi-rpc-readonly`, candidate tools are `read`, `grep`, `find`, and `ls`, further restricted by stack tool policy; these children load no write/edit/shell tools, skills, prompt templates, project context files, or third-party extensions. `pi-inprocess` and `pi-bwrap-write` can receive the write-capable tool surface described above only when their access level and stack policy allow it.
 
 The model-visible result is bounded. Expandable human details retain normalized status, a text transcript, tool events, diagnostics, usage, approval receipt, and execution report. Retained strings are bounded, base64-like text is redacted, and the transcript keeps a 512 KiB rolling tail. Inline image bytes are replaced by MIME/encoded-size metadata before retention in the parent session.
 
 ## Security boundary
 
-The current backends are **shared-user, not operating-system sandboxes**.
+The security boundary is backend-specific:
 
-- “Read-only” is a model-tool policy. The process retains the invoking user's OS permissions.
-- Absolute paths readable by that user may be read and sent to the selected provider.
-- Text may be retained in parent tool-result details and Pi's on-disk session JSONL.
-- Timeout and cancellation are best effort.
-- `/tree` changes the active conversation branch; abandoned entries can remain on disk.
-- `/tree` cannot undo provider requests, billing, or external effects.
-- Removing sensitive retained text requires deleting the relevant Pi session data.
+- The subprocess and RPC read-only backends are **shared-user, not OS sandboxes**. “Read-only” is a model-tool policy; the child retains the invoking user's OS permissions. Absolute paths readable by that user may be read and sent to the selected provider.
+- `pi-inprocess` is also shared-user and runs in the host process with full user privileges. Its allowlist can permit write/edit/`bash`, but it provides no OS isolation.
+- `pi-bwrap-write` is the isolated Linux exception: Bubblewrap exposes the selected workspace as the writable project mount, alongside read-only runtime mounts and temporary sandbox storage. It is not a staged patch/apply workflow, and it does not provide network isolation.
+- Across backends, timeout and cancellation are best effort. Text may be retained in parent tool-result details and Pi's on-disk session JSONL; `/tree` cannot undo provider requests, billing, or external effects, and abandoned entries can remain on disk. Removing sensitive retained text requires deleting the relevant Pi session data.
 
-The default tools intentionally provide no mutation path. Do not add write, edit, or shell access to this shared-user design. OS isolation and separately approved staged writes remain future work.
+Choose a read-only backend when no mutation path is intended. Treat write-capable backends as explicit authorization to modify the selected workspace, not as a promise of separately approved staged changes.
 
 For integration authors, see the [subagent host port contract](../reference/subagent-host-port.md).

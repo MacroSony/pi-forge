@@ -108,7 +108,7 @@ This is a local, synchronous discovery surface for contributing one child comman
 
 The optional subagent package can use this surface for `/forge subagent plan`, while its backend policy remains separate: `/forge-agent run` retains mandatory human approval and a selected backend may write; model-callable `forge_subagent` unattended authorization is a different path.
 
-This new subpath is intentional source for the current development line. Use matching DEVELOPMENT builds of the main and optional packages until the coordinated release and package/peer-floor bumps are made; this documentation does not claim that the subpath is published or compatible with an older main package.
+Forge 0.5.5 provides this main-package subpath. The optional package remains an independent unfinished release and must raise its Forge dependency floor to `^0.5.5` before consuming it as a paired release; this documentation does not claim optional-package publication or compatibility with an older main package.
 
 ## Event bus contracts (no import entry point)
 
@@ -121,7 +121,7 @@ These channels carry only plain JSON scalars. They are not `@zihanw/pi-forge` im
 ## Compatibility policy
 
 - **Stable** surfaces (root factory, macro/slot registration) preserve source compatibility within the documented release range unless a changelog entry announces a breaking release.
-- **Experimental** surfaces (the `/subagent`, `/ui-contribution`, and `/command-contribution` ports) are typed and documented, but may change deliberately as integration experience exposes missing semantics. The command-contribution source is development-only pending the coordinated release and version/floor bumps.
+- **Experimental** surfaces (the `/subagent`, `/ui-contribution`, and `/command-contribution` ports) are typed and documented, but may change deliberately as integration experience exposes missing semantics. Forge 0.5.5 provides the command-contribution surface; optional consumers remain pending their independent version/floor bump and release.
 - Everything not listed above is internal and may change without notice. In particular: no `src/*` subpath aliases exist, `./examples/*` is not an import surface (examples ship as browsable files), and removed 0.4 surfaces (the execution contract re-exports, loader/profile/catalog helpers) now live either nowhere or in `@zihanw/pi-forge-subagents`.
 
 ## Removed in 0.5.0

@@ -10,7 +10,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tarball verification rejects physical `src/` entries and requires the root and subagent compiled entry points.
 - The web editor's HTML page shell and static styles are maintained separately from its browser behavior modules.
 - Strict typed web-editor client modules bundled into one self-contained browser script at build time, with generated-client consistency verification.
-- Supported Node.js baseline is 22.19+. Published Pi SDK dependencies are host-provided wildcard peers; exact repository versions are reproducible development/test fixtures rather than runtime constraints.
+- Supported Node.js baseline is 22.19+. The four Pi SDK packages are host-provided optional peers at `>=0.87.0 <0.88.0`; `typebox` is an optional wildcard peer. Exact repository versions are reproducible development/test fixtures rather than runtime constraints.
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 
@@ -238,7 +238,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Export the current edited stack JSON from the browser, with clipboard fallback when download is unavailable.
 - Fork the current stack into a new stack file, with optional activation.
 - Delete stack files, disabling prompt-stack replacement if the deleted stack was active.
-- Trust and path guardrails for save/import/fork/delete writes.
+- Built-in Web writes cover Presets, Profiles, Capabilities, and trusted Forge configuration, with trust and path guardrails for save/import/fork/delete operations.
 - Top-level navigation between prompt stacks and project agent profiles; stack drafts, selection, and active state survive surface switches.
 - Profile list shows ID, name, model/thinking/stack targets, validation state, and `autoActivate` and last-applied badges.
 - Profile create, edit, validate, save, one-shot apply, and delete reuse the shared resolver, transactional application service, and guarded repository; save rejects a second auto-activation profile and on-disk conflicts.
