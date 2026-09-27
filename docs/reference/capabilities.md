@@ -127,7 +127,7 @@ In the Preset editor, capability bindings are configured under the dedicated pee
   - Arbitrary fields, scripts, or inheritance chains cannot be authored.
 - **Source vs. effective preview:** Side-by-side comparison displays source content/tools alongside effective content/tools, resolved through the same server resolver (`resolveCapabilityBindings`) as runtime activation.
 - **Stale-save guard:** Preset saves enforce a `sourceRevision` check against disk bytes whenever bindings are present or modified, rejecting stale overwrites (409 Conflict), including when external edits added bindings.
-- **Preset save execution impact:** Saving an inactive Preset updates its definition and does not select or activate it. Crucially, saving the currently active Preset immediately reloads and synchronizes its live tool and capability authorization policy in the session, without replacing frozen active capability snapshots.
+- **Preset save execution impact:** Saving an inactive Preset updates its definition and does not select or activate it. Crucially, saving the currently active Preset immediately reloads and synchronizes its live tool and capability authorization policy in the session, without replacing frozen active capability snapshots. If the proposed policy conflicts with those snapshots, saving or overwriting the active Preset is rejected before writing the file; disable the conflicting capability and retry. Editing files outside Forge bypasses this preflight and may require manual recovery after reload.
 
 ## Web session capabilities panel
 

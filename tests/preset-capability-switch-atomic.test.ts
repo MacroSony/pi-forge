@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { createContext, createHarness, latestEditorUrl, startSession, writeStack } from "./helpers/index-command-harness.ts";
 import { FORGE_ACTIVE_STATE_CHANNEL } from "../src/active-state.ts";
 import { readCapabilitySession } from "../src/session-adapter.ts";
+import { buildSessionProjection, type SessionEntry } from "@earendil-works/pi-coding-agent";
 
 async function setup(t: TestContext, trusted = true) {
 	const cwd = mkdtempSync(join(tmpdir(), "forge-switch-preflight-"));
@@ -38,16 +39,18 @@ async function setup(t: TestContext, trusted = true) {
 	harness.eventsBus.on(FORGE_ACTIVE_STATE_CHANNEL, (event: unknown) => publications.push(event));
 	const state = () => structuredClone({ entries, statuses: context.statuses, tools: harness.getActiveTools(), publications });
 	async function healthyTurn() {
+		entries.push({ type: "message", id: `user-${entries.length}`, parentId: null, timestamp: new Date().toISOString(), message: { role: "user", content: `hello-${entries.length}`, timestamp: Date.now() } });
 		await harness.events.turn_start({}, context.ctx);
 		await harness.events.before_agent_start({ prompt: "hello", systemPrompt: "base", systemPromptOptions: context.ctx.getSystemPromptOptions() }, context.ctx);
-		await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "system", content: "base", timestamp: 0 }, { role: "user", content: "hello", timestamp: 1 }] }, context.ctx);
+		await harness.events.context_with_system({ type: "context_with_system", messages: [{ role: "system", content: "base", timestamp: 0 }, ...buildSessionProjection(entries as SessionEntry[]).messages] }, context.ctx);
 		assert.equal(aborted, false);
+		await harness.events.agent_settled({}, context.ctx);
 	}
-	async function request(path: string, body?: unknown) {
+	async function request(path: string, body?: unknown, method = "POST") {
 		await harness.commands.preset.handler("ui", context.ctx);
 		const url = latestEditorUrl(context.editors);
-		const response = await fetch(new URL(path, url), { method: "POST", headers: { "x-pi-forge-token": url.searchParams.get("token")!, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
-		return { status: response.status, body: await response.json() as { error?: string } };
+		const response = await fetch(new URL(path, url), { method, headers: { "x-pi-forge-token": url.searchParams.get("token")!, "content-type": "application/json" }, body: method === "GET" ? undefined : JSON.stringify(body ?? {}) });
+		return { status: response.status, body: await response.json() as { error?: string; stack?: import("../src/types.ts").PromptStack; sourceRevision?: string } };
 	}
 	return { cwd, harness, context, entries, publications, state, healthyTurn, request };
 }
@@ -142,4 +145,50 @@ test("untrusted project refuses activation without changing runtime", async (t) 
 	await f.harness.commands.preset.handler("use deny", f.context.ctx);
 	assert.match(f.context.notifications.at(-1)!.message, /not trusted/);
 	assert.deepEqual(f.state(), before);
+});
+
+
+test("saving or overwriting an active preset rejects conflicting policy before changing disk or live state", async (t) => {
+	for (const mode of ["save", "overwrite"] as const) await t.test(mode, async (t) => {
+		const f = await setup(t);
+		await f.harness.commands.capability.handler("enable-bound bound-bash", f.context.ctx);
+		const current = await f.request("/api/stacks/base", undefined, "GET");
+		assert.equal(current.status, 200);
+		const file = join(f.cwd, ".pi", "forge", "prompt-stacks", "base.json");
+		const bytes = readFileSync(file);
+		const before = f.state();
+		const draft = { ...current.body.stack!, tools: { deny: ["bash"] } };
+		const response = mode === "save"
+			? await f.request("/api/stacks/base", { stack: draft, expectedSourceRevision: current.body.sourceRevision }, "PUT")
+			: await f.request("/api/stacks", { stack: draft, scope: "project", overwrite: true, activate: false });
+		assert.equal(response.status, 409, JSON.stringify(response.body));
+		assert.match(response.body.error!, /blocked by prompt stack/);
+		assert.deepEqual(readFileSync(file), bytes);
+		assert.deepEqual(f.state(), before);
+		await f.healthyTurn();
+		await f.harness.commands.capability.handler("reset", f.context.ctx);
+		const retry = mode === "save"
+			? await f.request("/api/stacks/base", { stack: draft, expectedSourceRevision: current.body.sourceRevision }, "PUT")
+			: await f.request("/api/stacks", { stack: draft, scope: "project", overwrite: true, activate: false });
+		assert.equal(retry.status, 200, JSON.stringify(retry.body));
+		assert.notDeepEqual(readFileSync(file), bytes);
+		assert.deepEqual(await f.harness.events.tool_call({ toolName: "bash" }, f.context.ctx), { block: true, reason: 'Tool "bash" is blocked by prompt stack "base".' });
+		await f.healthyTurn();
+	});
+});
+
+
+test("saving an inactive preset may define a stricter policy without altering active capability state", async (t) => {
+	const f = await setup(t);
+	await f.harness.commands.capability.handler("enable bash-cap", f.context.ctx);
+	const current = await f.request("/api/stacks/deny", undefined, "GET");
+	const before = f.state();
+	const draft = { ...current.body.stack!, tools: { deny: ["bash", "write"] } };
+	const response = await f.request("/api/stacks/deny", { stack: draft, expectedSourceRevision: current.body.sourceRevision }, "PUT");
+	assert.equal(response.status, 200, JSON.stringify(response.body));
+	const after = f.state();
+	assert.deepEqual(after.entries, before.entries);
+	assert.deepEqual(after.tools, before.tools);
+	assert.deepEqual(after.statuses, before.statuses);
+	await f.healthyTurn();
 });

@@ -75,6 +75,7 @@ export default function piForge(pi) {
         getSelectedActiveId: stackRuntime.selectedActiveId,
         setActive: (id) => stackRuntime.setActive(id, ctx),
         lastActivationError: stackRuntime.lastActivationError,
+        validatePresetSwitch: (target) => instructions.validatePresetSwitch(target, ctx),
         reloadStacks: (preferredId) => stackRuntime.reloadStacks(ctx, preferredId),
         buildPreview: (target) => buildPreview(ctx, target, toolPolicy.previewOptions(promptOptions, target.stack)),
         getPolicyResources: () => toolPolicy.policyResources(promptOptions),

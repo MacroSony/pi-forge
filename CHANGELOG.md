@@ -12,6 +12,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 - Confirm before discarding an unsaved Preset draft on import; preserve newer edits during file reading, resource creation, and reload. Reload reuses a discard confirmation only for the exact confirmed draft revision.
 - Disable Agent Profile draft controls while Save or Validate is pending, preventing edits from being lost when a successful save closes the editor.
 - Preflight surviving Capability tool patches against a prospective Preset before changing selection or retiring bound activations. Conflicting switches leave the current session unchanged and explain how to resolve the conflict; Web activation returns a conflict response. Create-and-activate discovers the new file without selecting it before this check.
+- Apply the same Capability conflict preflight before saving or overwriting the active Preset's live policy. A rejected write returns a conflict without modifying the file or session; inactive resource editing and frozen activation snapshots are unchanged.
 - Report the actual preflight diagnostics for a single invalid auto-activate Profile instead of incorrectly reporting multiple candidates; scope precedence and fail-closed activation are unchanged.
 
 ## [0.5.5] - 2026-09-26

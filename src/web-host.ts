@@ -69,6 +69,7 @@ export interface WebHostRuntime {
 	getSelectedActiveId(): string | undefined;
 	setActive(id: string | undefined): boolean;
 	lastActivationError?(): string | undefined;
+	validatePresetSwitch?(target: LoadedPromptStack): string | undefined;
 	reloadStacks(preferredId?: string): Promise<void>;
 	buildPreview(target: LoadedPromptStack): {
 		text: string;
@@ -684,6 +685,21 @@ function writeTextFileAtomically(filePath: string, content: string): void {
 	}
 }
 
+/** Saving the active resource changes live policy just like selecting it. */
+function activePresetWriteConflict(runtime: WebHostRuntime, target: LoadedPromptStack, stack: PromptStack): string | undefined {
+	const active = runtime.getActive();
+	if (!active || formatResourceKey(active.key) !== formatResourceKey(target.key)) return undefined;
+	try {
+		// Validate the same normalized policy that reload will consume, but keep
+		// the original authored object for the existing lossless write path.
+		const prospective = parsePromptStack(serializePromptStack(stack), target.filePath, target.scope);
+		const error = runtime.validatePresetSwitch?.(prospective);
+		return error ? `Cannot save active preset "${stack.id}": ${error} Disable conflicting capabilities before saving.` : undefined;
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+}
+
 async function saveStackFile(
 	ctx: ExtensionContext,
 	runtime: WebHostRuntime,
@@ -729,6 +745,8 @@ async function saveStackFile(
 			return { ok: false, status: 409, error: "Preset source changed; reload before saving to avoid overwriting capability bindings." };
 		}
 	}
+	const policyConflict = activePresetWriteConflict(runtime, target, stack);
+	if (policyConflict) return { ok: false, status: 409, error: policyConflict };
 	const write = writePromptStackFile(ctx.cwd, target.scope, target.filePath, stack, { overwrite: true });
 	if (!write.ok) {
 		// With overwrite: true the repository can fail on containment (403) or I/O (500).
@@ -780,6 +798,10 @@ async function createStackFile(
 		} catch {
 			return { ok: false, status: 409, error: "Preset source unavailable or malformed; reload before overwriting." };
 		}
+	}
+	if (existingById && options.overwrite) {
+		const policyConflict = activePresetWriteConflict(runtime, existingById, stack);
+		if (policyConflict) return { ok: false, status: 409, error: policyConflict };
 	}
 	const write = writePromptStackFile(ctx.cwd, scope, targetPath, stack, { overwrite: options.overwrite ?? false });
 	if (!write.ok) {
