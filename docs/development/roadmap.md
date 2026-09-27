@@ -4,7 +4,11 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## Active 0.5.5: session capabilities
+## Active 0.5.6: regression and UI closeout
+
+The patch preserves the leading SDK System header, protects Preset/Profile edits, preflights Capability conflicts before Preset changes, and corrects auto-profile diagnostics. The user accepted whole-row disabled styling and browser-local resizing of the Presets/Stack items panes. Focused browser regressions and the exact-commit full CI/packed-install gates in the [release process](release.md) close out this patch. No schema change, new history semantics, optional-package publication or installed-host upgrade is implied.
+
+## 0.5.5 capability baseline (completed)
 
 Implementation is authorized under the [accepted capability design](../design/pi-forge-system-update-design-notes.md) and [lean-plan amendment](../design/architecture-0.5.md#accepted-055-amendment-session-capabilities). Pi 0.86 is released; the old upstream-blocked thin-sections proposal is superseded.
 
@@ -15,7 +19,7 @@ One active lane at a time:
 3. **Session observability & activity panel (implemented):** derived multi-capability state, actual selected tools, delivery status (`none`, `pending`, `prepared`), presentation indicators, and guarded human disable/reset; real SDK summarizer-input characterization.
 4. **Preset authorization & restricted Agent control (implemented):** live Preset binding schema (`capabilities`), opt-in `modelCallable: true`, and model-callable `forge_capability` tool with fixed list/status/enable/disable schema; per-call trust, binding identity, authorization, and tool policy checks; strict user-vs-agent ownership.
 5. **Capabilities library CRUD, Preset binding editor, and guarded human Web activation picker (delivered in functional source):** dedicated **Capabilities** surface for project/global capability CRUD with `sourceRevision` stale-save guards; dedicated peer Capability bindings editor with finite overrides and live source-effective preview; guarded human Web activation picker (`GET /api/capability-state/available`, `POST /api/capability-state/enable`) with pre-activation preview and session guard plus content fingerprint validation. Parent safeguards enforce raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences (`disposed`, `lifecycleRevision`, `sameContext`).
-6. **Main-package 0.5.5 release closeout:** The accepted UI and local full verification closed out on 2026-09-24 (`89c6ba2`); bilingual README B and reviewed continuous media are adopted. UI scope is frozen except for regressions/release blockers. The main package is versioned 0.5.5; publication requires the exact-commit CI and packed-install gates in the [release process](release.md). No paid provider matrix is implied. The optional package and runtime have independent unfinished release work and are not a main-package gate. Repo dev SDK remains pinned to 0.87.0 with peer `>=0.87.0 <0.88.0` (no dual 0.86 support claim).
+6. **Main-package 0.5.5 release closeout:** The accepted UI and local full verification closed out on 2026-09-24 (`89c6ba2`); bilingual README B and reviewed continuous media are adopted. UI scope is frozen except for regressions/release blockers. The main package 0.5.5 was published; subsequent patches retain the exact-commit CI and packed-install gates in the [release process](release.md). No paid provider matrix is implied. The optional package and runtime have independent unfinished release work and are not a main-package gate. Repo dev SDK remains pinned to 0.87.0 with peer `>=0.87.0 <0.88.0` (no dual 0.86 support claim).
 
 Existing README and optional Pet active-state changes are preserved. No host upgrade, reload or publication follows implicitly from local feature development. Foundation tests are not proof of live 0.5.5 behavior.
 

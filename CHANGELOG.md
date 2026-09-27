@@ -8,6 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-09-27
+
 - Make disabled Block/Slot rows visibly neutral as a whole: muted titles, gray side markers and a distinct background remain disabled-looking even when selected. Keep On/Off controls readable and preserve toggle focus for repeated Space/Enter operation.
 - Allow dragging the right edges of the Presets and Stack items panes to adjust their widths, with browser-local preferences, keyboard adjustment and double-click reset. Constrain widths to leave editing space and retain narrow-screen stacking; resizing does not change or save Preset drafts.
 

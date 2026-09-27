@@ -592,6 +592,8 @@ test("item toggles retain keyboard focus and save Block/Slot state", { timeout: 
 		items: [
 			{ kind: "block", id: "identity", role: "system", enabled: true, content: "Identity." },
 			{ kind: "slot", id: "history", slot: "chat-history", enabled: false },
+			{ kind: "block", id: "optional", role: "system", enabled: false, content: "Optional." },
+			{ kind: "slot", id: "skills", slot: "skills", enabled: true },
 		],
 	});
 	const harness = createHarness();
@@ -606,6 +608,22 @@ test("item toggles retain keyboard focus and save Block/Slot state", { timeout: 
 		await page.goto(latestEditorUrl(context.editors).href);
 		const blockToggle = page.locator('[data-item-index="0"] .item-toggle');
 		const slotToggle = page.locator('[data-item-index="1"] .item-toggle');
+		await blockToggle.waitFor();
+		for (const theme of ["light", "dark"]) {
+			if (await page.locator("body").getAttribute("data-theme") !== theme) await page.locator("#themeToggleBtn").click();
+			await page.locator('[data-item-index="2"] .item-title').click();
+			const rows = await page.locator(".item-row").evaluateAll((elements) => elements.map((el) => ({
+				left: getComputedStyle(el).borderLeftColor,
+				background: getComputedStyle(el).backgroundColor,
+				text: getComputedStyle(el.querySelector(".item-title")!).color,
+			})));
+			assert.equal(rows[1].left, rows[2].left, "selected disabled Block and disabled Slot stay neutral");
+			assert.equal(rows[1].background, rows[2].background, "selection must not look like enabling");
+			assert.notEqual(rows[0].left, rows[2].left);
+			assert.notEqual(rows[3].left, rows[1].left);
+			assert.notEqual(rows[0].text, rows[2].text);
+			assert.equal(await page.locator("#dirtyBadge.visible").count(), 0);
+		}
 		await blockToggle.focus();
 		for (const expected of ["false", "true"]) {
 			await page.keyboard.press("Space");
@@ -620,11 +638,127 @@ test("item toggles retain keyboard focus and save Block/Slot state", { timeout: 
 		await page.locator("#saveBtn").click();
 		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
 		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"));
-		assert.deepEqual(saved.items.map((item: { enabled: boolean }) => item.enabled), [true, true]);
+		assert.deepEqual(saved.items.map((item: { enabled: boolean }) => item.enabled), [true, true, false, true]);
 		await page.reload();
 		await slotToggle.waitFor();
 		assert.equal(await blockToggle.getAttribute("aria-pressed"), "true");
 		assert.equal(await slotToggle.getAttribute("aria-pressed"), "true");
+	} finally {
+		await browser?.close();
+		await harness.commands.preset.handler("ui stop", context.ctx);
+		await harness.events.session_shutdown?.({}, context.ctx);
+	}
+});
+
+test("pane resizing preserves drafts, reading state and browser-local preferred widths", { timeout: 60_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") return t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-pane-browser-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 2, id: "default", autoActivate: true,
+		items: [{ kind: "block", id: "identity", role: "system", content: "Pane fixture." }, { kind: "slot", id: "history", slot: "chat-history" }],
+	});
+	const file = join(promptStacksDir(cwd), "default.json");
+	const original = readFileSync(file, "utf8");
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
+		const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+		page.setDefaultTimeout(7_000);
+		const errors: string[] = [];
+		const writes: string[] = [];
+		page.on("pageerror", (error) => errors.push(error.message));
+		page.on("request", (request) => {
+			const path = new URL(request.url()).pathname;
+			if (/\/api\/stacks(?:\/|$)/.test(path) && !/\/(preview|validate)$/.test(path) && ["POST", "PUT", "DELETE"].includes(request.method())) writes.push(request.url());
+		});
+		const url = latestEditorUrl(context.editors).href;
+		await page.goto(url);
+		await page.locator(".item-row").first().waitFor();
+		const waitWidth = (selector: string, value: number) => page.waitForFunction(({ selector, value }) =>
+			Math.abs(document.querySelector(selector)!.getBoundingClientRect().width - value) < 1, { selector, value });
+		async function drag(selector: string, dx: number, commit = true): Promise<void> {
+			const rect = await page.locator(selector).boundingBox();
+			assert.ok(rect);
+			const x = rect.x + rect.width / 2;
+			const y = rect.y + Math.min(80, rect.height / 2);
+			await page.mouse.move(x, y);
+			await page.mouse.down();
+			await page.mouse.move(x + dx, y, { steps: 10 });
+			if (commit) await page.mouse.up();
+		}
+		for (const [list, handle] of [["#stackList", "#presetWidthHandle"], ["#itemList", "#stackWidthHandle"]]) {
+			const content = await page.locator(list).boundingBox();
+			const separator = await page.locator(handle).boundingBox();
+			assert.ok(content && separator && separator.x >= content.x + content.width - 0.5, "separator must not cover the list scrollbar");
+		}
+		await drag("#presetWidthHandle", 100);
+		await waitWidth("#presetSidebar", 312);
+		await drag("#stackWidthHandle", 100);
+		await waitWidth("#stackItemsPane", 290);
+		await page.reload();
+		await page.locator(".item-row").first().waitFor();
+		await waitWidth("#presetSidebar", 312);
+		await waitWidth("#stackItemsPane", 290);
+		await drag("#stackWidthHandle", 50, false);
+		await page.keyboard.press("Escape");
+		await page.mouse.up();
+		await waitWidth("#stackItemsPane", 290);
+		await page.locator("#stackWidthHandle").focus();
+		await page.keyboard.press("ArrowRight");
+		await waitWidth("#stackItemsPane", 306);
+		await page.keyboard.press("Enter");
+		await waitWidth("#stackItemsPane", 190);
+		await page.locator("#presetWidthHandle").dblclick();
+		await waitWidth("#presetSidebar", 212);
+		await page.locator("#sidebarToggleBtn").click();
+		await waitWidth("#presetSidebar", 0);
+		await page.locator("#sidebarToggleBtn").click();
+		await waitWidth("#presetSidebar", 212);
+		await drag("#presetWidthHandle", 1000);
+		await drag("#stackWidthHandle", 1000);
+		await waitWidth("#presetSidebar", 400);
+		await waitWidth("#stackItemsPane", 420);
+		await page.locator("#previewTabBtn").click();
+		await page.locator("#editorDockArea.dock-open").waitFor();
+		await page.setViewportSize({ width: 1200, height: 900 });
+		await page.locator("#focus-toggle").click();
+		await page.waitForFunction(() => document.querySelector("#editorDockArea")!.getAttribute("data-reading") === "wide"
+			&& document.querySelector(".editor-pane")!.getBoundingClientRect().width >= 239);
+		await page.locator("#reading-focus-btn").click();
+		await page.locator("#workspace").waitFor({ state: "hidden" });
+		await page.locator("#focus-toggle").click();
+		await page.locator("#workspace").waitFor();
+		assert.equal(await page.locator("#editorDockArea").getAttribute("data-reading"), "wide");
+		await page.setViewportSize({ width: 390, height: 900 });
+		await page.locator("#presetWidthHandle").waitFor({ state: "hidden" });
+		assert.equal(await page.locator("#stackWidthHandle").isVisible(), false);
+		assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+		await page.setViewportSize({ width: 1600, height: 900 });
+		await page.locator("#previewTabBtn").click();
+		await waitWidth("#presetSidebar", 400);
+		await waitWidth("#stackItemsPane", 420);
+		assert.equal(await page.locator("#dirtyBadge.visible").count(), 0);
+		assert.equal(readFileSync(file, "utf8"), original);
+		assert.deepEqual(writes, []);
+
+		const blocked = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+		await blocked.addInitScript(() => {
+			Storage.prototype.getItem = () => { throw new DOMException("Blocked", "SecurityError"); };
+			Storage.prototype.setItem = () => { throw new DOMException("Blocked", "SecurityError"); };
+		});
+		blocked.on("pageerror", (error) => errors.push(error.message));
+		await blocked.goto(url);
+		await blocked.locator(".item-row").first().waitFor();
+		await blocked.locator("#presetWidthHandle").focus();
+		await blocked.keyboard.press("ArrowRight");
+		await blocked.waitForFunction(() => document.querySelector("#presetSidebar")!.getBoundingClientRect().width === 228);
+		assert.deepEqual(errors, []);
 	} finally {
 		await browser?.close();
 		await harness.commands.preset.handler("ui stop", context.ctx);

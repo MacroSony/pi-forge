@@ -1,6 +1,6 @@
 {
 	"name": "@zihanw/pi-forge",
-	"version": "0.5.5",
+	"version": "0.5.6",
 	"description": "Pi extension for editable context presets, one-shot agent profiles, tool policy, and request debugging.",
 	"repository": {
 		"type": "git",
