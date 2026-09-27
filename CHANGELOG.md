@@ -8,7 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
-- Make Block/Slot On/Off states easier to distinguish with contrasting fills and solid/hollow indicators in both themes. Preserve toggle focus after rebuilding the list so repeated Space/Enter operation works.
+- Make disabled Block/Slot rows visibly neutral as a whole: muted titles, gray side markers and a distinct background remain disabled-looking even when selected. Keep On/Off controls readable and preserve toggle focus for repeated Space/Enter operation.
+- Allow dragging the right edges of the Presets and Stack items panes to adjust their widths, with browser-local preferences, keyboard adjustment and double-click reset. Constrain widths to leave editing space and retain narrow-screen stacking; resizing does not change or save Preset drafts.
 
 - Keep Pi's incoming initial System message and its tool declarations at index zero when a Preset places authored messages before explicit or implicit history. Later System updates and Preview provenance remain ordered.
 - Confirm before discarding an unsaved Preset draft on import; preserve newer edits during file reading, resource creation, and reload. Reload reuses a discard confirmation only for the exact confirmed draft revision.

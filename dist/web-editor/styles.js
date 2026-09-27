@@ -18,6 +18,10 @@ export const EDITOR_STYLES = String.raw `
   --role-user: #2f7d68;
   --role-assistant: #3e76ad;
   --role-tool-result: #b16b2e;
+  --item-off-bg: #eef0ef;
+  --item-off-text: #6b7570;
+  --item-off-line: #bac3be;
+  --item-off-selected: #87978e;
   --item-block: #4f6f9f;
   --item-slot: #8b5fa8;
   --slot-chat-history: #2f8a78;
@@ -56,6 +60,10 @@ body[data-theme="dark"] {
   --role-user: #65c6a9;
   --role-assistant: #82b9ef;
   --role-tool-result: #e5ad70;
+  --item-off-bg: #131917;
+  --item-off-text: #7d8b83;
+  --item-off-line: #3b4942;
+  --item-off-selected: #788a80;
   --item-block: #88a9dc;
   --item-slot: #c59be0;
   --slot-chat-history: #70d0ba;
@@ -188,7 +196,7 @@ html, body {
 }
 .shell {
   display: grid;
-  grid-template-columns: 212px minmax(0, 1fr);
+  grid-template-columns: var(--preset-pane-width, 212px) minmax(0, 1fr);
   height: calc(100vh - 48px);
   min-height: 0;
   transition: grid-template-columns .16s ease;
@@ -197,6 +205,8 @@ html, body {
   grid-template-columns: 0 minmax(0, 1fr);
 }
 .sidebar {
+  position: relative;
+  padding-right: 8px;
   border-right: 1px solid var(--line);
   background: var(--pane);
   min-width: 0;
@@ -205,7 +215,38 @@ html, body {
   flex-direction: column;
 }
 .shell.sidebar-collapsed .sidebar {
+  padding-right: 0;
   border-right: 0;
+}
+.pane-width-handle {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 8px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+}
+.pane-width-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 2px;
+  background: transparent;
+}
+.pane-width-handle:hover::after,
+.pane-width-handle:focus-visible::after {
+  background: var(--accent);
+}
+.pane-width-handle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+.shell.sidebar-collapsed #presetWidthHandle { display: none; }
+.shell.pane-width-dragging { transition: none; }
+.shell.pane-width-dragging,
+.shell.pane-width-dragging * { cursor: col-resize !important; user-select: none !important; }
+@media (max-width: 800px) {
+  .pane-width-handle { display: none; }
 }
 .side-head {
   padding: 9px 10px;
@@ -427,7 +468,7 @@ html, body {
 }
 .workspace {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: var(--stack-pane-width, 190px) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
@@ -482,6 +523,8 @@ html, body {
   margin-bottom: 10px;
 }
 .items-pane {
+  position: relative;
+  padding-right: 8px;
   border-right: 1px solid var(--line);
   background: var(--pane);
   min-width: 0;
@@ -520,20 +563,26 @@ html, body {
   border-left-color: var(--item-slot);
 }
 .item-row.selected {
-  border-top-color: var(--accent);
-  border-right-color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-color: var(--accent);
   background: var(--accent-bg);
 }
-.item-row.selected.kind-block {
-  border-left-color: var(--item-block);
+.item-row.disabled {
+  background: var(--item-off-bg);
+  border-left-color: var(--item-off-line);
+  border-bottom-color: var(--item-off-line);
 }
-.item-row.selected.kind-slot {
-  border-left-color: var(--item-slot);
+.item-row.disabled.selected {
+  border-color: var(--item-off-selected);
+  border-left-color: var(--item-off-line);
+  background: var(--item-off-bg);
 }
 .item-row.disabled .item-title,
-.item-row.disabled .item-meta {
-  opacity: .68;
+.item-row.disabled .item-meta,
+.item-row.disabled .drag-handle {
+  color: var(--item-off-text);
+}
+.item-row.disabled .item-title {
+  font-weight: 500;
 }
 .item-row.dragging {
   border-style: dashed;
@@ -1250,6 +1299,7 @@ body[data-theme="dark"] .item-toggle.enabled {
     min-height: calc(100vh - 80px);
   }
   .sidebar, .items-pane {
+    padding-right: 0;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -1415,12 +1465,8 @@ body[data-theme="dark"] .item-toggle.enabled {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.item-row.selected {
-  border-color: var(--accent);
-}
-.item-row.selected.kind-block,
-.item-row.selected.kind-slot {
-  border-left-color: var(--accent);
+.item-row.disabled:focus-visible {
+  outline-color: var(--item-off-selected);
 }
 .item-title {
   display: -webkit-box;

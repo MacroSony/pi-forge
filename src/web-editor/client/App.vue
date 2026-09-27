@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 
 import { createEditorApi } from "./api.ts";
+import { startPaneWidths } from "./pane-widths.ts";
 import CapabilityBrowser from "./components/CapabilityBrowser.vue";
 import ProfileBrowser from "./components/ProfileBrowser.vue";
 import SessionCapabilities from "./components/SessionCapabilities.vue";
@@ -12,6 +13,7 @@ import { editorTabButtonId, EDITOR_TABS } from "./tab-registry.ts";
 import { applyEditorTheme, editorTheme, toggleEditorTheme } from "./theme.ts";
 
 let stopLegacyEditor: (() => void) | undefined;
+let stopPaneWidths: (() => void) | undefined;
 let stopContributionTabs: (() => void) | undefined;
 let contextDiffTabs: ReturnType<typeof startContextDiffTabs> | undefined;
 let refreshLegacyLocale: (() => void) | undefined;
@@ -69,6 +71,7 @@ onMounted(async () => {
 		stopLegacyEditor = startLegacyEditor({
 			isActive: () => activeSurface.value === "stacks",
 		});
+		stopPaneWidths = startPaneWidths(document.getElementById("shell")!);
 		refreshLegacyLocale = refreshLegacyEditorLocale;
 		translateDom(document);
 		void loadLocaleSetting();
@@ -93,6 +96,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+	stopPaneWidths?.();
 	contextDiffTabs?.stop();
 	contextDiffTabs = undefined;
 	stopContributionTabs?.();
@@ -173,7 +177,7 @@ onUnmounted(() => {
 			<div v-once class="legacy-editor-root">
 
 				<div id="shell" class="shell">
-					<aside class="sidebar">
+					<aside id="presetSidebar" class="sidebar">
 						<div class="side-head">
 							<div class="side-head-title">
 								<div class="side-title" data-i18n="nav.stacks">Presets</div>
@@ -187,6 +191,7 @@ onUnmounted(() => {
 						<div class="library-create">
 							<button id="newStackBtn" class="outline-add" data-icon="+" title="Create a new preset (Ctrl/Cmd+N)" data-i18n="chrome.newStack" data-i18n-title="chrome.newStackTitle">New preset</button>
 						</div>
+						<div id="presetWidthHandle" class="pane-width-handle" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="presetSidebar" data-i18n-aria="layout.presetsWidth" data-i18n-title="layout.resizeHint" aria-label="Presets sidebar width" title="Drag to resize; double-click or press Enter to reset"></div>
 					</aside>
 					<main class="main">
 						<header id="resourceHeader" class="resource-header">
@@ -231,7 +236,7 @@ onUnmounted(() => {
 						</nav>
 						<div id="editorDockArea" class="editor-dock-area">
 							<section id="workspace" class="workspace">
-								<div class="items-pane">
+								<div id="stackItemsPane" class="items-pane">
 									<div class="pane-head">
 										<span data-i18n="chrome.items">Stack items</span>
 										<span id="itemCount" class="stack-meta"></span>
@@ -250,6 +255,7 @@ onUnmounted(() => {
 											</button>
 										</div>
 									</div>
+									<div id="stackWidthHandle" class="pane-width-handle" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="stackItemsPane" data-i18n-aria="layout.itemsWidth" data-i18n-title="layout.resizeHint" aria-label="Stack items width" title="Drag to resize; double-click or press Enter to reset"></div>
 								</div>
 								<div class="editor-pane">
 									<div id="itemEditor" class="item-editor"></div>
