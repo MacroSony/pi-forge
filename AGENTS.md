@@ -38,6 +38,8 @@ Prefer removal and simplification. Move code when splitting packages; do not rew
 
 The user authorized the leading-System, Preset Import/Reload draft-loss, Profile pending-save, conflicting Preset-switch, and invalid auto-profile diagnostics fixes, followed by another independent review. Keep the initial incoming System header first by identity with its compiler provenance; do not hoist later System deltas or change duplicate-history semantics. Preflight retained Capability patches before publishing/persisting a new Preset or retiring old bound activations; do not silently drop unbound user capabilities. Parent follow-up also reproduced the same conflict on active-Preset save/overwrite: check the normalized prospective live policy before the synchronous file write, retaining source-revision checks and leaving inactive-resource writes unchanged. Draft discard consent applies only to the captured revision, including asynchronous file reading/creation. Profile forms freeze during pending validation/save. Versioning, push, publish and installed-host reload remain separate from this source fix authorization.
 
+The subsequent 0.5.6 trial authorizes only a narrow Block/Slot On/Off clarity change, including focus retention after toggle rebuilds; no sidebar/layout redesign or new draft owner. Test the candidate Mika preset in the separate testing ground before release. Real-model trial remains gated on an explicitly chosen available model when host defaults are unavailable; do not silently fall back to a different paid model.
+
 ## Working rules
 
 1. One implementation lane at a time, in the order listed in the lean plan and [roadmap](docs/development/roadmap.md).

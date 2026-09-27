@@ -8,6 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+- Make Block/Slot On/Off states easier to distinguish with contrasting fills and solid/hollow indicators in both themes. Preserve toggle focus after rebuilding the list so repeated Space/Enter operation works.
+
 - Keep Pi's incoming initial System message and its tool declarations at index zero when a Preset places authored messages before explicit or implicit history. Later System updates and Preview provenance remain ordered.
 - Confirm before discarding an unsaved Preset draft on import; preserve newer edits during file reading, resource creation, and reload. Reload reuses a discard confirmation only for the exact confirmed draft revision.
 - Disable Agent Profile draft controls while Save or Validate is pending, preventing edits from being lost when a successful save closes the editor.

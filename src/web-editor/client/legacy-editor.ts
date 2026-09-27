@@ -463,11 +463,13 @@ function renderItemList() {
     };
     query<EditorElement>(row, ".item-toggle")!.onclick = (event: any) => {
       event.stopPropagation();
+      const retainFocus = document.activeElement === event.currentTarget;
       item.enabled = item.enabled === false;
       selectedItemIndex = index;
       markDirty();
       renderItemList();
       renderItemEditor();
+      if (retainFocus) query<HTMLElement>(el("itemList"), `[data-item-index="${index}"] .item-toggle`)?.focus();
     };
     row.ondragstart = (event: any) => {
       dragIndex = index;

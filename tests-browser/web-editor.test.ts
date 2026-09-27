@@ -581,3 +581,53 @@ function latestContextDiffView() {
 	};
 	return { turns: [], latest: { turn, diff, usage }, latestDiff: diff };
 }
+
+test("item toggles retain keyboard focus and save Block/Slot state", { timeout: 20_000 }, async (t) => {
+	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") return t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
+	const executablePath = findChromeExecutable();
+	assert.ok(executablePath, "Chrome was not found. Set CHROME_PATH or PI_FORGE_SKIP_BROWSER_TESTS=1.");
+	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-toggle-browser-"));
+	writeStack(cwd, "default.json", {
+		schemaVersion: 2, id: "default", autoActivate: true,
+		items: [
+			{ kind: "block", id: "identity", role: "system", enabled: true, content: "Identity." },
+			{ kind: "slot", id: "history", slot: "chat-history", enabled: false },
+		],
+	});
+	const harness = createHarness();
+	const context = createContext(cwd);
+	await startSession(harness, context.ctx);
+	let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+	try {
+		await harness.commands.preset.handler("ui", context.ctx);
+		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
+		const page = await browser.newPage();
+		page.setDefaultTimeout(5_000);
+		await page.goto(latestEditorUrl(context.editors).href);
+		const blockToggle = page.locator('[data-item-index="0"] .item-toggle');
+		const slotToggle = page.locator('[data-item-index="1"] .item-toggle');
+		await blockToggle.focus();
+		for (const expected of ["false", "true"]) {
+			await page.keyboard.press("Space");
+			assert.equal(await blockToggle.getAttribute("aria-pressed"), expected);
+			assert.ok(await blockToggle.evaluate((el) => el === document.activeElement));
+		}
+		await slotToggle.focus();
+		await page.keyboard.press("Enter");
+		assert.equal(await slotToggle.getAttribute("aria-pressed"), "true");
+		assert.ok(await slotToggle.evaluate((el) => el === document.activeElement));
+		assert.ok(await page.locator("#dirtyBadge.visible").isVisible());
+		await page.locator("#saveBtn").click();
+		await page.locator("#dirtyBadge").waitFor({ state: "hidden" });
+		const saved = JSON.parse(readFileSync(join(promptStacksDir(cwd), "default.json"), "utf8"));
+		assert.deepEqual(saved.items.map((item: { enabled: boolean }) => item.enabled), [true, true]);
+		await page.reload();
+		await slotToggle.waitFor();
+		assert.equal(await blockToggle.getAttribute("aria-pressed"), "true");
+		assert.equal(await slotToggle.getAttribute("aria-pressed"), "true");
+	} finally {
+		await browser?.close();
+		await harness.commands.preset.handler("ui stop", context.ctx);
+		await harness.events.session_shutdown?.({}, context.ctx);
+	}
+});
