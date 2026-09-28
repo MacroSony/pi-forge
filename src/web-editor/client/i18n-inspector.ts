@@ -1,6 +1,10 @@
 // Bilingual UI copy for lane C inspector; consumed by the central editor i18n owner.
 
 export const inspectorEn = {
+ "inspection.declaredArgs": "{count} declared args",
+ "inspection.declaredArgsNote": "Explicit top-level schema properties only; references or composite schemas may allow other arguments.",
+ "inspection.declarationJson": "Declaration JSON (Preview fields)",
+ "inspection.copyJson": "Copy JSON",
 	"inspection.copyReport": "Copy report",
 	"inspection.reportNote": "Copy the compiler text report. Copy individual tool rows for their structured parameters/output; this is not a complete provider payload.",
 	"inspection.search": "Search text, tool name or call ID\u2026",
@@ -47,6 +51,10 @@ export const inspectorEn = {
 };
 
 export const inspectorZhCN: Record<keyof typeof inspectorEn, string> = {
+ "inspection.declaredArgs": "{count} 个已声明参数",
+ "inspection.declaredArgsNote": "仅统计 schema 显式顶层 properties；引用或组合 schema 可能允许其他参数。",
+ "inspection.declarationJson": "声明 JSON（预览字段）",
+ "inspection.copyJson": "复制 JSON",
 	"inspection.copyReport": "复制报告",
 	"inspection.reportNote": "复制编译器文本报告；工具参数／输出请复制对应工具行。这不是完整的提供商 payload。",
 	"inspection.search": "搜索正文、工具名或 call ID…",

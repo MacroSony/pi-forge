@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { t } from "../i18n.ts";
+import { declaredParameterCount, declarationExcerpt, declarationJson } from "../preview-tool-declarations.ts";
 import type { WebEditorPreviewSection } from "../../types.ts";
 
 const props = defineProps<{
@@ -24,18 +25,12 @@ const removedTools = computed(() => toolChanges.value?.removed ?? []);
 const totalToolDeltas = computed(() => addedTools.value.length + removedTools.value.length);
 const hasToolChanges = computed(() => totalToolDeltas.value > 0);
 
-function hasParams(params: unknown): boolean {
-	if (params === undefined || params === null) return false;
-	if (typeof params === "object" && Object.keys(params).length === 0) return false;
-	return true;
-}
-
-function formatParams(params: unknown): string {
-	if (typeof params === "string") return params;
-	try {
-		return JSON.stringify(params, null, 2);
-	} catch {
-		return String(params);
+// Mount a declaration's JSON only after it has been opened once. Keep that DOM
+// on close so native disclosure and same-data refresh retain its reading state.
+const renderedTools = ref(new Set<number>());
+function revealTool(index: number, event: Event): void {
+	if ((event.target as HTMLDetailsElement).open && !renderedTools.value.has(index)) {
+		renderedTools.value = new Set([...renderedTools.value, index]);
 	}
 }
 
@@ -88,13 +83,18 @@ function onCopyNamed(value: string | null): void {
 				<p class="tool-changes-note">{{ t("diff.historicalToolChangesNote") }}</p>
 				<div v-if="addedTools.length > 0" class="tool-changes-group">
 					<div class="tool-group-label">{{ t("diff.toolsAddedLabel") }} ({{ addedTools.length }})</div>
-					<div v-for="tool in addedTools" :key="tool.name" class="tool-change-item added">
-						<div class="tool-item-head">
-							<code class="tool-name">{{ tool.name }}</code>
-							<span v-if="tool.description" class="tool-desc">{{ tool.description }}</span>
+					<details v-for="(tool, index) in addedTools" :key="JSON.stringify([tool.name, index])" class="tool-change-item added" :data-tool-name="tool.name" @toggle="revealTool(index, $event)">
+						<summary class="tool-item-head">
+							<span class="tool-declaration-chevron" aria-hidden="true">▸</span>
+							<code class="tool-name" :title="tool.name">{{ tool.name }}</code>
+							<span v-if="declaredParameterCount(tool.parameters) !== null" class="tool-argument-count" :title="t('inspection.declaredArgsNote')">{{ t('inspection.declaredArgs', { count: declaredParameterCount(tool.parameters)! }) }}</span>
+							<span v-if="tool.description" class="tool-desc">{{ declarationExcerpt(tool.description) }}</span>
+						</summary>
+						<div v-if="renderedTools.has(index)" class="tool-declaration-detail">
+							<div class="tool-declaration-actions"><span>{{ t('inspection.declarationJson') }}</span><button type="button" @click="emit('copy', declarationJson(tool))">{{ t('inspection.copyJson') }}</button></div>
+							<pre class="tool-declaration-json" tabindex="0" :aria-label="t('inspection.declarationJson')"><code>{{ declarationJson(tool) }}</code></pre>
 						</div>
-						<pre v-if="hasParams(tool.parameters)" class="tool-params"><code>{{ formatParams(tool.parameters) }}</code></pre>
-					</div>
+					</details>
 				</div>
 				<div v-if="removedTools.length > 0" class="tool-changes-group">
 					<div class="tool-group-label">{{ t("diff.toolsRemovedLabel") }} ({{ removedTools.length }})</div>
@@ -240,43 +240,34 @@ function onCopyNamed(value: string | null): void {
 	letter-spacing: .02em;
 }
 .tool-change-item {
-	padding: 6px 8px;
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	background: var(--pane);
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
+ border: 1px solid var(--line);
+ border-radius: 4px;
+ background: var(--pane);
+ min-width: 0;
 }
-.tool-change-item.added {
-	border-left: 3px solid var(--success);
-}
-.tool-change-item.removed {
-	border-left: 3px solid var(--error);
-}
+.tool-change-item.added { border-left: 3px solid var(--success); }
+.tool-change-item.removed { border-left: 3px solid var(--error); padding: 6px 8px; overflow-wrap: anywhere; }
 .tool-item-head {
-	display: flex;
-	align-items: baseline;
-	gap: 8px;
-	flex-wrap: wrap;
+ display: flex; align-items: center; gap: 7px; flex-wrap: nowrap;
+ list-style: none; min-width: 0; min-height: 32px; padding: 6px 8px; cursor: pointer;
 }
-.tool-name {
-	font-weight: 700;
-	font-size: 12px;
-	color: var(--text);
+.tool-item-head::-webkit-details-marker { display: none; }
+.tool-declaration-chevron { flex: none; color: var(--muted); font-size: 11px; }
+.tool-change-item[open] > .tool-item-head .tool-declaration-chevron { transform: rotate(90deg); }
+.tool-name { font-weight: 700; font-size: 12px; color: var(--text); }
+.tool-item-head .tool-name {
+ max-width: 45%;
+ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tool-desc {
-	color: var(--muted);
-	font-size: 11px;
+.tool-argument-count { flex: none; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.tool-desc { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-declaration-detail { padding: 0 8px 8px; min-width: 0; }
+.tool-declaration-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 5px 0; color: var(--muted); font-size: 10px; }
+.tool-declaration-actions button { margin-left: auto; min-height: 24px; padding: 2px 6px; font-size: 11px; }
+.tool-declaration-json {
+ margin: 0; padding: 8px; border-radius: 3px; background: var(--code-bg); color: var(--code-text);
+ font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+ max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.tool-params {
-	margin: 2px 0 0;
-	padding: 6px;
-	border-radius: 3px;
-	background: var(--code-bg);
-	color: var(--code-text);
-	font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-	max-height: 140px;
-	overflow: auto;
-}
+.tool-item-head:focus-visible,.tool-declaration-json:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>

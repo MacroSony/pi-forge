@@ -61,7 +61,7 @@ test(`built editor uses projected text and separate tools without management inf
 		server = (globalThis as typeof globalThis & { __piForgeWebEditor?: { byCwd: Record<string, { server?: WebEditorServer }> } }).__piForgeWebEditor?.byCwd[cwd]?.server;
 		assert.ok(server);
 		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
-		const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
+		const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, permissions: ["clipboard-read", "clipboard-write"] });
 		page.setDefaultTimeout(7000);
 		const errors: string[] = [], externalRequests: string[] = [];
 		page.on("pageerror", error => errors.push(error.message));
@@ -136,6 +136,35 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.equal(await systemCard.locator(".preview-tool-changes").getAttribute("open"), null);
 		await systemCard.locator(".tool-changes-summary").click();
 		assert.match(await systemCard.locator(".preview-tool-changes").textContent() || "", /fake_write/);
+		// Historical declarations use individual lazy, single-line disclosures.
+		const declarations = systemCard.locator("details.tool-change-item.added");
+		assert.ok(await declarations.count() >= 3);
+		assert.equal(await declarations.locator(".tool-declaration-json").count(), 0, "Closed definitions are not eagerly rendered");
+		for (const declaration of await declarations.all()) {
+			assert.equal(await declaration.evaluate((el: HTMLDetailsElement) => el.open), false);
+			assert.ok((await declaration.locator(":scope > summary").boundingBox())!.height <= 40, "Long schemas/descriptions do not enlarge the collapsed row");
+		}
+		const writeDeclaration = systemCard.locator('[data-tool-name="fake_write"]');
+		assert.match(await writeDeclaration.locator(".tool-argument-count").textContent() || "", /2/);
+		const writeMetadata = apiPreviewData.preview.system.toolChanges!.added.find(tool => tool.name === "fake_write")!;
+		await writeDeclaration.locator(":scope > summary").focus();
+		await page.keyboard.press("Space");
+		const declarationJson = writeDeclaration.locator(".tool-declaration-json");
+		await declarationJson.waitFor();
+		assert.deepEqual(JSON.parse(await declarationJson.textContent() || ""), writeMetadata, "Expansion includes the full Preview declaration, not only parameters");
+		assert.equal(await declarationJson.locator("img").count(), 0);
+		await writeDeclaration.locator(".tool-declaration-actions button").click();
+		assert.equal(await page.evaluate(() => navigator.clipboard.readText()), JSON.stringify(writeMetadata, null, 2));
+		await page.locator("#localeSelect").selectOption("en");
+		assert.match(await writeDeclaration.locator(".tool-argument-count").textContent() || "", /2 declared args/);
+		await page.locator("#localeSelect").selectOption("zh-CN");
+		if (shots) {
+			await declarationJson.scrollIntoViewIfNeeded();
+			await page.screenshot({ path: join(shots, `history-tool-json-${native ? "native" : "fallback"}.png`) });
+		}
+		await writeDeclaration.locator(":scope > summary").click();
+		assert.equal(await declarationJson.isVisible(), false);
+		if (shots) await page.screenshot({ path: join(shots, `history-tools-folded-${native ? "native" : "fallback"}.png`) });
 		await systemCard.locator(".tool-changes-summary").click();
 		const systems = compiled.locator(".context-diff-section.role-system");
 		assert.equal(await systems.count(), native ? 4 : 2, "base, tool-change history, and meaningful rule updates; empty refresh hidden");
@@ -334,6 +363,14 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
 		assert.equal(await page.locator("dialog[open]").count(), 0);
 		if (shots) await page.screenshot({ path: join(shots, `session-narrow-${native ? "native" : "fallback"}.png`) });
+		// After a completed turn, actual activation follows the newly active saved
+		// Preset without another model call. The earlier selection-only case kept A.
+		const capturedBeforeSwitch = JSON.stringify(harness.streamContexts);
+		await quietPrompt("/preset use project:scratch");
+		await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+		await page.waitForFunction(() => document.querySelector(".session-inspector .section-text")?.textContent === "UNSAVED_DO_NOT_LEAK_INTO_SESSION"); // This scratch draft was explicitly saved above.
+		assert.match(await sessionCompiled.textContent() || "", /Seed a historical tool declaration/, "New Preset retains the existing conversation branch");
+		assert.equal(JSON.stringify(harness.streamContexts), capturedBeforeSwitch, "Activation/Preview do not replace past model request contexts");
 		assert.equal(harness.streamContexts.length, 3);
 		assert.equal(harness.fetchAttempts, 0);
 		assert.deepEqual(errors, []);
