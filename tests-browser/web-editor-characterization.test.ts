@@ -1102,15 +1102,31 @@ test("web editor renders a contributed tab through SchemaForm and writes values 
 		assert.equal(putRequests, 2);
 		await page.unroute(/\/api\/contrib\/subagent-config$/);
 
+		// Hold the save rather than assuming tab navigation finishes within the
+		// 250ms debounce. Slow runners may correctly complete an ungated autosave.
+		let tabSaveSeenResolve: () => void = () => {};
+		let releaseTabSave: () => void = () => {};
+		const tabSaveSeen = new Promise<void>((resolve) => { tabSaveSeenResolve = resolve; });
+		const tabSaveRelease = new Promise<void>((resolve) => { releaseTabSave = resolve; });
+		await page.route(/\/api\/contrib\/subagent-config$/, async (route) => {
+			if (route.request().method() !== "PUT") return route.continue();
+			tabSaveSeenResolve();
+			await tabSaveRelease;
+			await route.continue();
+		});
 		await page.locator('[data-field-input="timeoutMs"]').fill("666");
+		await tabSaveSeen;
 		await page.locator("#settings-other-configTabBtn").click();
 		await page.locator(".schema-form").filter({ hasText: "Other settings" }).waitFor();
 		assert.equal(await page.locator("#settingsStatus").textContent(), "Settings ready");
 		await page.locator("#settings-subagent-configTabBtn").click();
 		assert.equal(await page.locator('[data-field-input="timeoutMs"]').inputValue(), "666");
-		assert.equal(await page.locator("#settingsStatus").textContent(), "Unsaved changes");
+		assert.equal(await page.locator("#settingsStatus").textContent(), "Saving");
+		assert.equal(writes.length, 2, "The draft is retained before its held save reaches the provider");
+		releaseTabSave();
 		await page.locator("#settingsStatus").filter({ hasText: /^Saved$/ }).waitFor();
 		assert.deepEqual(writes.at(-1), { backend: "auto", timeoutMs: 666 });
+		await page.unroute(/\/api\/contrib\/subagent-config$/);
 
 		await page.setViewportSize({ width: 390, height: 844 });
 		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
