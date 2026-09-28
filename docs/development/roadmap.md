@@ -4,9 +4,15 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## Active 0.5.6: regression and UI closeout
+## Active 0.5.7: readable Preview and scrolling release
 
-The patch preserves the leading SDK System header, protects Preset/Profile edits, preflights Capability conflicts before Preset changes, and corrects auto-profile diagnostics. The user accepted whole-row disabled styling and browser-local resizing of the Presets/Stack items panes. Focused browser regressions and the exact-commit full CI/packed-install gates in the [release process](release.md) close out this patch. No schema change, new history semantics, optional-package publication or installed-host upgrade is implied.
+The accepted UI update adds readable role-colored context, collapsible Tools groups, original-order / safe call-paired result views, and individually disclosed historical tool JSON. Current session and short-screen Preset inspection remain scroll-reachable. The closeout review repaired search coverage and disclosure/reading-state retention, including same-Preset draft updates with an explicitly pending previous preview.
+
+This is a read-only inspection and scrolling release: no provider-context, executable-tool, resource-schema or cache-behavior change. Local full verification and independent fixed-version UI rechecks are complete; the final release commit still follows all [release gates](release.md). OMP compatibility and optional-package work remain independent, not gates for this release. Publishing does not authorize an installed-host upgrade or reload.
+
+## 0.5.6 regression and UI closeout (completed)
+
+0.5.6 delivered leading-System preservation, Preset/Profile edit protection, Capability conflict preflight, auto-profile diagnostics, whole-row disabled styling and browser-local pane resizing. See the [changelog](../../CHANGELOG.md) for the published patch history.
 
 ## 0.5.5 capability baseline (completed)
 

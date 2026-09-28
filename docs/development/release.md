@@ -20,7 +20,7 @@ The macOS and Windows jobs run the same complete verification surface as Linux, 
 
 ## Dependency policy
 
-The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Forge 0.5.6 requires Pi `>=0.87.0 <0.88.0`, with development fixtures pinned to `0.87.0`; `typebox` remains a wildcard optional peer. Pi 0.86 and future minor versions are not implicitly supported. Exact tested versions belong in development dependencies and the lockfile, not exact host-version requirements.
+The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Forge 0.5.7 requires Pi `>=0.87.0 <0.88.0`, with development fixtures pinned to `0.87.0`; `typebox` remains a wildcard optional peer. Pi 0.86 and future minor versions are not implicitly supported. Exact tested versions belong in development dependencies and the lockfile, not exact host-version requirements.
 
 Published `@zihanw/pi-forge-subagents` 0.5.3 does not understand `tools.initial`. The upcoming optional package needs the matching fix and a Forge dependency floor of `^0.5.5` for the new command-contribution entry. This is a companion compatibility gate, not a requirement to publish the packages simultaneously. See the [host-port compatibility note](../reference/subagent-host-port.md#tool-selection-compatibility).
 

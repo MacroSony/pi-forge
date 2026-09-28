@@ -8,6 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-09-28
+
 - Preserve inspection choices through same-Preset draft edits with a clearly marked, paused previous preview. Restore native disclosure state after search/full-text, retain filtered history JSON reading positions, and search historical declaration JSON and named System keys without changing prompt text. Keep the Preset dock physically reachable on short narrow screens.
 
 - Collapse individual historical tool declarations to one-line names, description excerpts and explicit top-level argument counts. Expand a declaration to inspect/copy its Preview JSON; unknown schemas do not imply zero arguments. This changes only inspection, not active tools or model context.
