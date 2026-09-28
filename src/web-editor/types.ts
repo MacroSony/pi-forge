@@ -133,6 +133,14 @@ export interface WebEditorProfileMutation {
 	selectedPath: string;
 }
 
+export interface WebEditorPreviewPart {
+	key: string;
+	kind: "text" | "thinking" | "toolCall" | "image" | "unknown";
+	text: string;
+	toolName?: string;
+	callId?: string;
+}
+
 export interface WebEditorPreviewSection {
 	id: string;
 	/** Stable compiled-source identity used to align draft diffs across insertions. */
@@ -157,6 +165,17 @@ export interface WebEditorPreviewSection {
 	/** Text-only counts: body plus named section values, excluding tool schemas. */
 	chars: number;
 	approxTokens: number;
+	/** Structured inspection sidecar built directly from compiled message content parts. */
+	inspection?: {
+		key: string;
+		scope: string;
+		parts: WebEditorPreviewPart[];
+		toolResult?: {
+			callId?: string;
+			toolName?: string;
+			isError?: boolean;
+		};
+	};
 }
 
 export interface WebEditorPreview {

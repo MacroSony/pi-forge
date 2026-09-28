@@ -10,6 +10,7 @@ import { getCurrentBranchEntries, readCapabilitySession } from "./session-adapte
 import { isCapabilityDelivery } from "./capability-protocol.js";
 import { materializeCapabilityAnchors } from "./capability-anchors.js";
 import { reduceCapabilityEvents } from "./capability-events.js";
+import { buildSectionInspection, createInspectionTracker, resolveInspectionScope, } from "./preview-inspection.js";
 /**
  * Render preview for a prompt stack against current session context.
  * Evaluates the selected draft against current session capability snapshots without
@@ -41,10 +42,15 @@ export function buildPreview(ctx, target, options) {
     const baseProjected = projectPresetSystemPrompt(messages.messages, system.systemPrompt ?? "");
     // Base projection clones every System and may insert one new leading System.
     // Preserve provenance by position here, before capability projection inserts/removes entries.
+    // Multiple history slots can output identical message references; track a list per reference
+    // so duplicate slots retain their distinct slot instance identities and do not cross-pair.
     const originalMessageSources = new Map();
     const baseOffset = baseProjected.length - messages.messages.length;
     for (let i = 0; i < messages.messages.length; i++) {
-        originalMessageSources.set(baseProjected[i + baseOffset], messages.messageSources[i]);
+        const msg = baseProjected[i + baseOffset];
+        const list = originalMessageSources.get(msg) ?? [];
+        list.push(messages.messageSources[i]);
+        originalMessageSources.set(msg, list);
     }
     const beforeCapabilityProjection = new Set(baseProjected);
     const history = readCapabilitySession(ctx);
@@ -86,6 +92,7 @@ export function buildPreview(ctx, target, options) {
             message: 'request-frequency regex rules also run on tool-result follow-up requests; only the first request of a turn is previewed.',
         });
     }
+    const inspectionTracker = createInspectionTracker();
     const leadingSystem = previewMessages[0]?.role === "system" ? previewMessages[0] : undefined;
     const systemSection = leadingSystem
         ? previewMessageSection(leadingSystem, "system", "System prompt", "system")
@@ -95,11 +102,16 @@ export function buildPreview(ctx, target, options) {
         if (capabilityUpdate)
             systemSection.capabilityUpdate = capabilityUpdate;
     }
+    systemSection.inspection = buildSectionInspection(leadingSystem, "system", inspectionTracker);
     const messagesToDisplay = leadingSystem ? previewMessages.slice(1) : previewMessages;
     const diffKeyOccurrences = new Map();
     const messageSections = [];
+    const sourceUsageCounts = new Map();
     for (const [index, message] of messagesToDisplay.entries()) {
-        const source = originalMessageSources.get(message);
+        const sourceList = originalMessageSources.get(message);
+        const usageIndex = sourceUsageCounts.get(message) ?? 0;
+        sourceUsageCounts.set(message, usageIndex + 1);
+        const source = sourceList ? sourceList[usageIndex] : undefined;
         const isForgeUpdate = !beforeCapabilityProjection.has(message);
         const section = previewMessageSection(message, `message-${index}`, previewMessageTitle(source, index, isForgeUpdate));
         const capabilityUpdate = capabilityUpdates.get(message);
@@ -112,6 +124,8 @@ export function buildPreview(ctx, target, options) {
         const occurrence = (diffKeyOccurrences.get(baseDiffKey) ?? 0) + 1;
         diffKeyOccurrences.set(baseDiffKey, occurrence);
         section.diffKey = `${baseDiffKey}:${occurrence}`;
+        const scope = resolveInspectionScope(source, message.role, isForgeUpdate);
+        section.inspection = buildSectionInspection(message, scope, inspectionTracker);
         messageSections.push(section);
     }
     const totalChars = systemSection.chars + messageSections.reduce((sum, section) => sum + section.chars, 0);

@@ -150,7 +150,12 @@
  .preview-reading-arrow { left:8px; }
  .context-diff-dock-header { padding-left:38px; }
 }
+@media (max-width:900px) {
+ /* The block-layout editor must remain reachable inside its bounded grid row. */
+ .editor-dock-area.dock-open:not(.dock-focus) .workspace { overflow-y:auto; }
+}
 @media (max-width:700px) {
- .editor-dock-area.dock-open:not(.dock-focus) { grid-template-rows:auto minmax(300px,auto); }
+ /* Retain the minimum heights above: an auto first row can collapse to zero
+    when the active Preset root is correctly constrained to the viewport. */
  .editor-dock-area.dock-open.dock-focus { grid-template-rows:minmax(0,1fr); }
 }

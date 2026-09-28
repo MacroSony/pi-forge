@@ -8,6 +8,9 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+- Make Preview content-first: readable role-colored excerpts, one-line tool calls/results, and collapsible amber Tools groups with visible call/result/failure counts. Search full displayed text and tool identities, reveal matches, and copy individual tool text. Original projection order remains the default; optional call pairing changes only presentation within safe continuous tool intervals.
+- Add ordered read-only inspection metadata from real compiled content parts, preserving System section operations, historical tool declarations, legacy text/token estimates and Draft/Run diff semantics. Correct duplicated history-slot Preview provenance instead of cross-associating identical call IDs from different slots. Same-data refresh retains reading state; the open Preset dock remains scroll-reachable on narrow screens.
+
 - Restore scrolling in Current session: apply the expanded workspace's flex sizing to the correct element and constrain this surface to the viewport at narrow widths. Capability controls and context inspection remain independently scrollable on desktop; the stacked workspace and inspector remain reachable on small screens. Other surfaces retain their existing sizing.
 
 ## [0.5.6] - 2026-09-27

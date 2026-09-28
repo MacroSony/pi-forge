@@ -45,6 +45,8 @@ test("Current session constrains long content and scrolls both panes across desk
 		await page.locator("#itemContent").fill("Unsaved draft survives session navigation.");
 		await page.locator("#sessionSurfaceBtn").click();
 		await page.locator(".session-inspector .section-text").first().waitFor();
+		// Stress scrolling with full text; the accepted Preview now defaults to excerpts.
+		await page.locator(".session-inspector .inspection-full-toggle").click();
 		const viewports = [[1440, 900], [901, 700], [900, 700], [850, 700], [821, 700], [820, 700], [800, 700], [390, 844], [820, 560], [390, 500], [1440, 560]];
 		for (const [index, [width, height]] of viewports.entries()) {
 			await page.setViewportSize({ width, height });

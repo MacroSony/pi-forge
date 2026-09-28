@@ -105,7 +105,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div class="app-root" :class="{ 'session-surface-open': activeSurface === 'session' }">
+	<div class="app-root" :class="{ 'session-surface-open': activeSurface === 'session', 'preset-surface-open': activeSurface === 'stacks' }">
 		<nav class="surface-nav" :aria-label="t('nav.editorSectionsAria')">
 			<div class="surface-brand">Pi Forge</div>
 			<button
@@ -306,6 +306,12 @@ onUnmounted(() => {
    viewport so its side-by-side panes or stacked workspace can actually scroll. */
 .app-root.session-surface-open {
 	height: 100dvh;
+}
+
+/* Constrain only the active Preset with an open inspector. Its existing stacked
+   dock owns scrolling; do not change other content-sized narrow surfaces. */
+@media (max-width: 900px) {
+ .app-root.preset-surface-open:has(.editor-dock-area.dock-open) { height: 100dvh; }
 }
 
 .surface-nav {

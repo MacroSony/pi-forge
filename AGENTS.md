@@ -42,7 +42,13 @@ The subsequent 0.5.6 UI correction is explicitly authorized: disabled Block/Slot
 
 ## Current session scroll follow-up (0.5.7 preparation)
 
-The user authorized a narrow scroll repair: correct the expanded Session selector and constrain only the active Current session root to the dynamic viewport, including the 900px outer-root and 820px stacked-pane breakpoints. Preserve other surfaces, editor drafts, projection, and authorization behavior. A separate compact Preview prototype is under review outside this repository; do not treat the prototype as approved production UI or transplant DSH's trajectory runtime. No version bump, host reload, remote push or publication is included in this repair.
+The user authorized a narrow scroll repair: correct the expanded Session selector and constrain only the active Current session root to the dynamic viewport, including the 900px outer-root and 820px stacked-pane breakpoints. Preserve other surfaces, editor drafts, projection, and authorization behavior. The subsequent user-approved Preview implementation follows the scope below. No version bump, host reload, remote push or publication is included in this repair.
+
+## Approved Preview implementation (0.5.7 preparation)
+
+After reviewing the independent V1–V4 prototypes, the user approved production implementation: readable user/assistant/System excerpts, teal user and blue assistant roles, one-line tool calls/results, and amber **Tools** groups (groups open by default, tool bodies closed). Add an explicit original-order (default) / pair-with-calls display option. Pair only uniquely associated tools within an uninterrupted interval of one assistant owner; never move results across user/System/body/other-owner or unassociated-result boundaries. Preserve original position labels and clearly distinguish display pairing from execution timing. Whole-group folding must retain call/result/failure counts.
+
+Structured inspection metadata is a read-only sidecar built from compiled message parts, not reconstructed from titles or legacy tool placeholders. Preserve System sections' empty/null/removal semantics, historical tool declarations, legacy text/token estimates and Draft/Run diff behavior. Duplicate history-slot provenance must stay scoped correctly. Do not change actual compiler output, provider messages, executable tools, capability authorization, session events, polling owners, or request invalidation. Keep the Preset editor adjacent and retain inspector-only Locate. Same-data manual refresh must preserve keyed reading state; ambiguous duplicate identities must fail conservatively. A narrowly scoped viewport constraint for the active Preset with an open dock repairs mobile reachability without redesigning other surfaces. Build generated assets, reconcile meaningful tests, and verify before local commit; no version bump, installed-host reload, remote push or publication is authorized by this UI lane.
 
 ## Working rules
 

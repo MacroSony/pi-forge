@@ -20,8 +20,8 @@ import {
 	type SplitLineDiffRow,
 } from "../../line-diff.ts";
 import type { LegacyEditorDraft } from "../legacy-editor.ts";
-import { previewSections, previewSectionText, previewToTurnSnapshot } from "../preview-diff.ts";
-import PreviewSectionBody from "./PreviewSectionBody.vue";
+import { previewSections, previewToTurnSnapshot } from "../preview-diff.ts";
+import PreviewInspector from "./PreviewInspector.vue";
 
 export type ReadingState = "side" | "wide" | "focus";
 export type DockMode = "compiled" | "session" | "draft" | "run";
@@ -192,9 +192,6 @@ const matchingSections = computed(() => compiledSections.value.filter(matchesLoc
 function matchesLocation(section: WebEditorPreviewSection): boolean {
 	return mode.value === "session" && !!section.capabilityUpdate?.activationIds.some(id => locationIds.value.includes(id));
 }
-function sectionPosition(section: WebEditorPreviewSection): number {
-	return compiledSections.value.indexOf(section) + 1;
-}
 function sameGuard(a: CapabilityLocation["guard"], b: CapabilityLocation["guard"]): boolean {
 	return a.sessionId === b.sessionId && a.leafId === b.leafId && a.revision === b.revision;
 }
@@ -263,6 +260,7 @@ async function locateCapability(target: CapabilityLocation): Promise<void> {
 	await request;
 	if (sequence !== sessionSequence || mode.value !== "session" || !sessionPreview.value) return;
 	await nextTick();
+	await inspector.value?.openSections(matchingSections.value.map(section => section.id));
 	// Scroll the inspector only. Never focus/resize it, scroll the whole page, or
 	// change the resource selection/caret in the editor.
 	const pane = rootElement.value?.querySelector<HTMLElement>(".context-diff-compiled");
@@ -278,51 +276,13 @@ async function locateCapability(target: CapabilityLocation): Promise<void> {
 }
 function refreshVisiblePreview(): void {
 	if (mode.value === "session") void refreshSessionPreview();
-	else schedulePreviewRefresh();
+	else void refreshPreview();
 }
 
-type PreviewSectionGroup = {
-	key: string;
-	label: string;
-	history: boolean;
-	sections: WebEditorPreviewSection[];
-};
-
-const previewGroups = computed<PreviewSectionGroup[]>(() => {
-	const groups: PreviewSectionGroup[] = [];
-	let currentGroup: PreviewSectionGroup | null = null;
-	let currentSourceKey: string | undefined;
-
-	for (const section of compiledSections.value) {
-		const key = historySourceKey(section);
-		if (!key) {
-			currentGroup = null;
-			currentSourceKey = undefined;
-			groups.push({
-				key: `section:${section.id}`,
-				label: section.title || section.id,
-				history: false,
-				sections: [section],
-			});
-			continue;
-		}
-
-		if (currentGroup && currentSourceKey === key) {
-			currentGroup.sections.push(section);
-			continue;
-		}
-
-		currentSourceKey = key;
-		currentGroup = {
-			key: JSON.stringify([key, section.id]),
-			label: historySourceLabel(section),
-			history: true,
-			sections: [section],
-		};
-		groups.push(currentGroup);
-	}
-	return groups;
-});
+const inspector = ref<InstanceType<typeof PreviewInspector> | null>(null);
+const inspectorBoundary = computed(() => JSON.stringify(mode.value === "session"
+ ? ["session", sessionPreview.value?.state.guard.sessionId, sessionPreview.value?.state.guard.leafId]
+ : ["compiled", displayPreview.value?.stackId, props.getStackDraft?.()?.selector]));
 
 const latestDiff = computed(() => contextDiff.value?.latestDiff ?? null);
 const latestTurn = computed(() => contextDiff.value?.latest?.turn ?? null);
@@ -547,66 +507,20 @@ function cacheHitText(): string {
 	return `${(usage.cacheHitRatio * 100).toFixed(1)}%`;
 }
 
-function sectionRole(section: WebEditorPreviewSection): string {
-	return section.role?.trim() || (section.id === "system" ? "system" : "message");
-}
-
-function roleClass(section: WebEditorPreviewSection): string {
-	return `role-${sectionRole(section).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-}
-
-function historySourceKey(section: WebEditorPreviewSection): string | undefined {
-	const diffKey = section.diffKey || "";
-	if (diffKey.startsWith("implicit-history:")) return "implicit-history";
-	const match = diffKey.match(/^(chat-history:.+):[^:]+:\d+$/);
-	return match?.[1];
-}
-
-function historySourceLabel(section: WebEditorPreviewSection): string {
-	const title = section.title?.replace(/\s+#\d+$/, "").trim();
-	return title || "Chat history";
-}
-
-function groupTitle(group: PreviewSectionGroup): string {
-	const count = group.sections.length;
-	return `${group.label} (${t(count === 1 ? "diff.messageOne" : "diff.messageMany", { count })})`;
-}
-
-function sectionCopyText(section: WebEditorPreviewSection): string {
-	return previewSectionText(section);
-}
-
-function hasCopyableText(section: WebEditorPreviewSection): boolean {
-	return sectionCopyText(section).length > 0;
-}
-
-function sectionChars(section: WebEditorPreviewSection): number {
-	return typeof section.chars === "number" ? section.chars : sectionCopyText(section).length;
-}
-
-function sectionTokens(section: WebEditorPreviewSection): number {
-	return typeof section.approxTokens === "number" ? section.approxTokens : Math.ceil(sectionChars(section) / 4);
-}
-
-function sectionMeta(section: WebEditorPreviewSection): string {
-	return t("inspector.sectionMeta", { chars: sectionChars(section), tokens: sectionTokens(section) });
-}
-
 async function copyPreviewText(text: string): Promise<void> {
-	if (!text) return;
-	if (navigator.clipboard && window.isSecureContext) {
-		await navigator.clipboard.writeText(text);
-	} else {
-		const area = document.createElement("textarea");
-		area.value = text;
-		area.style.position = "fixed";
-		area.style.left = "-9999px";
-		document.body.appendChild(area);
-		area.select();
-		document.execCommand("copy");
-		area.remove();
-	}
-	props.onStatus?.(t("inspector.copiedText"), "success");
+ if (!text) return;
+ try {
+  if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+  else {
+   const area = document.createElement("textarea");
+   const focused = document.activeElement as HTMLElement | null;
+   area.value = text; area.style.position = "fixed"; area.style.left = "-9999px";
+   document.body.appendChild(area);
+   try { area.select(); if (!document.execCommand("copy")) throw new Error("Clipboard unavailable"); }
+   finally { area.remove(); focused?.focus({ preventScroll: true }); }
+  }
+  props.onStatus?.(t("inspector.copiedText"), "success");
+ } catch { props.onStatus?.(t("inspection.copyFailed"), "error"); }
 }
 
 function turnLabel(): string {
@@ -681,7 +595,7 @@ function turnLabel(): string {
 					<span v-else-if="displayError" class="error">{{ displayError }}</span>
 					<span v-else>{{ t("diff.noPreview") }}</span>
 				</div>
-				<button v-if="displayText" type="button" class="context-diff-copy-full" @click="copyPreviewText(displayText)">{{ t("inspector.copyFull") }}</button>
+				<button v-if="displayText" type="button" class="context-diff-copy-full" :title="t('inspection.reportNote')" @click="copyPreviewText(displayText)">{{ t("inspection.copyReport") }}</button>
 				<button type="button" class="context-diff-refresh" @click="refreshVisiblePreview">{{ t("profiles.refresh") }}</button>
 			</div>
 			<div v-if="displayDiagnostics.length" class="context-diff-diagnostics">
@@ -716,53 +630,7 @@ function turnLabel(): string {
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
 				{{ displayLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
-			<div v-else class="context-diff-sections">
-				<template v-for="group in previewGroups" :key="group.key">
-					<details v-if="group.history" class="context-diff-group" :data-group-key="group.key" open>
-						<summary class="context-diff-group-summary">
-							<span class="group-title">{{ groupTitle(group) }}</span>
-						</summary>
-						<div class="context-diff-group-messages">
-							<details v-for="section in group.sections" :key="section.id" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'capability-location-match': matchesLocation(section) }]" open>
-								<summary>
-									<span v-if="mode === 'session'" class="section-position" :title="t('sessionCapabilities.positionNote')">#{{ sectionPosition(section) }}</span>
-                                    <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
-									<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
-
-									<button
-										type="button"
-										class="context-diff-copy-section"
-										:disabled="!hasCopyableText(section)"
-										:title="!hasCopyableText(section) ? t('diff.metadataOnlyNoCopy') : t('inspector.copy')"
-										@click.prevent.stop="copyPreviewText(sectionCopyText(section))"
-									>
-										{{ t("inspector.copy") }}
-									</button>
-								</summary>
-								<PreviewSectionBody :section="section" @copy="copyPreviewText" />
-							</details>
-						</div>
-					</details>
-					<details v-else v-for="section in group.sections" :key="section.id" :data-group-key="group.key" :data-section-id="section.id" :class="['context-diff-section', roleClass(section), { 'capability-location-match': matchesLocation(section) }]" open>
-						<summary>
-							<span v-if="mode === 'session'" class="section-position" :title="t('sessionCapabilities.positionNote')">#{{ sectionPosition(section) }}</span>
-                                    <span class="section-title" :title="sectionMeta(section)">{{ section.title || section.id }}</span>
-							<span :class="['section-role', roleClass(section)]">{{ sectionRole(section) }}</span>
-
-							<button
-								type="button"
-								class="context-diff-copy-section"
-								:disabled="!hasCopyableText(section)"
-								:title="!hasCopyableText(section) ? t('diff.metadataOnlyNoCopy') : t('inspector.copy')"
-								@click.prevent.stop="copyPreviewText(sectionCopyText(section))"
-							>
-								{{ t("inspector.copy") }}
-							</button>
-						</summary>
-						<PreviewSectionBody :section="section" @copy="copyPreviewText" />
-					</details>
-				</template>
-			</div>
+            <PreviewInspector v-else ref="inspector" :sections="compiledSections" :boundary="inspectorBoundary" :matching-ids="matchingSections.map(section => section.id)" @copy="copyPreviewText" />
 		</div>
 
 		<div v-if="!props.sessionOnly" v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
@@ -775,7 +643,7 @@ function turnLabel(): string {
 					<span v-else-if="activeDiff">{{ changedBlocks === 0 ? t("diff.noChanges") : t("diff.changedBlocks", { count: changedBlocks }) }}</span>
 					<span v-else>{{ mode === "draft" ? t("diff.noDraftComparison") : t("diff.noCapturedRuns") }}</span>
 				</div>
-				<button type="button" class="context-diff-refresh" @click="mode === 'draft' ? schedulePreviewRefresh() : refreshContextDiff()">{{ t("profiles.refresh") }}</button>
+				<button type="button" class="context-diff-refresh" @click="mode === 'draft' ? refreshPreview() : refreshContextDiff()">{{ t("profiles.refresh") }}</button>
 			</div>
 			<div v-if="mode === 'draft' && previewError" class="context-diff-error">{{ previewError }}</div>
 			<div v-else-if="mode === 'run' && contextDiffError" class="context-diff-error">{{ contextDiffError }}</div>
@@ -881,8 +749,6 @@ function turnLabel(): string {
 
 .session-context-notice { padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .location-result { color: var(--accent); margin-top: 5px; }
-.context-diff-section.capability-location-match { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.section-position { font-size: 11px; color: var(--accent); flex: none; }
 
 .context-diff-dock { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; position: static; }
 .context-diff-mode-tabs { display: flex; gap: 6px; flex: 0 0 auto; }
@@ -913,30 +779,8 @@ function turnLabel(): string {
 .context-diff-diagnostic.warning { color: var(--warning); }
 .context-diff-diagnostic.info { color: var(--muted); }
 .context-diff-compiled, .context-diff-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
-.context-diff-sections, .context-diff-blocks { display: flex; flex-direction: column; gap: 8px; }
-.context-diff-group { border: 1px solid var(--line); border-radius: 6px; background: var(--pane-soft); overflow: hidden; }
-.context-diff-group-summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
-.context-diff-group-summary::-webkit-details-marker { display: none; }
-.context-diff-group-summary::before { content: "▶"; color: var(--muted); font-size: 10px; }
-.context-diff-group[open] > .context-diff-group-summary { border-bottom: 1px solid var(--line); }
-.context-diff-group[open] > .context-diff-group-summary::before { content: "▼"; }
-.group-title { font-weight: 700; }
-.context-diff-group-messages { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-.context-diff-section { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px; background: var(--pane); overflow: hidden; }
-.context-diff-section summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; border-bottom: 1px solid transparent; }
-.context-diff-section summary::-webkit-details-marker { display: none; }
-.context-diff-section[open] summary { border-bottom-color: var(--line); }
-.section-title { font-weight:650; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.section-role { flex:none; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 16px; font-weight: 700; text-transform: lowercase; }
-.section-meta { color: var(--muted); font-size: 12px; }
-.context-diff-section.role-system { border-left-color: var(--role-system); }
-.context-diff-section.role-user { border-left-color: var(--role-user); }
-.context-diff-section.role-assistant { border-left-color: var(--role-assistant); }
-.context-diff-section.role-toolresult { border-left-color: var(--role-tool-result); }
-.section-role.role-system { color: var(--role-system); background: color-mix(in srgb, var(--role-system) 12%, var(--pane)); }
-.section-role.role-user { color: var(--role-user); background: color-mix(in srgb, var(--role-user) 12%, var(--pane)); }
-.section-role.role-assistant { color: var(--role-assistant); background: color-mix(in srgb, var(--role-assistant) 12%, var(--pane)); }
-.section-role.role-toolresult { color: var(--role-tool-result); background: color-mix(in srgb, var(--role-tool-result) 12%, var(--pane)); }
+.context-diff-compiled > * { flex-shrink: 0; }
+.context-diff-blocks { display: flex; flex-direction: column; gap: 8px; }
 .section-text, .block-text { margin: 0; padding: 10px; background: var(--code-bg); color: var(--code-text); white-space: pre-wrap; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .context-diff-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--pane); font-weight: 650; }
 .summary-delta.positive { color: var(--success); }
