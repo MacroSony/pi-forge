@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { observeClipboardWrites, assertClipboardText } from "./helpers/clipboard.ts";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 
 import {
@@ -189,6 +190,7 @@ async function withPreviewInspectorBrowser(
 			args: process.platform === "linux" ? ["--no-sandbox"] : [],
 		});
 		const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, permissions: ["clipboard-read", "clipboard-write"] });
+		await observeClipboardWrites(page);
 		page.setDefaultTimeout(7_000);
 		page.on("pageerror", (error) => browserErrors.push(error.message));
 
@@ -321,7 +323,7 @@ test("PreviewInspector browser suite: groups default open, tools default closed,
 		const copyButton = firstDetail.locator("button", { hasText: /copy|复制/i });
 		await copyButton.waitFor();
 		await copyButton.click();
-		assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await firstDetail.locator("pre").textContent(), "Clipboard contains the complete displayed parameter text");
+		await assertClipboardText(page, (await firstDetail.locator("pre").textContent())!);
 
 		// Toggle back to excerpts
 		await fullTextToggle.click();

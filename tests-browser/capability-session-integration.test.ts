@@ -6,6 +6,7 @@ import test from "node:test";
 import { chromium, type Browser } from "playwright-core";
 import { createCapabilityAgentHarness, type CapabilityAgentHarness } from "../tests/helpers/capability-agent-harness.ts";
 import type { WebEditorPreview, WebEditorServer } from "../src/web-editor/types.ts";
+import { observeClipboardWrites, assertClipboardText } from "./helpers/clipboard.ts";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 initTheme();
 
@@ -62,6 +63,7 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.ok(server);
 		browser = await chromium.launch({ executablePath, headless: true, args: process.platform === "linux" ? ["--no-sandbox"] : [] });
 		const page = await browser.newPage({ viewport: { width: 1440, height: 980 }, permissions: ["clipboard-read", "clipboard-write"] });
+		await observeClipboardWrites(page);
 		page.setDefaultTimeout(7000);
 		const errors: string[] = [], externalRequests: string[] = [];
 		page.on("pageerror", error => errors.push(error.message));
@@ -154,7 +156,7 @@ test(`built editor uses projected text and separate tools without management inf
 		assert.deepEqual(JSON.parse(await declarationJson.textContent() || ""), writeMetadata, "Expansion includes the full Preview declaration, not only parameters");
 		assert.equal(await declarationJson.locator("img").count(), 0);
 		await writeDeclaration.locator(".tool-declaration-actions button").click();
-		assert.equal(await page.evaluate(() => navigator.clipboard.readText()), JSON.stringify(writeMetadata, null, 2));
+		await assertClipboardText(page, JSON.stringify(writeMetadata, null, 2));
 		await page.locator("#localeSelect").selectOption("en");
 		assert.match(await writeDeclaration.locator(".tool-argument-count").textContent() || "", /2 declared args/);
 		await page.locator("#localeSelect").selectOption("zh-CN");
