@@ -8,6 +8,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+- Restore scrolling in Current session: apply the expanded workspace's flex sizing to the correct element and constrain this surface to the viewport at narrow widths. Capability controls and context inspection remain independently scrollable on desktop; the stacked workspace and inspector remain reachable on small screens. Other surfaces retain their existing sizing.
+
 ## [0.5.6] - 2026-09-27
 
 - Make disabled Block/Slot rows visibly neutral as a whole: muted titles, gray side markers and a distinct background remain disabled-looking even when selected. Keep On/Off controls readable and preserve toggle focus for repeated Space/Enter operation.

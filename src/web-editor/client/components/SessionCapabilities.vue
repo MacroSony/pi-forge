@@ -848,7 +848,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.session-sessionCapabilities.workspace-open { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.session-capabilities.workspace-open { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .session-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 350px) minmax(0, 1fr); gap: 14px; padding: 14px; background: var(--pane-soft); }
 .capabilities-controls, .session-inspector { min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--pane); }
 .capabilities-controls { display: flex; flex-direction: column; overflow: hidden; }

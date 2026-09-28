@@ -105,7 +105,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div class="app-root">
+	<div class="app-root" :class="{ 'session-surface-open': activeSurface === 'session' }">
 		<nav class="surface-nav" :aria-label="t('nav.editorSectionsAria')">
 			<div class="surface-brand">Pi Forge</div>
 			<button
@@ -300,6 +300,12 @@ onUnmounted(() => {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
+}
+
+/* Other narrow-screen surfaces use a content-sized #app. Session owns its
+   viewport so its side-by-side panes or stacked workspace can actually scroll. */
+.app-root.session-surface-open {
+	height: 100dvh;
 }
 
 .surface-nav {

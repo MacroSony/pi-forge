@@ -40,6 +40,10 @@ The user authorized the leading-System, Preset Import/Reload draft-loss, Profile
 
 The subsequent 0.5.6 UI correction is explicitly authorized: disabled Block/Slot rows must be neutral as a whole, including their side markers, and selection must not look like enabling. Presets and Stack items panes may resize from their right edges, with bounded browser-local width preferences, double-click reset and existing narrow-screen stacking. Preserve the draft and inspector reading-state owners; do not persist widths in resources or extend this into an unrelated layout redesign. The candidate Mika real-model trial has passed, and the user has now inspected and accepted this UI iteration. Consolidate the necessary browser regressions and complete full verification, exact-release-commit CI and packed-install checks before the authorized 0.5.6 publication. Do not change the installed daily host.
 
+## Current session scroll follow-up (0.5.7 preparation)
+
+The user authorized a narrow scroll repair: correct the expanded Session selector and constrain only the active Current session root to the dynamic viewport, including the 900px outer-root and 820px stacked-pane breakpoints. Preserve other surfaces, editor drafts, projection, and authorization behavior. A separate compact Preview prototype is under review outside this repository; do not treat the prototype as approved production UI or transplant DSH's trajectory runtime. No version bump, host reload, remote push or publication is included in this repair.
+
 ## Working rules
 
 1. One implementation lane at a time, in the order listed in the lean plan and [roadmap](docs/development/roadmap.md).
