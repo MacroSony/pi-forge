@@ -13,7 +13,8 @@ const scrollMemory = new Map<string, number>();
 const rows = computed(() => inspectionRows(props.sections));
 const entries = computed(() => inspectionEntries(rows.value));
 const trimmedQuery = computed(() => query.value.trim());
-const matches = (row: InspectionRow) => rowMatches(row, trimmedQuery.value);
+const matchingRows = computed(() => new Set(rows.value.filter(row => rowMatches(row, trimmedQuery.value))));
+const matches = (row: InspectionRow) => matchingRows.value.has(row);
 const sourceGroups = computed(() => {
  const groups: { key: string; label: string; history: boolean; entries: typeof entries.value }[] = [];
  let current: typeof groups[number] | undefined, lastScope = "";
@@ -29,9 +30,10 @@ const sourceGroups = computed(() => {
  return groups;
 });
 const visibleGroups = computed(() => sourceGroups.value.map(group => ({ ...group, entries: group.entries.filter(entry => isBatch(entry) ? entry.rows.some(matches) : matches(entry)) })).filter(group => group.entries.length));
+const visibleGroupKeys = computed(() => new Set(visibleGroups.value.map(group => group.key)));
 function toggleSource(key: string, event: Event) { if (trimmedQuery.value || fullText.value) return; const next = new Set(closedSources.value); (event.target as HTMLDetailsElement).open ? next.delete(key) : next.add(key); closedSources.value = next; }
-const matchCount = computed(() => rows.value.filter(matches).length);
-function displayedRows(batch: InspectionBatch): InspectionRow[] { return (resultMode.value === "paired" ? pairedRows(batch.rows) : batch.rows).filter(matches); }
+const matchCount = computed(() => matchingRows.value.size);
+function displayedRows(batch: InspectionBatch): InspectionRow[] { return resultMode.value === "paired" ? pairedRows(batch.rows) : batch.rows; }
 function counts(batch: InspectionBatch) { return t("inspection.batchCounts", { calls: batch.rows.filter(row => row.kind === "call").length, results: batch.rows.filter(row => row.kind === "result").length }); }
 function failures(batch: InspectionBatch) { return batch.rows.filter(row => row.isError === true).length; }
 function toggleRow(key: string, open: boolean) { const next = new Set(openRows.value); open ? next.add(key) : next.delete(key); openRows.value = next; }
@@ -57,12 +59,32 @@ function restoreReading(saved: ReturnType<typeof captureReading>) {
  if (el && visible(el)) p.scrollTop += el.getBoundingClientRect().top - p.getBoundingClientRect().top - offset;
  if (saved.focus && root.value?.contains(saved.focus) && visible(saved.focus) && document.activeElement === document.body) saved.focus.focus({ preventScroll: true });
 }
+// Native `toggle` is queued; capture the actual choice before entering a
+// forced-open mode even if that event has not updated the saved sets yet.
+function snapshotDisclosures() {
+ const sources = new Set(closedSources.value), batches = new Set(closedBatches.value), open = new Set(openRows.value);
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-group-key]") ?? []) el.open ? sources.delete(el.dataset.groupKey!) : sources.add(el.dataset.groupKey!);
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-batch-key]") ?? []) el.open ? batches.delete(el.dataset.batchKey!) : batches.add(el.dataset.batchKey!);
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-row-key]") ?? []) el.open ? open.add(el.dataset.rowKey!) : open.delete(el.dataset.rowKey!);
+ closedSources.value = sources; closedBatches.value = batches; openRows.value = open;
+}
+// A native disclosure can be manually changed while search/full-text forces its
+// Vue `open` prop true. Reapply the saved choice when the mode changes, even if
+// Vue sees true -> true and would otherwise leave the native DOM closed.
+function syncDisclosures() {
+ const forced = fullText.value || !!trimmedQuery.value;
+ const matchingKeys = new Set([...matchingRows.value].map(row => row.key));
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-group-key]") ?? []) el.open = forced || !closedSources.value.has(el.dataset.groupKey!);
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-batch-key]") ?? []) el.open = forced || !closedBatches.value.has(el.dataset.batchKey!);
+ for (const el of root.value?.querySelectorAll<HTMLDetailsElement>("details[data-row-key]") ?? []) el.open = fullText.value || (!!trimmedQuery.value && matchingKeys.has(el.dataset.rowKey!)) || openRows.value.has(el.dataset.rowKey!);
+}
 let generation = 0;
 let beforeSearch: { reading: ReturnType<typeof captureReading>; boundary: string } | null = null;
 watch(trimmedQuery, async (next, previous) => {
- if (next && !previous) beforeSearch = { reading: captureReading(), boundary: props.boundary };
+ if (next && !previous) { if (!fullText.value) snapshotDisclosures(); beforeSearch = { reading: captureReading(), boundary: props.boundary }; }
  const epoch = generation;
  await nextTick(); if (epoch !== generation) return;
+ syncDisclosures();
  if (!next && beforeSearch?.boundary === props.boundary) { restoreReading(beforeSearch.reading); beforeSearch = null; }
  else if (next) { const p = pane(); if (p) p.scrollTop = 0; }
 });
@@ -81,7 +103,7 @@ watch(() => rows.value.map(row => row.key).join("\n"), (next, previous) => {
  if (previous && next !== previous && (next.includes(":temp:") || previous.includes(":temp:"))) { openRows.value = new Set(); closedBatches.value = new Set(); scrollMemory.clear(); }
 });
 async function changeResultMode(event: Event) { const saved = captureReading(); resultMode.value = (event.target as HTMLSelectElement).value as "original" | "paired"; await nextTick(); restoreReading(saved); }
-async function changeFullText() { const saved = captureReading(); fullText.value = !fullText.value; await nextTick(); restoreReading(saved); }
+async function changeFullText() { const saved = captureReading(); if (!fullText.value && !trimmedQuery.value) snapshotDisclosures(); fullText.value = !fullText.value; await nextTick(); syncDisclosures(); restoreReading(saved); }
 async function openSections(ids: string[]) {
  query.value = "";
  const targets = rows.value.filter(row => ids.includes(row.section.id));
@@ -108,14 +130,14 @@ defineExpose({ openSections });
   <p v-if="resultMode === 'paired'" class="inspection-order-note">{{ t('inspection.pairedNote') }}</p>
   <p v-if="trimmedQuery" class="inspection-search-count">{{ t('inspection.searchCount', { count: matchCount, total: rows.length }) }}</p>
   <div class="context-diff-sections">
-   <component :is="group.history ? 'details' : 'div'" v-for="group in visibleGroups" :key="group.key" class="context-diff-group" :class="{ 'single-source': !group.history }" :data-group-key="group.key" :open="!group.history || fullText || !!trimmedQuery || !closedSources.has(group.key)" @toggle="toggleSource(group.key, $event)">
+   <component :is="group.history ? 'details' : 'div'" v-for="group in sourceGroups" v-show="visibleGroupKeys.has(group.key)" :key="group.key" class="context-diff-group" :class="{ 'single-source': !group.history }" :data-group-key="group.key" :open="!group.history || fullText || !!trimmedQuery || !closedSources.has(group.key)" @toggle="toggleSource(group.key, $event)">
     <summary v-if="group.history" class="source-group-head">{{ group.label }}</summary>
     <template v-for="entry in group.entries" :key="entry.key">
-    <details v-if="isBatch(entry)" class="inspection-batch" :data-batch-key="entry.key" :open="fullText || !!trimmedQuery || !closedBatches.has(entry.key)" @toggle="toggleBatch(entry.key, $event)">
+    <details v-if="isBatch(entry)" v-show="entry.rows.some(matches)" class="inspection-batch" :data-batch-key="entry.key" :open="fullText || !!trimmedQuery || !closedBatches.has(entry.key)" @toggle="toggleBatch(entry.key, $event)">
      <summary :title="t('inspection.batchNote')"><span class="batch-chevron" aria-hidden="true">▸</span><strong>Tools</strong><span>{{ counts(entry) }}</span><span v-if="failures(entry)" class="batch-failures">{{ t('inspection.failures', { count: failures(entry) }) }}</span></summary>
-     <PreviewInspectionRow v-for="row in displayedRows(entry)" :key="row.key" :row="row" :initial-scroll-top="scrollMemory.get(row.key) || 0" @scroll-position="(key, top) => scrollMemory.set(key, top)" :open="openRows.has(row.key)" :full="fullText" :searching="!!trimmedQuery" :matched="matchingIds.includes(row.section.id)" @toggle="toggleRow" @copy="emit('copy', $event)" @jump="jump" />
+     <PreviewInspectionRow v-for="row in displayedRows(entry)" v-show="matches(row)" :key="row.key" :row="row" :initial-scroll-top="scrollMemory.get(row.key) || 0" @scroll-position="(key, top) => scrollMemory.set(key, top)" :open="openRows.has(row.key)" :full="fullText" :searching="!!trimmedQuery && matches(row)" :query="trimmedQuery" :matched="matchingIds.includes(row.section.id)" @toggle="toggleRow" @copy="emit('copy', $event)" @jump="jump" />
     </details>
-    <PreviewInspectionRow v-else :row="entry" :initial-scroll-top="scrollMemory.get(entry.key) || 0" @scroll-position="(key, top) => scrollMemory.set(key, top)" :open="openRows.has(entry.key)" :full="fullText" :searching="!!trimmedQuery" :matched="matchingIds.includes(entry.section.id)" @toggle="toggleRow" @copy="emit('copy', $event)" @jump="jump" />
+    <PreviewInspectionRow v-else v-show="matches(entry)" :row="entry" :initial-scroll-top="scrollMemory.get(entry.key) || 0" @scroll-position="(key, top) => scrollMemory.set(key, top)" :open="openRows.has(entry.key)" :full="fullText" :searching="!!trimmedQuery && matches(entry)" :query="trimmedQuery" :matched="matchingIds.includes(entry.section.id)" @toggle="toggleRow" @copy="emit('copy', $event)" @jump="jump" />
     </template>
    </component>
    <p v-if="!visibleGroups.length" class="inspection-search-count">{{ t('inspection.noMatches') }}</p>

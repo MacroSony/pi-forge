@@ -24,3 +24,9 @@ export function declarationExcerpt(description: string | undefined): string {
 export function declarationJson(tool: PreviewToolDeclaration): string {
 	return JSON.stringify(tool, null, 2);
 }
+
+/** Search exactly the available declaration text, including the formatted JSON shown on disclosure. */
+export function declarationMatches(tool: PreviewToolDeclaration, query: string): boolean {
+	const q = query.trim().toLocaleLowerCase();
+	return !!q && ([tool.name, tool.description].some(text => typeof text === "string" && text.toLocaleLowerCase().includes(q)) || declarationJson(tool).toLocaleLowerCase().includes(q));
+}

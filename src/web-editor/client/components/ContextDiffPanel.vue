@@ -157,6 +157,8 @@ const previewDiagnostics = ref<PromptStackDiagnostic[]>([]);
 const draftDiff = ref<TurnDiff | null>(null);
 const previewError = ref("");
 const previewLoading = ref(false);
+const previewStale = ref(false);
+let previewSelector: string | undefined;
 const previewStatus = ref("");
 const contextDiff = ref<ContextDiffView | null>(null);
 const contextDiffError = ref("");
@@ -334,10 +336,16 @@ onUnmounted(() => {
 
 function schedulePreviewRefresh(): void {
 	invalidatePreviewRequest();
-	preview.value = null;
+	const samePreset = !!preview.value && props.getStackDraft?.()?.selector === previewSelector;
+	previewStale.value = samePreset;
+	// Keep the state owner only within the same resource. Mark its previous
+	// projection pending/inert; never present it as the newly edited draft.
+	if (!samePreset) {
+		preview.value = null;
+		previewText.value = "";
+		previewDiagnostics.value = [];
+	}
 	savedPreview.value = null;
-	previewText.value = "";
-	previewDiagnostics.value = [];
 	draftDiff.value = null;
 	previewLoading.value = true;
 	previewStatus.value = t("diff.draftChangedRefreshing");
@@ -368,6 +376,8 @@ async function refreshPreview(): Promise<void> {
 	const sequence = invalidatePreviewRequest();
 	const draft = props.getStackDraft?.();
 	if (!draft) {
+		previewSelector = undefined;
+		previewStale.value = false;
 		preview.value = null;
 		savedPreview.value = null;
 		previewText.value = "";
@@ -376,6 +386,12 @@ async function refreshPreview(): Promise<void> {
 		previewError.value = "";
 		previewStatus.value = t("diff.selectStackToPreview");
 		return;
+	}
+	if (previewSelector !== draft.selector) {
+		preview.value = null;
+		previewText.value = "";
+		previewDiagnostics.value = [];
+		previewStale.value = false;
 	}
 	previewLoading.value = true;
 	previewError.value = "";
@@ -400,6 +416,8 @@ async function refreshPreview(): Promise<void> {
 			}),
 		]);
 		if (sequence !== previewSequence) return;
+		previewSelector = draft.selector;
+		previewStale.value = false;
 		preview.value = draftData.preview ?? null;
 		savedPreview.value = savedData.preview ?? null;
 		previewText.value = draftData.text ?? "";
@@ -595,7 +613,7 @@ function turnLabel(): string {
 					<span v-else-if="displayError" class="error">{{ displayError }}</span>
 					<span v-else>{{ t("diff.noPreview") }}</span>
 				</div>
-				<button v-if="displayText" type="button" class="context-diff-copy-full" :title="t('inspection.reportNote')" @click="copyPreviewText(displayText)">{{ t("inspection.copyReport") }}</button>
+				<button v-if="displayText" type="button" class="context-diff-copy-full" :disabled="!!displayError || (mode !== 'session' && previewStale)" :title="t('inspection.reportNote')" @click="copyPreviewText(displayText)">{{ t("inspection.copyReport") }}</button>
 				<button type="button" class="context-diff-refresh" @click="refreshVisiblePreview">{{ t("profiles.refresh") }}</button>
 			</div>
 			<div v-if="displayDiagnostics.length" class="context-diff-diagnostics">
@@ -625,12 +643,13 @@ function turnLabel(): string {
 				</div>
 				<p class="selected-tools-note">{{ mode === 'session' ? t("sessionCapabilities.sessionToolsNote") : t("diff.previewSelectedToolsNote") }}</p>
 			</div>
+			<div v-if="mode !== 'session' && previewStale" class="context-diff-pending" data-preview-pending role="status">{{ t("inspection.draftUpdating") }}</div>
 			<div v-if="displayError" class="context-diff-error">{{ displayError }}</div>
 			<pre v-else-if="compiledSections.length === 0 && displayText" class="section-text">{{ displayText }}</pre>
 			<div v-else-if="compiledSections.length === 0" class="context-diff-empty">
 				{{ displayLoading ? t("diff.loadingPreview") : t("diff.selectStackHint") }}
 			</div>
-            <PreviewInspector v-else ref="inspector" :sections="compiledSections" :boundary="inspectorBoundary" :matching-ids="matchingSections.map(section => section.id)" @copy="copyPreviewText" />
+            <PreviewInspector v-if="compiledSections.length > 0" v-show="!displayError" :inert="mode !== 'session' && previewStale" :aria-busy="mode !== 'session' && previewStale" ref="inspector" :sections="compiledSections" :boundary="inspectorBoundary" :matching-ids="matchingSections.map(section => section.id)" @copy="copyPreviewText" />
 		</div>
 
 		<div v-if="!props.sessionOnly" v-show="mode === 'draft' || mode === 'run'" class="context-diff-diff" role="tabpanel">
@@ -743,6 +762,7 @@ function turnLabel(): string {
 <style src="../inspector-layout.css"></style>
 
 <style scoped>
+.context-diff-pending { position: sticky; top: 0; z-index: 1; padding: 8px 12px; font-size: 12px; color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--pane)); border-bottom: 1px solid var(--line); }
 .session-only .context-diff-dock-header { padding-left: 0; }
 .session-only .scope-badge { display: inline; }
 .session-updating { margin-top: 4px; color: var(--muted); }

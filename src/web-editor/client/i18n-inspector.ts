@@ -1,6 +1,7 @@
 // Bilingual UI copy for lane C inspector; consumed by the central editor i18n owner.
 
 export const inspectorEn = {
+	"inspection.draftUpdating": "Updating for the edited draft. The previous preview is shown temporarily; inspection controls are paused.",
  "inspection.declaredArgs": "{count} declared args",
  "inspection.declaredArgsNote": "Explicit top-level schema properties only; references or composite schemas may allow other arguments.",
  "inspection.declarationJson": "Declaration JSON (Preview fields)",
@@ -51,6 +52,7 @@ export const inspectorEn = {
 };
 
 export const inspectorZhCN: Record<keyof typeof inspectorEn, string> = {
+	"inspection.draftUpdating": "正在按新草稿更新；暂时显示上次预览，检查控件已暂停。",
  "inspection.declaredArgs": "{count} 个已声明参数",
  "inspection.declaredArgsNote": "仅统计 schema 显式顶层 properties；引用或组合 schema 可能允许其他参数。",
  "inspection.declarationJson": "声明 JSON（预览字段）",

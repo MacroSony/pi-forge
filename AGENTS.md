@@ -52,6 +52,8 @@ Structured inspection metadata is a read-only sidecar built from compiled messag
 
 The subsequent testing-ground trial was accepted. The user authorized a narrow historical-tool follow-up: added declarations default to individual one-line disclosures with names, bounded real-description excerpts and counts only for explicit top-level schema properties. Open each for complete Preview declaration JSON/copy; retain removed-name semantics and the historical-not-current boundary. Current session remains a live projection of the active saved Preset plus branch history/capabilities, not the previous request capture; switching only the edited draft does not switch this projection. No runtime change or release/host-update scope is added.
 
+UI closeout review follow-up: same-Preset draft edits retain the inspector instance with a marked/inert previous projection; actual resource boundaries still clear it. Search includes historical declaration JSON and named System keys without changing compiler prose; filtered rows retain their disclosure/scroll nodes, and leaving forced-open search/full-text restores saved native state. Short narrow Preset layouts scroll the shell and reserve a usable dock; acceptance must use physical hit-testing, not only no document overflow. These are scoped review fixes, not new runtime or release authorization.
+
 ## Working rules
 
 1. One implementation lane at a time, in the order listed in the lean plan and [roadmap](docs/development/roadmap.md).

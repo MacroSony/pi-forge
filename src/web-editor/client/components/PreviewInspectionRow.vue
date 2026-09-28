@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { t } from "../i18n.ts";
 import { parameterExcerpt, textExcerpt, type InspectionRow } from "../preview-inspector.ts";
 import PreviewSectionBody from "./PreviewSectionBody.vue";
-const props = defineProps<{ row: InspectionRow; open: boolean; full: boolean; matched: boolean; searching: boolean; initialScrollTop: number }>();
+const props = defineProps<{ row: InspectionRow; open: boolean; full: boolean; matched: boolean; searching: boolean; initialScrollTop: number; query?: string }>();
 const emit = defineEmits<{ toggle: [key: string, open: boolean]; copy: [text: string]; jump: [key: string]; scrollPosition: [key: string, top: number] }>();
 const element = ref<HTMLElement | null>(null), body = ref<HTMLElement | null>(null), pre = ref<HTMLElement | null>(null);
 const mountedDetail = ref(props.open), clipped = ref(false), sourceOpen = ref(false);
@@ -46,7 +46,7 @@ defineExpose({ expand: () => emit("toggle", props.row.key, true), element });
    <button type="button" class="source-toggle" :aria-expanded="sourceOpen" @click="sourceOpen = !sourceOpen">{{ t('inspection.source') }}</button>
    <button type="button" class="context-diff-copy-section" :disabled="!row.text" :title="t('inspection.textCopyNote')" @click="emit('copy', row.text)">{{ t('inspector.copy') }}</button>
   </div>
-  <div ref="body" class="readable-body" :class="{ compact: !expanded }"><PreviewSectionBody :section="row.body" @copy="emit('copy', $event)" /></div>
+  <div ref="body" class="readable-body" :class="{ compact: !expanded }"><PreviewSectionBody :section="row.body" :search-query="query" @copy="emit('copy', $event)" /></div>
   <button v-if="!full && !searching && (clipped || open)" class="body-expand" type="button" :aria-expanded="open" @click="openBody">{{ t(open ? 'inspection.collapseText' : 'inspection.expandText') }}</button>
   <div v-show="sourceOpen" class="row-source"><span class="section-title">{{ row.section.title }}</span><code>{{ row.scope }}</code><small>{{ row.section.chars }} chars · {{ row.section.approxTokens }} {{ t('inspection.estimatedTokens') }}</small></div>
  </article>

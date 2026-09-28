@@ -248,9 +248,13 @@ test("web editor opens the preview/diff dock", { timeout: 20_000 }, async (t) =>
 		await page.locator(".context-diff-sections").filter({ hasText: "Unsaved browser dock prompt." }).waitFor();
 		assert.equal(await page.locator(".context-diff-sections").filter({ hasText: "Browser dock system prompt." }).count(), 0);
 		await page.locator("#itemContent").fill("Newest unsaved browser dock prompt.");
-		assert.equal(await page.locator(".context-diff-sections").count(), 0);
-		await page.locator(".context-diff-empty").filter({ hasText: "Loading preview" }).waitFor();
+		await page.locator("[data-preview-pending]").waitFor();
+		assert.equal(await page.locator(".context-diff-sections").count(), 1, "Same-resource edits retain the reading-state owner");
+		assert.ok(await page.locator(".preview-inspector").evaluate(el => el.hasAttribute("inert")), "Previous content is explicitly pending, not interactive current content");
+		assert.ok(await page.locator(".context-diff-copy-full").isDisabled());
 		await page.locator(".context-diff-sections").filter({ hasText: "Newest unsaved browser dock prompt." }).waitFor();
+		await page.locator("[data-preview-pending]").waitFor({ state: "hidden" });
+		assert.equal(await page.locator(".preview-inspector").evaluate(el => el.hasAttribute("inert")), false);
 
 		await page.locator(".context-diff-mode-tabs button", { hasText: "Draft diff" }).click();
 		const draftBlock = page.locator(".context-diff-block.modified");

@@ -121,6 +121,7 @@ async function withPreviewInspectorBrowser(
 		harness: ReturnType<typeof createHarness>;
 		context: ReturnType<typeof createContext>;
 	}) => Promise<void>,
+	options: { historicalDeclarations?: boolean } = {},
 ): Promise<void> {
 	if (process.env.PI_FORGE_SKIP_BROWSER_TESTS === "1") {
 		t.skip("PI_FORGE_SKIP_BROWSER_TESTS=1");
@@ -159,7 +160,16 @@ async function withPreviewInspectorBrowser(
 		],
 	});
 
-	const entries = createRealAgentMessages();
+	const entries: unknown[] = createRealAgentMessages();
+	if (options.historicalDeclarations) {
+		(entries[0] as { parentId: string | null }).parentId = "historical-system";
+		entries.unshift({ type: "message", id: "historical-system", parentId: null, message: {
+			role: "system", content: "", timestamp: 500,
+			sections: { unique_section_name: "Named section text", removed_section_key: null, empty_section_key: "" },
+			toolsAdded: [{ name: "historical_only_lookup", description: "Distinct archive description", parameters: { type: "object", properties: { historicalUniqueArgument: { type: "string" } } } }],
+			toolsRemoved: [{ name: "historical_removed_probe", description: "Removed fixture", parameters: { type: "object", properties: {} } }],
+		} });
+	}
 	const harness = createHarness();
 	const context = createContext(cwd, entries, { leafId: "msg-rstart" });
 	await startSession(harness, context.ctx);
@@ -447,4 +457,104 @@ test("PreviewInspector browser suite: groups default open, tools default closed,
 		await page.locator(".context-diff-sections").filter({ hasText: "System baseline operating prompt." }).waitFor();
 		assert.equal(await searchInput.inputValue(), "", "Returning to preset has clean fresh search query");
 	});
+});
+
+test("search/full-text restore native disclosure choices, historical JSON and reading state", { timeout: 35000 }, async t => {
+ await withPreviewInspectorBrowser(t, async ({page}) => {
+  const check = (name: string, actual: unknown, expected: unknown) => assert.deepEqual(actual, expected, name);
+  await page.locator("#previewTabBtn").click();
+  const root = page.locator(".preview-inspector"), search = root.locator('input[type="search"]');
+  const first = root.locator('.inspection-tool').first(), batch = root.locator('.inspection-batch').first();
+  await first.locator(':scope > summary').click();
+  await search.fill('call_read_101');
+  await first.locator(':scope > summary').click();
+  await search.fill('');
+  await page.waitForTimeout(100);
+  check('Open tool: close while searching, then clear search restores pre-search open state',await first.evaluate((el:HTMLDetailsElement)=>el.open),true);
+  // Set known open state through genuine user action, not component internals.
+  if (!await batch.evaluate((el:HTMLDetailsElement)=>el.open)) await batch.locator(':scope > summary').click();
+  await search.fill('call_read_101');
+  await batch.locator(':scope > summary').click();
+  await search.fill(''); await page.waitForTimeout(100);
+  check('Open group: close while searching, then clear search restores pre-search open state',await batch.evaluate((el:HTMLDetailsElement)=>el.open),true);
+  if (!await batch.evaluate((el:HTMLDetailsElement)=>el.open)) await batch.locator(':scope > summary').click();
+  // A manually open group cannot remain secretly closed after exiting full text.
+  await root.locator('.inspection-full-toggle').click();
+  await batch.locator(':scope > summary').click();
+  await root.locator('.inspection-full-toggle').click(); await page.waitForTimeout(100);
+  check('Open group: close in full-text, return to excerpts restores saved open state',await batch.evaluate((el:HTMLDetailsElement)=>el.open),true);
+  for(const q of ['historical_only_lookup','historicalUniqueArgument','historical_removed_probe','unique_section_name','removed_section_key','empty_section_key']) {
+   await search.fill(q); await page.waitForTimeout(80);
+   check('Historical metadata search '+q,await root.locator('[data-row-key]:visible').count()>0,true);
+   if (!q.endsWith('_key') && q!=='unique_section_name') check('Historical metadata automatically revealed '+q, await root.locator('.preview-tool-changes[open]:visible').count()>0, true);
+   if(q==='historical_only_lookup' || q==='historicalUniqueArgument') check('Matching declaration JSON visible '+q, await root.locator('.tool-declaration-json:visible').count()>0,true);
+  }
+  await search.fill(''); await page.waitForTimeout(80);
+  check('Historicals return to originally folded outer state',await root.locator('.preview-tool-changes').evaluate((el:HTMLDetailsElement)=>el.open),false);
+  const historical = root.locator('.preview-tool-changes');
+  await historical.locator(':scope > summary').click();
+  const historyTool = historical.locator('details.tool-change-item').first();
+  await historyTool.locator(':scope > summary').click();
+  await search.fill('call_read_101');
+  await search.fill(''); await page.waitForTimeout(80);
+  check('Historical disclosure survives filtering out and back',await historyTool.evaluate((el:HTMLDetailsElement)=>el.open),true);
+  const failing = root.locator('.inspection-tool.tool-error');
+  if(!await batch.evaluate((el:HTMLDetailsElement)=>el.open)) await batch.locator(':scope > summary').click();
+  if(!await failing.evaluate((el:HTMLDetailsElement)=>el.open)) await failing.locator(':scope > summary').click();
+  const pre = failing.locator('pre'); await pre.waitFor();
+  await pre.evaluate(el=>el.scrollTop=130); await page.waitForTimeout(80);
+  const top = await pre.evaluate(el=>el.scrollTop);
+  await search.fill('call_read_101');
+  await search.fill(''); await page.waitForTimeout(80);
+  check('Nonmatching open tool retains internal scroll through search filter',await pre.evaluate(el=>el.scrollTop),top);
+ }, { historicalDeclarations: true });
+});
+
+test("same-Preset pending edits retain inspection state and short Preset viewports remain physically reachable", { timeout: 35000 }, async t => {
+ await withPreviewInspectorBrowser(t, async ({page}) => {
+  await page.locator("#previewTabBtn").click();
+  const host = page.locator("#contextDiffPanel"), root = host.locator(".preview-inspector");
+  const result = root.locator(".inspection-tool.tool-error"), search = root.locator('input[type="search"]');
+  await result.locator(":scope > summary").click();
+  const pre = result.locator("pre"); await pre.waitFor();
+  await pre.evaluate(el => { el.scrollTop = 130; (window as any).__readingNode = el; });
+  await root.locator(".inspection-controls select").selectOption("paired");
+  await search.fill("call_bash_102");
+  await root.evaluate(el => { (window as any).__inspectorNode = el; });
+  let release!: () => void, held!: () => void, responses = 0;
+  const blocked = new Promise<void>(resolve => release = resolve), captured = new Promise<void>(resolve => held = resolve);
+  await page.route("**/api/stacks/*/preview", async route => {
+   const response = await route.fetch(); if (++responses === 2) held(); await blocked;
+   try { await route.fulfill({response}); } catch { /* intentional invalidations remain allowed */ }
+  });
+  try {
+   await page.locator("#itemName").fill("Display name only"); await captured;
+   assert.equal(await root.evaluate(el => el === (window as any).__inspectorNode), true);
+   assert.equal(await root.evaluate((el: HTMLElement) => el.inert), true, "Previous draft controls are paused, not presented as current");
+   assert.ok(await host.locator("[data-preview-pending]").isVisible());
+   assert.ok(await host.locator(".context-diff-copy-full").isDisabled());
+  } finally { release(); }
+  await host.locator("[data-preview-pending]").waitFor({state:"hidden"});
+  await page.unroute("**/api/stacks/*/preview");
+  assert.equal(await root.evaluate((el: HTMLElement) => el === (window as any).__inspectorNode && !el.inert), true);
+  assert.equal(await pre.evaluate(el => el === (window as any).__readingNode && el.scrollTop === 130), true);
+  assert.equal(await root.locator(".inspection-controls select").inputValue(), "paired");
+  assert.equal(await search.inputValue(), "call_bash_102");
+  await search.fill("");
+  // Short stacked layouts must have a non-zero, physically usable scroll viewport.
+  for (const [width,height] of [[900,500],[821,500],[820,500],[700,400],[390,500],[380,400]]) {
+   await page.setViewportSize({width,height});
+   for (const selector of ["#itemContent", "#contextDiffPanel .inspection-controls input", "#contextDiffPanel .inspection-full-toggle"]) {
+    const target = page.locator(selector); await target.scrollIntoViewIfNeeded();
+    assert.ok(await target.evaluate(el => { const r=el.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return !!hit && el.contains(hit); }), `${width}x${height}: ${selector} can actually be hit`);
+   }
+   assert.ok(await page.locator("#editorDockArea").evaluate(el => el.clientHeight >= 280));
+   assert.ok(await page.evaluate(() => scrollY === 0 && document.documentElement.scrollHeight <= innerHeight+1 && document.documentElement.scrollWidth <= innerWidth+1));
+  }
+  await page.setViewportSize({width:1440,height:900});
+  page.once("dialog", dialog => dialog.accept()); // Discard this test's synthetic name edit only.
+  await page.locator(".stack-row").filter({hasText:"Secondary Preset"}).click();
+  await host.locator(".section-text").filter({hasText:"Secondary isolated instructions."}).waitFor();
+  assert.equal(await root.locator(".inspection-controls select").inputValue(), "original", "A real resource boundary still resets local inspection choices");
+ });
 });

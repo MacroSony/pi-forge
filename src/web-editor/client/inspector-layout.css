@@ -151,6 +151,11 @@
  .context-diff-dock-header { padding-left:38px; }
 }
 @media (max-width:900px) {
+ /* Headers/sidebar can exceed a short viewport. Scroll this Preset shell and
+    reserve a usable dock instead of shrinking its viewport to zero. */
+ .app-root.preset-surface-open:has(.editor-dock-area.dock-open) .shell { overflow-y:auto; }
+ .app-root.preset-surface-open:has(.editor-dock-area.dock-open) .main { min-height:min-content; }
+ .app-root.preset-surface-open .editor-dock-area.dock-open { min-height:280px; }
  /* The block-layout editor must remain reachable inside its bounded grid row. */
  .editor-dock-area.dock-open:not(.dock-focus) .workspace { overflow-y:auto; }
 }

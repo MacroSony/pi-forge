@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { t } from "../i18n.ts";
-import { declaredParameterCount, declarationExcerpt, declarationJson } from "../preview-tool-declarations.ts";
+import { declaredParameterCount, declarationExcerpt, declarationJson, declarationMatches } from "../preview-tool-declarations.ts";
 import type { WebEditorPreviewSection } from "../../types.ts";
 
 const props = defineProps<{
 	section: WebEditorPreviewSection;
+	searchQuery?: string;
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +35,39 @@ function revealTool(index: number, event: Event): void {
 	}
 }
 
+// Search temporarily opens matching declaration metadata. The parent keeps
+// filtered rows mounted, so native disclosure/source state survives filtering.
+const sectionRoot = ref<HTMLElement | null>(null);
+let searchReading: { open: boolean; tools: { open: boolean; top?: number }[] } | null = null;
+let searchEpoch = 0;
+async function applySearch(query: string, previous: string) {
+ if (!query && !searchReading) return;
+ const root = sectionRoot.value;
+ const group = root?.querySelector<HTMLDetailsElement>(".preview-tool-changes");
+ if (!root || !group) return;
+ const tools = [...root.querySelectorAll<HTMLDetailsElement>(".tool-change-item.added")];
+ if (query && !previous) searchReading = { open: group.open, tools: tools.map(el => {
+  const pre = el.querySelector<HTMLElement>(".tool-declaration-json");
+  return { open: el.open, top: pre?.checkVisibility() ? pre.scrollTop : undefined };
+ }) };
+ const saved = searchReading, epoch = ++searchEpoch;
+ await nextTick();
+ if (epoch !== searchEpoch || !saved) return;
+ const matching = addedTools.value.map(tool => declarationMatches(tool, query));
+ group.open = saved.open || matching.some(Boolean) || (!!query && removedTools.value.some(name => typeof name === "string" && name.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+ tools.forEach((el, index) => {
+  const before = saved.tools[index];
+  el.open = !!before?.open || !!matching[index];
+  if (!query && before?.top !== undefined) {
+   const pre = el.querySelector<HTMLElement>(".tool-declaration-json");
+   if (pre) pre.scrollTop = before.top;
+  }
+ });
+ if (!query) searchReading = null;
+}
+watch(() => props.searchQuery?.trim() ?? "", applySearch);
+onMounted(() => { void applySearch(props.searchQuery?.trim() ?? "", ""); });
+
 function onCopyNamed(value: string | null): void {
 	if (value && value.length > 0) {
 		emit("copy", value);
@@ -42,7 +76,7 @@ function onCopyNamed(value: string | null): void {
 </script>
 
 <template>
-	<div class="preview-section-body">
+	<div ref="sectionRoot" class="preview-section-body">
 		<!-- Actual prompt body (if present, or if no structured sections exist) -->
 		<pre v-if="section.content || (!hasNamedSections && !hasToolChanges)" class="section-text">{{ section.content }}</pre>
 

@@ -1,6 +1,7 @@
 import type { WebEditorPreviewSection } from "../types.ts";
 import { hashText } from "../../context-diff.ts";
 import { previewSectionText } from "../../preview-text.ts";
+import { declarationMatches } from "./preview-tool-declarations.ts";
 
 export interface InspectionRow {
  key: string;
@@ -108,7 +109,10 @@ export function pairedRows(rows: readonly InspectionRow[]): InspectionRow[] {
 
 export function rowMatches(row: InspectionRow, query: string): boolean {
  const q = query.trim().toLocaleLowerCase();
- return !q || [row.text, row.role, row.partKind, row.section.title, row.scope, row.toolName, row.callId, row.owner, row.argumentHint].join(" ").toLocaleLowerCase().includes(q);
+ return !q || [row.text, row.role, row.partKind, row.section.title, row.scope, row.toolName, row.callId, row.owner, row.argumentHint].join(" ").toLocaleLowerCase().includes(q)
+  || Object.keys(row.body.sections ?? {}).some(name => name.toLocaleLowerCase().includes(q))
+  || !!row.body.toolChanges?.added.some(tool => declarationMatches(tool, q))
+  || !!row.body.toolChanges?.removed.some(name => typeof name === "string" && name.toLocaleLowerCase().includes(q));
 }
 
 /** Bounded lexical excerpt: never parse/re-serialize numeric lexemes or duplicate keys. */

@@ -836,3 +836,16 @@ test("end-to-end pipeline: real AgentMessage through buildPreview API down to in
 		"pairedRows successfully restored causal pairing: read call -> read result, bash call -> bash result",
 	);
 });
+
+
+test("metadata search includes historical declaration JSON and named System keys without altering prompt text", () => {
+ const section: WebEditorPreviewSection = { id: "system", title: "System", role: "system", content: "Actual prompt body", chars: 18, approxTokens: 5,
+  sections: { section_key_only: "some value", empty_key_only: "", removed_key_only: null },
+  toolChanges: { added: [{ name: "historical_only_tool", description: "Distinct description", parameters: { type: "object", properties: { schemaOnlyArgument: { type: "string" } } } }], removed: ["retired_only_tool"] }
+ };
+ const before = JSON.stringify(section), row = inspectionRows([section])[0]!;
+ for (const query of ["historical_only_tool", "Distinct description", "schemaOnlyArgument", '"type": "object"', "retired_only_tool", "section_key_only", "empty_key_only", "removed_key_only"]) assert.ok(rowMatches(row, query), query);
+ assert.equal(rowMatches(row, "not-in-this-fixture"), false);
+ assert.equal(row.text, "Actual prompt body\n\nsome value", "Metadata search never changes the compiled/copyable prompt prose");
+ assert.equal(JSON.stringify(section), before);
+});
