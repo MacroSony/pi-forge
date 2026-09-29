@@ -40,9 +40,9 @@ pi install npm:@zihanw/pi-forge
 用可编辑的内容块和插槽组合 Agent 的上下文：指令、工具说明、技能、项目文件和聊天记录都可以放进来。调整顺序或开关条目，直接在预览中看结果。
 
 - **使用场景**：给代码审查 Agent 配上项目规范和相关上下文，而不是让所有任务共用一份越来越长的提示词。
-- **上手尝试**：在编辑器的 **Stack** 中编辑或拖动内容块、开关项目上下文，再看 **Preview** 中的变化。
+- **上手尝试**：在 **Stack** 中开关一条 User 消息块，再将它拖到聊天历史插槽之后，在 **Preview** 中查看角色与顺序的变化。
 
-![拖拽系统内容块排序，再关闭项目上下文插槽，预览随之更新](assets/readme/zh-CN/context-composition.gif)
+![开关补充 User 消息，再拖到聊天历史之后，预览随之更新](assets/readme/zh-CN/context-composition.gif)
 
 详见 [Web 编辑器指南](docs/zh-CN/guides/web-editor.md)与 [Schema 与策略文档（英文）](docs/reference/stack-schema.md)。
 

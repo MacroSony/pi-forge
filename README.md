@@ -40,9 +40,9 @@ Prefer the terminal? Select a Preset with `/preset use <id>` and enable a Capabi
 Build your agent’s context from editable text blocks and slots for tools, skills, project files, and conversation history. Reorder or toggle them and see the result in Preview.
 
 - **Use case**: Give a code-review agent your project guidelines and selected context, instead of keeping one oversized prompt for every task.
-- **Try it**: In the editor’s **Stack**, edit or drag a block, toggle project context, and check **Preview**.
+- **Try it**: In **Stack**, toggle a User message block, then drag it after the chat-history slot. Watch the roles and order update in **Preview**.
 
-![Drag system blocks to reorder them, then toggle project context; Preview follows](assets/readme/en/context-composition.gif)
+![Toggle a supplemental User message and move it after chat history; Preview follows](assets/readme/en/context-composition.gif)
 
 See [Web editor guide](docs/guides/web-editor.md) and [Stack schema](docs/reference/stack-schema.md).
 

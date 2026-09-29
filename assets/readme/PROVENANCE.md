@@ -1,8 +1,37 @@
 # README media
 
+## September 29 UTC: 0.5.7 Preview refresh (current)
+
+The user reviewed and accepted all ten replacement GIFs (five scenes in English and Chinese). They were recorded from released product source `44f343b74de14f97bd85efd638b96915454fd595`, then adopted as a documentation/media-only change. This does not republish or change the immutable npm 0.5.7 artifact. Other legacy media files remain untouched; prior versions of these ten paths remain in git history.
+
+| Scene | English / Chinese duration | Demonstration |
+| --- | --- | --- |
+| `context-composition.gif` | 18.1 / 17.9 seconds | Short System instructions, two-message synthetic history, and a supplemental User message. Toggle the supplemental message off/on, then drag it after history; Preview reflects the roles and order. |
+| `capability-tools.gif` | 18.4 / 18.4 seconds | Isolated real SDK tool selection read → read/grep/find → read, with Locate for both the instruction update and removal. Pending delivery remains visible. |
+| `edit-draft-diff.gif` | 15.2 / 13.0 seconds | Readable Preview with a seeded example read call/result in a collapsed-body Tools group; edit System instructions, then inspect the actual Draft diff without changing pane geometry. |
+| `tool-selection.gif` | 12.0 / 12.1 seconds | Add permitted grep to default tools, Save/Activate and inspect the compiled selection. |
+| `regex-transforms.gif` | 7.1 / 7.1 seconds | Enable the expanded outgoing regex rule and observe SAMPLE_TOKEN → [REDACTED]. This is synthetic text, not a credential. |
+
+History remains enabled in the composition demo. Disabling the only chat-history slot would instead trigger the compiler's fallback that appends Pi history; it is **not** a way to remove the conversation. The read call/result in the diff recording is seeded demonstration history, not evidence of an executed model/tool run.
+
+All masters are uninterrupted, real-time 1440×900 / 30fps X11 capture with native pointer input and the disclosed recording-only halo. All GIFs now export to 1200×750 / 15fps, 128-color palette, without speed-up or montage. Complete MP4 and GIF decoding, trusted-input/semantic assertions, manual keyframe review, browser playback/seeking, and EN/ZH README image/layout checks at 1440px and 390px passed. The projects are disposable fixtures; no personal presets/history, remote provider calls, cache-hit proof or model-compliance claim is involved.
+
+### Reproduce current recordings
+
+Requires checkout dev dependencies, Google Chrome, Xvfb, xdotool, ffmpeg and Python Pillow. Private displays `:192` (Context/Capability/Diff) and `:193` (Tools/Regex) must be unused. Outputs go to review directories, never directly over the embedded files. The continuous recorder redacts local editor access tokens from SDK stdout.
+
+```bash
+npm run build
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-preview-media LOCALES=en,zh-CN SCENES=context,diff,capability node scripts/record-readme-continuous.ts
+python3 scripts/export-readme-continuous.py /tmp/forge-preview-media
+PI_FORGE_MEDIA_OUT_DIR=/tmp/forge-tools-regex node scripts/record-readme-tools-regex.ts
+```
+
+After visual review, map the first recorder's `context`, `capability`, `diff` GIFs to `context-composition.gif`, `capability-tools.gif`, `edit-draft-diff.gif`. Tools/Regex GIFs are in the second output's `assets/<locale>/`. Fixture identifiers vary, so fresh recordings need not be pixel-identical. The sections below describe historical recordings, not the current embedded clips.
+
 ## September 26 Capabilities rename
 
-All ten currently embedded WebUI GIFs (five scenes in each language) were re-recorded from the renamed development source based on `9f3bbb4`. They now show Capabilities and Enable/Disable; `capability-tools.gif` replaces the README reference to `mode-tools.gif`. Historical files, including the old mode and TUI clips, are retained rather than silently relabelled.
+At that time, all ten embedded WebUI GIFs (five scenes in each language) were re-recorded from the renamed development source based on `9f3bbb4`. They now show Capabilities and Enable/Disable; `capability-tools.gif` replaces the README reference to `mode-tools.gif`. Historical files, including the old mode and TUI clips, are retained rather than silently relabelled.
 
 Context, Draft diff and Capability recordings use the continuous recorder (1440×900, 15fps exports); Tools and Regex use their dedicated recorder (1200×750, 15fps exports). Both use native pointer actions and continuous X11 capture, with only the disclosed pointer halo. The Capability scene checks actual SDK tool selection `read → read,grep,find → read` and locates both the update and removal in projected context. All projects and sessions are disposable fixtures; no real provider inference, personal history, or cache-hit claim is involved. English/Chinese final keyframes were reviewed against the current UI. The legacy TUI clip was not re-recorded and remains unembedded.
 

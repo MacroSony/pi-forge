@@ -20,14 +20,14 @@ for locale in ['en','zh-CN']:
   run(['ffmpeg','-v','error','-i',str(video),'-f','null','-'])
   item={'scene':scene,'duration':duration,'width':1440,'height':900,'fps':30,'mp4':info(video),'verification':evidence['verification'],'evidence':str((folder/(scene+'.evidence.json')).relative_to(ROOT))}
   if scene!='save':
-   palette=folder/(scene+'-palette.png');gif=folder/(scene+'.gif')
-   run(['ffmpeg','-v','error','-y','-i',str(video),'-vf','fps=15,palettegen=stats_mode=diff','-frames:v','1','-update','1',str(palette)])
-   run(['ffmpeg','-v','error','-y','-i',str(video),'-i',str(palette),'-filter_complex_threads','1','-lavfi','[0:v]fps=15[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle','-loop','0',str(gif)])
+   gif=folder/(scene+'.gif')
+   run(['ffmpeg','-v','error','-y','-threads','2','-i',str(video),'-filter_complex_threads','1','-vf','fps=15,scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle','-loop','0',str(gif)])
    with Image.open(gif) as g:
+    assert g.size==(1200,750) and g.info.get('loop')==0
     frames=g.n_frames;total=0
     for n in range(frames):g.seek(n);total+=g.info.get('duration',0);g.convert('RGB').load()
     assert abs(total/1000-duration)<.2,(total,duration)
-   item['gif']={**info(gif),'frames':frames,'duration':total/1000,'nominalFps':15}
+   item['gif']={**info(gif),'frames':frames,'duration':total/1000,'nominalFps':15,'width':1200,'height':750}
   # Actual video frame posters include the native cursor, unlike browser screenshots.
   poster=folder/(scene+'-poster.jpg');run(['ffmpeg','-v','error','-y','-ss','1','-i',str(video),'-frames:v','1','-q:v','2',str(poster)]);item['poster']=info(poster)
   sheet=Image.new('RGB',(1440,990),'#17211f');draw=ImageDraw.Draw(sheet)

@@ -5,8 +5,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { chromium } from 'playwright-core';
+import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { initTheme } from '@earendil-works/pi-coding-agent';
 initTheme();
+// SDK print-mode commands may emit the local editor URL. Never persist its access token.
+const originalStdoutWrite=process.stdout.write.bind(process.stdout);
+process.stdout.write=((chunk:any,...args:any[])=>originalStdoutWrite(String(chunk).replace(/([?&]token=)[^&\s]+/g,'$1[REDACTED]'),...args as [])) as any;
+
 const ROOT=process.env.PI_FORGE_MEDIA_OUT_DIR;
 assert.ok(ROOT, 'Set PI_FORGE_MEDIA_OUT_DIR to a review output directory');
 const sourceCommit=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -77,7 +82,7 @@ for(const locale of locales)for(const scene of scenes){
  const zh=locale==='zh-CN';const outdir=join(ROOT,scene==='save'?'docs':'media',locale);mkdirSync(outdir,{recursive:true});
  const out=join(outdir,scene+'.mp4');const cwd=mkdtempSync(join(tmpdir(),'forge-movie-'+scene+'-'));const root=join(cwd,'.pi','forge');mkdirSync(root,{recursive:true});
  writeFileSync(join(root,'config.json'),JSON.stringify({webEditor:{locale}}));
- const role=zh?'请审查当前改动。\n先阅读相关实现。\n概括主要改动。':'Review the current change.\nRead relevant code first.\nSummarize the change.';
+ const role=scene==='context'?(zh?'仔细审查代码，给出可执行的建议。':'Review code carefully. Keep suggestions actionable.'):zh?'请审查当前改动。\n先阅读相关实现。\n概括主要改动。':'Review the current change.\nRead relevant code first.\nSummarize the change.';
  const changed=zh?'先总结风险，再列出验证结果。':'Summarize risks; list verified tests.';
  const rules=zh?'项目规则\n保持公共 API 稳定。':'Project rules\nKeep public APIs stable.';
  const projectNeedle=zh?'仅使用已批准的依赖。':'Use only approved dependencies.';
@@ -85,8 +90,7 @@ for(const locale of locales)for(const scene of scenes){
  writeFileSync(join(cwd,'AGENTS.md'),project);
  const stack={schemaVersion:2,type:'pi-forge.prompt-stack',id:'review',name:zh?'代码审查':'Code Review',autoActivate:scene!=='save',mode:'replace',tools:{allow:['read','grep','find'],initial:['read']},items:[
   {id:'role',name:zh?'审查指令':'Review instructions',kind:'block',role:'system',content:role,enabled:true},
-  ...(scene==='context'?[{id:'rules',name:zh?'项目规则':'Project rules',kind:'block',role:'system',content:rules,enabled:true}]:[]),
-  ...(scene==='context'?[{id:'project',name:zh?'项目上下文':'Project context',kind:'slot',role:'system',slot:'project-context',options:{format:'plain'},enabled:true}]:[]),
+  ...(scene==='context'?[{id:'focus',name:zh?'补充要求':'Review focus',kind:'block',role:'user',content:zh?'重点检查错误处理。':'Focus on error handling.',enabled:true}]:[]),
   {id:'history',name:zh?'对话历史':'Conversation history',kind:'slot',slot:'chat-history',enabled:true},
  ]};writeStack(cwd,'review.json',stack);
  if(scene==='save')writeStack(cwd,'daily.json',{...stack,id:'daily',name:zh?'日常开发':'Daily work',autoActivate:true,items:[{id:'daily-role',name:zh?'工作指引':'Work guidelines',kind:'block',role:'system',content:zh?'逐步处理日常开发任务。':'Work through daily development tasks.',enabled:true},{id:'history',kind:'slot',slot:'chat-history',enabled:true}]});
@@ -97,7 +101,14 @@ for(const locale of locales)for(const scene of scenes){
    mkdirSync(join(root,'capabilities'),{recursive:true});writeFileSync(join(root,'capabilities','explore.json'),JSON.stringify({schemaVersion:1,type:'pi-forge.capability',id:'explore',name:zh?'探索能力':'Explore capability',content:zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.',tools:{add:['grep','find'],remove:[]}}));
    sdk=await createCapabilityAgentHarness({cwd,native:true,allowedTools:['read','grep','find','fake_driver'],initialTools:[],responses:[]});sdk.session.setActiveToolsByName(['read']);sdk.manager.appendMessage({role:'system',content:'',sections:{tools:'',rules:''},timestamp:Date.now()} as any);sdk.session.refreshContext();await sdk.prompt('/preset ui');url=new URL((globalThis as any).__piForgeWebEditor.byCwd[cwd].server.url);
   }else{
-   h=createHarness({activeTools:['read'],allTools:['read','grep','find']});c=createContext(cwd,[],{leafId:null});c.ctx.sessionManager.getSessionId=()=>`demo-${scene}`;
+   h=createHarness({activeTools:['read'],allTools:['read','grep','find']});
+   const history=scene==='context'?[{id:'demo-user',parentId:null,type:'message',timestamp:new Date().toISOString(),message:{role:'user',content:zh?'请审查重试逻辑。':'Please review the retry logic.',timestamp:Date.now()}},{id:'demo-assistant',parentId:'demo-user',type:'message',timestamp:new Date().toISOString(),message:fauxAssistantMessage(zh?'我会检查超时和失败分支。':"I'll check the timeout and failure paths.") }]:[];
+   if(scene==='diff'){
+    // Seeded demonstration history, not evidence of an executed model/tool run.
+    const messages=[{role:'user',content:zh?'请检查重试上限。':'Please check the retry limit.',timestamp:Date.now()},fauxAssistantMessage([fauxToolCall('read',{path:'retry.ts'},{id:'demo-read'})],{stopReason:'toolUse'}),{role:'toolResult',toolCallId:'demo-read',toolName:'read',content:[{type:'text',text:'export const MAX_RETRIES = 3;'}],isError:false,timestamp:Date.now()},fauxAssistantMessage(zh?'重试上限为 3 次。':'The retry limit is 3.')];
+    messages.forEach((message,index)=>history.push({id:index===3?'demo-assistant':`sample-${index}`,parentId:index?`sample-${index-1}`:null,type:'message',timestamp:new Date().toISOString(),message} as any));
+   }
+   c=createContext(cwd,history,{leafId:history.length?'demo-assistant':null});c.ctx.sessionManager.getSessionId=()=>`demo-${scene}`;
    c.ctx.getSystemPromptOptions=()=>({cwd,selectedTools:h.getActiveTools(),toolSnippets:{},promptGuidelines:[],contextFiles:[{path:'AGENTS.md',content:project}],skills:[]}) as any;
    await startSession(h,c.ctx);await h.commands.preset.handler('ui',c.ctx);url=latestEditorUrl(c.editors);
   }
@@ -114,21 +125,32 @@ for(const locale of locales)for(const scene of scenes){
   }
   await page.screenshot({path:join(outdir,scene+'-poster.png')});rec=await captureStart(out);await wait(scene==='save'?2700:1300);
   if(scene==='context'){
-   const source=page.locator('.item-row').filter({hasText:zh?'项目规则':'Project rules'}).locator('.drag-handle');const target=page.locator('.item-row').filter({hasText:zh?'审查指令':'Review instructions'});
-   const a=await source.boundingBox(),b=await target.boundingBox();assert.ok(a&&b);
-   await move(a.x+a.width/2,a.y+a.height/2);await wait(400);mark('drag-start',{x:px,y:py});xd('mousedown','1');await wait(200);await move(b.x+35,b.y+8,1500);await wait(500);mark('drop',{x:px,y:py});xd('mouseup','1');
-   await page.waitForFunction((n:string)=>document.querySelector('.item-row .item-title')?.textContent===n,zh?'项目规则':'Project rules');
-   await page.waitForFunction(({rules,role})=>{const t=document.querySelector('.context-diff-compiled')?.textContent||'';return t.includes(rules)&&t.includes(role)&&t.indexOf(rules)<t.indexOf(role);},{rules,role});mark('verified-reorder');await move(790,650,500);await wait(1900);
-   const projectRow=page.locator('.item-row').filter({hasText:zh?'项目上下文':'Project context'});await click(projectRow.locator('.item-toggle'),'Turn off Project context');
-   await page.waitForFunction(({r,n})=>{const t=document.querySelector('.context-diff-compiled')?.textContent||'';return t.includes(r)&&!t.includes(n);},{r:rules,n:projectNeedle});assert.equal(await projectRow.locator('.item-toggle').getAttribute('aria-pressed'),'false');mark('verified-slot-off');await move(790,650,500);await wait(2400);
-   verification={nativeDrag:true,order:await page.locator('.item-title').allTextContents(),compiledOrderChanged:true,projectParagraphRemoved:true};
+   const historyNeedle=zh?'请审查重试逻辑。':'Please review the retry logic.';
+   const focusNeedle=zh?'重点检查错误处理。':'Focus on error handling.';
+   const historyRow=page.locator('.item-row').filter({hasText:zh?'对话历史':'Conversation history'});
+   const projected=()=>page.locator('.context-diff-compiled').innerText();
+   assert.ok((await projected()).includes(historyNeedle));
+   const focusRow=page.locator('.item-row').filter({hasText:zh?'补充要求':'Review focus'});
+   await click(focusRow.locator('.item-toggle'),'Turn off supplemental message');
+   await page.waitForFunction((n:string)=>!document.querySelector('.context-diff-compiled')?.textContent?.includes(n),focusNeedle);
+   assert.ok((await projected()).includes(historyNeedle));mark('verified-message-off-history-kept');await move(790,650,350);await wait(1700);
+   await click(focusRow.locator('.item-toggle'),'Restore supplemental message');
+   await page.waitForFunction((n:string)=>document.querySelector('.context-diff-compiled')?.textContent?.includes(n),focusNeedle);
+   mark('verified-message-restored');await move(790,650,350);await wait(1700);
+   const source=page.locator('.item-row').filter({hasText:zh?'补充要求':'Review focus'}).locator('.drag-handle');
+   const a=await source.boundingBox(),b=await historyRow.boundingBox();assert.ok(a&&b);
+   await move(a.x+a.width/2,a.y+a.height/2);await wait(300);mark('drag-start',{x:px,y:py});xd('mousedown','1');await wait(180);await move(b.x+35,b.y+b.height-5,1300);await wait(400);mark('drop',{x:px,y:py});xd('mouseup','1');
+   await page.waitForFunction((n:string)=>Array.from(document.querySelectorAll('.item-row .item-title')).at(-1)?.textContent===n,zh?'补充要求':'Review focus');
+   await page.waitForFunction(({h,f})=>{const t=document.querySelector('.context-diff-compiled')?.textContent||'';return t.includes(h)&&t.includes(f)&&t.indexOf(h)<t.indexOf(f);},{h:historyNeedle,f:focusNeedle});
+   mark('verified-message-after-history');await move(790,650,350);await wait(2600);
+   verification={syntheticHistoryMessages:2,messageOffAndRestored:true,historyAlwaysKept:true,nativeDrag:true,order:await page.locator('.item-title').allTextContents(),supplementAfterHistory:true,compiledOrderChanged:true};
   }else if(scene==='diff'){
    await click(page.locator('#itemContent'),'Edit final instruction line');xd('key','ctrl+End');xd('key','shift+Home');await wait(400);mark('type-final-line',{text:changed});
    await page.keyboard.type(changed,{delay:45});
    await page.waitForFunction((n:string)=>document.querySelector('.context-diff-compiled')?.textContent?.includes(n),changed);mark('verified-live-preview');await move(790,650,500);await wait(1400);
    const before=await page.locator('#contextDiffPanel').boundingBox();await click(page.locator('.context-diff-mode-tabs [role=tab]').nth(1),'Draft diff');
    await page.locator('.git-line.added').first().waitFor();await page.locator('.git-line.removed').first().waitFor();const after=await page.locator('#contextDiffPanel').boundingBox();assert.equal(after?.x,before?.x);assert.equal(after?.width,before?.width);assert.equal(await page.locator('#itemContent').isVisible(),true);assert.equal(await page.locator('#dirtyBadge').isVisible(),true);mark('verified-diff-without-resize');await move(790,650,500);await wait(3000);
-   verification={dirty:true,realAddedRemoved:true,editorVisible:true,panelGeometryUnchanged:true};
+   verification={dirty:true,realAddedRemoved:true,editorVisible:true,panelGeometryUnchanged:true,syntheticHistoryMessages:4,historyFixture:"seeded read call/result; not executed model or tool work",toolRows:await page.locator(".inspection-tool").count()};
   }else if(scene==='capability'){
    const panel=page.locator('[data-session-capabilities]');const projection=page.locator('.session-inspector .context-diff-compiled');
    const capabilityText=zh?'先阅读相关文件，再用证据回答。':'Read relevant files, then answer with evidence.';

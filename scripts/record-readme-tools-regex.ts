@@ -12,8 +12,8 @@ const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = process.env.PI_FORGE_MEDIA_OUT_DIR ?? join(tmpdir(), "forge-readme-tools-regex");
 const assetDir = process.env.PI_FORGE_ASSET_DIR ?? join(OUT, "assets");
 for (const locale of ["en", "zh-CN"]) mkdirSync(join(assetDir, locale), { recursive: true });
-const DISPLAY = ":192";
-assert.ok(!existsSync("/tmp/.X11-unix/X192"), "private recording display is already in use");
+const DISPLAY = ":193";
+assert.ok(!existsSync("/tmp/.X11-unix/X193"), "private recording display is already in use");
 const env = { ...process.env, DISPLAY, XCURSOR_SIZE: "32" };
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const xd = (...args: string[]) => execFileSync("xdotool", args, { env, stdio: "ignore", timeout: 5000 });
@@ -65,6 +65,7 @@ async function openPreview(page: any, name: string) {
   const button = page.locator("#previewTabBtn");
   if (await button.getAttribute("aria-pressed") !== "true") await click(button, name);
   await page.locator(".context-diff-compiled").waitFor();
+  if (await page.locator(".context-diff-dock").getAttribute("data-reading") === "side") await click(page.locator("#focus-toggle"), "Widen Preview for readable recording");
 }
 async function expandSelectedTools(page: any) {
   const panel = page.locator(".preview-selected-tools-panel").first(); await panel.waitFor();
@@ -109,7 +110,7 @@ function probe(path: string) {
   return JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration,size:stream=codec_name,width,height,avg_frame_rate,pix_fmt", "-of", "json", path], { encoding: "utf8" }));
 }
 function makeGif(mp4: string, gif: string) {
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "warning", "-y", "-i", mp4, "-vf", "fps=15,scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", gif], { stdio: "inherit" });
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "warning", "-y", "-i", mp4, "-filter_complex_threads", "1", "-vf", "fps=15,scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=128:stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle", "-loop", "0", gif], { stdio: "inherit" });
 }
 
 try {
@@ -167,14 +168,14 @@ try {
       }
       // Re-open from the saved isolated preset for an independent regex capture.
       await click(page.locator("#regexTabBtn"), "Regex"); await page.locator("[data-regex-row]").waitFor();
-      const regexRow = page.locator("[data-regex-row]").first(); await click(regexRow.locator(".regex-card-head"), "Expand outgoing regex");
+      const regexRow = page.locator("[data-regex-row]").first(); await click(regexRow.locator("[data-regex-toggle]"), "Expand outgoing regex");
       await page.waitForFunction(() => !!document.querySelector("[data-regex-body]"));
       const regexOut = join(OUT, "masters", locale, "regex-transforms.mp4"); await move(790, 650); await wait(500); rec = await captureStart(regexOut); await wait(900);
       await openPreview(page, "Preview before regex");
       await page.waitForFunction(() => (document.querySelector(".context-diff-compiled")?.textContent || "").includes("SAMPLE_TOKEN"));
       const preRegex = await page.locator(".context-diff-compiled").innerText(); assert.match(preRegex, /SAMPLE_TOKEN/); assert.doesNotMatch(preRegex, /\[REDACTED\]/);
       await page.screenshot({ path: join(OUT, "frames", locale, "regex-transforms-before.png") }); mark("verified-regex-before", { visible: "SAMPLE_TOKEN" }); await wait(1300);
-      await click(page.locator("#regexTabBtn"), "Regex to enable outgoing rule");
+      // Regex is already active alongside Preview; keep its expanded form visible.
       const enabled = page.locator("[data-regex-enabled]").first(); assert.equal(await enabled.isChecked(), false); await click(enabled, "Toggle outgoing regex");
       await page.waitForFunction(() => (document.querySelector("[data-regex-enabled]") as HTMLInputElement)?.checked === true); mark("verified-regex-enabled", { pattern: "SAMPLE_TOKEN", replacement: "[REDACTED]" }); await wait(700);
       await openPreview(page, "Preview after regex");
