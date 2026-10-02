@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+- Extend optional host peers to Pi 0.99.0, 0.99.1, 0.99.2 and 1.0.0 while retaining the Pi 0.87.x baseline. Pin development SDKs to 1.0.0 and TypeBox to 1.3.27; ordinary platform CI uses current pins and explicit Linux lanes retain older supported hosts.
+- Parameterize packed consumers with `PI_TEST_VERSION` / `TYPEBOX_TEST_VERSION`, default to the coherent installed host, verify installed family versions and use normal npm peer resolution. Pass the selected host through compatibility/latest CI instead of silently packing against 0.87.0. Optional import smoke uses the companion's declared runtime dependency.
+- Refresh the pi-docs slot and add bilingual native MCP/codemode migration notes and focused catalog/System-section regressions. Native MCP names remain exact: stale deny/remove names require review, not automatic aliases. This patch does not change initial/loadout authorization, Capability ownership, models.* access or usage accounting; published 0.5.7 metadata and personal configurations are unchanged.
+
 ## [0.5.7] - 2026-09-28
 
 - Preserve inspection choices through same-Preset draft edits with a clearly marked, paused previous preview. Restore native disclosure state after search/full-text, retain filtered history JSON reading positions, and search historical declaration JSON and named System keys without changing prompt text. Keep the Preset dock physically reachable on short narrow screens.

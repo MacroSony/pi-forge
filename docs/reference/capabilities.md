@@ -6,7 +6,7 @@ Pi-forge introduces capabilities: session-scoped prompt directives paired with d
 
 ## Requirements and installation
 
-- **Host requirement:** Pi `>=0.87.0 <0.88.0` (repository dev SDK pinned to `0.87.0`, peer range `>=0.87.0 <0.88.0`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim). Capabilities require Forge 0.5.5.
+- **Host requirement:** Minimum supported Pi version is 0.87.0. Published Forge 0.5.7 declared peer range `>=0.87.0 <0.88.0`; the unreleased source compatibility patch supports `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0` (dev SDK 1.0.0, `typebox@1.3.27`; min SDK 0.87 unchanged; no dual 0.86 runtime support claim). Capabilities require Forge 0.5.5. See [Pi 1.0 compatibility guide](../guides/pi-1-compatibility.md).
 - **Project trust:** Activating capabilities, preset bindings, or manual directives requires a trusted project (`isProjectTrusted()`).
 - **Compatibility:** Configurations utilizing `tools.initial` require a Forge version with this support; older Forge versions may ignore `initial`, so configurations are not downgrade-compatible.
 
@@ -230,7 +230,7 @@ Active state is derived deterministically from session events and delivery curso
 
 ## Compatibility and security boundaries
 
-- **Upstream Pi 0.87 required:** Upstream Pi `>=0.87.0 <0.88.0` is required. Dual 0.86 runtime support is not provided. Extensions that previously manipulated or inspected full System messages in `context` must migrate to the full `context_with_system` hook.
+- **Upstream Pi minimum required:** Pi 0.87.0 is the minimum supported host (source compatibility supports `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0`; published 0.5.7 peer metadata remains `>=0.87.0 <0.88.0`). Dual 0.86 runtime support is not provided. Extensions that previously manipulated or inspected full System messages in `context` must migrate to the full `context_with_system` hook. See [Pi 1.0 compatibility](../guides/pi-1-compatibility.md).
 - **Timing with `before_agent_start`:** Any forced System prompt injection via `before_agent_start` continues to execute later than `context_with_system`.
 - **Preceding extension message rewrites:** Pi permits context hooks to rewrite messages. When visible metadata anchors or unanchored events need positioning, Forge requires a unique ordered alignment with the canonical session projection and fails closed if arbitrary preceding rewrites break alignment. Pi may persist queued custom messages absent from a tool follow-up: Forge permits only uniquely alignable custom-message omissions, ignores their regenerated envelope timestamps, and preserves incoming objects without restoring omitted dialogue. A preceding rewrite can therefore conflict with this locator; moving it later does not guarantee safe composition. Broad plugin, warming, and automatic-overflow compatibility remain unverified.
 - **Upstream defect status and protocol limits:** Upstream Pi metadata chunking and semantic-cut defects are NOT patched and remain unfixed upstream. Compaction checkpoint placement is unchanged. Old sessions and former delivery carriers remain untouched and unsupported for continuing capability state; Forge does not migrate old JSONL or rewrite historical summaries. Oh My Pi (OMP) is not supported or promised.
@@ -253,7 +253,7 @@ The 0.5.5 core functional implementation is delivered in source across all plann
 - Parent safeguards: raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences.
 - Tool patch schema supports `add` and `remove` only; candidate `only`/allowlist is not implemented.
 - Conservative provider-managed prompt cache warnings; compatible Codex additional-tool delivery can preserve prefixes for new names when retained history has no removals/redeclarations; tool removal/redeclaration falls back to the current full tool list (not guaranteed cache hits); no automatic legacy migration or old summary rewrites; no Pi split patch; no claims of forced prompt, warming, auto overflow, or remote acceptance.
-- Local build and full Node/browser/package verification passed at the 2026-09-24 UI closeout (commit `89c6ba2`); this is a dated local result, not current CI evidence, remote-provider acceptance, or npm publication. Pi `>=0.87.0 <0.88.0` remains required; optional runtime/subagent integration and its producer work are independently tested and released.
+- Local build and full Node/browser/package verification passed at the 2026-09-24 UI closeout (commit `89c6ba2`); this is a dated local result, not current CI evidence, remote-provider acceptance, or npm publication. That historical check used Pi `>=0.87.0 <0.88.0`; current source host policy is in the [compatibility guide](../guides/pi-1-compatibility.md). Optional runtime/subagent integration and its producer work are independently tested and released.
 
 
 Filesystem safety checks reject symlinks present when checked. They are not isolation against another local process racing directory replacement; revision checks likewise are not cross-process locking. Do not use resource mutation against an adversarial shared filesystem.

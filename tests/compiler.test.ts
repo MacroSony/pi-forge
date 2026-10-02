@@ -701,6 +701,9 @@ test("Pi-style slots mirror default prompt sections", () => {
 	assert.doesNotMatch(result.systemPrompt, /- custom:/);
 	assert.match(result.systemPrompt, /Guidelines:\n- Use bash for file operations like ls, rg, find\n- Use bash deliberately\.\n- Be concise in your responses\n- Show file paths clearly when working with files/);
 	assert.match(result.systemPrompt, /Pi documentation \(read only when the user asks about pi itself/);
+	assert.match(result.systemPrompt, /docs\/codemode\.md/);
+	assert.match(result.systemPrompt, /docs\/mcp\.md/);
+	assert.match(result.systemPrompt, /docs\/environment-variables\.md/);
 	assert.doesNotMatch(result.systemPrompt, /Review code/);
 	assert.deepEqual(result.diagnostics, []);
 });

@@ -1,14 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { PI_PACKAGES, resolveTestVersions } from "./packed-versions.ts";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const optionalRoot = process.env.PI_FORGE_SUBAGENTS_ROOT ?? resolve(rootDir, "../pi-forge-subagents");
 const npmCli = process.env.npm_execpath;
 const npm = npmCli ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm";
 const npmPrefix = npmCli ? [npmCli] : [];
+
+const { piVersion, typeboxVersion } = resolveTestVersions(rootDir, process.env);
+console.log(`Packed install test: Pi version = ${piVersion}, TypeBox version = ${typeboxVersion}`);
 
 function run(command, args, opts = {}) {
 	const result = spawnSync(command, args, { encoding: "utf8", ...opts });
@@ -25,6 +30,29 @@ function packInto(cwd, into) {
 	const stdout = run(npm, [...npmPrefix, "pack", "--pack-destination", into, "--json", "--ignore-scripts"], { cwd });
 	const [manifest] = JSON.parse(stdout);
 	return join(into, manifest.filename);
+}
+
+function assertInstalledVersions(consumerDir, expectedPiVersion, expectedTypeboxVersion) {
+	for (const pkg of PI_PACKAGES) {
+		const pkgJsonPath = join(consumerDir, "node_modules", ...pkg.split("/"), "package.json");
+		if (!existsSync(pkgJsonPath)) {
+			throw new Error(`Consumer at ${consumerDir} missing installed package: ${pkg}`);
+		}
+		const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+		if (pkgJson.version !== expectedPiVersion) {
+			throw new Error(`Consumer at ${consumerDir} installed ${pkg}@${pkgJson.version}, expected ${expectedPiVersion}`);
+		}
+	}
+	if (expectedTypeboxVersion) {
+		const tbPath = join(consumerDir, "node_modules", "typebox", "package.json");
+		if (!existsSync(tbPath)) {
+			throw new Error(`Consumer at ${consumerDir} missing installed package: typebox`);
+		}
+		const tbJson = JSON.parse(readFileSync(tbPath, "utf8"));
+		if (tbJson.version !== expectedTypeboxVersion) {
+			throw new Error(`Consumer at ${consumerDir} installed typebox@${tbJson.version}, expected ${expectedTypeboxVersion}`);
+		}
+	}
 }
 
 function smokeScript(imports) {
@@ -78,12 +106,10 @@ try {
 	try {
 		writeFileSync(join(mainOnly, "package.json"), JSON.stringify({ name: "smoke-main", private: true, type: "module" }));
 		run(npm, [...npmPrefix, "install", mainPack,
-			"@earendil-works/pi-coding-agent@0.87.0",
-			"@earendil-works/pi-ai@0.87.0",
-			"@earendil-works/pi-agent-core@0.87.0",
-			"@earendil-works/pi-tui@0.87.0",
-			"typebox@1.3.7",
+			...PI_PACKAGES.map((pkg) => `${pkg}@${piVersion}`),
+			`typebox@${typeboxVersion}`,
 			"--no-audit", "--no-fund", "--ignore-scripts"], { cwd: mainOnly });
+		assertInstalledVersions(mainOnly, piVersion, typeboxVersion);
 		writeFileSync(join(mainOnly, "smoke.mjs"), smokeScript([`const { ForgeHostPortOperation } = await import('@zihanw/pi-forge/subagent');`]));
 		run(process.execPath, ["smoke.mjs"], { cwd: mainOnly });
 		typeSmoke(mainOnly, []);
@@ -105,15 +131,15 @@ try {
 					"@zihanw/pi-forge": `file:${mainPack}`,
 					"@zihanw/pi-forge-subagents": `file:${optionalPack}`,
 				},
-			}));
+			}, null, 2));
+
 			run(npm, [...npmPrefix, "install",
-				"@earendil-works/pi-coding-agent@0.87.0",
-				"@earendil-works/pi-ai@0.87.0",
-				"@earendil-works/pi-agent-core@0.87.0",
-				"@earendil-works/pi-tui@0.87.0",
-				"typebox@1.3.15",
-				"@zihanw/pi-subagent-runtime@0.1.0-beta.2",
-				"--no-audit", "--no-fund", "--ignore-scripts", "--legacy-peer-deps"], { cwd: both });
+				...PI_PACKAGES.map((pkg) => `${pkg}@${piVersion}`),
+				`typebox@${typeboxVersion}`,
+				"--no-audit", "--no-fund", "--ignore-scripts"], { cwd: both });
+
+			assertInstalledVersions(both, piVersion, typeboxVersion);
+
 			writeFileSync(join(both, "smoke.mjs"), smokeScript([
 				`const optional = await import('@zihanw/pi-forge-subagents');`,
 				`if (typeof optional.default !== 'function') throw new Error('pi-forge-subagents default is not a function');`,
@@ -134,6 +160,5 @@ try {
 		console.log("optional package not present; skipping main+optional packed smoke");
 	}
 } finally {
-	rmSync(join(tmp, "main"), { recursive: true, force: true });
 	rmSync(tmp, { recursive: true, force: true });
 }

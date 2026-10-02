@@ -16,9 +16,9 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 ## 安装与第一次使用
 
-Node.js 需要 **22.19 或更高版本**。0.5.7 支持 Pi **0.87.x**（`>=0.87.0 <0.88.0`），已在 **0.87.0** 上验证。
+Node.js 需要 **22.19 或更高版本**。已发布的 Forge **0.5.7** 声明 Pi **0.87.x** peers；未发布源码补丁新增 **0.99.0–0.99.2 与 1.0.0**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
 
-> **版本提示：** 本文介绍 Forge **0.5.7**。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
+> **版本提示：** 本文介绍 Forge **0.5.7**。已安装 0.5.7 的 peer 元数据保持不变；对 Pi 1.0 的源码级兼容补丁尚未发布。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
 
 ```bash
 pi install npm:@zihanw/pi-forge

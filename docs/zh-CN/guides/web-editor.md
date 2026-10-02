@@ -119,7 +119,7 @@ Profile 编辑按 Provider／Model、Thinking／Preset 分组，不可变身份�
 
 ### 兼容性说明
 
-使用 `tools.initial` 的预设需要新版 Forge 支持。旧版 Forge 可能忽略 `tools.initial` 并恢复旧选择逻辑（选择性 allow 匹配目录，不限/deny 保留或过滤会话基线）（不支持向下降级兼容）。这些变化需要 Forge 0.5.5；宿主要求保持 Pi `>=0.87.0 <0.88.0` 不变。
+使用 `tools.initial` 的预设需要新版 Forge 支持。旧版 Forge 可能忽略 `tools.initial` 并恢复旧选择逻辑（选择性 allow 匹配目录，不限/deny 保留或过滤会话基线）（不支持向下降级兼容）。这些变化需要 Forge 0.5.5；最低宿主要求保持 Pi 0.87.0 不变（已发布 0.5.7 的 peer 范围为 `>=0.87.0 <0.88.0`；未发布的源码兼容补丁支持 `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0`；详见 [Pi 1.0 兼容指南](pi-1-compatibility.md)）。
 
 ## Agent profile 工作区
 

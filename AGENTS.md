@@ -2,6 +2,14 @@
 
 These instructions apply to humans and coding agents.
 
+## Authorized Pi 1.0 compatibility patch (unreleased)
+
+The user authorized the main-package compatibility patch on 2026-10-02, explicitly deferring authorization semantics to a separate discussion. Keep the manifest version 0.5.7 and record changes under Unreleased; no push, publish, global installation, personal resource migration or host reload is authorized. Preserve the optional/runtime worktrees and their pre-existing dirty changes.
+
+Current source peers: `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0`; development Pi four-package family 1.0.0 and typebox 1.3.27. Minimum 0.87.0 remains covered by explicit Linux CI; ordinary three-platform CI runs the pinned SDK. Packed smoke must use its selected host family in every consumer and normal npm peer resolution, not hardcoded 0.87 or `--legacy-peer-deps`. Optional import smoke uses its declared runtime and does not certify unpublished features.
+
+Only production change here is pi-docs guidance. Do not change initial/loadout execution semantics, tool exposure, Capability ownership, models.* permissions, usage aggregation, or implement MCP name aliases. Native MCP exact-name migration must inspect both grants and restrictions: stale deny/remove can stop matching new names. Preserve foreign mcp_servers sections and test catalog changes without claiming mocks prove native MCP resume/reload. See [compatibility guide](docs/guides/pi-1-compatibility.md). Older version/pin statements below are historical scope records, not the current source policy.
+
 ## Current mode
 
 pi-forge is continuing the lean 0.5 line through the accepted amendments in [docs/design/architecture-0.5.md](docs/design/architecture-0.5.md), including the authorized [capability lanes and accepted 9/21 amendment](docs/design/pi-forge-system-update-design-notes.md) and the Pi 0.87 migration. Functional source is delivered across all planned lanes: the codec/event foundation, human CLI core (`/capability`), plain metadata anchor projection with ordinal materialization, non-modal Current session controls/projection workspace, live Preset bindings (`capabilities`) in a dedicated peer Capability bindings tab with finite overrides and opt-in `modelCallable: true`, restricted Agent control (`forge_capability` with list/status/enable/disable, ID ≤128 chars), Web Capabilities CRUD with SDK-grouped tool picker and `sourceRevision` stale-save protection, custom default tools policy (`tools.initial?: string[]`), and guarded human Web activation (`GET /api/capability-state/available`, `POST /api/capability-state/enable` with guard and fingerprint checks).
