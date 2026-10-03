@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { packageMediaFailures, readmeMediaFailures } from "./package-policy.ts";
+
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
 const npmCli = process.env.npm_execpath;
@@ -21,7 +23,10 @@ if (packed.status !== 0) {
 
 const [manifest] = JSON.parse(packed.stdout);
 const paths = new Set(manifest.files.map((file) => file.path));
-const failures = [];
+const failures = packageMediaFailures(manifest);
+for (const name of ["README.md", "README.zh-CN.md"]) {
+	failures.push(...readmeMediaFailures(readFileSync(join(rootDir, name), "utf8"), name));
+}
 
 for (const required of [
 	"dist/index.js",
@@ -37,11 +42,10 @@ for (const required of [
 	"docs/reference/commands.md",
 	"examples/read-first-worker-prompt-stack.json",
 	"examples/capabilities/write-tools.json",
-	"assets/pi-forge-header-concept-1.png",
-	"assets/readme/tui-quickstart.gif",
-	...["en", "zh-CN"].flatMap(locale => ["tool-selection.gif", "regex-transforms.gif"].map(name => `assets/readme/${locale}/${name}`)),
-	...["en", "zh-CN"].flatMap(locale => ["editor-overview-v3.png", "context-composition.gif", "capability-tools.gif", "edit-draft-diff.gif"].map(name => `assets/readme/${locale}/${name}`)),
-    ...["en", "zh-CN"].flatMap(locale => ["editor-overview.png", "context-toggle.gif", "draft-diff.png"].map(name => `assets/readme/${locale}/${name}`)),
+	"README.md",
+	"README.zh-CN.md",
+	"CHANGELOG.md",
+	"LICENSE",
 ]) {
 	if (!paths.has(required)) failures.push(`missing required package entry: ${required}`);
 }
@@ -123,6 +127,6 @@ if (failures.length > 0) {
 	process.exitCode = 1;
 } else {
 	console.log(
-		`npm package uses host-provided Pi peers and compiled runtime entries (${paths.size} files; docs included; no physical src/ entries).`,
+		`npm package uses host-provided Pi peers and compiled runtime entries (${paths.size} files; docs included; no physical src/ entries or repository media; ${manifest.size} packed bytes).`,
 	);
 }

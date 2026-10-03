@@ -20,7 +20,7 @@ The macOS and Windows jobs run the same complete verification surface as Linux, 
 
 ## Dependency policy
 
-The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. The unreleased source compatibility patch expands supported peers to the precise union:
+The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. Forge 0.5.8 expands supported peers to the precise union:
 ```
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0
 ```
@@ -40,7 +40,9 @@ Published `@zihanw/pi-forge-subagents` 0.5.3 does not understand `tools.initial`
 
 ## Package contents
 
-The tarball must include compiled `dist/`, examples, the English and Chinese landing pages, changelog, license, and user/reference documentation. It must not include physical `src/` files. The root, `/subagent`, `/ui-contribution`, and `/command-contribution` entries must resolve to compiled output.
+The tarball must include compiled JavaScript, type declarations and source maps from `dist/`, JSON and TypeScript examples, the English and Chinese landing pages, changelog, license, and Markdown documentation. README images and demonstration media are repository-only: keep them in GitHub, use commit-pinned raw GitHub URLs in both READMEs, and do not package `assets/` or image/audio/video files anywhere in the tarball. Installed README text works offline; remote media requires network access. Positive `files` patterns exclude non-code/non-text additions by default. It must not include physical `src/` files. The root, `/subagent`, `/ui-contribution`, and `/command-contribution` entries must resolve to compiled output.
+
+`prepack` runs the build and `check:package`; the latter uses `npm pack --dry-run --ignore-scripts` to inspect the actual inventory without recursive lifecycle calls. Media/asset entries and compressed tarballs above **2 MiB** fail the check. Keep the real-pack injection regression enabled. Any future essential runtime asset or budget change needs an explicit packaging review; do not simply widen the whitelist or remove the checks. These are normal build/release gates, not protection against deliberately bypassing lifecycle scripts.
 
 The root `PUBLIC_API.md` and `SUBAGENT_ADAPTER_CONTRACT.md` files are compatibility pointers; authoritative content lives under `docs/reference/`.
 

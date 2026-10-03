@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Quick start](#install-and-first-run)
 
-![pi-forge - Context editor and inspection workbench for Pi](assets/pi-forge-header-concept-1.png)
+![pi-forge - Context editor and inspection workbench for Pi](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/pi-forge-header-concept-1.png)
 
 **A context editor and inspection workbench for Pi.**
 
@@ -16,9 +16,9 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 ## Install and first run
 
-Requires Node.js **22.19 or newer**. Published Forge **0.5.7** declares Pi **0.87.x** peers. The unreleased source patch adds Pi **0.99.0–0.99.2 and 1.0.0**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
+Requires Node.js **22.19 or newer**. Forge **0.5.8** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0.0**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
 
-> **Version note:** This README describes Forge **0.5.7**. Installed 0.5.7 peer metadata remains unchanged; source compatibility for Pi 1.0 is unreleased. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
+> **Version note:** This README describes Forge **0.5.8**, a Pi host-compatibility patch. Older installed packages do not gain the expanded peer metadata automatically; tool-policy and Capability execution semantics are unchanged. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
 
 ```bash
 pi install npm:@zihanw/pi-forge
@@ -42,7 +42,7 @@ Build your agent’s context from editable text blocks and slots for tools, skil
 - **Use case**: Give a code-review agent your project guidelines and selected context, instead of keeping one oversized prompt for every task.
 - **Try it**: In **Stack**, toggle a User message block, then drag it after the chat-history slot. Watch the roles and order update in **Preview**.
 
-![Toggle a supplemental User message and move it after chat history; Preview follows](assets/readme/en/context-composition.gif)
+![Toggle a supplemental User message and move it after chat history; Preview follows](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/en/context-composition.gif)
 
 See [Web editor guide](docs/guides/web-editor.md) and [Stack schema](docs/reference/stack-schema.md).
 
@@ -53,7 +53,7 @@ Choose which tools an agent may use and which are available by default. An allow
 - **Use case**: Keep a review agent focused on reading and searching, without giving it editing or shell tools.
 - **Try it**: In **Policy**, choose the permitted tools and a default set such as `read` and `ls`. Add the already-permitted `grep` to the defaults and check the tool list in **Preview**; save and activate to apply the policy.
 
-![Tool selection with policy defaults read/ls and adding grep](assets/readme/en/tool-selection.gif)
+![Tool selection with policy defaults read/ls and adding grep](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/en/tool-selection.gif)
 
 See [Tool policy reference](docs/reference/stack-schema.md#tool-and-skill-policy).
 
@@ -64,7 +64,7 @@ Find and replace text in model input or completed assistant/tool output using re
 - **Use case**: Replace a known sensitive marker in selected prompt text before sending it, or clean repetitive boilerplate from responses.
 - **Try it**: In **Regex**, set up an outgoing rule matching the synthetic `SAMPLE_TOKEN`, replacing it with `[REDACTED]`, and targeting system text. The demo toggles this preconfigured rule and compares **Preview**.
 
-![Regex transformation redacting outgoing synthetic SAMPLE_TOKEN](assets/readme/en/regex-transforms.gif)
+![Regex transformation redacting outgoing synthetic SAMPLE_TOKEN](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/en/regex-transforms.gif)
 
 See [Regex transformation reference](docs/reference/stack-schema.md#regex-transforms).
 
@@ -79,7 +79,7 @@ Updates reach the model as native mid-conversation system updates on supported m
 
 On supported provider/model combinations, adding or removing tools can preserve the cached prompt prefix. Support differs for additions and removals, and cache hits are not guaranteed; see [provider support and cache observations](docs/reference/provider-support.md#observed-cache-behavior).
 
-![Enable and locate Explore capability: tools and instruction changes together; Disable restores read and projects a removal](assets/readme/en/capability-tools.gif)
+![Enable and locate Explore capability: tools and instruction changes together; Disable restores read and projects a removal](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/en/capability-tools.gif)
 
 See [Capabilities reference](docs/reference/capabilities.md).
 
@@ -90,7 +90,7 @@ See what your edits change before calling a model, then inspect captured request
 - **Use case**: Check whether a prompt edit adds the intended instructions, or compare successive requests when a run behaves differently than expected.
 - **Try it**: In `/forge ui`, switch to **Preview** to view compiled messages, open **Draft diff** to see unsaved changes, or run `/forge payload next` in the terminal to inspect the next outgoing request.
 
-![An unsaved instruction change compared with the saved Preset](assets/readme/en/edit-draft-diff.gif)
+![An unsaved instruction change compared with the saved Preset](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/en/edit-draft-diff.gif)
 
 **Current session** also shows turn and branch cache-hit rates, with main-model and reported nested-tool usage kept separate. These are recorded usage metrics, not a complete bill. See [cache usage](docs/reference/session-cache.md), [debugging](docs/guides/debugging.md), and [commands](docs/reference/commands.md).
 

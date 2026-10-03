@@ -10,7 +10,7 @@ This file tracks the currently implemented feature surface for agent profiles, t
 - Tarball verification rejects physical `src/` entries and requires the root and subagent compiled entry points.
 - The web editor's HTML page shell and static styles are maintained separately from its browser behavior modules.
 - Strict typed web-editor client modules bundled into one self-contained browser script at build time, with generated-client consistency verification.
-- Supported Node.js baseline is 22.19+. In published 0.5.7, peer metadata required `>=0.87.0 <0.88.0`. The unreleased source compatibility patch expands supported peers to `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0` (development SDK pinned to 1.0.0 with `typebox@1.3.27`, minimum 0.87.0 unchanged). All five packages remain host-provided optional peers. Exact repository versions are reproducible development/test fixtures rather than runtime constraints. See [Pi 1.0 compatibility guide](../guides/pi-1-compatibility.md).
+- Supported Node.js baseline is 22.19+. In published 0.5.7, peer metadata required `>=0.87.0 <0.88.0`. Forge 0.5.8 expands supported peers to `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0` (development SDK pinned to 1.0.0 with `typebox@1.3.27`, minimum 0.87.0 unchanged). All five packages remain host-provided optional peers. Exact repository versions are reproducible development/test fixtures rather than runtime constraints. See [Pi 1.0 compatibility guide](../guides/pi-1-compatibility.md).
 - Project trust check before loading prompt stacks.
 - Footer status showing the active prompt stack.
 

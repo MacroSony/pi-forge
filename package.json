@@ -1,6 +1,6 @@
 {
 	"name": "@zihanw/pi-forge",
-	"version": "0.5.7",
+	"version": "0.5.8",
 	"description": "Pi extension for editable context presets, one-shot agent profiles, tool policy, and request debugging.",
 	"repository": {
 		"type": "git",
@@ -89,7 +89,7 @@
 		"check:docs": "node scripts/check-docs.mjs",
 		"check:dist": "node scripts/check-dist.mjs",
 		"check:package": "node scripts/check-package.mjs",
-		"prepack": "npm run build",
+		"prepack": "npm run build && npm run check:package",
 		"typecheck": "tsc --noEmit && vue-tsc --noEmit -p tsconfig.web.json",
 		"test": "node --test tests/*.test.ts",
 		"test:browser": "node --test --test-concurrency=1 tests-browser/*.test.ts",
@@ -97,11 +97,12 @@
 		"check:packed": "node scripts/check-packed-install.mjs"
 	},
 	"files": [
-		"dist/",
-		"docs/",
-		"examples/",
-		"assets/readme/",
-		"assets/pi-forge-header-concept-1.png",
+		"dist/**/*.js",
+		"dist/**/*.d.ts",
+		"dist/**/*.map",
+		"docs/**/*.md",
+		"examples/**/*.json",
+		"examples/**/*.ts",
 		"README.md",
 		"README.zh-CN.md",
 		"CHANGELOG.md",

@@ -55,7 +55,7 @@ Set `CHROME_PATH` when Chrome/Chromium is outside a standard location. CI runs t
 
 ## Pi compatibility
 
-Pi-forge treats Pi-owned SDK packages (`pi-agent-core`, `pi-ai`, `pi-coding-agent`, `pi-tui`, and `typebox`) as host-provided optional peers, not private runtime dependencies. Published Forge 0.5.7 declared peer range `>=0.87.0 <0.88.0`. The unreleased source compatibility patch expands supported peers to the precise union:
+Pi-forge treats Pi-owned SDK packages (`pi-agent-core`, `pi-ai`, `pi-coding-agent`, `pi-tui`, and `typebox`) as host-provided optional peers, not private runtime dependencies. Published Forge 0.5.7 declared peer range `>=0.87.0 <0.88.0`. Forge 0.5.8 expands supported peers to the precise union:
 ```
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0
 ```

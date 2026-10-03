@@ -2,9 +2,11 @@
 
 These instructions apply to humans and coding agents.
 
-## Authorized Pi 1.0 compatibility patch (unreleased)
+## Authorized 0.5.8 local release preparation
 
-The user authorized the main-package compatibility patch on 2026-10-02, explicitly deferring authorization semantics to a separate discussion. Keep the manifest version 0.5.7 and record changes under Unreleased; no push, publish, global installation, personal resource migration or host reload is authorized. Preserve the optional/runtime worktrees and their pre-existing dirty changes.
+The user authorized the main-package compatibility patch on 2026-10-02, explicitly deferring authorization semantics to a separate discussion, and subsequently authorized preparing 0.5.8 for review. Align the main manifest/lock, dated changelog and current documentation, then verify the exact candidate and provide a change list. The user will perform npm publication after review. No remote push, publish, tag, global installation, personal resource migration or host reload is authorized in this preparation step; earlier release authorizations below are historical, not permissions for this release. Preserve the optional/runtime worktrees and their pre-existing dirty changes, and the untracked image1.png/image2.png. Exact-release-commit remote CI remains a release gate, not a result implied by local tests.
+
+The user subsequently authorized npm-package slimming: retain repository media, exclude it from the tarball, use commit-pinned GitHub README image URLs, and add durable file-inventory/size/prepack regressions. Rebuild and verify a new artifact/hash; the earlier 15 MB candidate is superseded, not publication-ready. Keep runtime/UI semantics and the companion worktrees unchanged.
 
 Current source peers: `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0`; development Pi four-package family 1.0.0 and typebox 1.3.27. Minimum 0.87.0 remains covered by explicit Linux CI; ordinary three-platform CI runs the pinned SDK. Packed smoke must use its selected host family in every consumer and normal npm peer resolution, not hardcoded 0.87 or `--legacy-peer-deps`. Optional import smoke uses its declared runtime and does not certify unpublished features.
 

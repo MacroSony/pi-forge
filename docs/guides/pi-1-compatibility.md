@@ -2,11 +2,11 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/guides/pi-1-compatibility.md)
 
-## Source patch versus published package
+## Forge 0.5.8 versus older packages
 
-This compatibility patch is **unreleased**; the source manifest still says 0.5.7. Installing the published `@zihanw/pi-forge@0.5.7` does not install these changes: that artifact still declares Pi peers `>=0.87.0 <0.88.0`.
+This guide covers the **Forge 0.5.8** compatibility patch. Installing the older `@zihanw/pi-forge@0.5.7` does not install these changes: that artifact still declares Pi peers `>=0.87.0 <0.88.0`.
 
-The source peer policy for the four Pi SDK packages is:
+Forge 0.5.8 declares the following peer policy for the four Pi SDK packages:
 
 ```text
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0

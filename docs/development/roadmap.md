@@ -4,11 +4,15 @@
 
 This file contains forward-looking product work only. Completed capability belongs in the [feature inventory](../reference/features.md), release history in the root [changelog](../../CHANGELOG.md), and completed investigation in the [design archive](../design/README.md).
 
-## Active 0.5.7: readable Preview and scrolling release
+## Active 0.5.8: Pi host compatibility release preparation
 
-The accepted UI update adds readable role-colored context, collapsible Tools groups, original-order / safe call-paired result views, and individually disclosed historical tool JSON. Current session and short-screen Preset inspection remain scroll-reachable. The closeout review repaired search coverage and disclosure/reading-state retention, including same-Preset draft updates with an explicitly pending previous preview.
+Forge 0.5.8 aligns host peers, development pins, packed consumers and CI with Pi 1.0.0 while preserving the Pi 0.87.x baseline and explicit 0.99.0–0.99.2 support. The only production source change adds Pi documentation pointers; tool-policy, Capability, model-API and usage semantics remain unchanged. See [compatibility and migration](../guides/pi-1-compatibility.md).
 
-This is a read-only inspection and scrolling release: no provider-context, executable-tool, resource-schema or cache-behavior change. Local full verification and independent fixed-version UI rechecks are complete; the final release commit still follows all [release gates](release.md). OMP compatibility and optional-package work remain independent, not gates for this release. Publishing does not authorize an installed-host upgrade or reload.
+Local release preparation is authorized; the user will review the change list and publish. The final release commit still requires all [release gates](release.md), including exact-commit remote CI. Optional/runtime features and any future exposure-policy redesign remain independent. Publishing does not authorize an installed-host upgrade or reload.
+
+## 0.5.7 Preview and scrolling (completed)
+
+0.5.7 delivered readable role-colored context, collapsible Tools groups, original-order / safe call-paired result views, historical tool JSON disclosure, search/reading-state retention and scroll reachability. See the [changelog](../../CHANGELOG.md) for the published UI release.
 
 ## 0.5.6 regression and UI closeout (completed)
 
@@ -25,7 +29,7 @@ One active lane at a time:
 3. **Session observability & activity panel (implemented):** derived multi-capability state, actual selected tools, delivery status (`none`, `pending`, `prepared`), presentation indicators, and guarded human disable/reset; real SDK summarizer-input characterization.
 4. **Preset authorization & restricted Agent control (implemented):** live Preset binding schema (`capabilities`), opt-in `modelCallable: true`, and model-callable `forge_capability` tool with fixed list/status/enable/disable schema; per-call trust, binding identity, authorization, and tool policy checks; strict user-vs-agent ownership.
 5. **Capabilities library CRUD, Preset binding editor, and guarded human Web activation picker (delivered in functional source):** dedicated **Capabilities** surface for project/global capability CRUD with `sourceRevision` stale-save guards; dedicated peer Capability bindings editor with finite overrides and live source-effective preview; guarded human Web activation picker (`GET /api/capability-state/available`, `POST /api/capability-state/enable`) with pre-activation preview and session guard plus content fingerprint validation. Parent safeguards enforce raw source/revision coherence, external new bindings stale-save detection, and lifecycle/re-entry fences (`disposed`, `lifecycleRevision`, `sameContext`).
-6. **Main-package 0.5.5 release closeout:** The accepted UI and local full verification closed out on 2026-09-24 (`89c6ba2`); bilingual README B and reviewed continuous media are adopted. UI scope is frozen except for regressions/release blockers. The main package 0.5.5 was published; subsequent patches retain the exact-commit CI and packed-install gates in the [release process](release.md). No paid provider matrix is implied. The optional package and runtime have independent unfinished release work and are not a main-package gate. At that closeout the dev SDK was 0.87.0 with peer `>=0.87.0 <0.88.0`; current unreleased host policy is documented in [Pi 1.0 compatibility](../guides/pi-1-compatibility.md).
+6. **Main-package 0.5.5 release closeout:** The accepted UI and local full verification closed out on 2026-09-24 (`89c6ba2`); bilingual README B and reviewed continuous media are adopted. UI scope is frozen except for regressions/release blockers. The main package 0.5.5 was published; subsequent patches retain the exact-commit CI and packed-install gates in the [release process](release.md). No paid provider matrix is implied. The optional package and runtime have independent unfinished release work and are not a main-package gate. At that closeout the dev SDK was 0.87.0 with peer `>=0.87.0 <0.88.0`; the 0.5.8 host policy is documented in [Pi 1.0 compatibility](../guides/pi-1-compatibility.md).
 
 Existing README and optional Pet active-state changes are preserved. No host upgrade, reload or publication follows implicitly from local feature development. Foundation tests are not proof of live 0.5.5 behavior.
 

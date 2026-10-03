@@ -8,6 +8,10 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-10-03
+
+- Keep README images and demonstration media in the repository, not the npm package. Link the accepted EN/ZH demos to immutable GitHub URLs; retain text documentation, examples, compiled code, types and source maps. Restrict package file patterns, reject media/asset entries and tarballs above 2 MiB during package checks, and run those checks automatically in prepack.
+
 - Extend optional host peers to Pi 0.99.0, 0.99.1, 0.99.2 and 1.0.0 while retaining the Pi 0.87.x baseline. Pin development SDKs to 1.0.0 and TypeBox to 1.3.27; ordinary platform CI uses current pins and explicit Linux lanes retain older supported hosts.
 - Parameterize packed consumers with `PI_TEST_VERSION` / `TYPEBOX_TEST_VERSION`, default to the coherent installed host, verify installed family versions and use normal npm peer resolution. Pass the selected host through compatibility/latest CI instead of silently packing against 0.87.0. Optional import smoke uses the companion's declared runtime dependency.
 - Refresh the pi-docs slot and add bilingual native MCP/codemode migration notes and focused catalog/System-section regressions. Native MCP names remain exact: stale deny/remove names require review, not automatic aliases. This patch does not change initial/loadout authorization, Capability ownership, models.* access or usage accounting; published 0.5.7 metadata and personal configurations are unchanged.

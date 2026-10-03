@@ -2,11 +2,11 @@
 
 [中文文档](../README.md) · [English](../../guides/pi-1-compatibility.md)
 
-## 源码补丁与已发布包
+## Forge 0.5.8 与旧版本
 
-本兼容补丁**尚未发布**，源码 manifest 仍为 0.5.7。安装已发布的 `@zihanw/pi-forge@0.5.7` 不会获得这些改动；该 artifact 的 Pi peer 范围仍为 `>=0.87.0 <0.88.0`。
+本指南介绍 **Forge 0.5.8** 兼容补丁。安装旧版 `@zihanw/pi-forge@0.5.7` 不会获得这些改动；该 artifact 的 Pi peer 范围仍为 `>=0.87.0 <0.88.0`。
 
-源码中四个 Pi SDK 包的 peer 策略为：
+Forge 0.5.8 为四个 Pi SDK 包声明的 peer 策略为：
 
 ```text
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0

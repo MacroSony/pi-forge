@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) · [中文文档](docs/zh-CN/README.md) · [快速开始](#安装与第一次使用)
 
-![pi-forge：Pi 的上下文编辑与检查工作台](assets/pi-forge-header-concept-1.png)
+![pi-forge：Pi 的上下文编辑与检查工作台](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/pi-forge-header-concept-1.png)
 
 **面向 Pi 的上下文编辑与检查工作台。**
 
@@ -16,9 +16,9 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 ## 安装与第一次使用
 
-Node.js 需要 **22.19 或更高版本**。已发布的 Forge **0.5.7** 声明 Pi **0.87.x** peers；未发布源码补丁新增 **0.99.0–0.99.2 与 1.0.0**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
+Node.js 需要 **22.19 或更高版本**。Forge **0.5.8** 支持 Pi **0.87.x、0.99.0–0.99.2 与 1.0.0**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
 
-> **版本提示：** 本文介绍 Forge **0.5.7**。已安装 0.5.7 的 peer 元数据保持不变；对 Pi 1.0 的源码级兼容补丁尚未发布。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
+> **版本提示：** 本文介绍 Forge **0.5.8**，这是一次 Pi 宿主兼容补丁。旧安装包不会自动获得扩展后的 peer 元数据；工具策略和 Capability 执行语义保持不变。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
 
 ```bash
 pi install npm:@zihanw/pi-forge
@@ -42,7 +42,7 @@ pi install npm:@zihanw/pi-forge
 - **使用场景**：给代码审查 Agent 配上项目规范和相关上下文，而不是让所有任务共用一份越来越长的提示词。
 - **上手尝试**：在 **Stack** 中开关一条 User 消息块，再将它拖到聊天历史插槽之后，在 **Preview** 中查看角色与顺序的变化。
 
-![开关补充 User 消息，再拖到聊天历史之后，预览随之更新](assets/readme/zh-CN/context-composition.gif)
+![开关补充 User 消息，再拖到聊天历史之后，预览随之更新](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/zh-CN/context-composition.gif)
 
 详见 [Web 编辑器指南](docs/zh-CN/guides/web-editor.md)与 [Schema 与策略文档（英文）](docs/reference/stack-schema.md)。
 
@@ -53,7 +53,7 @@ pi install npm:@zihanw/pi-forge
 - **使用场景**：让代码审查 Agent 专注于阅读和搜索，不提供编辑文件或执行 shell 的工具。
 - **上手尝试**：在 **Policy** 中选择许可工具，并将默认工具设为 `read` 和 `ls`。把已获准的 `grep` 加入默认集，在 **Preview** 中查看工具列表；保存并启用预设后应用策略。
 
-![工具选择：策略默认 read/ls 并添加 grep](assets/readme/zh-CN/tool-selection.gif)
+![工具选择：策略默认 read/ls 并添加 grep](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/zh-CN/tool-selection.gif)
 
 详见 [工具策略参考（英文）](docs/reference/stack-schema.md#tool-and-skill-policy)。
 
@@ -64,7 +64,7 @@ pi install npm:@zihanw/pi-forge
 - **使用场景**：发送前替换选定提示词中的已知敏感标记，或者清理回复中反复出现的套话。
 - **上手尝试**：在 **Regex** 中配置出站规则，将示例文本 `SAMPLE_TOKEN` 替换为 `[REDACTED]`，目标选择 system 文本。演示中开关这条预先配置的规则，在 **Preview** 中对比结果。
 
-![正则文本变换：出站虚构 SAMPLE_TOKEN 脱敏开关](assets/readme/zh-CN/regex-transforms.gif)
+![正则文本变换：出站虚构 SAMPLE_TOKEN 脱敏开关](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/zh-CN/regex-transforms.gif)
 
 详见 [正则规则参考（英文）](docs/reference/stack-schema.md#regex-transforms)。
 
@@ -79,7 +79,7 @@ pi install npm:@zihanw/pi-forge
 
 在支持的 provider／模型组合上，新增或移除工具可以保留已有的提示词缓存前缀。新增与移除的支持范围不同，实际缓存命中不作保证；详见[支持情况与缓存实测](docs/zh-CN/reference/provider-support.md#实测缓存表现)。
 
-![启用并定位探索能力：工具与指令同步可见；停用恢复 read 并显示移除更新](assets/readme/zh-CN/capability-tools.gif)
+![启用并定位探索能力：工具与指令同步可见；停用恢复 read 并显示移除更新](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/zh-CN/capability-tools.gif)
 
 详见[能力参考](docs/zh-CN/reference/capabilities.md)。
 
@@ -90,7 +90,7 @@ pi install npm:@zihanw/pi-forge
 - **使用场景**：确认修改后的提示词包含了想要的指令，或在 Agent 表现不同时对比前后两次请求。
 - **上手尝试**：在 `/forge ui` 中切换至 **Preview** 查看编译消息，打开 **Draft diff** 对比未保存修改，或在终端运行 `/forge payload next` 捕获下一次出站请求。
 
-![未保存的指令修改与已保存预设的差异](assets/readme/zh-CN/edit-draft-diff.gif)
+![未保存的指令修改与已保存预设的差异](https://raw.githubusercontent.com/MacroSony/pi-forge/1184033b0ea1c211dd55aca8a74e9d1bbaa33e2b/assets/readme/zh-CN/edit-draft-diff.gif)
 
 **当前会话**还会显示本轮和当前分支的缓存命中率，主模型与已上报的嵌套工具用量分开统计。这是已记录的用量，不是完整账单。详见[缓存用量](docs/zh-CN/reference/session-cache.md)、[调试指南（英文）](docs/guides/debugging.md)与[命令参考](docs/zh-CN/reference/commands.md)。
 
