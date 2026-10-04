@@ -9,10 +9,10 @@
 Forge 0.5.8 为四个 Pi SDK 包声明的 peer 策略为：
 
 ```text
->=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0
 ```
 
-最低 Pi 保持 0.87.0。开发依赖固定为 Pi 1.0.0 和 `typebox@1.3.27`。SDK 和 TypeBox 仍为宿主提供的可选 peer，不私装运行时副本；不自动承诺其他中间版本或未来版本。
+最低 Pi 保持 0.87.0。开发依赖固定为 Pi 1.0.2 和 `typebox@1.3.27`。SDK 和 TypeBox 仍为宿主提供的可选 peer，不私装运行时副本；`>=1.0.0 <1.1.0` 覆盖 Pi 1.0 的补丁版本；本次发布实测 1.0.0、1.0.1、1.0.2，CI 定时任务会测试最新 Pi。不自动承诺其他 0.x 中间版本或 Pi 1.1 及以后版本。
 
 本补丁只调整依赖、测试覆盖与文档，**不改变**工具授权、Capability 所有权、用量汇总或个人配置。
 
@@ -37,6 +37,10 @@ Pi 1.0 改进了 resume/reload 后的 deferred 工具恢复。Forge 仍要求 Ca
 
 Forge 保留 `mcp_servers` 等外来 System section，包括更新和删除。上游 section 更新可能改变后续 prompt，不保证 cache 命中。
 
+## Pi 1.0.1 起的 Anthropic 工具变化
+
+在支持原生中途改工具的 Anthropic 模型上，Pi 1.0.1 起请求级工具列表固定为初始工具加一个保留占位工具，之后的每个工具都直接以完整定义写在 `tool_addition` 块里。因此启用或停用 Capability 不再改写请求级工具列表，同名重定义也不再强制发送完整列表。原生路径仍需要至少一个初始工具：会话开始时没有任何活动工具（例如 `tools.initial: []` 的预设）时，每次工具变化都会在请求级别发送当前完整列表。Forge 不改变这一行为，也没有针对 1.0.1 起重新做真实缓存实测。详见 [Provider 支持](../reference/provider-support.md)。
+
 ## Codemode 边界保持原样
 
 Pi 1.0 访问不存在的 `tools` 属性会抛错。检查存在性请用 `"name" in tools`，不要用 `typeof tools.name`。
@@ -60,9 +64,9 @@ agent-core 实验 harness 的移除，不等于我们配套 runtime 使用的 co
 ```bash
 # 目标与已安装开发 SDK 不同时，请同时指定这两个版本。
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.0.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.0.2 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 不指定时，packed 检查读取一致的已安装 SDK family 及其声明的 TypeBox 版本，不再硬编码旧 pin。两个消费者都使用正常 npm peer 解析，并核对实际安装版本。如果存在 optional sibling，使用它声明的 runtime 依赖；不把这当成未发布本地 runtime 的测试。
 
-常规 Linux/macOS/Windows CI 使用固定的 Pi 1.0.0；显式旧版本兼容与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛，不代表当前源码补丁已完成远端平台或真实 provider 验收。
+常规 Linux/macOS/Windows CI 使用固定的 Pi 1.0.2；显式兼容（0.87.0 至 1.0.1）与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛，不代表当前源码补丁已完成远端平台或真实 provider 验收。

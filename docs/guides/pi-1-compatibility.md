@@ -9,10 +9,10 @@ This guide covers the **Forge 0.5.8** compatibility patch. Installing the older 
 Forge 0.5.8 declares the following peer policy for the four Pi SDK packages:
 
 ```text
->=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0
 ```
 
-Minimum Pi remains 0.87.0. Development pins are Pi 1.0.0 and `typebox@1.3.27`. The SDK packages and TypeBox remain host-provided optional peers, not private runtime dependencies. Other intermediate or future host versions are not implicitly supported.
+Minimum Pi remains 0.87.0. Development pins are Pi 1.0.2 and `typebox@1.3.27`. The SDK packages and TypeBox remain host-provided optional peers, not private runtime dependencies. The `>=1.0.0 <1.1.0` range covers Pi 1.0 patch releases; 1.0.0, 1.0.1 and 1.0.2 were tested for this release, and a scheduled CI job tests the newest Pi. Other 0.x intermediate versions and Pi 1.1 or later are not implicitly supported.
 
 This patch changes dependency/test coverage and documentation, **not** tool authorization, Capability ownership, usage aggregation, or personal configuration.
 
@@ -37,6 +37,10 @@ Pi 1.0 improves deferred-tool restoration on resume/reload. Forge still requires
 
 Forge preserves foreign System sections such as `mcp_servers`, including updates and removals. Upstream section updates can change later prompts; this is not a cache-hit guarantee.
 
+## Anthropic tool changes in Pi 1.0.1+
+
+On Anthropic models with native mid-conversation tool changes, Pi 1.0.1 keeps the request-level tool list fixed at the initial tools plus a reserved placeholder and defines every later tool inline in a `tool_addition` block. Enabling or disabling a Capability therefore no longer rewrites the request-level tool list, and a same-name redefinition no longer forces the full list. The native path still needs at least one initial tool: a session that starts with no active tools (for example a Preset with `tools.initial: []`) sends the full current list at request level on every tool change. Forge does not change this behavior, and no new live cache measurements were taken for 1.0.1+. See [provider support](../reference/provider-support.md).
+
 ## Codemode boundaries remain unchanged
 
 Pi 1.0 throws when scripts read missing `tools` properties. Use `"name" in tools`, not `typeof tools.name`, to test existence.
@@ -60,9 +64,9 @@ Published subagents 0.5.3 does not support `tools.initial`. Its pending feature 
 ```bash
 # Override both when testing a different host than the installed development SDK.
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.0.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.0.2 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 Without overrides, packed checks use the coherent installed SDK family and its declared TypeBox version, not a hardcoded historical pin. Both consumers use normal npm peer resolution and check the installed versions. An optional sibling, when present, uses its declared runtime dependency; this is not a test of an unreleased local runtime.
 
-Ordinary Linux/macOS/Windows CI uses pinned Pi 1.0.0; explicit older compatibility lanes and scheduled latest-Pi probes run on Linux. Exact-release CI remains a release gate, not a claim that this source patch has already passed remote or real-provider testing.
+Ordinary Linux/macOS/Windows CI uses pinned Pi 1.0.2; explicit compatibility lanes (0.87.0 through 1.0.1) and scheduled latest-Pi probes run on Linux. Exact-release CI remains a release gate, not a claim that this source patch has already passed remote or real-provider testing.

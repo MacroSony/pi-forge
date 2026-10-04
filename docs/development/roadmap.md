@@ -6,7 +6,7 @@ This file contains forward-looking product work only. Completed capability belon
 
 ## Active 0.5.8: Pi host compatibility release preparation
 
-Forge 0.5.8 aligns host peers, development pins, packed consumers and CI with Pi 1.0.0 while preserving the Pi 0.87.x baseline and explicit 0.99.0–0.99.2 support. The only production source change adds Pi documentation pointers; tool-policy, Capability, model-API and usage semantics remain unchanged. See [compatibility and migration](../guides/pi-1-compatibility.md).
+Forge 0.5.8 aligns host peers, development pins, packed consumers and CI with Pi 1.0.x (tested 1.0.0–1.0.2) while preserving the Pi 0.87.x baseline and explicit 0.99.0–0.99.2 support. The only production source change adds Pi documentation pointers; tool-policy, Capability, model-API and usage semantics remain unchanged. See [compatibility and migration](../guides/pi-1-compatibility.md).
 
 Local release preparation is authorized; the user will review the change list and publish. The final release commit still requires all [release gates](release.md), including exact-commit remote CI. Optional/runtime features and any future exposure-policy redesign remain independent. Publishing does not authorize an installed-host upgrade or reload.
 

@@ -16,7 +16,7 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 ## Install and first run
 
-Requires Node.js **22.19 or newer**. Forge **0.5.8** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0.0**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
+Requires Node.js **22.19 or newer**. Forge **0.5.8** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0.x**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
 
 > **Version note:** This README describes Forge **0.5.8**, a Pi host-compatibility patch. Older installed packages do not gain the expanded peer metadata automatically; tool-policy and Capability execution semantics are unchanged. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
 

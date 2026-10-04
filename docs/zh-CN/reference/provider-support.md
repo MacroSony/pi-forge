@@ -23,7 +23,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 
 | API | 指令正文 | 工具变化 |
 |---|---|---|
-| `anthropic-messages` | 有标记时为 `role: "system"` 消息。Pi 会把它留到下一条 assistant 消息之前再发，因此不会插在 `tool_use` 和对应的 `tool_result` 之间；记录在用户消息之前的更新，实际会发在该用户消息之后。 | 有 `supportsMidConvoToolChanges`、至少一个初始工具且没有同名重定义时：初始工具保持在最前，之后的工具带 `defer_loading` 追加，变化以 `tool_addition` / `tool_removal` 块表示，请求级工具列表只增不减。否则在请求级别发送当前列表。 |
+| `anthropic-messages` | 有标记时为 `role: "system"` 消息。Pi 会把它留到下一条 assistant 消息之前再发，因此不会插在 `tool_use` 和对应的 `tool_result` 之间；记录在用户消息之前的更新，实际会发在该用户消息之后。 | 需要 `supportsMidConvoToolChanges` 且至少一个初始工具。**Pi 1.0.1 起：** 请求级工具列表固定不变（初始工具加一个保留的 deferred 占位工具）；之后的工具直接以完整定义写在 `tool_addition` 块里（同名重定义会替换旧定义），用 `tool_removal` 撤下。**Pi 1.0.0 及更早：** 之后的工具带 `defer_loading` 追加到请求级列表，列表只增不减，同名重定义会退回发送完整列表。其他情况（包括会话开始时没有任何活动工具，例如 `tools.initial: []`）在请求级别发送当前列表。 |
 | `openai-responses`、`openai-codex-responses`、`azure-openai-responses` | 有标记时，在原位置发送 `developer` 消息（支持 developer 角色的推理模型）或 `system` 消息。 | 保留的历史中只有新增时，新工具在原位置加载；历史中任何位置出现过移除或同名重声明，这次请求就改为在请求级别发送完整的当前列表。 |
 | `openai-completions` | 有标记时，在原位置发送 `developer` 或 `system` 消息。 | 有 `supportsMidConvoToolAdditions` 时新增在原位置加载；移除和重声明改为发送完整的当前列表。 |
 | `mistral-conversations` | 有标记时，在原位置发送 `system` 消息。 | 始终在请求级别发送完整的当前列表。 |

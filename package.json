@@ -45,10 +45,10 @@
 		]
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-agent-core": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0",
-		"@earendil-works/pi-ai": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0",
-		"@earendil-works/pi-coding-agent": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0",
-		"@earendil-works/pi-tui": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0",
+		"@earendil-works/pi-agent-core": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0",
+		"@earendil-works/pi-ai": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0",
+		"@earendil-works/pi-coding-agent": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0",
+		"@earendil-works/pi-tui": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {
@@ -69,10 +69,10 @@
 		}
 	},
 	"devDependencies": {
-		"@earendil-works/pi-agent-core": "1.0.0",
-		"@earendil-works/pi-ai": "1.0.0",
-		"@earendil-works/pi-coding-agent": "1.0.0",
-		"@earendil-works/pi-tui": "1.0.0",
+		"@earendil-works/pi-agent-core": "1.0.2",
+		"@earendil-works/pi-ai": "1.0.2",
+		"@earendil-works/pi-coding-agent": "1.0.2",
+		"@earendil-works/pi-tui": "1.0.2",
 		"@types/node": "22.20.1",
 		"@vitejs/plugin-vue": "6.0.8",
 		"playwright-core": "1.61.1",

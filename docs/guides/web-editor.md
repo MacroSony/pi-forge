@@ -133,7 +133,7 @@ Saves, imports, forks, and deletes reload Preset state into the current Pi sessi
 
 ### Compatibility
 
-Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). These changes require Forge 0.5.5; the minimum host requirement remains Pi 0.87.0 (published 0.5.7 peer range was `>=0.87.0 <0.88.0`; unreleased source compatibility supports `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || 1.0.0`; see [Pi 1.0 compatibility guide](pi-1-compatibility.md)).
+Presets configured with `tools.initial` require updated Forge. Older Forge versions may ignore `tools.initial` and revert to legacy selection behavior (selective allow selects catalog matches; unrestricted/deny retains or filters the session baseline) (not downgrade-compatible). These changes require Forge 0.5.5; the minimum host requirement remains Pi 0.87.0 (published 0.5.7 peer range was `>=0.87.0 <0.88.0`; unreleased source compatibility supports `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.1.0`; see [Pi 1.0 compatibility guide](pi-1-compatibility.md)).
 
 ## Agent-profile workspace
 
