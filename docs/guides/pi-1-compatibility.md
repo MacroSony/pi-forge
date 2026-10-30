@@ -12,7 +12,7 @@ Development SDKs are pinned to **1.4.0** and the four optional SDK peers expand 
 
 Minimum Pi 0.87.0 and `typebox@1.3.27` remain unchanged; Pi 1.5+ and other 0.x hosts are not implicitly supported. Ordinary CI and normal packed consumers use 1.4.0; historical compatibility lanes retain 1.3.0 and all existing versions. This update changes no gate, tool-policy, Capability execution, or MCP naming behavior. The 0.5.9 / 0.5.8 sections below are historical records, not the current peer range.
 
-**Local verification caveat (2026-10-30):** On Pi 1.4.0, all eight `tests/pi13-tool-restore.test.ts` cases fail at the initial startup-loadout assertion (line 98): the actual list additionally contains `forge_capability`. These cases stop before their resumed-session policy assertions, so they do not certify those paths on 1.4. The remaining 933 Node tests and all 70 browser tests pass; TypeScript/Vue checks pass. This peer-only update does not change source or test assertions to mask the discrepancy.
+**Pi 1.4 resume note:** Pi 1.4 activates extension tools that a resumed branch never mentioned (for example `forge_capability` when the transcript predates it). Forge still narrows the loadout to the active preset and Capabilities once it binds; `tests/pi13-tool-restore.test.ts` covers this on 1.4.
 
 ## Forge 0.5.9: Pi 1.1 / 1.2 / 1.3
 
