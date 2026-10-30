@@ -20,6 +20,11 @@ const restoresDefaultTools = major > 1 || (major === 1 && minor >= 3);
 // `+name`/`-name` default-tool modifiers first shipped in Pi 1.1.0; older hosts
 // would treat them as literal tool names, so the modifier cases do not exist there.
 const supportsToolModifiers = major > 1 || (major === 1 && minor >= 1);
+// Pi 1.4 resume also activates extension tools the branch never mentioned
+// (AgentSession._restoreToolsFromTranscript "newTools"), so Forge's own
+// default-active forge_capability joins a transcript that predates it.
+const activatesUnmentionedExtensionTools = major > 1 || (major === 1 && minor >= 4);
+const withUnmentioned = (names: string[]) => sorted(activatesUnmentionedExtensionTools ? [...names, "forge_capability"] : names);
 const sorted = (names: string[]) => [...names].sort();
 
 // Do NOT use the agent harness's explicit tools/noTools/setActiveTools setup:
@@ -95,7 +100,7 @@ for (const policy of ["allow", "deny"] as const) for (const modifiers of support
 			const manager = SDK.SessionManager.create(f.cwd, f.sessionDir);
 			manager.appendMessage({ role: "system", content: "BASE", toolsAdded: ["read", "grep"].map(name => ({ name, description: name, parameters: AI.Type.Object({}) })), timestamp: 1 });
 			live = await f.open(manager);
-			if (restoresDefaultTools) assert.deepEqual(live.startup, sorted(modifiers ? ["read", "write"] : ["read", "grep"]));
+			if (restoresDefaultTools) assert.deepEqual(live.startup, withUnmentioned(modifiers ? ["read", "write"] : ["read", "grep"]));
 			const originalBaseline = live.startup;
 			await live.command("preset", "use project:restore");
 			await live.command("preset", "use off");
@@ -113,7 +118,7 @@ for (const policy of ["allow", "deny"] as const) for (const modifiers of support
 			await live.close(); live = undefined;
 			const resumed = SDK.SessionManager.open(file, f.sessionDir, f.cwd);
 			live = await f.open(resumed);
-			if (restoresDefaultTools) assert.deepEqual(live.startup, ["read", "write"], "SDK really restores the stale transcript before Forge binds");
+			if (restoresDefaultTools) assert.deepEqual(live.startup, withUnmentioned(["read", "write"]), "SDK really restores the stale transcript before Forge binds");
 			assert.deepEqual(sorted(live.session.getActiveToolNames()), effective, "Forge owns effective selection after resume, not stale transcript tools");
 			await live.prompt();
 			assert.deepEqual(sorted(live.session.getActiveToolNames()), effective, "first resumed turn keeps the policy ceiling and Capability additions");
