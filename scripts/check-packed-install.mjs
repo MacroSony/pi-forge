@@ -19,7 +19,7 @@ console.log(`Packed install test: Pi version = ${piVersion}, TypeBox version = $
 // Pi 1.0.1-1.1.x declare caret ranges on their own upstream packages, which now
 // resolve to newer, incompatible releases (e.g. Pi 1.1.0 + pi-codemode 1.3.0 lacks
 // MCP_TYPESCRIPT_PREAMBLE) independently of Forge. Without the flag, consumers keep
-// normal npm resolution; the ordinary 1.3.0 jobs are the unconstrained-consumer gate.
+// normal npm resolution; the ordinary 1.4.0 jobs are the unconstrained-consumer gate.
 const UPSTREAM_PACKAGES = ["@earendil-works/pi-codemode", "@earendil-works/pi-mcp", "@earendil-works/pi-telemetry", "@earendil-works/chord"];
 const coherentUpstream = process.env.PI_TEST_COHERENT_UPSTREAM === "1" && piVersion.startsWith("1.");
 const upstreamPins = coherentUpstream ? UPSTREAM_PACKAGES.map((pkg) => `${pkg}@${piVersion}`) : [];

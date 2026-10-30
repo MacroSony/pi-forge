@@ -2,6 +2,16 @@
 
 [中文文档](../README.md) · [English](../../guides/pi-1-compatibility.md)
 
+## Forge 0.5.10（未发布）：Pi 1.4
+
+开发 SDK 固定为 **1.4.0**，四个可选 SDK peer 范围扩大为：
+
+```text
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
+```
+
+最低 Pi 0.87.0 与 `typebox@1.3.27` 保持不变；不自动承诺 Pi 1.5+ 或其他 0.x。常规 CI 与普通打包消费者使用 1.4.0，历史兼容矩阵保留 1.3.0 及已有版本。本次更新不改变 gate、工具策略、Capability 执行语义或 MCP 名称处理。下方 0.5.9 / 0.5.8 段落保留为历史说明，并非当前 peer 范围。
+
 ## Forge 0.5.9：Pi 1.1 / 1.2 / 1.3
 
 Forge 0.5.9 将开发 SDK 固定为 **1.3.0**，四个可选 SDK peer 范围扩大为：
@@ -94,9 +104,9 @@ agent-core 实验 harness 的移除，不等于我们配套 runtime 使用的 co
 ```bash
 # 目标与已安装开发 SDK 不同时，请同时指定这两个版本。
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.3.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.4.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 不指定时，packed 检查读取一致的已安装 SDK family 及其声明的 TypeBox 版本，不再硬编码旧 pin。两个消费者都使用正常 npm peer 解析，并核对实际安装版本。如果存在 optional sibling，使用它声明的 runtime 依赖；不把这当成未发布本地 runtime 的测试。
 
-常规 Linux/macOS/Windows CI 使用固定的 Pi 1.3.0；显式兼容（0.87.0 至 1.2.0，含 1.0.2）与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛；本文不记录其结果，也不代表已完成真实 provider 验收。
+常规 Linux/macOS/Windows CI 使用固定的 Pi 1.4.0；显式兼容（0.87.0 至 1.3.0，含 1.0.2）与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛；本文不记录其结果，也不代表已完成真实 provider 验收。

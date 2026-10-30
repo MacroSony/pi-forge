@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ordinary jobs cover pinned dev 1.3.0.
+          # Ordinary jobs cover pinned dev 1.4.0.
           # Compatibility matrix explicitly covers supported historic host versions.
           - pi-version: "0.87.0"
             typebox-version: "1.3.7"
@@ -68,6 +68,8 @@ jobs:
           - pi-version: "1.1.0"
             typebox-version: "1.3.27"
           - pi-version: "1.2.0"
+            typebox-version: "1.3.27"
+          - pi-version: "1.3.0"
             typebox-version: "1.3.27"
     env:
       CHROME_PATH: /usr/bin/google-chrome

@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
-## [Unreleased]
+## [0.5.10] - Unreleased
+
+- Support Pi 1.4: expand optional SDK peers through `<1.5.0`, pin development SDKs to 1.4.0, and retain Pi 1.3.0 as an explicit historical CI lane. Minimum Pi 0.87.0 and TypeBox 1.3.27 remain unchanged; Pi 1.5+ is not implied. No tool-policy or Capability execution changes are included in this compatibility update.
 
 ## [0.5.9] - 2026-10-20
 

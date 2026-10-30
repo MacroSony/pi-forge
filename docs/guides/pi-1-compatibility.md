@@ -2,6 +2,16 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/guides/pi-1-compatibility.md)
 
+## Forge 0.5.10 (Unreleased): Pi 1.4
+
+Development SDKs are pinned to **1.4.0** and the four optional SDK peers expand to:
+
+```text
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
+```
+
+Minimum Pi 0.87.0 and `typebox@1.3.27` remain unchanged; Pi 1.5+ and other 0.x hosts are not implicitly supported. Ordinary CI and normal packed consumers use 1.4.0; historical compatibility lanes retain 1.3.0 and all existing versions. This update changes no gate, tool-policy, Capability execution, or MCP naming behavior. The 0.5.9 / 0.5.8 sections below are historical records, not the current peer range.
+
 ## Forge 0.5.9: Pi 1.1 / 1.2 / 1.3
 
 Forge 0.5.9 pins development SDKs to **1.3.0** and expands the four optional SDK peers to:
@@ -96,9 +106,9 @@ Published subagents 0.5.3 does not support `tools.initial`. Its pending feature 
 ```bash
 # Override both when testing a different host than the installed development SDK.
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.3.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.4.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 Without overrides, packed checks use the coherent installed SDK family and its declared TypeBox version, not a hardcoded historical pin. Both consumers use normal npm peer resolution and check the installed versions. An optional sibling, when present, uses its declared runtime dependency; this is not a test of an unreleased local runtime.
 
-Ordinary Linux/macOS/Windows CI uses pinned Pi 1.3.0; explicit compatibility lanes (0.87.0 through 1.2.0, including 1.0.2) and scheduled latest-Pi probes run on Linux. CI on the exact release commit remains a release gate; this document does not record its result or any real-provider testing.
+Ordinary Linux/macOS/Windows CI uses pinned Pi 1.4.0; explicit compatibility lanes (0.87.0 through 1.3.0, including 1.0.2) and scheduled latest-Pi probes run on Linux. CI on the exact release commit remains a release gate; this document does not record its result or any real-provider testing.
