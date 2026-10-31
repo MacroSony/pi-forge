@@ -24,7 +24,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 | API | 指令正文 | 工具变化 |
 |---|---|---|
 | `anthropic-messages` | 有标记时为 `role: "system"` 消息。Pi 会把它留到下一条 assistant 消息之前再发，因此不会插在 `tool_use` 和对应的 `tool_result` 之间；记录在用户消息之前的更新，实际会发在该用户消息之后。 | 需要 `supportsMidConvoToolChanges` 且至少一个初始工具。**Pi 1.0.1 起：** 请求级工具列表固定不变（初始工具加一个保留的 deferred 占位工具）；之后的工具直接以完整定义写在 `tool_addition` 块里（同名重定义会替换旧定义），用 `tool_removal` 撤下。**Pi 1.0.0 及更早：** 之后的工具带 `defer_loading` 追加到请求级列表，列表只增不减，同名重定义会退回发送完整列表。其他情况（包括会话开始时没有任何活动工具，例如 `tools.initial: []`）在请求级别发送当前列表。 |
-| `openai-responses`、`openai-codex-responses`、`azure-openai-responses` | 有标记时，在原位置发送 `developer` 消息（支持 developer 角色的推理模型）或 `system` 消息。 | 保留的历史中只有新增时，新工具在原位置加载；历史中任何位置出现过移除或同名重声明，这次请求就改为在请求级别发送完整的当前列表。 |
+| `openai-responses`、`openai-codex-responses`、`azure-openai-responses` | 有标记时，在原位置发送 `developer` 消息（支持 developer 角色的推理模型）或 `system` 消息。 | 保留的历史中只有新增时，新工具在原位置加载；历史中任何位置出现过移除或同名重声明，这次及后续请求就改为在请求级别发送完整的当前列表，直到不再保留该历史。 |
 | `openai-completions` | 有标记时，在原位置发送 `developer` 或 `system` 消息。 | 有 `supportsMidConvoToolAdditions` 时新增在原位置加载；移除和重声明改为发送完整的当前列表。 |
 | `mistral-conversations` | 有标记时，在原位置发送 `system` 消息。 | 始终在请求级别发送完整的当前列表。 |
 | Google Generative AI / Vertex | 始终折入 `systemInstruction`，没有会话中路径。 | 完整的当前列表。 |
@@ -58,7 +58,7 @@ Pi 和 Forge 在每次请求时都读取当前模型的 `compat` 标记：
 - **`anthropic/claude-sonnet-5`，fallback 路径：** 工具变化后的那次请求没有读到任何缓存，因为 Pi 改写了首条 system 提示词和工具列表。模型还对带标记的用户更新产生了怀疑，确认后才使用新工具。
 - **OpenAI Responses / Codex：** 之前的测试中，一次移除就改为发送完整工具列表，缓存读取降为 0；只有新增的请求保住了前缀。
 
-想让缓存稳定，优先选用带原生工具变化标记的模型；在 Responses 系列模型上，如果在意缓存复用，尽量不要在同一会话中移除工具。
+为尽量保留可缓存前缀，优先选用带原生工具变化标记的模型；不承诺缓存命中。在 OpenAI Responses/Completions 系列传输上，任何移除（包括关闭 Capability 导致的工具移除）都会因移除检测扫描转录历史，使该会话后续请求发送当前完整工具表。只要该历史仍保留，重新启用工具也不能恢复增量投递。Anthropic 原生 `tool_removal` 路径不受这种回退影响。
 
 ## 检查自己的环境
 

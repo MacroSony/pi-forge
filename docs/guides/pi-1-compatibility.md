@@ -10,7 +10,7 @@ Development SDKs are pinned to **1.4.0** and the four optional SDK peers expand 
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
 ```
 
-Minimum Pi 0.87.0 and `typebox@1.3.27` remain unchanged; Pi 1.5+ and other 0.x hosts are not implicitly supported. Ordinary CI and normal packed consumers use 1.4.0; historical compatibility lanes retain 1.3.0 and all existing versions. This update changes no gate, tool-policy, Capability execution, or MCP naming behavior. The 0.5.9 / 0.5.8 sections below are historical records, not the current peer range.
+Minimum Pi 0.87.0 and `typebox@1.3.27` remain unchanged; Pi 1.5+ and other 0.x hosts are not implicitly supported. Ordinary CI and normal packed consumers use 1.4.0; historical compatibility lanes retain 1.3.0 and all existing versions. Forge 0.5.10 also adds the execution gate and namespace authorization described below; MCP names are not rewritten. The 0.5.9 / 0.5.8 sections below are historical records, not the current peer range.
 
 **Pi 1.4 resume note:** Pi 1.4 activates extension tools that a resumed branch never mentioned (for example `forge_capability` when the transcript predates it). Forge still narrows the loadout to the active preset and Capabilities once it binds; `tests/pi13-tool-restore.test.ts` covers this on 1.4.
 
@@ -30,7 +30,7 @@ Ordinary and legacy user events retain their authoritative expanded prompt, even
 
 **Known limitation on Pi 1.1 and earlier:** these hosts start idle custom wakes (for example a Subagents completion notification that wakes the parent) without any `before_agent_start`, so Forge never sees that run start. The wake request and its tool followups are sent without the Preset's System blocks; tool policy still applies. This is unchanged from 0.5.8 and was verified on Pi 1.1.0. Ordinary user turns and busy steering are not affected. If you rely on background completion wakes, use Pi 1.2 or later.
 
-Pi 1.3 keeps the custom-start/System contract. It additionally restores the transcript's active tool loadout on default/modifier-based session creation; explicit tool selections still override restoration. Forge recomputes the effective selection using its Preset (`tools.initial`, allow/deny) and active Capabilities, rather than trusting stale restored tools. Disabling a Preset restores the tool-policy owner's saved pre-policy startup baseline, reconciling distinguishable external changes; a reduced transcript loadout must not erase that saved baseline. No new enabled-membership execution restriction is introduced. Real-SDK persisted-session regressions cover these paths with offline faux streams.
+Pi 1.3 keeps the custom-start/System contract. It additionally restores the transcript's active tool loadout on default/modifier-based session creation; explicit tool selections still override restoration. Forge recomputes the effective selection using its Preset (`tools.initial`, allow/deny) and active Capabilities, rather than trusting stale restored tools. Disabling a Preset restores the tool-policy owner's saved pre-policy startup baseline, reconciling distinguishable external changes; a reduced transcript loadout must not erase that saved baseline. That 0.5.9 restoration change did not add an execution gate; Forge 0.5.10 adds the gate described below. Real-SDK persisted-session regressions cover these paths with offline faux streams.
 
 Pi 1.3's internal SDK/codemode/MCP/telemetry dependencies are exact pins. Normal 1.3 consumers therefore resolve the seven Pi packages to 1.3.0 without the historical fixture overlay; this does not retroactively fix older releases' caret-resolution drift.
 
@@ -75,7 +75,7 @@ These rules concern **native MCP**, not third-party adapters such as `pi-mcp-ada
 
 ## Discovery and delayed registration
 
-Default native MCP servers now connect in the background without blocking the first prompt; `direct` exposure has different startup behavior. Default tools are registered with deferred exposure, omitted from codemode's description, and discovered using `searchTools()` / `describeNamespace()`. Discovery does not grant a Forge Capability or override its policy.
+Default native MCP servers now connect in the background without blocking the first prompt; `direct` exposure has different startup behavior. Default tools are registered with deferred exposure, omitted from codemode's description, and discovered using `searchTools()` / `describeNamespace()`. Discovery does not grant a Forge Capability or override its policy: finding a tool does not authorize its execution.
 
 Pi 1.0 improves deferred-tool restoration on resume/reload. Forge still requires Capability additions to be registered before activation; when a server is late, wait for registration and retry the intended action. Reload alone is not a guaranteed remedy. Explicit policy sync can replace a restored host loadout, so do not assume pending tools must always reactivate. Full slow-MCP resume/reload behavior needs integration validation, not just catalog-mock tests.
 
@@ -85,13 +85,21 @@ Forge preserves foreign System sections such as `mcp_servers`, including updates
 
 On Anthropic models with native mid-conversation tool changes, Pi 1.0.1 keeps the request-level tool list fixed at the initial tools plus a reserved placeholder and defines every later tool inline in a `tool_addition` block. Enabling or disabling a Capability therefore no longer rewrites the request-level tool list, and a same-name redefinition no longer forces the full list. The native path still needs at least one initial tool: a session that starts with no active tools (for example a Preset with `tools.initial: []`) sends the full current list at request level on every tool change. Forge does not change this behavior, and no new live cache measurements were taken for 1.0.1+. See [provider support](../reference/provider-support.md).
 
-## Codemode boundaries remain unchanged
+## Tool execution and codemode boundaries (Forge 0.5.10)
 
 Pi 1.0 throws when scripts read missing `tools` properties. Use `"name" in tools`, not `typeof tools.name`, to test existence.
 
-`tools.initial` is a default loadout, **not an enabled-membership execution gate**. Registered deferred/codemode tools permitted by the Preset can remain callable through nested codemode even when omitted from initial or after their adding Capability is disabled. Preset allow **or** deny policy and active Capability removes still apply; direct calls also depend on the host's active loadout. This patch does not change those semantics or make discovery authorization-aware.
+With an active Preset's restrictive tool policy, **all tool calls, including nested codemode calls, require Forge authorization**. The effective set starts from `tools.initial` when configured, otherwise the policy-derived baseline, then applies enabled Capability additions and removals under allow/deny. Turning a Capability off immediately revokes execution access for any tool no longer authorized; defaults or another Capability may still authorize it. Running tools are not interrupted. Forge uses this effective set, not Pi's active tool list; allow membership alone does not enable a tool omitted from the effective set. Calls to tools not currently enabled point to `forge_capability` when a Capability can provide access.
 
-`models.generateImages()` (new in 1.0) and `models.classify()` (since 0.99) call the session model registry, not `ctx.executeTool()` / `tool_call`. Disabling image tools does **not** disable these model APIs. Pi settings have no `models: false` toggle; the SDK factory `createCodemodeExtension({ models: false })` requires explicit programmatic extension assembly.
+An effective tool `P` also authorizes registered `P__*` descendants **from the same registration source**. For example, enabling `mcp` or `mcp__hitch` permits pi-mcp-adapter 6+/7 calls named `mcp__hitch__<tool>` from that source, without listing every child in `allow`. Different or missing registration sources do not grant this access. Preset deny and active Capability remove still block child tools; use an exact deny entry to exclude one child. Capability `remove` uses exact names, not wildcards.
+
+Without an active Preset or a restrictive tool policy, execution behavior is unchanged. `tools.initial` alone or `allow: ["*"]` alone does not enable the new gate; an allow list containing an entry other than `*`, or a nonempty deny list, does. Existing explicit Capability removals still apply.
+
+### Known limitations
+
+- **Discovery:** codemode `ALL_TOOLS` / `searchTools()` and `tool_search` can still reveal unauthorized names. Forge blocks execution, not discovery.
+- **Model APIs:** codemode `models.generateImages()` (new in Pi 1.0) and `models.classify()` (since 0.99) do not pass through `tool_call`, so Forge cannot block them. Disabling an image Capability does **not** disable these APIs. Only programmatic SDK assembly with `createCodemodeExtension({ models: false })` disables this codemode model access; Pi settings have no equivalent toggle.
+- **Prefix caching:** on OpenAI Responses/Completions transports, any tool removal, including disabling a Capability that removes tools, makes subsequent requests in that session send the full current tool list. Removal detection scans the transcript, so re-enabling tools does not restore incremental delivery while that history remains. This disrupts prefix caching. Anthropic's native `tool_removal` path is unaffected by this fallback. Forge aims to preserve cacheable prefixes where possible, not guarantee cache hits.
 
 Pi accounts for reported codemode model usage. Forge's cache display still separates assistant usage from explicit `details.forgeNestedUsage`; it does not newly aggregate arbitrary native tool/model usage. Do not add both receipts without deduplication.
 

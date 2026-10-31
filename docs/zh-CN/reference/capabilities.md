@@ -48,6 +48,33 @@ Pi-forge 引入了能力（Capabilities）：会话级动态提示词指令与�
 - **授权撤销行为：** 在 Preset 中撤销授权（将 `modelCallable` 设为 `false`）或删除绑定项，不会追溯抹除已激活的快照；用户通过 CLI（`/capability disable` 或 `/capability reset`）或 Web 面板停用是标准恢复路径。
 - **用户与 Agent 所有权及去重：** 激活项记录归属主体（`user` 或 `agent`）。重复 `enable` 已激活的能力具备幂等性，绝不自动在用户与 Agent 之间转移所有权（takeover）。接管必须通过显式关闭后再重新启用。
 
+## 执行授权（Forge 0.5.10）
+
+活跃 Preset 含有限制性的工具策略时，**所有工具调用（包括 codemode 嵌套调用）都必须获得 Forge 授权**。有效集以配置的 `tools.initial` 为起点，否则采用按策略计算的基线，再在 allow/deny 约束下应用已启用 Capability 的添加与移除。关闭 Capability 会立即撤销不再获授权工具的执行权限；默认集或其他 Capability 仍可能授权该工具。不会中断正在执行的工具。Forge 依据这个有效集，而不是 Pi 的 active 工具列表；仅列入 allow 不会启用有效集之外的工具。对当前未启用工具的调用，若可由 Capability 提供权限，拦截提示会指向 `forge_capability`。
+
+有效集中的工具 `P` 还授权**同一注册来源**的已注册 `P__*` 子工具。例如，启用 `mcp` 或 `mcp__hitch` 后，pi-mcp-adapter 6+/7 以 `mcp__hitch__<tool>` 名义发出的同来源调用可以执行，无需把每个子工具写入 `allow`。注册来源不同或缺失时不授予此权限。Preset deny 与活动 Capability remove 仍可阻止子工具；可用精确 deny 项排除单个子工具。Capability `remove` 使用精确名称，不支持通配符。
+
+无活跃 Preset 或无限制性工具策略时，执行行为不变。仅 `tools.initial` 或仅 `allow: ["*"]` 不会启用新门禁；allow 列表含有非 `*` 项，或 deny 列表非空时才启用。已有的显式 Capability 移除仍生效。
+
+以下 **Preset 工具策略片段**使用 deny（不同时使用 allow，两种策略互斥），允许启用 `mcp__hitch`，但即使父工具已启用，也禁止其中一个子工具：
+
+```json
+{
+  "tools": {
+    "deny": ["mcp__hitch__delete"],
+    "initial": ["forge_capability"]
+  }
+}
+```
+
+Capability 可配置 `"tools": { "add": ["mcp__hitch"], "remove": [] }`。启用后，除 `mcp__hitch__delete` 外的同来源子工具均获授权。关闭后撤销该命名空间权限，除非仍有其他有效父工具授权它。请使用会话中实际注册的名称。
+
+### 已知限制
+
+- **发现：** codemode `ALL_TOOLS` / `searchTools()` 与 `tool_search` 仍可能显示未授权工具名。Forge 只阻断执行，不过滤发现。
+- **模型 API：** codemode `models.generateImages()`（Pi 1.0 新增）与 `models.classify()`（0.99 已有）不经过 `tool_call`，Forge 无法拦截。关闭生图 Capability **不能**禁用这些 API。只有通过 SDK 编程式装配 `createCodemodeExtension({ models: false })` 才能关闭这类 codemode 模型访问；Pi settings 没有对应开关。
+- **前缀缓存：** 在 OpenAI Responses/Completions 系列传输上，任何工具移除（包括关闭 Capability 导致的工具移除）都会使该会话后续请求发送当前完整工具表。移除检测会扫描转录历史，因此只要该历史仍保留，重新启用工具也不能恢复增量投递。这会破坏前缀缓存。Anthropic 原生 `tool_removal` 路径不受这种回退影响。Forge 旨在尽量保留可缓存前缀，不承诺缓存命中。
+
 ## Preset 授权的 Agent 控制
 
 Preset 的 `capabilities` 绑定支持智能体自主选择与启用能力：

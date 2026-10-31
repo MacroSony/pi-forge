@@ -24,7 +24,7 @@ Tool flags only apply when `supportsMidConvoSystemMessages` is also enabled. The
 | API | Instruction text | Tool changes |
 |---|---|---|
 | `anthropic-messages` | With the flag: a `role: "system"` message. Pi holds it until just before the next assistant message, so it never separates a `tool_use` from its `tool_result`; an update recorded before a user message is sent after it. | With `supportsMidConvoToolChanges` and at least one initial tool. **Pi 1.0.1+:** the request-level list stays fixed (initial tools plus a reserved deferred placeholder); later tools are defined by value inside `tool_addition` blocks (a same-name redefinition replaces the earlier definition) and withdrawn by `tool_removal`. **Pi 1.0.0 and earlier:** later tools are appended to the request-level list with `defer_loading`, the list only grows, and a same-name redefinition falls back to the full list. Otherwise (including a session that starts with no active tools, such as `tools.initial: []`): the current list at request level. |
-| `openai-responses`, `openai-codex-responses`, `azure-openai-responses` | With the flag: a `developer` message (reasoning models that accept the developer role) or a `system` message, at its position. | Additions load in place while retained history contains only additions. Any removal or same-name redeclaration anywhere in retained history switches that request to the full current list at request level. |
+| `openai-responses`, `openai-codex-responses`, `azure-openai-responses` | With the flag: a `developer` message (reasoning models that accept the developer role) or a `system` message, at its position. | Additions load in place while retained history contains only additions. Any removal or same-name redeclaration anywhere in retained history switches that and subsequent requests to the full current list at request level while that history remains. |
 | `openai-completions` | With the flag: a `developer` or `system` message at its position. | Additions load in place with `supportsMidConvoToolAdditions`; removals and redeclarations switch to the full current list. |
 | `mistral-conversations` | With the flag: a `system` message at its position. | Always the full current list at request level. |
 | Google Generative AI / Vertex | Always folded into `systemInstruction`; no mid-conversation path. | Full current list. |
@@ -58,7 +58,7 @@ These are single-session observations, not guarantees. Cache reuse is decided by
 - **`anthropic/claude-sonnet-5`, fallback path:** the request after a tool change read nothing from cache, because Pi rewrote the leading system prompt and tool list. The model also questioned the labeled user update before using the new tool.
 - **OpenAI Responses / Codex:** in earlier tests, a removal switched to the full tool list and cache reads dropped to zero; requests with only additions kept the prefix.
 
-To keep caches stable, prefer a flagged model with native tool changes. On Responses-family models, avoid removing tools in a session where cache reuse matters.
+To preserve cacheable prefixes where possible, prefer a flagged model with native tool changes; cache hits are not guaranteed. On OpenAI Responses/Completions transports, any removal, including disabling a Capability that removes tools, makes later session requests send the full current tool list because removal detection scans the transcript. Re-enabling tools does not restore incremental delivery while that history remains. Anthropic's native `tool_removal` path is unaffected by this fallback.
 
 ## Checking your own setup
 

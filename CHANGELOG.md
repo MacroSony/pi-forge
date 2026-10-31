@@ -8,7 +8,22 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ## [0.5.10] - Unreleased
 
-- Support Pi 1.4: expand optional SDK peers through `<1.5.0`, pin development SDKs to 1.4.0, and retain Pi 1.3.0 as an explicit historical CI lane. Minimum Pi 0.87.0 and TypeBox 1.3.27 remain unchanged; Pi 1.5+ is not implied. No tool-policy or Capability execution changes are included in this compatibility update.
+- Support Pi 1.4: expand optional SDK peers through `<1.5.0`, pin development SDKs to 1.4.0, and retain Pi 1.3.0 as an explicit historical CI lane. Minimum Pi 0.87.0 and TypeBox 1.3.27 remain unchanged; Pi 1.5+ is not implied.
+
+### Behavior change
+
+- With an active Preset's tool policy, every tool call, including nested codemode calls, must be authorized by Forge's current effective set: `tools.initial` or the policy-derived baseline, plus enabled Capability additions, minus removals, subject to allow/deny. Disabling a Capability revokes execution access for tools no longer authorized; Pi's active tool list is not authorization. No Preset or no restrictive tool policy preserves previous behavior (`initial` alone or `allow: ["*"]` alone does not enable this gate).
+
+### Fixed
+
+- An effective tool `P` now authorizes registered `P__*` descendants from the same registration source, without requiring child names in `allow`. This covers pi-mcp-adapter 6+/7 calls such as `mcp__hitch__<tool>` when `mcp` or `mcp__hitch` is enabled. Different or missing sources do not grant namespace access; Preset deny and Capability remove still block child tools, including exact child exclusions.
+- Blocked calls to tools not currently enabled now point to `forge_capability` when a Capability can provide access.
+
+### Known limitations
+
+- Codemode `ALL_TOOLS` / `searchTools()` and `tool_search` still reveal unauthorized tool names. Forge blocks execution, not discovery.
+- Codemode `models.generateImages()` / `models.classify()` bypass `tool_call`, so Forge cannot block them; disabling an image Capability does not disable these APIs. Only programmatic SDK assembly with `createCodemodeExtension({ models: false })` disables this codemode model access; Pi settings have no equivalent toggle.
+- On OpenAI Responses/Completions transports, any tool removal, including Capability deactivation that removes tools, makes subsequent requests in that session send the full current tool list because removal detection scans the transcript. This disrupts prefix caching even after re-enabling tools. Anthropic's native `tool_removal` path is unaffected by this fallback. Forge aims to preserve cacheable prefixes where possible, not guarantee cache hits.
 
 ## [0.5.9] - 2026-10-20
 

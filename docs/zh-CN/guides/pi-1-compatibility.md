@@ -10,7 +10,7 @@
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
 ```
 
-最低 Pi 0.87.0 与 `typebox@1.3.27` 保持不变；不自动承诺 Pi 1.5+ 或其他 0.x。常规 CI 与普通打包消费者使用 1.4.0，历史兼容矩阵保留 1.3.0 及已有版本。本次更新不改变 gate、工具策略、Capability 执行语义或 MCP 名称处理。下方 0.5.9 / 0.5.8 段落保留为历史说明，并非当前 peer 范围。
+最低 Pi 0.87.0 与 `typebox@1.3.27` 保持不变；不自动承诺 Pi 1.5+ 或其他 0.x。常规 CI 与普通打包消费者使用 1.4.0，历史兼容矩阵保留 1.3.0 及已有版本。Forge 0.5.10 还新增下文所述的执行门禁与命名空间授权；不改写 MCP 名称。下方 0.5.9 / 0.5.8 段落保留为历史说明，并非当前 peer 范围。
 
 **Pi 1.4 恢复说明：** Pi 1.4 恢复会话时，会激活该分支从未提到过的扩展工具（例如 transcript 早于 `forge_capability` 时）。Forge 绑定后仍会把工具集收回到当前预设与 Capability 的有效范围；`tests/pi13-tool-restore.test.ts` 在 1.4 上覆盖了这一点。
 
@@ -28,7 +28,7 @@ Pi 1.2 的空闲自定义唤醒触发无 `prompt` 的 `before_agent_start`，启
 
 **Pi 1.1 及更早版本的已知限制：** 这些宿主启动空闲自定义唤醒时（例如 Subagents 完成通知唤醒父会话）不触发任何 `before_agent_start`，Forge 无从得知这一轮开始。该次唤醒请求及其工具后续请求不带预设的 System 块；工具策略照常生效。这一点与 0.5.8 相同，已在 Pi 1.1.0 上实测。普通用户输入和忙碌时的 steering 不受影响。依赖后台完成唤醒的话，请使用 Pi 1.2 或更高版本。
 
-Pi 1.3 保持 custom-start/System 契约，并在默认或修饰符工具选择模式创建会话时恢复 transcript 中的活动工具；显式工具列表仍覆盖恢复。Forge 按预设的 `tools.initial`、allow/deny 与活动能力重新计算有效工具，不能让过期 transcript 越过权限上限或丢失能力工具。停用预设时恢复工具策略所有者保存的启动基线，并协调可区分的外部修改，而不是用经过策略缩减的 transcript 丢弃原基线。真实 SDK 持久化会话测试使用离线 faux 流覆盖这些路径；不引入新的 enabled-membership 执行权限限制。
+Pi 1.3 保持 custom-start/System 契约，并在默认或修饰符工具选择模式创建会话时恢复 transcript 中的活动工具；显式工具列表仍覆盖恢复。Forge 按预设的 `tools.initial`、allow/deny 与活动能力重新计算有效工具，不能让过期 transcript 越过权限上限或丢失能力工具。停用预设时恢复工具策略所有者保存的启动基线，并协调可区分的外部修改，而不是用经过策略缩减的 transcript 丢弃原基线。真实 SDK 持久化会话测试使用离线 faux 流覆盖这些路径。该 0.5.9 恢复改动未新增执行门禁；Forge 0.5.10 新增下文所述的门禁。
 
 Pi 1.3 内部 SDK/codemode/MCP/telemetry 改为精确版本依赖，普通消费者无需历史 fixture 覆盖即可解析七个 Pi 包为 1.3.0；这不会修复旧版本 caret 的解析漂移。
 
@@ -73,7 +73,7 @@ Pi 0.99.2+ 规范化 native MCP 名称，例如 `mcp__demo-server__ping` 改为 
 
 ## Discovery 与延迟注册
 
-默认 native MCP 服务器后台连接，不阻塞首个 prompt；`direct` exposure 的启动行为不同。默认工具以 deferred exposure 注册，不列进 codemode description，通过 `searchTools()` / `describeNamespace()` 发现。搜索工具不会授予 Forge Capability，也不会覆盖工具策略。
+默认 native MCP 服务器后台连接，不阻塞首个 prompt；`direct` exposure 的启动行为不同。默认工具以 deferred exposure 注册，不列进 codemode description，通过 `searchTools()` / `describeNamespace()` 发现。搜索工具不会授予 Forge Capability，也不会覆盖工具策略：发现工具不等于获准执行。
 
 Pi 1.0 改进了 resume/reload 后的 deferred 工具恢复。Forge 仍要求 Capability add 的工具已注册；服务器未就绪时，应等待注册后重试原操作。单纯 reload 不保证解决问题。显式策略同步可能替换宿主恢复的 loadout，不应假定所有 pending 工具必须自动恢复。完整慢 MCP resume/reload 需要集成验收，不能拿 catalog mock 测试冒充。
 
@@ -83,13 +83,21 @@ Forge 保留 `mcp_servers` 等外来 System section，包括更新和删除。�
 
 在支持原生中途改工具的 Anthropic 模型上，Pi 1.0.1 起请求级工具列表固定为初始工具加一个保留占位工具，之后的每个工具都直接以完整定义写在 `tool_addition` 块里。因此启用或停用 Capability 不再改写请求级工具列表，同名重定义也不再强制发送完整列表。原生路径仍需要至少一个初始工具：会话开始时没有任何活动工具（例如 `tools.initial: []` 的预设）时，每次工具变化都会在请求级别发送当前完整列表。Forge 不改变这一行为，也没有针对 1.0.1 起重新做真实缓存实测。详见 [Provider 支持](../reference/provider-support.md)。
 
-## Codemode 边界保持原样
+## 工具执行与 Codemode 边界（Forge 0.5.10）
 
 Pi 1.0 访问不存在的 `tools` 属性会抛错。检查存在性请用 `"name" in tools`，不要用 `typeof tools.name`。
 
-`tools.initial` 是默认 loadout，**不是按 enabled 集合检查执行的 gate**。在 Preset 许可内、已注册的 deferred/codemode 工具，即使未列入 initial，或添加它的 Capability 已关闭，仍可能经 codemode nested 调用。Preset 的 allow **或** deny 策略和活动 Capability.remove 仍生效；direct 调用还取决于宿主 active loadout。本补丁不改变这些语义，也不让 discovery 自动按授权过滤。
+活跃 Preset 含有限制性的工具策略时，**所有工具调用（包括 codemode 嵌套调用）都必须获得 Forge 授权**。有效集以配置的 `tools.initial` 为起点，否则采用按策略计算的基线，再在 allow/deny 约束下应用已启用 Capability 的添加与移除。关闭 Capability 会立即撤销不再获授权工具的执行权限；默认集或其他 Capability 仍可能授权该工具。不会中断正在执行的工具。Forge 依据这个有效集，而不是 Pi 的 active 工具列表；仅列入 allow 不会启用有效集之外的工具。对当前未启用工具的调用，若可由 Capability 提供权限，拦截提示会指向 `forge_capability`。
 
-`models.generateImages()`（1.0 新增）和 `models.classify()`（0.99 已有）直接调用会话 model registry，不经过 `ctx.executeTool()` / `tool_call`。关闭生图工具**不等于**关闭模型 API。Pi settings 没有 `models: false` 开关；SDK factory `createCodemodeExtension({ models: false })` 需要明确的编程式插件装配。
+有效集中的工具 `P` 还授权**同一注册来源**的已注册 `P__*` 子工具。例如，启用 `mcp` 或 `mcp__hitch` 后，pi-mcp-adapter 6+/7 以 `mcp__hitch__<tool>` 名义发出的同来源调用可以执行，无需把每个子工具写入 `allow`。注册来源不同或缺失时不授予此权限。Preset deny 与活动 Capability remove 仍可阻止子工具；可用精确 deny 项排除单个子工具。Capability `remove` 使用精确名称，不支持通配符。
+
+无活跃 Preset 或无限制性工具策略时，执行行为不变。仅 `tools.initial` 或仅 `allow: ["*"]` 不会启用新门禁；allow 列表含有非 `*` 项，或 deny 列表非空时才启用。已有的显式 Capability 移除仍生效。
+
+### 已知限制
+
+- **发现：** codemode `ALL_TOOLS` / `searchTools()` 与 `tool_search` 仍可能显示未授权工具名。Forge 只阻断执行，不过滤发现。
+- **模型 API：** codemode `models.generateImages()`（Pi 1.0 新增）与 `models.classify()`（0.99 已有）不经过 `tool_call`，Forge 无法拦截。关闭生图 Capability **不能**禁用这些 API。只有通过 SDK 编程式装配 `createCodemodeExtension({ models: false })` 才能关闭这类 codemode 模型访问；Pi settings 没有对应开关。
+- **前缀缓存：** 在 OpenAI Responses/Completions 系列传输上，任何工具移除（包括关闭 Capability 导致的工具移除）都会使该会话后续请求发送当前完整工具表。移除检测会扫描转录历史，因此只要该历史仍保留，重新启用工具也不能恢复增量投递。这会破坏前缀缓存。Anthropic 原生 `tool_removal` 路径不受这种回退影响。Forge 旨在尽量保留可缓存前缀，不承诺缓存命中。
 
 Pi 会将 codemode 模型返回的用量计入总账。Forge cache 面板仍分别展示 assistant 用量与显式 `details.forgeNestedUsage`，没有新增任意 native tool/model usage 汇总；不能把两份回执直接重复加总。
 

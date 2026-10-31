@@ -48,6 +48,33 @@ Capabilities are JSON files stored in:
 - **Revocation behavior:** Revoking a binding's authorization (`modelCallable: false`) or removing the binding from the Preset does not retroactively erase active snapshots; human CLI (`/capability disable` or `/capability reset`) or Web panel deactivation is the recovery path.
 - **User vs. Agent ownership and deduplication:** Activations record actor attribution (`user` vs `agent`). Repeated `enable` of an already active capability is idempotent and never performs an automatic owner takeover between user and agent. Takeover requires an explicit deactivation and reactivation cycle.
 
+## Execution authorization (Forge 0.5.10)
+
+With an active Preset's restrictive tool policy, **all tool calls, including nested codemode calls, require Forge authorization**. The effective set starts from `tools.initial` when configured, otherwise the policy-derived baseline, then applies enabled Capability additions and removals under allow/deny. Turning a Capability off immediately revokes execution access for any tool no longer authorized; defaults or another Capability may still authorize it. Running tools are not interrupted. Forge uses this effective set, not Pi's active tool list; allow membership alone does not enable a tool omitted from the effective set. Calls to tools not currently enabled point to `forge_capability` when a Capability can provide access.
+
+An effective tool `P` also authorizes registered `P__*` descendants **from the same registration source**. For example, enabling `mcp` or `mcp__hitch` permits pi-mcp-adapter 6+/7 calls named `mcp__hitch__<tool>` from that source, without listing every child in `allow`. Different or missing registration sources do not grant this access. Preset deny and active Capability remove still block child tools; use an exact deny entry to exclude one child. Capability `remove` uses exact names, not wildcards.
+
+Without an active Preset or a restrictive tool policy, execution behavior is unchanged. `tools.initial` alone or `allow: ["*"]` alone does not enable the new gate; an allow list containing an entry other than `*`, or a nonempty deny list, does. Existing explicit Capability removals still apply.
+
+This **Preset tool-policy fragment** uses deny (not allow; the two policies are mutually exclusive) to permit enabling `mcp__hitch` while denying one child even after the parent is enabled:
+
+```json
+{
+  "tools": {
+    "deny": ["mcp__hitch__delete"],
+    "initial": ["forge_capability"]
+  }
+}
+```
+
+A Capability can use `"tools": { "add": ["mcp__hitch"], "remove": [] }`. Once enabled, same-source children other than `mcp__hitch__delete` are authorized. Disabling it revokes that namespace access unless another effective parent still authorizes it. Use actual registered names from your session.
+
+### Known limitations
+
+- **Discovery:** codemode `ALL_TOOLS` / `searchTools()` and `tool_search` can still reveal unauthorized names. Forge blocks execution, not discovery.
+- **Model APIs:** codemode `models.generateImages()` (new in Pi 1.0) and `models.classify()` (since 0.99) do not pass through `tool_call`, so Forge cannot block them. Disabling an image Capability does **not** disable these APIs. Only programmatic SDK assembly with `createCodemodeExtension({ models: false })` disables this codemode model access; Pi settings have no equivalent toggle.
+- **Prefix caching:** on OpenAI Responses/Completions transports, any tool removal, including disabling a Capability that removes tools, makes subsequent requests in that session send the full current tool list. Removal detection scans the transcript, so re-enabling tools does not restore incremental delivery while that history remains. This disrupts prefix caching. Anthropic's native `tool_removal` path is unaffected by this fallback. Forge aims to preserve cacheable prefixes where possible, not guarantee cache hits.
+
 ## Preset-authorized Agent controls
 
 Preset `capabilities` bindings support autonomous Agent activation when explicitly authorized:
