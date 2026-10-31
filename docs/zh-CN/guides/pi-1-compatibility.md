@@ -12,7 +12,7 @@
 
 最低 Pi 0.87.0 与 `typebox@1.3.27` 保持不变；不自动承诺 Pi 1.5+ 或其他 0.x。常规 CI 与普通打包消费者使用 1.4.0，历史兼容矩阵保留 1.3.0 及已有版本。Forge 0.5.10 还新增下文所述的执行门禁与命名空间授权；不改写 MCP 名称。下方 0.5.9 / 0.5.8 段落保留为历史说明，并非当前 peer 范围。
 
-**Pi 1.4 恢复说明：** Pi 1.4 恢复会话时，会激活该分支从未提到过的扩展工具（例如 transcript 早于 `forge_capability` 时）。Forge 绑定后仍会把工具集收回到当前预设与 Capability 的有效范围；`tests/pi13-tool-restore.test.ts` 在 1.4 上覆盖了这一点。
+**Pi 1.4 恢复说明：** Pi 1.4 恢复会话时，会激活该分支从未提到过的扩展工具（例如 transcript 早于 `forge_capability` 时）。Forge 绑定后仍会把执行授权收敛到当前预设与 Capability 的有效范围；active 工具列表可能保留被发现但不可执行的 `deferred`/`codemode` 工具；`tests/pi13-tool-restore.test.ts` 在 1.4 上覆盖了这一点。
 
 ## Forge 0.5.9：Pi 1.1 / 1.2 / 1.3
 
@@ -91,7 +91,7 @@ Pi 1.0 访问不存在的 `tools` 属性会抛错。检查存在性请用 `"name
 
 有效集中的工具 `P` 还授权**同一注册来源**的已注册 `P__*` 子工具。例如，启用 `mcp` 或 `mcp__hitch` 后，pi-mcp-adapter 6+/7 以 `mcp__hitch__<tool>` 名义发出的同来源调用可以执行，无需把每个子工具写入 `allow`。注册来源不同或缺失时不授予此权限。Preset deny 与活动 Capability remove 仍可阻止子工具；可用精确 deny 项排除单个子工具。Capability `remove` 使用精确名称，不支持通配符。
 
-同步会保留已 active 且由有效集或同来源命名空间规则授权的工具，以及注册 exposure 为 `deferred` 或 `codemode` 的工具，但 Preset deny 或 Capability remove 排除的工具仍会撤掉。保留不授予执行权限：未授权的已发现工具保留在可调用表中，让门禁返回可操作的拦截提示，而非误导性的 “not found”。其他外部激活的 `direct` 工具仍会撤掉；旧 Pi 缺失 exposure 时按 `direct` 处理。关闭 Capability 仍会撤掉其不再获授权的 direct 添加项。`tools.initial` 保持权威；无 `initial` 的仅 deny 预设保持既有的外部新增吸收进基线语义。保留减少不必要的撤销，但不能消除所有 OpenAI 缓存回退。
+同步会保留已 active 且由有效集或同来源命名空间规则授权的工具，以及注册 exposure 为 `deferred` 或 `codemode` 的工具，但 Preset deny 或 Capability remove 排除的工具仍会撤掉。保留不授予执行权限：未授权的已发现工具保留在可调用表中，让门禁返回可操作的拦截提示，而非误导性的 “not found”。其他外部激活的 `direct` 工具仍会撤掉；旧 Pi 缺失 exposure 时按 `direct` 处理。关闭 Capability 仍会撤掉其不再获授权的 direct 添加项。`tools.initial` 保持权威；无 `initial` 的仅 deny 预设和混合 wildcard allow（例如 `allow: ["*", "read"]`）保持既有的外部新增吸收进基线语义，可因此授权这些工具。纯选择性 allow（不含 `*`）不会仅因外部激活而获得执行授权。保留减少不必要的撤销，但不能消除所有 OpenAI 缓存回退。
 
 无活跃 Preset 或无限制性工具策略时，执行行为不变。仅 `tools.initial` 或仅 `allow: ["*"]` 不会启用新门禁；allow 列表含有非 `*` 项，或 deny 列表非空时才启用。已有的显式 Capability 移除仍生效。
 

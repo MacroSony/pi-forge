@@ -18,6 +18,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Fixed
 
+- Block all tool calls while Forge restores tool policy across session startup, tree navigation and compaction, with a retry message; release the restoration fence on both completion and failure.
 - An effective tool `P` now authorizes registered `P__*` descendants from the same registration source, without requiring child names in `allow`. This covers pi-mcp-adapter 6+/7 calls such as `mcp__hitch__<tool>` when `mcp` or `mcp__hitch` is enabled. Different or missing sources do not grant namespace access; Preset deny and Capability remove still block child tools, including exact child exclusions.
 - Blocked calls to tools not currently enabled now point to `forge_capability` when a Capability can provide access.
 

@@ -335,3 +335,97 @@ test("restore preparation and policy reconciliation failures also release the fe
 		assert.equal(await handlers.tool_call({ toolName: "read" }), undefined);
 	}
 });
+
+test("late namespace parent/child registration converges in either order and sync agrees with the gate", () => {
+	for (const order of ["parent-first", "child-first"]) {
+		const f = fixture({ allow: ["mcp__hitch"], initial: ["mcp__hitch"] });
+		const parent = f.tools.find(t => t.name === "mcp__hitch");
+		const child = f.tools.find(t => t.name === "mcp__hitch__read");
+		child.exposure = "deferred";
+		f.tools.splice(f.tools.findIndex(t => t.name === child.name), 1);
+		f.tools.splice(f.tools.findIndex(t => t.name === parent.name), 1);
+		f.runtime.sync();
+		assert.deepEqual(f.active(), []);
+		assert.ok(f.runtime.blockReason(child.name));
+		if (order === "parent-first") {
+			f.tools.push(parent);
+			assert.equal(f.runtime.blockReason(parent.name), undefined);
+			assert.ok(f.runtime.blockReason(child.name), "missing child provenance cannot authorize a call");
+			f.runtime.sync();
+			assert.deepEqual(f.active(), [parent.name]);
+			f.tools.push(child);
+		} else {
+			f.tools.push(child);
+			f.pi.setActiveTools([child.name]);
+			assert.ok(f.runtime.blockReason(child.name), "a child alone is not an enabled parent");
+			f.runtime.sync();
+			assert.deepEqual(f.active(), [child.name], "discovery is retained, not authorized");
+			assert.ok(f.runtime.blockReason(child.name));
+			f.tools.push(parent);
+		}
+		assert.equal(f.runtime.blockReason(child.name), undefined, "late registration is visible before sync");
+		f.runtime.sync();
+		assert.equal(f.runtime.blockReason(child.name), undefined);
+		if (!f.active().includes(child.name)) f.pi.setActiveTools([...f.active(), child.name]);
+		const calls = f.applied.length;
+		f.runtime.sync();
+		f.runtime.sync();
+		assert.deepEqual(new Set(f.active()), new Set([parent.name, child.name]), order);
+		assert.equal(f.applied.length, calls, "authorized discovery must not be removed/re-added");
+	}
+});
+
+test("retained deferred/codemode discovery survives another preset, use off and switching back without tool churn", () => {
+	for (const exposure of ["deferred", "codemode"] as const) {
+		const policy = { allow: ["read", "pet", "forge_capability"], initial: ["read", "forge_capability"] };
+		const f = fixture(policy, { pet: exposure });
+		const stack = (id: string, initial: string[]): LoadedPromptStack => ({
+			filePath: `/tmp/${id}.json`, scope: "project", key: { scope: "project", id }, diagnostics: [],
+			stack: { schemaVersion: 1, id, tools: { ...policy, initial }, items: [] },
+		});
+		f.runtime.sync();
+		f.pi.setActiveTools([...f.active(), "pet"]);
+		const stages: string[][][] = [];
+		const sync = () => {
+			f.runtime.sync();
+			f.runtime.sync();
+			stages.push(f.applied.map(names => [...names]));
+			assert.ok(f.active().includes("pet"));
+		};
+		sync();
+		assert.match(f.runtime.blockReason("pet")!, /not currently enabled/);
+		f.setStack(stack("other", ["read"]));
+		sync();
+		assert.match(f.runtime.blockReason("pet")!, /not currently enabled/);
+		f.setStack(undefined); // /preset use off
+		sync();
+		assert.equal(f.runtime.blockReason("pet"), undefined, "no preset restores legacy execution semantics");
+		f.setStack(stack("gate", policy.initial));
+		sync();
+		assert.match(f.runtime.blockReason("pet")!, /not currently enabled/);
+		assert.deepEqual(stages, [
+			[["read", "forge_capability", "pet"]],
+			[["read", "forge_capability", "pet"], ["read", "pet"]],
+			[["read", "forge_capability", "pet"], ["read", "pet"], ["read", "forge_capability", "pet"]],
+			[["read", "forge_capability", "pet"], ["read", "pet"], ["read", "forge_capability", "pet"]],
+		], "complete setActiveTools history: only preset defaults change, never the discovered tool");
+	}
+});
+
+test("mixed wildcard allow without initial absorbs externally activated tools into baseline and effective selection", () => {
+	for (const exposure of ["direct", "deferred", "codemode"] as const) {
+		const policy = { allow: ["*", "read"] };
+		const f = fixture(policy, { pet: exposure });
+		f.runtime.sync();
+		assert.ok(f.runtime.blockReason("pet"));
+		assert.ok(!f.runtime.snapshot().baseline.includes("pet"));
+		f.pi.setActiveTools([...f.active(), "pet"]);
+		const calls = f.applied.length;
+		f.runtime.sync();
+		f.runtime.sync();
+		assert.deepEqual(f.runtime.snapshot().baseline, ["read", "forge_capability", "pet"]);
+		assert.deepEqual(f.runtime.previewToolNames({ schemaVersion: 1, id: "gate", tools: policy, items: [] }), ["read", "forge_capability", "pet"]);
+		assert.equal(f.runtime.blockReason("pet"), undefined, "baseline absorption authorizes execution, not mere retention");
+		assert.equal(f.applied.length, calls);
+	}
+});
