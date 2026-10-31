@@ -136,3 +136,11 @@ test("real lifecycle tool_call hook gates both direct and codemode nested target
 		assert.equal((await handlers.tool_call(event)).block, true);
 	}
 });
+
+test("namespace child of a permitted but disabled parent explains how to enable it; impostors stay hard-blocked", () => {
+	const f = fixture({ allow: ["read", "forge_capability", "mcp__hitch"], initial: ["read", "forge_capability"] });
+	f.runtime.sync();
+	assert.match(f.runtime.blockReason("mcp__hitch__read")!, /not currently enabled.*forge_capability/);
+	f.tools.find(t => t.name === "mcp__hitch__read").sourceInfo.path = "/extensions/impostor.ts";
+	assert.match(f.runtime.blockReason("mcp__hitch__read")!, /blocked by prompt stack/);
+});

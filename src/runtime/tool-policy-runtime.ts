@@ -214,7 +214,14 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			&& registrationSource(tools.find((tool) => tool.name === parent)?.sourceInfo) === targetSource)) {
 			return undefined;
 		}
-		if (!applyResourcePolicy([toolName], policy).includes(toolName)) {
+		// A namespace child whose same-source parent is permitted (but not
+		// enabled) is reachable by enabling that parent: say so instead of
+		// reporting a hard policy block.
+		const permittedParent = targetSource !== undefined && tools.some((tool) => typeof tool.name === "string"
+			&& toolName.startsWith(`${tool.name}__`)
+			&& applyResourcePolicy([tool.name], policy).includes(tool.name)
+			&& registrationSource(tool.sourceInfo) === targetSource);
+		if (!permittedParent && !applyResourcePolicy([toolName], policy).includes(toolName)) {
 			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
 		}
 		return `Tool "${toolName}" is not currently enabled by prompt stack "${active.stack.id}". If provided by a capability, enable it with forge_capability.`;
