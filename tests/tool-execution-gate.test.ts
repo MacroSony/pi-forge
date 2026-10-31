@@ -3,20 +3,21 @@ import test from "node:test";
 import { createToolPolicyRuntime } from "../src/runtime/tool-policy-runtime.ts";
 import type { LoadedPromptStack, PromptStack } from "../src/types.ts";
 
-function fixture(policy: PromptStack["tools"] = { allow: ["read", "pet", "forge_capability"], initial: ["read", "forge_capability"] }) {
+function fixture(policy: PromptStack["tools"] = { allow: ["read", "pet", "forge_capability"], initial: ["read", "forge_capability"] }, exposures: Record<string, "direct" | "deferred" | "codemode"> = {}) {
 	let active = ["read", "forge_capability"];
+	const applied: string[][] = [];
 	let stack: LoadedPromptStack | undefined = {
 		filePath: "/tmp/gate.json", scope: "project", key: { scope: "project", id: "gate" }, diagnostics: [],
 		stack: { schemaVersion: 1, id: "gate", tools: policy, items: [] },
 	};
 	const sourceInfo = { path: "/extensions/mcp.ts", source: "auto", scope: "project", origin: "top-level" };
-	const tools: any[] = ["read", "pet", "forge_capability", "mcp", "mcp__hitch", "mcp__hitch__read"].map(name => ({ name, sourceInfo: { ...sourceInfo } }));
+	const tools: any[] = ["read", "pet", "forge_capability", "mcp", "mcp__hitch", "mcp__hitch__read"].map(name => ({ name, sourceInfo: { ...sourceInfo }, ...(exposures[name] ? { exposure: exposures[name] } : {}) }));
 	const pi = {
 		getActiveTools: () => [...active], getAllTools: () => tools,
-		setActiveTools: (names: string[]) => { active = [...names]; },
+		setActiveTools: (names: string[]) => { active = [...names]; applied.push([...names]); },
 	};
 	const runtime = createToolPolicyRuntime(pi as any, () => stack);
-	return { pi, tools, runtime, active: () => active, setStack: (next: LoadedPromptStack | undefined) => { stack = next; } };
+	return { pi, tools, runtime, applied, active: () => active, setStack: (next: LoadedPromptStack | undefined) => { stack = next; } };
 }
 
 test("gate uses Forge effective selection: allow alone cannot execute, capability enable/disable takes effect immediately", () => {
@@ -143,4 +144,59 @@ test("namespace child of a permitted but disabled parent explains how to enable 
 	assert.match(f.runtime.blockReason("mcp__hitch__read")!, /not currently enabled.*forge_capability/);
 	f.tools.find(t => t.name === "mcp__hitch__read").sourceInfo.path = "/extensions/impostor.ts";
 	assert.match(f.runtime.blockReason("mcp__hitch__read")!, /blocked by prompt stack/);
+});
+
+
+test("sync retains externally activated authorized namespace children without changing the effective set", () => {
+	const f = fixture({ allow: ["mcp__hitch"], initial: ["mcp__hitch"] });
+	f.runtime.sync();
+	f.pi.setActiveTools([...f.active(), "mcp__hitch__read"]);
+	const calls = f.applied.length;
+	f.runtime.sync();
+	f.runtime.sync();
+	assert.ok(f.active().includes("mcp__hitch__read"));
+	assert.equal(f.runtime.blockReason("mcp__hitch__read"), undefined);
+	assert.deepEqual(f.runtime.previewToolNames({ schemaVersion: 1, id: "gate", tools: { allow: ["mcp__hitch"], initial: ["mcp__hitch"] }, items: [] }), ["mcp__hitch"]);
+	assert.equal(f.applied.length, calls, "retention must not cause removal/re-add churn");
+	assert.deepEqual(f.runtime.snapshot().lastApplied, f.active());
+});
+
+test("sync retains unauthorized deferred/codemode tools but the gate still points to forge_capability", () => {
+	for (const exposure of ["deferred", "codemode"] as const) {
+		const f = fixture(undefined, { pet: exposure });
+		f.runtime.sync();
+		f.pi.setActiveTools([...f.active(), "pet"]);
+		const calls = f.applied.length;
+		f.runtime.sync();
+		f.runtime.sync();
+		assert.ok(f.active().includes("pet"), exposure);
+		assert.match(f.runtime.blockReason("pet")!, /not currently enabled.*forge_capability/);
+		assert.equal(f.applied.length, calls);
+		assert.deepEqual(f.runtime.snapshot().lastApplied, f.active());
+	}
+});
+
+test("sync removes externally activated direct tools, including legacy missing exposure", () => {
+	for (const exposure of ["direct", undefined] as const) {
+		const f = fixture(undefined, exposure ? { pet: exposure } : {});
+		f.runtime.sync();
+		f.pi.setActiveTools([...f.active(), "pet"]);
+		f.runtime.sync();
+		assert.ok(!f.active().includes("pet"));
+		const calls = f.applied.length;
+		f.runtime.sync();
+		assert.equal(f.applied.length, calls);
+	}
+});
+
+test("stack deny and capability remove override deferred retention and namespace authorization", () => {
+	for (const exclusion of ["deny", "remove"]) {
+		const f = fixture({ initial: ["mcp"], deny: exclusion === "deny" ? ["mcp__hitch__*"] : ["forbidden"] }, { mcp__hitch__read: "deferred" });
+		f.runtime.sync();
+		if (exclusion === "remove") f.runtime.setCapabilities([{ add: [], remove: ["mcp__hitch__read"] }]);
+		f.pi.setActiveTools([...f.active(), "mcp__hitch__read"]);
+		f.runtime.sync();
+		assert.ok(!f.active().includes("mcp__hitch__read"));
+		assert.match(f.runtime.blockReason("mcp__hitch__read")!, /blocked by/);
+	}
 });

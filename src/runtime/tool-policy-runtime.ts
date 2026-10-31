@@ -81,6 +81,24 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		return result;
 	}
 
+	// Authorization depends only on Forge's effective set, never retained host tools.
+	function toolAuthorization(
+		toolName: string,
+		effective: readonly string[],
+		policy: PromptStack["tools"] | undefined,
+		tools = pi.getAllTools(),
+	): "authorized" | "not-enabled" | "stack-deny" | "capability-remove" {
+		if (hasResourcePolicy(policy) && matchesAnyPattern(toolName, policy?.deny ?? [])) return "stack-deny";
+		if (capabilityPatches.some((patch) => patch.remove.includes(toolName))) return "capability-remove";
+		if (effective.includes(toolName)) return "authorized";
+		const targetSource = registrationSource(tools.find((tool) => tool.name === toolName)?.sourceInfo);
+		if (targetSource && effective.some((parent) => toolName.startsWith(`${parent}__`)
+			&& registrationSource(tools.find((tool) => tool.name === parent)?.sourceInfo) === targetSource)) {
+			return "authorized";
+		}
+		return "not-enabled";
+	}
+
 	function sync(ctx?: ExtensionContext): void {
 		const policy = getActiveStack()?.stack.tools;
 		const selectionActive = hasToolSelectionPolicy(policy);
@@ -95,7 +113,17 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 		if (baseline && lastApplied) baseline = reconcileToolPolicyBaseline(baseline, lastApplied, currentTools);
 		const sourceTools = baseline ?? currentTools;
 		baseline ??= [...sourceTools];
-		const nextTools = computeEffectiveTools(policy, sourceTools);
+		const effective = computeEffectiveTools(policy, sourceTools);
+		const nextTools = [...effective];
+		const tools = pi.getAllTools();
+		for (const name of currentTools) {
+			if (nextTools.includes(name)) continue;
+			const authorization = toolAuthorization(name, effective, policy, tools);
+			if (authorization === "stack-deny" || authorization === "capability-remove") continue;
+			// Older hosts omit exposure: treat them as direct, preserving selection behavior.
+			const exposure = (tools.find((tool) => tool.name === name) as { exposure?: unknown } | undefined)?.exposure ?? "direct";
+			if (authorization === "authorized" || exposure === "deferred" || exposure === "codemode") nextTools.push(name);
+		}
 		if (!sameStringSet(currentTools, nextTools)) pi.setActiveTools(nextTools);
 		lastApplied = [...nextTools];
 		if (ctx) {
@@ -192,28 +220,19 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 	function blockReason(toolName: string): string | undefined {
 		const active = getActiveStack();
 		const policy = active?.stack.tools;
-		// Explicit removals/denials also apply to namespace descendants, even
-		// when their authorized parent (rather than the child) is on allow.
-		if (active && hasResourcePolicy(policy) && matchesAnyPattern(toolName, policy?.deny ?? [])) {
+		// Recompute from Forge state, never from the host's active list or
+		// lastApplied. An absent baseline is fail-closed; an empty one stays empty.
+		const effective = computeEffectiveTools(policy, baseline ?? []);
+		const tools = pi.getAllTools();
+		const authorization = toolAuthorization(toolName, effective, policy, tools);
+		if (authorization === "stack-deny" && active) {
 			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
 		}
-		if (capabilityPatches.some((patch) => patch.remove.includes(toolName))) {
+		if (authorization === "capability-remove") {
 			return `Tool "${toolName}" is blocked by active capability.`;
 		}
-		if (!active || !hasResourcePolicy(policy)) return undefined;
-
-		// Recompute from Forge state, never from the host's active list or
-		// lastApplied (which may predate a capability change or stack reload).
-		// Before baseline restoration/sync, an absent baseline is fail-closed;
-		// an intentionally empty baseline must stay empty too.
-		const effective = computeEffectiveTools(policy, baseline ?? []);
-		if (effective.includes(toolName)) return undefined;
-		const tools = pi.getAllTools();
+		if (!active || !hasResourcePolicy(policy) || authorization === "authorized") return undefined;
 		const targetSource = registrationSource(tools.find((tool) => tool.name === toolName)?.sourceInfo);
-		if (targetSource && effective.some((parent) => toolName.startsWith(`${parent}__`)
-			&& registrationSource(tools.find((tool) => tool.name === parent)?.sourceInfo) === targetSource)) {
-			return undefined;
-		}
 		// A namespace child whose same-source parent is permitted (but not
 		// enabled) is reachable by enabling that parent: say so instead of
 		// reporting a hard policy block.
