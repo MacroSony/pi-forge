@@ -16,7 +16,7 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 ## Install and first run
 
-Requires Node.js **22.19 or newer**. Forge **0.5.10 (Unreleased)** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0–1.4**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
+Requires Node.js **22.19 or newer**. Forge **0.5.10** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0–1.4**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
 
 Forge requires **upstream Pi**. Forks such as oh-my-pi without `systemPromptOptions` / `context_with_system` remain unsupported. On detecting missing required prompt inputs, Forge warns once per session, declines new preset/profile application, and skips preset compilation and preview (#2). Forge continues applying its tool policy independently; detection does not abort provider dispatch or roll back earlier selections/settings.
 

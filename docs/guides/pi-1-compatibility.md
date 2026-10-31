@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/guides/pi-1-compatibility.md)
 
-## Forge 0.5.10 (Unreleased): Pi 1.4
+## Forge 0.5.10: Pi 1.4
 
 Development SDKs are pinned to **1.4.0** and the four optional SDK peers expand to:
 

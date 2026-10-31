@@ -29,6 +29,8 @@ export interface LifecycleDeps {
     recordProviderResponseUsage(message: AssistantMessage): void;
     disposeCapabilities?(): void;
     prepareCapabilityRestore?(ctx: ExtensionContext): void;
+    isCapabilityRestoring?(): boolean;
+    cancelCapabilityRestore?(): void;
     restoreCapabilities?(ctx: ExtensionContext, options?: {
         deferToolPolicy?: boolean;
     }): void;

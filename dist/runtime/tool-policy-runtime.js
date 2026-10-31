@@ -1,7 +1,7 @@
 import { formatStatusText } from "../status-text.js";
 import { basename } from "node:path";
 import { isValidToolName } from "../codecs/capability.js";
-import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy } from "../policy.js";
+import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy, matchesAnyPattern } from "../policy.js";
 export function createToolPolicyRuntime(pi, getActiveStack) {
     let baseline;
     let lastApplied;
@@ -50,6 +50,21 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
         result = result.filter((name) => !allRemoved.has(name));
         return result;
     }
+    // Authorization depends only on Forge's effective set, never retained host tools.
+    function toolAuthorization(toolName, effective, policy, tools = pi.getAllTools()) {
+        if (hasResourcePolicy(policy) && matchesAnyPattern(toolName, policy?.deny ?? []))
+            return "stack-deny";
+        if (capabilityPatches.some((patch) => patch.remove.includes(toolName)))
+            return "capability-remove";
+        if (effective.includes(toolName))
+            return "authorized";
+        const targetSource = registrationSource(tools.find((tool) => tool.name === toolName)?.sourceInfo);
+        if (targetSource && effective.some((parent) => toolName.startsWith(`${parent}__`)
+            && registrationSource(tools.find((tool) => tool.name === parent)?.sourceInfo) === targetSource)) {
+            return "authorized";
+        }
+        return "not-enabled";
+    }
     function sync(ctx) {
         const policy = getActiveStack()?.stack.tools;
         const selectionActive = hasToolSelectionPolicy(policy);
@@ -63,7 +78,20 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             baseline = reconcileToolPolicyBaseline(baseline, lastApplied, currentTools);
         const sourceTools = baseline ?? currentTools;
         baseline ??= [...sourceTools];
-        const nextTools = computeEffectiveTools(policy, sourceTools);
+        const effective = computeEffectiveTools(policy, sourceTools);
+        const nextTools = [...effective];
+        const tools = pi.getAllTools();
+        for (const name of currentTools) {
+            if (nextTools.includes(name))
+                continue;
+            const authorization = toolAuthorization(name, effective, policy, tools);
+            if (authorization === "stack-deny" || authorization === "capability-remove")
+                continue;
+            // Older hosts omit exposure: treat them as direct, preserving selection behavior.
+            const exposure = tools.find((tool) => tool.name === name)?.exposure ?? "direct";
+            if (authorization === "authorized" || exposure === "deferred" || exposure === "codemode")
+                nextTools.push(name);
+        }
         if (!sameStringSet(currentTools, nextTools))
             pi.setActiveTools(nextTools);
         lastApplied = [...nextTools];
@@ -156,21 +184,32 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
     }
     function blockReason(toolName) {
         const active = getActiveStack();
-        if (active && hasResourcePolicy(active.stack.tools)) {
-            if (!applyResourcePolicy([toolName], active.stack.tools).includes(toolName)) {
-                return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
-            }
+        const policy = active?.stack.tools;
+        // Recompute from Forge state, never from the host's active list or
+        // lastApplied. An absent baseline is fail-closed; an empty one stays empty.
+        const effective = computeEffectiveTools(policy, baseline ?? []);
+        const tools = pi.getAllTools();
+        const authorization = toolAuthorization(toolName, effective, policy, tools);
+        if (authorization === "stack-deny" && active) {
+            return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
         }
-        const allRemoved = new Set();
-        for (const patch of capabilityPatches) {
-            for (const name of patch.remove) {
-                allRemoved.add(name);
-            }
-        }
-        if (allRemoved.has(toolName)) {
+        if (authorization === "capability-remove") {
             return `Tool "${toolName}" is blocked by active capability.`;
         }
-        return undefined;
+        if (!active || !hasResourcePolicy(policy) || authorization === "authorized")
+            return undefined;
+        const targetSource = registrationSource(tools.find((tool) => tool.name === toolName)?.sourceInfo);
+        // A namespace child whose same-source parent is permitted (but not
+        // enabled) is reachable by enabling that parent: say so instead of
+        // reporting a hard policy block.
+        const permittedParent = targetSource !== undefined && tools.some((tool) => typeof tool.name === "string"
+            && toolName.startsWith(`${tool.name}__`)
+            && applyResourcePolicy([tool.name], policy).includes(tool.name)
+            && registrationSource(tool.sourceInfo) === targetSource);
+        if (!permittedParent && !applyResourcePolicy([toolName], policy).includes(toolName)) {
+            return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
+        }
+        return `Tool "${toolName}" is not currently enabled by prompt stack "${active.stack.id}". If provided by a capability, enable it with forge_capability.`;
     }
     function previewToolNames(stack) {
         const sourceTools = filterKnownTools(baseline ?? pi.getActiveTools());
@@ -330,5 +369,16 @@ function sameStringSet(left, right) {
         return false;
     const rightSet = new Set(right);
     return left.every((value) => rightSet.has(value));
+}
+// Compare registration identity, not UI/package groups: two entrypoints in
+// one package (or two extensions both labelled "auto") are not one registrar.
+function registrationSource(value) {
+    if (!value || typeof value !== "object")
+        return undefined;
+    const info = value;
+    const fields = [info.path, info.source, info.scope, info.origin];
+    if (!fields.every((field) => typeof field === "string" && field.trim()))
+        return undefined;
+    return JSON.stringify([...fields, stringValue(info.baseDir) ?? null]);
 }
 //# sourceMappingURL=tool-policy-runtime.js.map

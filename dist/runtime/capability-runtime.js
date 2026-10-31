@@ -77,6 +77,10 @@ export function createCapabilityRuntime(pi, workspace, tools) {
         restoredTools = history.tools;
         tools.setCapabilities([]);
     }
+    function cancelRestore() {
+        restoring = false;
+        restoredTools = undefined;
+    }
     function restore(ctx, options) {
         if (disposed)
             return;
@@ -979,7 +983,7 @@ export function createCapabilityRuntime(pi, workspace, tools) {
         restoredTools = undefined;
         agentBusy = false;
     }
-    return { prepareRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
+    return { prepareRestore, isRestoring: () => restoring, cancelRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
 }
 function sourceLabel(item) {
     return item.snapshot.source.kind === "manual" ? "manual" : formatResourceKey(item.snapshot.source.key);

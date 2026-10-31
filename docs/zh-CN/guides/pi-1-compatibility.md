@@ -2,7 +2,7 @@
 
 [中文文档](../README.md) · [English](../../guides/pi-1-compatibility.md)
 
-## Forge 0.5.10（未发布）：Pi 1.4
+## Forge 0.5.10：Pi 1.4
 
 开发 SDK 固定为 **1.4.0**，四个可选 SDK peer 范围扩大为：
 

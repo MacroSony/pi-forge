@@ -16,7 +16,7 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 ## 安装与第一次使用
 
-Node.js 需要 **22.19 或更高版本**。Forge **0.5.10（未发布）** 支持 Pi **0.87.x、0.99.0–0.99.2 与 1.0–1.4**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
+Node.js 需要 **22.19 或更高版本**。Forge **0.5.10** 支持 Pi **0.87.x、0.99.0–0.99.2 与 1.0–1.4**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
 
 Forge 需要 **上游 Pi**。oh-my-pi 等缺少 `systemPromptOptions` / `context_with_system` 的分支仍不受支持。检测到缺失的必要提示词输入后，Forge 每个会话只警告一次，拒绝新的预设/Profile 应用，并跳过预设编译与预览（#2）。Forge 仍独立应用其工具策略；检测不会中止 provider 请求派发，也不会回滚此前的选择或设置。
 

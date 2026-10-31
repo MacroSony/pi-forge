@@ -60,6 +60,8 @@ export type CapabilityCompletionViewResult = {
 /** Branch entries are authoritative. This service only coordinates the existing tool owner and delivery. */
 export declare function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorkspace, tools: ToolPolicyRuntime): {
     prepareRestore: (ctx: ExtensionContext) => void;
+    isRestoring: () => boolean;
+    cancelRestore: () => void;
     restore: (ctx: ExtensionContext, options?: {
         deferToolPolicy?: boolean;
     }) => void;

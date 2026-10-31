@@ -20,7 +20,7 @@ The macOS and Windows jobs run the same complete verification surface as Linux, 
 
 ## Dependency policy
 
-The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. Forge 0.5.10 (Unreleased) expands supported peers to the union:
+The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. Forge 0.5.10 expands supported peers to the union:
 ```
 >=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
 ```
