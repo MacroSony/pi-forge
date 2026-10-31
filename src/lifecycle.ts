@@ -165,6 +165,8 @@ export function registerLifecycleHandlers(
 	});
 
 	pi.on("tool_call", async (event) => {
+		// Gate every target, including codemode calls carrying parentToolCallId.
+		// A parent call is not itself an authorization credential.
 		const reason = deps.toolPolicyBlockReason(event.toolName);
 		return reason ? { block: true, reason } : undefined;
 	});

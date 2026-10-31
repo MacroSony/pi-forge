@@ -29,7 +29,7 @@ test("late registration: explicit initial tools become selected on sync, unrelat
 	f.catalog.add("mcp__demo__ping").add("unrequested");
 	f.runtime.sync();
 	assert.deepEqual(f.active(), ["read", "mcp__demo__ping"]);
-	// Absence from the loadout is NOT a new execution restriction in this patch.
+	// Wildcard-only allow is not a resource policy, so legacy execution behavior remains.
 	assert.equal(f.runtime.blockReason("unrequested"), undefined);
 });
 
@@ -49,7 +49,8 @@ test("late Capability add: unavailable fails, registration permits enable/off an
 	assert.deepEqual(f.active(), ["read", name]);
 	restored.setCapabilities([]); restored.sync();
 	assert.deepEqual(f.active(), ["read"]);
-	assert.equal(restored.blockReason(name), undefined, "off is loadout-only for permitted deferred tools");
+	assert.match(restored.blockReason(name) ?? "", /not currently enabled.*forge_capability/,
+		"with a resource policy, capability off revokes execution as well as the loadout");
 	restored.setCapabilities([{ add: [], remove: [name] }]);
 	assert.match(restored.blockReason(name) ?? "", /blocked by active capability/);
 });

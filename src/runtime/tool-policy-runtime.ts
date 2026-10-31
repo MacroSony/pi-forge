@@ -215,7 +215,7 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			return undefined;
 		}
 		if (!applyResourcePolicy([toolName], policy).includes(toolName)) {
-			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}". It is not currently enabled. If provided by a capability, enable it with forge_capability.`;
+			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
 		}
 		return `Tool "${toolName}" is not currently enabled by prompt stack "${active.stack.id}". If provided by a capability, enable it with forge_capability.`;
 	}
