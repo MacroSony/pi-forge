@@ -2,7 +2,7 @@ import { formatStatusText } from "../status-text.ts";
 import { basename } from "node:path";
 import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isValidToolName, type CapabilityToolPatch } from "../codecs/capability.ts";
-import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy } from "../policy.ts";
+import { applyResourcePolicy, hasResourcePolicy, hasToolSelectionPolicy, matchesAnyPattern } from "../policy.ts";
 import type { LoadedPromptStack } from "../types.ts";
 import type { PromptStack } from "../types.ts";
 import type { WebEditorPolicyResource, WebEditorPolicyResources } from "../web-editor/index.ts";
@@ -191,21 +191,33 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 
 	function blockReason(toolName: string): string | undefined {
 		const active = getActiveStack();
-		if (active && hasResourcePolicy(active.stack.tools)) {
-			if (!applyResourcePolicy([toolName], active.stack.tools).includes(toolName)) {
-				return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
-			}
+		const policy = active?.stack.tools;
+		// Explicit removals/denials also apply to namespace descendants, even
+		// when their authorized parent (rather than the child) is on allow.
+		if (active && hasResourcePolicy(policy) && matchesAnyPattern(toolName, policy?.deny ?? [])) {
+			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}".`;
 		}
-		const allRemoved = new Set<string>();
-		for (const patch of capabilityPatches) {
-			for (const name of patch.remove) {
-				allRemoved.add(name);
-			}
-		}
-		if (allRemoved.has(toolName)) {
+		if (capabilityPatches.some((patch) => patch.remove.includes(toolName))) {
 			return `Tool "${toolName}" is blocked by active capability.`;
 		}
-		return undefined;
+		if (!active || !hasResourcePolicy(policy)) return undefined;
+
+		// Recompute from Forge state, never from the host's active list or
+		// lastApplied (which may predate a capability change or stack reload).
+		// Before baseline restoration/sync, an absent baseline is fail-closed;
+		// an intentionally empty baseline must stay empty too.
+		const effective = computeEffectiveTools(policy, baseline ?? []);
+		if (effective.includes(toolName)) return undefined;
+		const tools = pi.getAllTools();
+		const targetSource = registrationSource(tools.find((tool) => tool.name === toolName)?.sourceInfo);
+		if (targetSource && effective.some((parent) => toolName.startsWith(`${parent}__`)
+			&& registrationSource(tools.find((tool) => tool.name === parent)?.sourceInfo) === targetSource)) {
+			return undefined;
+		}
+		if (!applyResourcePolicy([toolName], policy).includes(toolName)) {
+			return `Tool "${toolName}" is blocked by prompt stack "${active.stack.id}". It is not currently enabled. If provided by a capability, enable it with forge_capability.`;
+		}
+		return `Tool "${toolName}" is not currently enabled by prompt stack "${active.stack.id}". If provided by a capability, enable it with forge_capability.`;
 	}
 
 	function previewToolNames(stack: PromptStack | undefined): string[] {
@@ -379,4 +391,14 @@ function sameStringSet(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
 	const rightSet = new Set(right);
 	return left.every((value) => rightSet.has(value));
+}
+
+// Compare registration identity, not UI/package groups: two entrypoints in
+// one package (or two extensions both labelled "auto") are not one registrar.
+function registrationSource(value: unknown): string | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const info = value as { path?: unknown; source?: unknown; scope?: unknown; origin?: unknown; baseDir?: unknown };
+	const fields = [info.path, info.source, info.scope, info.origin];
+	if (!fields.every((field) => typeof field === "string" && field.trim())) return undefined;
+	return JSON.stringify([...fields, stringValue(info.baseDir) ?? null]);
 }
