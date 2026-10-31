@@ -37,6 +37,8 @@ export interface LifecycleDeps {
 	recordProviderResponseUsage(message: AssistantMessage): void;
 	disposeCapabilities?(): void;
 	prepareCapabilityRestore?(ctx: ExtensionContext): void;
+	isCapabilityRestoring?(): boolean;
+	cancelCapabilityRestore?(): void;
 	restoreCapabilities?(ctx: ExtensionContext, options?: { deferToolPolicy?: boolean }): void;
 	projectCapabilities?(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
 	prepareCapabilityMessages?(raw: AgentMessage[], ctx: ExtensionContext): AgentMessage[];
@@ -167,6 +169,9 @@ export function registerLifecycleHandlers(
 	pi.on("tool_call", async (event) => {
 		// Gate every target, including codemode calls carrying parentToolCallId.
 		// A parent call is not itself an authorization credential.
+		if (deps.isCapabilityRestoring?.()) {
+			return { block: true, reason: "Forge is restoring tool policy. Please retry once restoration finishes." };
+		}
 		const reason = deps.toolPolicyBlockReason(event.toolName);
 		return reason ? { block: true, reason } : undefined;
 	});
@@ -303,20 +308,27 @@ async function restoreBranchScopedRuntime(
 	options?: { deferToolPolicy?: boolean; suppressAutoActivate?: boolean },
 ): Promise<void> {
 	deps.setCapabilityAgentBusy?.(false);
-	deps.prepareCapabilityRestore?.(ctx);
-	const restoredProfile = getRestoredProfileProvenance(ctx);
-	compileCycle.currentCompilationContext = undefined;
-	compileCycle.currentCompilationRuntime = undefined;
-	compileCycle.currentBaseSystemPrompt = undefined;
-	compileCycle.currentCompiledSystemPrompt = undefined;
-	compileCycle.currentCompiledStackKey = undefined;
-	compileCycle.currentPromptInputKey = undefined;
-	compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
-	const restoredActiveId = getRestoredActiveId(ctx);
-	deps.restorePersistedActiveId(restoredActiveId);
-	await deps.reloadStacks(ctx, restoredActiveId, { ...options, deferToolPolicy: true });
-	workspace.setLastAppliedProfile(restoredProfile);
-	deps.restoreCapabilities?.(ctx, options);
+	try {
+		deps.prepareCapabilityRestore?.(ctx);
+		const restoredProfile = getRestoredProfileProvenance(ctx);
+		compileCycle.currentCompilationContext = undefined;
+		compileCycle.currentCompilationRuntime = undefined;
+		compileCycle.currentBaseSystemPrompt = undefined;
+		compileCycle.currentCompiledSystemPrompt = undefined;
+		compileCycle.currentCompiledStackKey = undefined;
+		compileCycle.currentPromptInputKey = undefined;
+		compileCycle.latestCompileDiagnostics = getLegacyVariableStateDiagnostic(ctx);
+		const restoredActiveId = getRestoredActiveId(ctx);
+		deps.restorePersistedActiveId(restoredActiveId);
+		await deps.reloadStacks(ctx, restoredActiveId, { ...options, deferToolPolicy: true });
+		workspace.setLastAppliedProfile(restoredProfile);
+		deps.restoreCapabilities?.(ctx, options);
+	} catch (error) {
+		// Preparation, reload and synchronous reconciliation can all fail. Never
+		// leave the runtime restoring (and every subsequent tool call fenced).
+		deps.cancelCapabilityRestore?.();
+		throw error;
+	}
 }
 
 function shouldAutoActivateForSessionStart(event: SessionStartEvent, ctx: ExtensionContext): boolean {

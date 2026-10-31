@@ -158,6 +158,8 @@ export default function piForge(pi: ExtensionAPI) {
 		syncActiveToolPolicy: instructions.sync,
 		disposeCapabilities: instructions.dispose,
 		prepareCapabilityRestore: instructions.prepareRestore,
+		isCapabilityRestoring: instructions.isRestoring,
+		cancelCapabilityRestore: instructions.cancelRestore,
 		restoreCapabilities: instructions.restore,
 		projectCapabilities: instructions.project,
 		prepareCapabilityMessages: instructions.prepareMessages,

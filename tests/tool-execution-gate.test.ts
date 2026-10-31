@@ -258,3 +258,80 @@ test("capability disable still removes its direct additions with initial or lega
 		assert.equal(f.applied.length, calls);
 	}
 });
+
+test("restore fences direct and nested tool calls across reload, then releases on success or failure", async () => {
+	const { registerLifecycleHandlers } = await import("../src/lifecycle.ts");
+	const { createCapabilityRuntime } = await import("../src/runtime/capability-runtime.ts");
+	for (const lifecycle of ["session_start", "session_tree", "session_compact"]) {
+		for (const fail of [false, true]) {
+			const f = fixture();
+			f.setStack(undefined);
+			f.runtime.setCapabilities([{ add: [], remove: ["pet"] }]);
+			const handlers: Record<string, (...args: any[]) => any> = {};
+			const pi: any = { ...f.pi, on: (name: string, fn: any) => { handlers[name] = fn; } };
+			const workspace: any = { snapshotKnown: false, setLastAppliedProfile() {} };
+			const capabilities = createCapabilityRuntime(pi, workspace, f.runtime);
+			const ctx: any = { sessionManager: { getLeafId: () => null }, isProjectTrusted: () => true,
+				ui: { setStatus() {} } };
+			let finish!: () => void;
+			const reloading = new Promise<void>((resolve, reject) => {
+				finish = () => fail ? reject(new Error("reload failed")) : resolve();
+			});
+			registerLifecycleHandlers(pi, workspace, {} as any, {
+				prepareCapabilityRestore: capabilities.prepareRestore,
+				isCapabilityRestoring: capabilities.isRestoring,
+				cancelCapabilityRestore: capabilities.cancelRestore,
+				restoreCapabilities: capabilities.restore,
+				toolPolicyBlockReason: f.runtime.blockReason,
+				syncActiveToolPolicy: capabilities.sync,
+				reloadStacks: () => reloading,
+				suspendActiveState() {}, restorePersistedActiveId() {}, activateFreshSessionDefaults: async () => {},
+				reloadForgeWorkspace() {}, refreshWebEditorHost() {}, notifyActivePreset() {}, bindActiveState() {}, disposeActiveState() {},
+			} as any);
+			assert.match(f.runtime.blockReason("pet")!, /active capability/);
+			const pending = handlers[lifecycle]({ reason: "startup" }, ctx);
+			assert.equal(capabilities.isRestoring(), true);
+			assert.equal(f.runtime.blockReason("pet"), undefined, "prepare cleared the old remove patch: this is the vulnerable window");
+			for (const parentToolCallId of [undefined, "codemode-parent"]) {
+				const result = await handlers.tool_call({ toolName: "pet", parentToolCallId });
+				assert.equal(result.block, true);
+				assert.match(result.reason, /Forge.*restoring tool policy.*retry/i);
+			}
+			finish();
+			if (fail) await assert.rejects(pending, /reload failed/);
+			else await pending;
+			assert.equal(capabilities.isRestoring(), false);
+			assert.equal(await handlers.tool_call({ toolName: "pet" }), undefined, "ordinary no-preset sessions must not remain fenced");
+			if (lifecycle === "session_start" && !fail) {
+				await handlers.resources_discover({}, ctx);
+				assert.equal(await handlers.tool_call({ toolName: "pet" }), undefined);
+			}
+		}
+	}
+});
+
+test("restore preparation and policy reconciliation failures also release the fence", async () => {
+	const { registerLifecycleHandlers } = await import("../src/lifecycle.ts");
+	const { createCapabilityRuntime } = await import("../src/runtime/capability-runtime.ts");
+	for (const phase of ["prepare", "sync"]) {
+		const f = fixture();
+		f.setStack(undefined);
+		const handlers: Record<string, (...args: any[]) => any> = {};
+		const workspace: any = { snapshotKnown: false, setLastAppliedProfile() {} };
+		const capabilities = createCapabilityRuntime(f.pi as any, workspace, f.runtime);
+		const ctx: any = { sessionManager: { getLeafId: () => {
+			if (phase === "prepare") throw new Error("prepare failed");
+			return null;
+		} }, isProjectTrusted: () => true };
+		f.runtime.sync = () => { throw new Error("sync failed"); };
+		registerLifecycleHandlers({ on: (name: string, fn: any) => { handlers[name] = fn; } } as any, workspace, {} as any, {
+			prepareCapabilityRestore: capabilities.prepareRestore, isCapabilityRestoring: capabilities.isRestoring,
+			cancelCapabilityRestore: capabilities.cancelRestore, restoreCapabilities: capabilities.restore,
+			toolPolicyBlockReason: f.runtime.blockReason, reloadStacks: async () => {},
+			suspendActiveState() {}, restorePersistedActiveId() {}, disposeActiveState() {},
+		} as any);
+		await assert.rejects(handlers.session_tree({}, ctx), new RegExp(`${phase} failed`));
+		assert.equal(capabilities.isRestoring(), false);
+		assert.equal(await handlers.tool_call({ toolName: "read" }), undefined);
+	}
+});

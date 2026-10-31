@@ -149,6 +149,11 @@ export function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorksp
 		tools.setCapabilities([]);
 	}
 
+	function cancelRestore(): void {
+		restoring = false;
+		restoredTools = undefined;
+	}
+
 	function restore(ctx: ExtensionContext, options?: { deferToolPolicy?: boolean }): void {
 		if (disposed) return;
 		context = ctx;
@@ -1038,7 +1043,7 @@ export function createCapabilityRuntime(pi: ExtensionAPI, workspace: ForgeWorksp
 		agentBusy = false;
 	}
 
-	return { prepareRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
+	return { prepareRestore, isRestoring: () => restoring, cancelRestore, restore, sync, validatePresetSwitch, prepareMessages, project, commitEndAnchors, setAgentBusy, library, completionView, status, change, readBindings, enableBound, disableBound, executeAgentTool, readState, mutateState, readAvailableCapabilities, enableCapability, dispose };
 }
 
 function sourceLabel(item: ActiveCapability): string {
