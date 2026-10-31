@@ -12,6 +12,8 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 
 ### Behavior change
 
+- Tool-policy sync retains already-active tools authorized by the effective set or same-source namespace rule, and registered `deferred`/`codemode` tools unless explicitly denied or removed. Retention does not grant execution access; other external direct tools still leave the active list (missing exposure is treated as direct). This avoids unnecessary tool removals after discovery.
+
 - With an active Preset's tool policy, every tool call, including nested codemode calls, must be authorized by Forge's current effective set: `tools.initial` or the policy-derived baseline, plus enabled Capability additions, minus removals, subject to allow/deny. Disabling a Capability revokes execution access for tools no longer authorized; Pi's active tool list is not authorization. No Preset or no restrictive tool policy preserves previous behavior (`initial` alone or `allow: ["*"]` alone does not enable this gate).
 
 ### Fixed

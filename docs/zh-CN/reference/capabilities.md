@@ -54,6 +54,8 @@ Pi-forge 引入了能力（Capabilities）：会话级动态提示词指令与�
 
 有效集中的工具 `P` 还授权**同一注册来源**的已注册 `P__*` 子工具。例如，启用 `mcp` 或 `mcp__hitch` 后，pi-mcp-adapter 6+/7 以 `mcp__hitch__<tool>` 名义发出的同来源调用可以执行，无需把每个子工具写入 `allow`。注册来源不同或缺失时不授予此权限。Preset deny 与活动 Capability remove 仍可阻止子工具；可用精确 deny 项排除单个子工具。Capability `remove` 使用精确名称，不支持通配符。
 
+同步会保留已 active 且由有效集或同来源命名空间规则授权的工具，以及注册 exposure 为 `deferred` 或 `codemode` 的工具，但 Preset deny 或 Capability remove 排除的工具仍会撤掉。保留不授予执行权限：未授权的已发现工具保留在可调用表中，让门禁返回可操作的拦截提示，而非误导性的 “not found”。其他外部激活的 `direct` 工具仍会撤掉；旧 Pi 缺失 exposure 时按 `direct` 处理。关闭 Capability 仍会撤掉其不再获授权的 direct 添加项。`tools.initial` 保持权威；无 `initial` 的仅 deny 预设保持既有的外部新增吸收进基线语义。保留减少不必要的撤销，但不能消除所有 OpenAI 缓存回退。
+
 无活跃 Preset 或无限制性工具策略时，执行行为不变。仅 `tools.initial` 或仅 `allow: ["*"]` 不会启用新门禁；allow 列表含有非 `*` 项，或 deny 列表非空时才启用。已有的显式 Capability 移除仍生效。
 
 以下 **Preset 工具策略片段**使用 deny（不同时使用 allow，两种策略互斥），允许启用 `mcp__hitch`，但即使父工具已启用，也禁止其中一个子工具：

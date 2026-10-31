@@ -200,3 +200,61 @@ test("stack deny and capability remove override deferred retention and namespace
 		assert.match(f.runtime.blockReason("mcp__hitch__read")!, /blocked by/);
 	}
 });
+
+
+test("retained capability tools do not become external baseline additions on later syncs", () => {
+	for (const exposure of ["deferred", "codemode"] as const) {
+		const policy = { allow: ["read", "pet", "forge_capability"], initial: ["read", "forge_capability"] };
+		const f = fixture(policy, { pet: exposure });
+		f.runtime.sync();
+		const baseline = f.runtime.snapshot().baseline;
+		f.runtime.setCapabilities([{ add: ["pet"], remove: [] }]);
+		f.runtime.sync();
+		f.runtime.setCapabilities([]);
+		const calls = f.applied.length;
+		f.runtime.sync();
+		f.runtime.sync();
+		assert.ok(f.active().includes("pet"));
+		assert.equal(f.applied.length, calls);
+		assert.deepEqual(f.runtime.snapshot().baseline, baseline, "retention is Forge-applied, not a fresh external activation");
+		assert.deepEqual(f.runtime.snapshot().lastApplied, f.active());
+		assert.deepEqual(f.runtime.previewToolNames({ schemaVersion: 1, id: "gate", tools: policy, items: [] }), policy.initial);
+		assert.match(f.runtime.blockReason("pet")!, /forge_capability/, "retention must not authorize execution");
+	}
+});
+
+test("deny-only presets preserve existing external-addition baseline absorption", () => {
+	for (const exposure of ["direct", "deferred", "codemode"] as const) {
+		const f = fixture({ deny: ["forbidden"] }, { pet: exposure });
+		f.runtime.sync();
+		f.pi.setActiveTools([...f.active(), "pet"]);
+		const calls = f.applied.length;
+		f.runtime.sync();
+		f.runtime.sync();
+		assert.ok(f.runtime.snapshot().baseline.includes("pet"), "deny-only presets already absorb external additions");
+		assert.ok(f.active().includes("pet"));
+		assert.equal(f.runtime.blockReason("pet"), undefined, "the policy-derived baseline, not retention, authorizes this tool");
+		assert.equal(f.applied.length, calls);
+	}
+});
+
+test("capability disable still removes its direct additions with initial or legacy baseline selection", () => {
+	for (const policy of [
+		{ allow: ["read", "pet", "forge_capability"], initial: ["read", "forge_capability"] },
+		{ deny: ["forbidden"] },
+		{ initial: ["read", "forge_capability"] },
+	]) {
+		const f = fixture(policy, { pet: "direct" });
+		f.runtime.sync();
+		f.runtime.setCapabilities([{ add: ["pet"], remove: [] }]);
+		f.runtime.sync();
+		assert.ok(f.active().includes("pet"));
+		f.runtime.setCapabilities([]);
+		f.runtime.sync();
+		assert.ok(!f.active().includes("pet"), "deactivation intentionally removes direct tools");
+		assert.ok(!f.runtime.snapshot().baseline.includes("pet"));
+		const calls = f.applied.length;
+		f.runtime.sync();
+		assert.equal(f.applied.length, calls);
+	}
+});
