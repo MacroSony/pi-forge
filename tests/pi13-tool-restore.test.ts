@@ -1,3 +1,4 @@
+import { Type } from "typebox";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,7 +61,7 @@ async function fixture(policy: "allow" | "deny", modifiers: boolean) {
 				// Not an inline literal: `defaultActive` only exists in newer SDK types, and
 				// older hosts (e.g. 0.87) simply ignore it at runtime.
 				const restoreExtra = { name: "restore_extra", label: "Restore extra", description: "Offline inactive tool", defaultActive: false,
-					parameters: AI.Type.Object({}), execute: async () => { throw new Error("No tool execution expected"); } };
+					parameters: Type.Object({}), execute: async () => { throw new Error("No tool execution expected"); } };
 				api.registerTool(restoreExtra);
 			}, piForge],
 		});
@@ -98,7 +99,7 @@ for (const policy of ["allow", "deny"] as const) for (const modifiers of support
 		let live: Awaited<ReturnType<typeof f.open>> | undefined;
 		try {
 			const manager = SDK.SessionManager.create(f.cwd, f.sessionDir);
-			manager.appendMessage({ role: "system", content: "BASE", toolsAdded: ["read", "grep"].map(name => ({ name, description: name, parameters: AI.Type.Object({}) })), timestamp: 1 });
+			manager.appendMessage({ role: "system", content: "BASE", toolsAdded: ["read", "grep"].map(name => ({ name, description: name, parameters: Type.Object({}) })), timestamp: 1 });
 			live = await f.open(manager);
 			if (restoresDefaultTools) assert.deepEqual(live.startup, withUnmentioned(modifiers ? ["read", "write"] : ["read", "grep"]));
 			const originalBaseline = live.startup;
@@ -113,7 +114,7 @@ for (const policy of ["allow", "deny"] as const) for (const modifiers of support
 			await live.prompt();
 			// Persist an intentionally stale loadout: a forbidden tool appears and a
 			// Capability-added inactive tool disappears. Forge's stored state is intact.
-			manager.appendMessage({ role: "system", content: "", toolsAdded: [{ name: "write", description: "stale", parameters: AI.Type.Object({}) }], toolsRemoved: [{ name: "restore_extra" }], timestamp: 2 });
+			manager.appendMessage({ role: "system", content: "", toolsAdded: [{ name: "write", description: "stale", parameters: Type.Object({}) }], toolsRemoved: [{ name: "restore_extra" }], timestamp: 2 });
 			const file = manager.getSessionFile()!;
 			await live.close(); live = undefined;
 			const resumed = SDK.SessionManager.open(file, f.sessionDir, f.cwd);

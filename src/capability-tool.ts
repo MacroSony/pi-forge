@@ -1,4 +1,4 @@
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { CapabilityRuntime } from "./runtime/capability-runtime.ts";
 

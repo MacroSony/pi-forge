@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 export const FORGE_CAPABILITY_TOOL_NAME = "forge_capability";
 export const ForgeCapabilityParameters = Type.Object({
     action: Type.Union([

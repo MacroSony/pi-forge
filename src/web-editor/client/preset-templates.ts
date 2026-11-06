@@ -137,7 +137,7 @@ export function createPresetFromTemplate(
 					file: "dist/core/system-prompt.js",
 				},
 				content:
-					"You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+					"You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.",
 			},
 			{
 				kind: "slot",
@@ -157,7 +157,7 @@ export function createPresetFromTemplate(
 				name: "Custom Tools Note",
 				enabled: true,
 				role: "system",
-				content: "In addition to the tools above, you may have access to other custom tools depending on the project.",
+				content: "Additional tools may be available.",
 			},
 			{
 				kind: "slot",

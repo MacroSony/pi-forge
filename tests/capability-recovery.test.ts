@@ -170,9 +170,10 @@ test("Capability Recovery Acceptance Suite (serialized disk, compaction, branchi
 				assert.ok(h2.getActiveToolNames().includes("fake_write"), "fake_write restored after off without manual intervention");
 
 				const historyAfterOff = readCapabilitySession(cmdCtx2);
+				// Pi 1.5+ keeps surviving tools in place and appends re-activated ones; compare contents, not host order.
 				assert.deepEqual(
-					historyAfterOff.tools?.baseline,
-					["fake_write", "fake_read", "fake_driver"],
+					[...(historyAfterOff.tools?.baseline ?? [])].sort(),
+					["fake_driver", "fake_read", "fake_write"],
 					"baseline preserved pristine after deactivation",
 				);
 
@@ -676,9 +677,10 @@ test("Capability Recovery Acceptance Suite (serialized disk, compaction, branchi
 				assert.ok(h.getActiveToolNames().includes("fake_write"), "fake_write must be restored after off");
 
 				const historyAfterOff = readCapabilitySession(cmdCtx);
+				// Pi 1.5+ keeps surviving tools in place and appends re-activated ones; compare contents, not host order.
 				assert.deepEqual(
-					historyAfterOff.tools?.baseline,
-					["fake_write", "fake_read", "fake_driver"],
+					[...(historyAfterOff.tools?.baseline ?? [])].sort(),
+					["fake_driver", "fake_read", "fake_write"],
 					"original baseline must be fully restored after off",
 				);
 

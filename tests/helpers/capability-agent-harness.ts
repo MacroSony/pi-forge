@@ -1,3 +1,4 @@
+import { Type } from "typebox";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -295,10 +296,10 @@ export async function createCapabilityAgentHarness(
 			label: "Fake Write Tool",
 			description: "A side-effect-free fake write tool for harness testing.",
 			promptSnippet: "Use only for isolated harness tests",
-			parameters: AI.Type.Object(
+			parameters: Type.Object(
 				{
-					path: AI.Type.Optional(AI.Type.String()),
-					content: AI.Type.Optional(AI.Type.String()),
+					path: Type.Optional(Type.String()),
+					content: Type.Optional(Type.String()),
 				},
 				{ additionalProperties: true },
 			),
@@ -323,9 +324,9 @@ export async function createCapabilityAgentHarness(
 			label: "Fake Read Tool",
 			description: "A side-effect-free fake read tool for harness testing.",
 			promptSnippet: "Use only for isolated harness tests",
-			parameters: AI.Type.Object(
+			parameters: Type.Object(
 				{
-					path: AI.Type.Optional(AI.Type.String()),
+					path: Type.Optional(Type.String()),
 				},
 				{ additionalProperties: true },
 			),
@@ -350,7 +351,7 @@ export async function createCapabilityAgentHarness(
 			label: "Fake Driver Tool",
 			description: "A driver tool to trigger commands midrun in harness tests.",
 			promptSnippet: "Use only for isolated harness tests",
-			parameters: AI.Type.Object({}, { additionalProperties: true }),
+			parameters: Type.Object({}, { additionalProperties: true }),
 			execute: async (toolCallId, params, signal, onUpdate, ctx) => {
 				let driverResult: unknown;
 				if (currentOnDriver) {
