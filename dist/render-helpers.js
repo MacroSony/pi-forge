@@ -22,6 +22,11 @@ export function selectedToolNames(stack, runtime) {
     // not a catalog. Applying tools.initial again would hide capability-added tools.
     return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
+/** Selected tools whose declarations reach the model (Pi's declaredTools: selected minus hidden). */
+export function declaredToolNames(stack, runtime) {
+    const hidden = new Set(runtime.options.hiddenTools ?? []);
+    return selectedToolNames(stack, runtime).filter((name) => !hidden.has(name));
+}
 export function slotTextFormat(item, options = {}) {
     const format = item.options?.format;
     if (format === "plain")

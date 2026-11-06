@@ -1022,3 +1022,29 @@ test("compileMessages merge combines consecutive slot items of the same role", (
 	assert.match(textOf(result.messages[0]), /\n\nnote$/);
 	assert.deepEqual(result.messageSources[0].mergedItems?.map((item) => item.itemId), ["d1", "note"]);
 });
+
+test("tools and tool-guidelines slots omit declarations hidden by prepareLoadout", () => {
+	const stack: PromptStack = {
+		schemaVersion: 1,
+		id: "hidden-declarations",
+		items: [
+			{ kind: "slot", id: "tools", enabled: true, role: "system", slot: "tools", options: { format: "plain" } },
+			{ kind: "slot", id: "guidelines", enabled: true, role: "system", slot: "tool-guidelines", options: { format: "plain" } },
+			{ kind: "block", id: "flags", enabled: true, role: "system", content: "{% if runtime.tool.lane_target %}TARGET_CALLABLE{% endif %}" },
+			{ kind: "slot", id: "history", enabled: true, slot: "chat-history" },
+		],
+	};
+	const result = compileSystemPrompt(stack, runtime({
+		options: {
+			...runtime().options,
+			selectedTools: ["codemode", "lane_target", "bash"],
+			hiddenTools: ["lane_target", "bash"],
+			toolSnippets: { codemode: "Run scripts.", lane_target: "Hidden target.", bash: "Run shell commands." },
+		},
+	}), "base");
+
+	assert.match(result.systemPrompt, /Available tools:\n- codemode: Run scripts\./);
+	assert.doesNotMatch(result.systemPrompt, /lane_target:|Hidden target|- bash:/);
+	assert.doesNotMatch(result.systemPrompt, /Use bash for file operations/, "no guidance for a hidden bash declaration");
+	assert.match(result.systemPrompt, /TARGET_CALLABLE/, "template flags still describe callable tools");
+});

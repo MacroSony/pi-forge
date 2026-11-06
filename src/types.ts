@@ -183,6 +183,8 @@ export interface PromptStackDiagnostic {
 export interface PromptCompileOptions {
 	cwd: string;
 	selectedTools?: readonly string[];
+	/** Active tools whose declarations a prepareLoadout hook hides (still callable, not declared). */
+	hiddenTools?: readonly string[];
 	toolSnippets?: Readonly<Record<string, string>>;
 	promptGuidelines?: readonly string[];
 	appendSystemPrompt?: string;

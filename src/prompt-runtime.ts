@@ -37,6 +37,7 @@ export function promptRuntimeFromCompileOptions(
 		options: {
 			cwd: options.cwd,
 			selectedTools: options.selectedTools,
+			hiddenTools: options.hiddenTools,
 			toolSnippets: options.toolSnippets,
 			promptGuidelines: options.promptGuidelines,
 			appendSystemPrompt: options.appendSystemPrompt,

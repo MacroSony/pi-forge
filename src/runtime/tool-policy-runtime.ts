@@ -269,10 +269,11 @@ export function createToolPolicyRuntime(pi: ExtensionAPI, getActiveStack: () => 
 			if (snippet) toolSnippets[name] = snippet;
 		}
 
+		const hiddenTools = new Set(base.hiddenTools ?? []);
 		const mappedGuidelines = toolInfos
 			.filter((tool) => {
 				const name = stringValue(tool.name);
-				return !!name && selectedToolSet.has(name);
+				return !!name && selectedToolSet.has(name) && !hiddenTools.has(name);
 			})
 			.flatMap((tool) => stringArrayValue(tool.promptGuidelines));
 		const promptGuidelines = baseline || capabilityPatches.length > 0 || !sameStringSet(base.selectedTools ?? sessionTools, selectedTools)

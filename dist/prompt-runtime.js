@@ -19,6 +19,7 @@ export function promptRuntimeFromCompileOptions(options, model, latestUserMessag
         options: {
             cwd: options.cwd,
             selectedTools: options.selectedTools,
+            hiddenTools: options.hiddenTools,
             toolSnippets: options.toolSnippets,
             promptGuidelines: options.promptGuidelines,
             appendSystemPrompt: options.appendSystemPrompt,

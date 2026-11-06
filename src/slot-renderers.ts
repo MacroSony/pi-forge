@@ -13,6 +13,7 @@ import type {
 import {
 	createVariableAccess,
 	promptRenderHelpers,
+	declaredToolNames,
 	selectedToolNames,
 	type PromptRenderHelpers,
 	type PromptVariableAccess,
@@ -197,8 +198,8 @@ function createSlotRenderContext(
 function renderTools({ item, stack, runtime, format, helpers }: BuiltInSlotRenderContext): string {
 	const snippets = runtime.options.toolSnippets ?? {};
 	const tools = item.options?.onlyWithSnippets === true
-		? selectedToolNames(stack, runtime).filter((name) => !!snippets[name])
-		: selectedToolNames(stack, runtime);
+		? declaredToolNames(stack, runtime).filter((name) => !!snippets[name])
+		: declaredToolNames(stack, runtime);
 
 	if (format() === "plain") {
 		const lines = ["Available tools:"];
@@ -228,7 +229,7 @@ function renderTools({ item, stack, runtime, format, helpers }: BuiltInSlotRende
 }
 
 function renderToolGuidelines({ item, stack, runtime, format, helpers }: BuiltInSlotRenderContext): string {
-	const tools = selectedToolNames(stack, runtime);
+	const tools = declaredToolNames(stack, runtime);
 	const guidelines: string[] = [];
 	const seen = new Set<string>();
 	const add = (line: string) => {

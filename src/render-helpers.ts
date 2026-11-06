@@ -51,6 +51,12 @@ export function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): s
 	return applyResourcePolicy([...(runtime.options.selectedTools ?? [])], stack.tools);
 }
 
+/** Selected tools whose declarations reach the model (Pi's declaredTools: selected minus hidden). */
+export function declaredToolNames(stack: PromptStack, runtime: PromptRuntime): string[] {
+	const hidden = new Set(runtime.options.hiddenTools ?? []);
+	return selectedToolNames(stack, runtime).filter((name) => !hidden.has(name));
+}
+
 export function slotTextFormat(item: PromptStackSlotItem, options: { allowJson?: boolean } = {}): PromptStackSlotFormat {
 	const format = item.options?.format;
 	if (format === "plain") return "plain";

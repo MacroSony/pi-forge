@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FORGE_V1_MAX_EXTENSION_OUTPUT } from "./forge-v1/index.js";
 import { applyResourcePolicy } from "./policy.js";
-import { createVariableAccess, promptRenderHelpers, selectedToolNames, } from "./render-helpers.js";
+import { createVariableAccess, promptRenderHelpers, declaredToolNames, selectedToolNames, } from "./render-helpers.js";
 import { assertRegistryName } from "./extension-registry.js";
 function slotRegistryState() {
     const globalScope = globalThis;
@@ -120,8 +120,8 @@ function createSlotRenderContext(item, stack, runtime, diagnostics, env) {
 function renderTools({ item, stack, runtime, format, helpers }) {
     const snippets = runtime.options.toolSnippets ?? {};
     const tools = item.options?.onlyWithSnippets === true
-        ? selectedToolNames(stack, runtime).filter((name) => !!snippets[name])
-        : selectedToolNames(stack, runtime);
+        ? declaredToolNames(stack, runtime).filter((name) => !!snippets[name])
+        : declaredToolNames(stack, runtime);
     if (format() === "plain") {
         const lines = ["Available tools:"];
         if (tools.length === 0) {
@@ -148,7 +148,7 @@ function renderTools({ item, stack, runtime, format, helpers }) {
     return lines.join("\n");
 }
 function renderToolGuidelines({ item, stack, runtime, format, helpers }) {
-    const tools = selectedToolNames(stack, runtime);
+    const tools = declaredToolNames(stack, runtime);
     const guidelines = [];
     const seen = new Set();
     const add = (line) => {

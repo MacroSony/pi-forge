@@ -20,6 +20,8 @@ export interface PromptRenderHelpers {
 export declare const promptRenderHelpers: PromptRenderHelpers;
 export declare function createVariableAccess(_runtime: PromptRuntime, stack: PromptStack): PromptVariableAccess;
 export declare function selectedToolNames(stack: PromptStack, runtime: PromptRuntime): string[];
+/** Selected tools whose declarations reach the model (Pi's declaredTools: selected minus hidden). */
+export declare function declaredToolNames(stack: PromptStack, runtime: PromptRuntime): string[];
 export declare function slotTextFormat(item: PromptStackSlotItem, options?: {
     allowJson?: boolean;
 }): PromptStackSlotFormat;
