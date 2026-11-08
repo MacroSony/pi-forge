@@ -13,18 +13,18 @@ The optional package is tested against the released Forge host before its own pu
 1. Confirm the intended version in the manifest, lockfile, changelog, and current user documentation. Preserve historical release records and document breaking configuration/session boundaries.
 2. Install dependencies from the lockfile with `npm ci`, build, and run the complete `npm run verify` chain: Node tests, browser tests, types, generated client, docs, distribution, package contents, and packed installation.
 3. Require the Ubuntu, macOS, Windows, and configured Pi compatibility GitHub Actions jobs to pass for the **exact release commit**, not an earlier source revision.
-4. Test a packed main-package installation against both the documented minimum (0.87.0) and current tested Pi versions (1.4.0) using `PI_TEST_VERSION` / `TYPEBOX_TEST_VERSION`; exercise ordinary Preset/Profile/Capability behavior independently of optional delegation.
+4. Test a packed main-package installation against both the documented minimum (0.87.0) and current tested Pi versions (1.5.0) using `PI_TEST_VERSION` / `TYPEBOX_TEST_VERSION`; exercise ordinary Preset/Profile/Capability behavior independently of optional delegation.
 5. Inspect `npm pack --dry-run` for package size and unexpected or missing files. Publish the verified artifact, not an unreviewed working tree.
 
 The macOS and Windows jobs run the same complete verification surface as Linux, including the real-browser editor suite. Compatibility-version (older supported releases) and scheduled latest-Pi probes remain Linux-only; they test dependency drift rather than operating-system behavior. Exact-release CI is a mandatory pre-release gate; this documentation does not record cross-platform release CI results.
 
 ## Dependency policy
 
-The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. Forge 0.5.10 expands supported peers to the union:
+The four Pi SDK packages remain host-provided optional peers, never private runtime dependencies. Published Forge 0.5.7 required Pi `>=0.87.0 <0.88.0`. Forge 0.5.11 expands supported peers to the union:
 ```
->=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.5.0
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0
 ```
-Development fixtures are pinned to `1.4.0` with `typebox@1.3.27`. Minimum supported Pi `0.87.0` remains unchanged; The 1.x range covers 1.0–1.4; Pi 0.86, other 0.x versions and Pi 1.5 or later are not implicitly supported. Exact tested versions belong in development dependencies and the lockfile, not exact host-version requirements. See the [Pi 1.0 compatibility guide](../guides/pi-1-compatibility.md).
+Development fixtures are pinned to `1.5.0` with `typebox@1.3.27`. Minimum supported Pi `0.87.0` remains unchanged; The 1.x range covers 1.0–1.5; Pi 0.86, other 0.x versions and Pi 1.6 or later are not implicitly supported. Exact tested versions belong in development dependencies and the lockfile, not exact host-version requirements. See the [Pi 1.0 compatibility guide](../guides/pi-1-compatibility.md).
 
 To run packed installation smoke tests against the minimum or current version:
 
@@ -32,8 +32,8 @@ To run packed installation smoke tests against the minimum or current version:
 # Test packed install against pinned minimum (0.87.0):
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
 
-# Test packed install against current Pi 1.4.0:
-PI_TEST_VERSION=1.4.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+# Test packed install against current Pi 1.5.0:
+PI_TEST_VERSION=1.5.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 Published `@zihanw/pi-forge-subagents` 0.5.3 does not understand `tools.initial`. Its published dependency metadata does not include this source compatibility patch. A companion release can combine its pending features with Pi 1.0 adaptation, independently after the runtime floor is updated and the bubblewrap (`bwrap`) `/tmp` mount shadowing issue is resolved. This is an independent companion release, not a requirement to publish the packages simultaneously. See the [host-port compatibility note](../reference/subagent-host-port.md#tool-selection-compatibility).
@@ -54,6 +54,6 @@ Do not silently move unrelated legacy or prerelease tags. Publishing is not a ho
 
 ### Coherent fixtures versus fresh consumers
 
-Compatibility CI pins the four SDKs and, for 1.x, codemode/MCP/telemetry/chord to the same exact version and asserts resolved versions. These are explicit coherent fixtures, not ordinary fresh consumer resolution. By default the packed check keeps normal npm resolution and verifies the installed four-SDK family; the ordinary 1.4.0 jobs (all three platforms) are the unconstrained normal-consumer gate. Compatibility lanes set `PI_TEST_COHERENT_UPSTREAM=1`, which also pins codemode/MCP/telemetry/chord to the host version inside the packed consumers and is printed in the log. This is required because fresh unconstrained installs of Pi 1.0.1–1.1.x now resolve their caret ranges to newer, incompatible upstream releases (observed 2026-10-20: Pi 1.1.0 + pi-codemode 1.3.0 fails with a missing `MCP_TYPESCRIPT_PREAMBLE` export) independently of Forge. Fixture success on those lanes says Forge works on that host family; it does not claim that a fresh unconstrained install of that old Pi works.
+Compatibility CI pins the four SDKs and, for 1.x, codemode/MCP/telemetry/chord to the same exact version and asserts resolved versions. These are explicit coherent fixtures, not ordinary fresh consumer resolution. By default the packed check keeps normal npm resolution and verifies the installed four-SDK family; the ordinary 1.5.0 jobs (all three platforms) are the unconstrained normal-consumer gate. Compatibility lanes set `PI_TEST_COHERENT_UPSTREAM=1`, which also pins codemode/MCP/telemetry/chord to the host version inside the packed consumers and is printed in the log. This is required because fresh unconstrained installs of Pi 1.0.1–1.1.x now resolve their caret ranges to newer, incompatible upstream releases (observed 2026-10-20: Pi 1.1.0 + pi-codemode 1.3.0 fails with a missing `MCP_TYPESCRIPT_PREAMBLE` export) independently of Forge. Fixture success on those lanes says Forge works on that host family; it does not claim that a fresh unconstrained install of that old Pi works.
 
 Pi 1.3 pins its internal Pi dependencies exactly; normal 1.3 consumers resolve the four SDKs plus codemode/MCP/telemetry to 1.3.0 without a fixture overlay. Real-SDK regressions cover default/modifier transcript tool restoration, resumed Preset initial/allow/deny policy, Capability additions, and disabling a Preset back to the policy owner's saved startup baseline (with distinguishable external changes reconciled). Those 0.5.9 restoration changes did not change execution authorization or enable every default-active extension tool on resume. Forge 0.5.10 separately adds [effective-set execution authorization](../reference/capabilities.md#execution-authorization-forge-0510).

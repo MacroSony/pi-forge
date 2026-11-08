@@ -2,6 +2,24 @@
 
 [Documentation](../README.md) · [简体中文](../zh-CN/guides/pi-1-compatibility.md)
 
+## Forge 0.5.11: Pi 1.5
+
+Development SDKs are pinned to **1.5.0** and the four optional SDK peers expand to:
+
+```text
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0
+```
+
+Minimum Pi 0.87.0 and `typebox@1.3.27` remain unchanged; no host is dropped. Ordinary CI and normal packed consumers use 1.5.0; compatibility lanes keep every earlier version and add 1.4.0. The 0.5.10 and earlier sections below are historical records, not the current peer range.
+
+Pi 1.5 changes that affect Forge:
+
+- `@earendil-works/pi-ai` no longer re-exports TypeBox. Forge imports `Type` from `typebox` (an optional peer since 0.5.x). Inside Pi, the extension loader aliases both, so installed extensions were not affected; SDK consumers that import Forge directly were.
+- Tool argument validation uses pi-schema. Forge's `forge_capability` schema is plain JSON Schema and validates unchanged.
+- `pi.setActiveTools()` keeps surviving tools in place and appends newly activated ones, so restored tool lists can come back in a different order. Forge compares tool sets, not order.
+- The default system prompt was tightened. The **Pi Default** web-editor template, the example stacks and the `pi-docs` slot now use the Pi 1.5 wording on every supported host; existing Presets keep their saved text.
+- Extension changelogs: Pi 1.5 shows new `CHANGELOG.md` entries after an update.
+
 ## Forge 0.5.10: Pi 1.4
 
 Development SDKs are pinned to **1.4.0** and the four optional SDK peers expand to:
@@ -118,9 +136,9 @@ Published subagents 0.5.3 does not support `tools.initial`. Its pending feature 
 ```bash
 # Override both when testing a different host than the installed development SDK.
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.4.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.5.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 Without overrides, packed checks use the coherent installed SDK family and its declared TypeBox version, not a hardcoded historical pin. Both consumers use normal npm peer resolution and check the installed versions. An optional sibling, when present, uses its declared runtime dependency; this is not a test of an unreleased local runtime.
 
-Ordinary Linux/macOS/Windows CI uses pinned Pi 1.4.0; explicit compatibility lanes (0.87.0 through 1.3.0, including 1.0.2) and scheduled latest-Pi probes run on Linux. CI on the exact release commit remains a release gate; this document does not record its result or any real-provider testing.
+Ordinary Linux/macOS/Windows CI uses pinned Pi 1.5.0; explicit compatibility lanes (0.87.0 through 1.4.0, including 1.0.2) and scheduled latest-Pi probes run on Linux. CI on the exact release commit remains a release gate; this document does not record its result or any real-provider testing.

@@ -2,6 +2,24 @@
 
 [中文文档](../README.md) · [English](../../guides/pi-1-compatibility.md)
 
+## Forge 0.5.11：Pi 1.5
+
+开发 SDK 固定为 **1.5.0**，四个可选 SDK peer 范围扩大为：
+
+```text
+>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0
+```
+
+最低 Pi 0.87.0 与 `typebox@1.3.27` 保持不变，不放弃任何宿主。常规 CI 与普通打包消费者使用 1.5.0；兼容矩阵保留此前所有版本并增加 1.4.0。下面 0.5.10 及更早的章节是历史记录，不是当前 peer 范围。
+
+Pi 1.5 中影响 Forge 的变化：
+
+- `@earendil-works/pi-ai` 不再转导出 TypeBox。Forge 改为从 `typebox`（0.5.x 起就是可选 peer）导入 `Type`。在 Pi 内部，扩展加载器会为两者设置别名，所以已安装的扩展不受影响；直接导入 Forge 的 SDK 调用方会受影响。
+- 工具参数校验改用 pi-schema。Forge 的 `forge_capability` schema 是普通 JSON Schema，校验结果不变。
+- `pi.setActiveTools()` 保留仍启用工具的原有位置，新启用的工具追加到末尾，因此恢复后的工具列表顺序可能不同；Forge 按集合比较工具，不比较顺序。
+- 默认系统提示词更精简。Web 编辑器的 **Pi Default** 模板、示例预设和 `pi-docs` 插槽在所有受支持的宿主上都改用 Pi 1.5 的措辞；已有预设保留已保存的文本。
+- 扩展更新日志：Pi 1.5 在更新后会显示 `CHANGELOG.md` 中的新条目。
+
 ## Forge 0.5.10：Pi 1.4
 
 开发 SDK 固定为 **1.4.0**，四个可选 SDK peer 范围扩大为：
@@ -116,9 +134,9 @@ agent-core 实验 harness 的移除，不等于我们配套 runtime 使用的 co
 ```bash
 # 目标与已安装开发 SDK 不同时，请同时指定这两个版本。
 PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
-PI_TEST_VERSION=1.4.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
+PI_TEST_VERSION=1.5.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
 不指定时，packed 检查读取一致的已安装 SDK family 及其声明的 TypeBox 版本，不再硬编码旧 pin。两个消费者都使用正常 npm peer 解析，并核对实际安装版本。如果存在 optional sibling，使用它声明的 runtime 依赖；不把这当成未发布本地 runtime 的测试。
 
-常规 Linux/macOS/Windows CI 使用固定的 Pi 1.4.0；显式兼容（0.87.0 至 1.3.0，含 1.0.2）与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛；本文不记录其结果，也不代表已完成真实 provider 验收。
+常规 Linux/macOS/Windows CI 使用固定的 Pi 1.5.0；显式兼容（0.87.0 至 1.4.0，含 1.0.2）与 scheduled latest 探针运行在 Linux。目标 release commit 的 CI 仍是发布门槛；本文不记录其结果，也不代表已完成真实 provider 验收。

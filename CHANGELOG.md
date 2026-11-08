@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.11] - Unreleased
+
+### Changed
+
+- Support Pi 1.5. Optional SDK peers expand to `>=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0`, development SDKs are pinned to 1.5.0, and Pi 1.4.0 joins the compatibility lanes. Minimum Pi 0.87.0 and TypeBox 1.3.27 remain unchanged.
+- The **Pi Default** web-editor template, the example stacks and the `pi-docs` slot use Pi 1.5's default prompt wording. Saved Presets are unchanged.
+
+### Fixed
+
+- Forge works with SDK consumers on Pi 1.5, where `@earendil-works/pi-ai` no longer exports TypeBox's `Type`.
+- The `tools` and `tool-guidelines` slots no longer list tools whose declarations a `prepareLoadout` hook hides (for example tools reached only through codemode), matching Pi's default prompt.
+- Development dependencies updated (vite 8.3.6, vue 3.5.45); `npm audit` reports no findings.
+
 ## [0.5.10] - 2026-10-31
 
 - Support Pi 1.4: expand optional SDK peers through `<1.5.0`, pin development SDKs to 1.4.0, and retain Pi 1.3.0 as an explicit historical CI lane. Minimum Pi 0.87.0 and TypeBox 1.3.27 remain unchanged; Pi 1.5+ is not implied.
