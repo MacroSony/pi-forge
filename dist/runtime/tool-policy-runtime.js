@@ -234,6 +234,7 @@ export function createToolPolicyRuntime(pi, getActiveStack) {
             if (snippet)
                 toolSnippets[name] = snippet;
         }
+        // `hiddenTools` first appears in Pi 1.0.4 SDK types; older hosts never set it.
         const hiddenTools = new Set(base.hiddenTools ?? []);
         const mappedGuidelines = toolInfos
             .filter((tool) => {
