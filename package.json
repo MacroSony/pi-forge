@@ -1,6 +1,6 @@
 {
 	"name": "@zihanw/pi-forge",
-	"version": "0.5.10",
+	"version": "0.5.11",
 	"description": "Pi extension for editable context presets, one-shot agent profiles, tool policy, and request debugging.",
 	"repository": {
 		"type": "git",
@@ -45,10 +45,10 @@
 		]
 	},
 	"peerDependencies": {
-		"@earendil-works/pi-agent-core": ">=1.2.0 <1.6.0",
-		"@earendil-works/pi-ai": ">=1.2.0 <1.6.0",
-		"@earendil-works/pi-coding-agent": ">=1.2.0 <1.6.0",
-		"@earendil-works/pi-tui": ">=1.2.0 <1.6.0",
+		"@earendil-works/pi-agent-core": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0",
+		"@earendil-works/pi-ai": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0",
+		"@earendil-works/pi-coding-agent": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0",
+		"@earendil-works/pi-tui": ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0",
 		"typebox": "*"
 	},
 	"peerDependenciesMeta": {

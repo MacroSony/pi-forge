@@ -58,9 +58,9 @@ const hostDependencies = [
 	"typebox",
 ];
 for (const dependency of hostDependencies) {
-	// Forge 0.6.0 supports Pi 1.2+ (idle custom wake-ups carry the preset System). Keep peers host-provided and
+	// The transcript bridge needs Pi 0.87 canonical projection APIs. Keep peers host-provided and
 	// optional, with the tested compatibility lanes (not private SDK installations).
-	const expectedRange = dependency === "typebox" ? "*" : ">=1.2.0 <1.6.0";
+	const expectedRange = dependency === "typebox" ? "*" : ">=0.87.0 <0.88.0 || 0.99.0 || 0.99.1 || 0.99.2 || >=1.0.0 <1.6.0";
 	if (packageJson.peerDependencies?.[dependency] !== expectedRange) {
 		failures.push(`host dependency must be an optional peer with range ${expectedRange}: ${dependency}`);
 	}
