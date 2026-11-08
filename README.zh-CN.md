@@ -16,13 +16,13 @@ pi-forge 为 [Pi](https://github.com/earendil-works/pi) 提供可视化上下文
 
 ## 安装与第一次使用
 
-Node.js 需要 **22.19 或更高版本**。Forge **0.5.10** 支持 Pi **0.87.x、0.99.0–0.99.2 与 1.0–1.4**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
+Node.js 需要 **22.19 或更高版本**。Forge **0.5.11** 支持 Pi **0.87.x、0.99.0–0.99.2 与 1.0–1.5**，见[兼容与迁移说明](docs/zh-CN/guides/pi-1-compatibility.md)。
 
 Forge 需要 **上游 Pi**。oh-my-pi 等缺少 `systemPromptOptions` / `context_with_system` 的分支仍不受支持。检测到缺失的必要提示词输入后，Forge 每个会话只警告一次，拒绝新的预设/Profile 应用，并跳过预设编译与预览（#2）。Forge 仍独立应用其工具策略；检测不会中止 provider 请求派发，也不会回滚此前的选择或设置。
 
 全新会话的自动 Profile 设置及预设/工具选择可能在**首轮提示词兼容性得到观察之前**生效。这不是通用的启动检测：有效的提示词选项或成功注册 hook 都不能证明 `context_with_system` 会被调用。可用 `/preset use none` 显式禁用预设；新会话会重置检测锁定状态。详见[不受支持宿主的边界](docs/zh-CN/guides/pi-1-compatibility.md#不受支持宿主的边界)。
 
-> **版本提示：** 本文介绍即将发布的 Forge **0.5.10** 兼容更新（支持 Pi 1.4），延续 0.5.9 的 Pi 1.1–1.3 支持与不受支持宿主处理修复（#2、#3）。旧安装包不会自动获得扩展后的 peer 元数据；工具策略和 Capability 执行语义保持不变。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
+> **版本提示：** 本文介绍 Forge **0.5.11** 兼容更新：在 0.5.10 的 Pi 1.4 支持与工具执行门禁基础上，增加 Pi 1.5 支持。旧安装包不会自动获得扩展后的 peer 元数据；工具策略和 Capability 执行语义保持不变。能力与可配置默认工具需要 0.5.5；可选 subagents 另有[兼容要求（英文）](docs/reference/subagent-host-port.md#tool-selection-compatibility)。
 
 ```bash
 pi install npm:@zihanw/pi-forge
