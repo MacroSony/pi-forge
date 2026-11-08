@@ -16,7 +16,7 @@ In 0.x development, breaking changes may occur in minor releases and will be exp
 ### Fixed
 
 - Forge works with SDK consumers on Pi 1.5, where `@earendil-works/pi-ai` no longer exports TypeBox's `Type`.
-- The `tools` and `tool-guidelines` slots no longer list tools whose declarations a `prepareLoadout` hook hides (for example tools reached only through codemode), matching Pi's default prompt.
+- The `tools` and `tool-guidelines` slots no longer list tools whose declarations a `prepareLoadout` hook hides (for example tools reached only through codemode), matching Pi's default prompt. This needs Pi 1.0.4 or later; older hosts do not report hidden declarations to extensions, and their own default prompt lists those tools too.
 - Development dependencies updated (vite 8.3.6, vue 3.5.45); `npm audit` reports no findings.
 
 ## [0.5.10] - 2026-10-31

@@ -6,10 +6,16 @@ import test from "node:test";
 import { Type } from "typebox";
 
 import { createCapabilityAgentHarness } from "./helpers/capability-agent-harness.ts";
+import { resolveHostFamilyVersion } from "../scripts/packed-versions.ts";
 
 const { initTheme } = await import("@earendil-works/pi-coding-agent");
 initTheme();
 const { getCurrentSystemPrompt } = await import("@earendil-works/pi-ai");
+const [major, minor, patch] = resolveHostFamilyVersion(process.cwd()).split(".").map(Number);
+// Pi 1.0.4 first passes BuildSystemPromptOptions.hiddenTools. Older hosts list hidden
+// declarations in their own default prompt too (0.87 has no prepareLoadout at all), and
+// Forge matches the host there.
+const hostReportsHiddenTools = major > 1 || (major === 1 && (minor > 0 || patch >= 4));
 
 test("stock tool slots follow prepareLoadout hiddenDeclarations in a real session", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pi-forge-hidden-declarations-"));
@@ -42,7 +48,8 @@ test("stock tool slots follow prepareLoadout hiddenDeclarations in a real sessio
 		const system = getCurrentSystemPrompt(h.streamContexts.at(-1)!.messages) ?? "";
 		assert.match(system, /- orchestrator: Run hidden tools/);
 		assert.match(system, /- fake_read:/);
-		assert.doesNotMatch(system, /- fake_write:/, system);
+		if (hostReportsHiddenTools) assert.doesNotMatch(system, /- fake_write:/, system);
+		else assert.match(system, /- fake_write:/, system);
 		assert.ok(h.getActiveToolNames().includes("fake_write"), "the hidden tool stays active and callable");
 	} finally {
 		await h.dispose();
