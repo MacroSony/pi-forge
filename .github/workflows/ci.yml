@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "17 9 * * 1"
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -37,42 +41,26 @@ jobs:
           node-version: 22.19.0
           cache: npm
       - run: npm ci
-      - run: npm run verify
+      # Platform-sensitive checks only; browser, client, docs and package checks
+      # are platform-independent and run once in `verify`.
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run check:dist
+      - run: npm run check:packed
 
   compatibility:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        # Ordinary jobs cover pinned dev 1.5.0. Pushes and pull requests test
+        # representative historic hosts (minimum, last 0.99, the 1.0.4
+        # hiddenTools and 1.2 sendMessage boundaries, previous minor); the
+        # weekly schedule and manual runs cover every supported historic host.
+        pi-version: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["0.87.0","0.87.1","0.99.0","0.99.1","0.99.2","1.0.0","1.0.1","1.0.2","1.0.4","1.1.0","1.2.0","1.3.0","1.4.0"]' || '["0.87.0","0.99.2","1.0.4","1.2.0","1.4.0"]') }}
         include:
-          # Ordinary jobs cover pinned dev 1.5.0.
-          # Compatibility matrix explicitly covers supported historic host versions.
           - pi-version: "0.87.0"
             typebox-version: "1.3.7"
-          - pi-version: "0.87.1"
-            typebox-version: "1.3.27"
-          - pi-version: "0.99.0"
-            typebox-version: "1.3.27"
-          - pi-version: "0.99.1"
-            typebox-version: "1.3.27"
-          - pi-version: "0.99.2"
-            typebox-version: "1.3.27"
-          - pi-version: "1.0.0"
-            typebox-version: "1.3.27"
-          - pi-version: "1.0.1"
-            typebox-version: "1.3.27"
-          - pi-version: "1.0.2"
-            typebox-version: "1.3.27"
-          - pi-version: "1.0.4"
-            typebox-version: "1.3.27"
-          - pi-version: "1.1.0"
-            typebox-version: "1.3.27"
-          - pi-version: "1.2.0"
-            typebox-version: "1.3.27"
-          - pi-version: "1.3.0"
-            typebox-version: "1.3.27"
-          - pi-version: "1.4.0"
-            typebox-version: "1.3.27"
     env:
       CHROME_PATH: /usr/bin/google-chrome
     steps:
@@ -97,7 +85,7 @@ jobs:
             @earendil-works/pi-ai@${{ matrix.pi-version }} \
             @earendil-works/pi-coding-agent@${{ matrix.pi-version }} \
             @earendil-works/pi-tui@${{ matrix.pi-version }} \
-            typebox@${{ matrix.typebox-version }} $EXTRA_PINS
+            typebox@${{ matrix.typebox-version || '1.3.27' }} $EXTRA_PINS
           EXPECTED_PI_VERSION=${{ matrix.pi-version }} node --input-type=module -e '
             import assert from "node:assert/strict";
             import { readFileSync } from "node:fs";
@@ -114,11 +102,18 @@ jobs:
       - name: Run verification
         env:
           PI_TEST_VERSION: ${{ matrix.pi-version }}
-          TYPEBOX_TEST_VERSION: ${{ matrix.typebox-version }}
+          TYPEBOX_TEST_VERSION: ${{ matrix.typebox-version || '1.3.27' }}
           # Historical 1.x hosts: pin Pi's own upstream packages in packed consumers too
           # (their caret ranges now resolve to incompatible newer releases).
           PI_TEST_COHERENT_UPSTREAM: "1"
-        run: npm run verify
+          FULL_RUN: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        # Host-sensitive checks on every run; the full suite on scheduled/manual runs.
+        run: |
+          if [ "$FULL_RUN" = "true" ]; then
+            npm run verify
+          else
+            npm test && npm run typecheck && npm run check:packed
+          fi
 
   latest-pi:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

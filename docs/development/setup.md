@@ -79,7 +79,7 @@ PI_TEST_VERSION=0.87.0 TYPEBOX_TEST_VERSION=1.3.7 npm run check:packed
 PI_TEST_VERSION=1.5.0 TYPEBOX_TEST_VERSION=1.3.27 npm run check:packed
 ```
 
-Ordinary Linux/macOS/Windows CI uses Pi 1.5.0; older supported versions, including minimum 0.87.0 and Pi 1.0.0/1.0.1/1.0.2/1.0.4/1.1.0/1.2.0/1.3.0/1.4.0, are explicit Linux compatibility lanes; passing CI on the exact release commit is a release gate (its result is not recorded in this document).
+Ordinary Linux/macOS/Windows CI uses Pi 1.5.0. Linux runs the full `npm run verify`; macOS and Windows run the platform-sensitive part (unit tests, typecheck, `check:dist`, `check:packed`). Older supported versions are explicit Linux compatibility lanes running the host-sensitive checks (unit tests, typecheck, `check:packed`): pushes and pull requests cover representative hosts (minimum 0.87.0, 0.99.2, 1.0.4, 1.2.0, 1.4.0), while the weekly schedule and manual `workflow_dispatch` runs cover every supported version (0.87.0/0.87.1, 0.99.0–0.99.2, 1.0.0/1.0.1/1.0.2/1.0.4, 1.1.0, 1.2.0, 1.3.0, 1.4.0) with the full suite. Passing CI on the exact release commit is a release gate (its result is not recorded in this document); a release that changes the supported host range also needs a passing manual full run on that commit.
 
 Document the tested range separately from peer constraints. Pi-coupled experimental subagent capabilities must preflight against the actual host and fail closed with a precise compatibility diagnostic when required APIs are unavailable; ordinary stacks and profiles should remain usable.
 
