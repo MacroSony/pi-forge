@@ -109,7 +109,7 @@ function redactPayload(value, depth = 0) {
  */
 function redactPayloadFaithfully(value, ancestors = new Set(), path = {}) {
     if (typeof value === "string")
-        return elideDataUrl(value) ?? value;
+        return path.ordinary ? value : elideDataUrl(value) ?? value;
     if (value === null || typeof value !== "object")
         return value;
     if (isBinary(value))
@@ -127,7 +127,7 @@ function redactPayloadFaithfully(value, ancestors = new Set(), path = {}) {
             result[key] = "[redacted]";
             continue;
         }
-        const mediaLabel = typeof raw === "string" ? base64MediaLabel(path, record, key) : undefined;
+        const mediaLabel = typeof raw === "string" && !path.ordinary ? base64MediaLabel(path, record, key) : undefined;
         if (mediaLabel !== undefined) {
             const elided = elideBase64Media(raw, mediaLabel);
             if (elided !== undefined) {
@@ -135,7 +135,11 @@ function redactPayloadFaithfully(value, ancestors = new Set(), path = {}) {
                 continue;
             }
         }
-        result[key] = redactPayloadFaithfully(raw, nextAncestors, { key, parentType: record.type });
+        result[key] = redactPayloadFaithfully(raw, nextAncestors, {
+            key,
+            parentType: record.type,
+            ordinary: path.ordinary || isOrdinarySubtree(path, record, key),
+        });
     }
     return result;
 }
@@ -168,12 +172,30 @@ const DATA_URL_BASE64_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
 const BASE64_CHARSET = /^[A-Za-z0-9+/=_\-\r\n]*$/;
 const MEDIA_FINGERPRINT_SAMPLES = 4_096;
 /**
+ * Subtrees that hold caller-defined data rather than request media: tool
+ * definitions and tool-call arguments (Anthropic `tool_use.input`, Gemini
+ * `functionCall.args`, Bedrock `toolUse.input`). Their contents are kept
+ * verbatim even when they happen to look like media blocks.
+ */
+function isOrdinarySubtree(path, record, key) {
+    if (key === "tools" || key === "functionDeclarations" || key === "tool_config" || key === "toolConfig")
+        return true;
+    if (key === "input" && (record.type === "tool_use" || record.type === "server_tool_use"))
+        return true;
+    if (key === "args" && path.key === "functionCall")
+        return true;
+    if (key === "input" && path.key === "toolUse")
+        return true;
+    return false;
+}
+/**
  * Known provider request paths that carry bare base64 media. Returns a label
  * (MIME type when declared) or undefined for everything else:
  * - Anthropic image/document blocks: `{ type: "image", source: { type: "base64", media_type, data } }`
  * - Gemini parts: `{ inlineData: { mimeType, data } }` (also `inline_data` / `mime_type`)
  * - OpenAI chat audio: `{ type: "input_audio", input_audio: { data, format } }`
  * - image assets: `{ type: "image", format, data_base64 }`
+ * - Pi's native image content (pi-messages providers): `{ type: "image", mimeType, data }`
  */
 function base64MediaLabel(path, record, key) {
     const text = (value, fallback) => typeof value === "string" && value ? value : fallback;
@@ -184,6 +206,8 @@ function base64MediaLabel(path, record, key) {
             return text(record.mimeType ?? record.mime_type, "base64");
         if (path.key === "input_audio" && path.parentType === "input_audio")
             return `audio/${text(record.format, "base64")}`;
+        if (record.type === "image" && typeof record.mimeType === "string")
+            return text(record.mimeType, "base64");
     }
     if (key === "data_base64" && record.type === "image")
         return text(record.format, "image");

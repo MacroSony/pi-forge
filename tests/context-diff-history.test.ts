@@ -504,3 +504,44 @@ test("binary payloads are elided in the display capture and SharedArrayBuffer ke
 	assert.match(shared(1), /binary data omitted · 1000 bytes/);
 	assert.notEqual(shared(1), shared(2));
 });
+
+test("media-shaped JSON inside tool arguments and tool definitions is never elided", () => {
+	const hex = "deadbeef".repeat(25_000);
+	const shaped = (data: string) => ({
+		inlineData: { data },
+		block: { type: "image", source: { type: "base64", media_type: "image/png", data } },
+		native: { type: "image", mimeType: "image/png", data },
+		url: `data:image/png;base64,${data}`,
+	});
+	const payload = (data: string) => ({
+		model: "m",
+		messages: [{ role: "assistant", content: [{ type: "tool_use", id: "t", name: "save", input: shaped(data) }] }],
+		contents: [{ role: "model", parts: [{ functionCall: { name: "save", args: shaped(data) } }] }],
+		bedrock: [{ toolUse: { toolUseId: "t", name: "save", input: shaped(data) } }],
+		tools: [{ name: "save", input_schema: { type: "object", examples: [shaped(data)] } }],
+	});
+	const parsed = JSON.parse(createProviderPayloadCaptureWithSerialization(payload(hex)).serializedPayload);
+	for (const args of [parsed.messages[0].content[0].input, parsed.contents[0].parts[0].functionCall.args, parsed.bedrock[0].toolUse.input, parsed.tools[0].input_schema.examples[0]]) {
+		assert.deepEqual(args, shaped(hex));
+	}
+	const history = createContextDiffHistory();
+	appendPayload(history, payload(hex), "2025-01-01T00:00:00.000Z");
+	const diff = appendPayload(history, payload(`d${"f"}${hex.slice(2)}`), "2025-01-01T00:01:00.000Z");
+	assert.ok(diff!.blocks.some((block) => block.status !== "same"), "an edit inside tool arguments must show up in the diff");
+});
+
+test("Pi native image content (pi-messages providers) is elided", () => {
+	const png = fakeBase64(9, 60_000);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({
+		model: "m",
+		context: {
+			messages: [
+				{ role: "user", content: [{ type: "text", text: "look" }, { type: "image", mimeType: "image/png", data: png }] },
+				{ role: "toolResult", toolCallId: "c", content: [{ type: "image", mimeType: "image/jpeg", data: png }] },
+			],
+		},
+	});
+	assert.ok(!serializedPayload.includes(png));
+	assert.match(serializedPayload, /image\/png data omitted · 60000 chars/);
+	assert.match(serializedPayload, /image\/jpeg data omitted · 60000 chars/);
+});
