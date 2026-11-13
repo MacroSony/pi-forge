@@ -5,6 +5,7 @@ import {
 	appendContextDiffCapture,
 	attachContextDiffUsage,
 	CONTEXT_DIFF_HISTORY_LIMIT,
+	CONTEXT_DIFF_HISTORY_MAX_CHARS,
 	createContextDiffHistory,
 	getContextDiffView,
 	getLatestContextDiffUsage,
@@ -312,4 +313,84 @@ test("provider usage exposes real prompt/cache counts without confusing estimate
 	assert.equal(view.turns[2]!.usage?.cacheHitRatio, 0);
 	assert.equal(view.latest?.usage?.cacheHitRatio, 0);
 	assert.equal(view.latest?.diff.prefixRatio, view.latestDiff?.prefixRatio);
+});
+
+function fakeBase64(seed: number, length: number): string {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	let state = seed >>> 0;
+	let out = "";
+	for (let index = 0; index < length; index++) {
+		state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+		out += alphabet[state >>> 26];
+	}
+	return out;
+}
+
+function appendPayload(history: ReturnType<typeof createContextDiffHistory>, payload: unknown, capturedAt: string) {
+	const { capture: displayCapture, serializedPayload } = createProviderPayloadCaptureWithSerialization(payload, { stackId: "stack" });
+	return appendContextDiffCapture(history, { ...displayCapture, capturedAt, serializedPayload });
+}
+
+test("Responses input images are elided from snapshots but still change block identity", () => {
+	const imageA = `data:image/png;base64,${fakeBase64(1, 200_000)}`;
+	const imageB = `data:image/png;base64,${fakeBase64(2, 200_000)}`;
+	const payload = (image: string) => ({
+		model: "gpt-6-astra",
+		instructions: "system",
+		input: [
+			{ role: "user", content: [{ type: "input_text", text: "看一下战况" }] },
+			{ type: "function_call_output", call_id: "c1", output: [{ type: "input_image", image_url: image }] },
+		],
+	});
+	const history = createContextDiffHistory();
+	appendPayload(history, payload(imageA), "2025-01-01T00:00:00.000Z");
+	const same = appendPayload(history, payload(imageA), "2025-01-01T00:01:00.000Z");
+	const changed = appendPayload(history, payload(imageB), "2025-01-01T00:02:00.000Z");
+
+	const inputBlock = history.turns.at(-1)!.blocks.find((block) => block.key === "request-input")!;
+	assert.ok(inputBlock.text.length < 2_000, `input block retained ${inputBlock.text.length} chars`);
+	assert.doesNotMatch(inputBlock.text, /base64,/);
+	assert.match(inputBlock.text, /image\/png data omitted · 200022 chars · fp [0-9a-f]{8}/);
+	assert.equal(same!.blocks.find((block) => block.after?.key === "request-input")!.status, "same");
+	assert.equal(changed!.blocks.find((block) => block.after?.key === "request-input")!.status, "modified");
+});
+
+test("bare base64 media (Anthropic/Gemini style) is elided from snapshots", () => {
+	const data = fakeBase64(3, 50_000);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({
+		model: "claude",
+		messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }] }],
+	});
+	assert.ok(!serializedPayload.includes(data));
+	assert.match(serializedPayload, /base64 data omitted · 50000 chars · fp [0-9a-f]{8}/);
+});
+
+test("ordinary long text is kept verbatim in the faithful serialization", () => {
+	const text = "第一行 ordinary prose, with spaces.\n".repeat(1_000);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({ model: "m", messages: [{ role: "user", content: text }] });
+	assert.equal(JSON.parse(serializedPayload).messages[0].content, text);
+});
+
+test("screenshot-heavy sessions keep retained history bounded", () => {
+	const history = createContextDiffHistory();
+	const input: unknown[] = [];
+	for (let turn = 0; turn < 40; turn++) {
+		input.push({ type: "function_call_output", call_id: `c${turn}`, output: [{ type: "input_image", image_url: `data:image/png;base64,${fakeBase64(turn, 100_000)}` }] });
+		appendPayload(history, { model: "gpt-6-astra", input: [...input] }, `2025-01-01T00:${String(turn).padStart(2, "0")}:00.000Z`);
+	}
+	const retained = history.turns.reduce((sum, turn) => sum + turn.blocks.reduce((inner, block) => inner + block.chars, 0), 0);
+	assert.equal(history.turns.length, CONTEXT_DIFF_HISTORY_LIMIT);
+	assert.ok(retained < 2_000_000, `retained ${retained} chars`);
+});
+
+test("history evicts old turns past the character budget but keeps the latest two", () => {
+	const history = createContextDiffHistory();
+	const huge = "x ".repeat(Math.ceil(CONTEXT_DIFF_HISTORY_MAX_CHARS / 8));
+	for (let turn = 0; turn < 5; turn++) {
+		appendPayload(history, { model: "m", messages: [{ role: "user", content: `${turn}${huge}` }] }, `2025-01-01T00:0${turn}:00.000Z`);
+	}
+	const retained = history.turns.reduce((sum, turn) => sum + turn.blocks.reduce((inner, block) => inner + block.chars, 0), 0);
+	assert.ok(retained <= CONTEXT_DIFF_HISTORY_MAX_CHARS, `retained ${retained} chars`);
+	assert.ok(history.turns.length >= 2 && history.turns.length < 5, `kept ${history.turns.length} turns`);
+	assert.ok(history.latestDiff);
 });

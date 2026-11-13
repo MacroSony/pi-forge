@@ -99,9 +99,14 @@ function redactPayload(value, depth = 0) {
     }
     return result;
 }
-/** Redact credentials while retaining the complete JSON-compatible request. */
+/**
+ * Redact credentials and elide inline media while retaining the complete
+ * JSON-compatible request structure. Every other string is kept verbatim.
+ */
 function redactPayloadFaithfully(value, ancestors = new Set()) {
-    if (typeof value === "string" || value === null || typeof value !== "object")
+    if (typeof value === "string")
+        return elideInlineMedia(value) ?? value;
+    if (value === null || typeof value !== "object")
         return value;
     if (ancestors.has(value))
         return "[pi-forge: circular reference]";
@@ -139,5 +144,51 @@ function redactLongString(value) {
     if (value.length > 12_000)
         return `${value.slice(0, 12_000)}\n[pi-forge: string truncated from ${value.length} chars]`;
     return value;
+}
+const DATA_URL_BASE64_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
+const BASE64_LIKE = /^[A-Za-z0-9+/=_\-\r\n]+$/;
+const INLINE_BASE64_MIN_CHARS = 8_000;
+const MEDIA_FINGERPRINT_SAMPLES = 4_096;
+/**
+ * Replace inline binary payloads with a bounded placeholder. Returns undefined
+ * for ordinary strings. Provider payloads carry images, audio and files as
+ * `data:<mime>;base64,...` URLs (OpenAI, Codex Responses) or as bare base64
+ * (Anthropic `source.data`, Gemini `inlineData.data`).
+ */
+export function elideInlineMedia(value) {
+    const dataUrl = DATA_URL_BASE64_PREFIX.exec(value.slice(0, 256));
+    if (dataUrl) {
+        const mime = dataUrl[1] || "application/octet-stream";
+        return `[pi-forge: ${mime} data omitted · ${value.length} chars · fp ${mediaFingerprint(value)}]`;
+    }
+    if (value.length >= INLINE_BASE64_MIN_CHARS && BASE64_LIKE.test(value)) {
+        return `[pi-forge: base64 data omitted · ${value.length} chars · fp ${mediaFingerprint(value)}]`;
+    }
+    return undefined;
+}
+/**
+ * Cheap content fingerprint for large blobs: FNV-1a over an evenly spaced
+ * sample plus the tail. Hashing every byte of every image on every request
+ * would cost tens of millions of iterations per turn in long screenshot
+ * sessions; a sample is enough to tell different media apart for diffing.
+ */
+function mediaFingerprint(value) {
+    let hash = 0x811c9dc5;
+    const mix = (code) => {
+        hash ^= code;
+        hash = Math.imul(hash, 0x01000193);
+    };
+    if (value.length <= MEDIA_FINGERPRINT_SAMPLES * 2) {
+        for (let index = 0; index < value.length; index++)
+            mix(value.charCodeAt(index));
+    }
+    else {
+        const stride = value.length / MEDIA_FINGERPRINT_SAMPLES;
+        for (let sample = 0; sample < MEDIA_FINGERPRINT_SAMPLES; sample++)
+            mix(value.charCodeAt(Math.floor(sample * stride)));
+        for (let index = value.length - 64; index < value.length; index++)
+            mix(value.charCodeAt(index));
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
 }
 //# sourceMappingURL=payload-capture.js.map

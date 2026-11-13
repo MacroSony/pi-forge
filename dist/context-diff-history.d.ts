@@ -7,6 +7,12 @@
 import { type TurnDiff, type TurnSnapshot } from "./context-diff.ts";
 import { type ContextDiffCapture } from "./context-diff-snapshot.ts";
 export declare const CONTEXT_DIFF_HISTORY_LIMIT = 20;
+/**
+ * Upper bound on retained snapshot text across all turns (UTF-16 code units).
+ * Very large contexts keep fewer turns instead of growing without bound; the
+ * latest two turns are always kept so the current diff stays available.
+ */
+export declare const CONTEXT_DIFF_HISTORY_MAX_CHARS = 16000000;
 export interface ContextDiffHistory {
     turns: TurnSnapshot[];
     latestDiff?: TurnDiff;

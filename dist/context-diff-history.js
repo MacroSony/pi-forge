@@ -7,6 +7,13 @@
 import { diffTurns, turnApproxTokens } from "./context-diff.js";
 import { extractTurnSnapshot } from "./context-diff-snapshot.js";
 export const CONTEXT_DIFF_HISTORY_LIMIT = 20;
+/**
+ * Upper bound on retained snapshot text across all turns (UTF-16 code units).
+ * Very large contexts keep fewer turns instead of growing without bound; the
+ * latest two turns are always kept so the current diff stays available.
+ */
+export const CONTEXT_DIFF_HISTORY_MAX_CHARS = 16_000_000;
+const CONTEXT_DIFF_HISTORY_MIN_TURNS = 2;
 export function createContextDiffHistory() {
     return {
         turns: [],
@@ -26,10 +33,14 @@ export function appendContextDiffCapture(history, capture) {
     });
     const previous = history.turns.at(-1);
     history.turns.push(snapshot);
-    if (history.turns.length > CONTEXT_DIFF_HISTORY_LIMIT) {
+    let retainedChars = history.turns.reduce((sum, turn) => sum + turnChars(turn), 0);
+    while (history.turns.length > CONTEXT_DIFF_HISTORY_MIN_TURNS
+        && (history.turns.length > CONTEXT_DIFF_HISTORY_LIMIT || retainedChars > CONTEXT_DIFF_HISTORY_MAX_CHARS)) {
         const evicted = history.turns.shift();
-        if (evicted)
-            history.usageByTurnId.delete(evicted.turnId);
+        if (!evicted)
+            break;
+        retainedChars -= turnChars(evicted);
+        history.usageByTurnId.delete(evicted.turnId);
     }
     const diff = diffTurns(previous, snapshot);
     history.latestDiff = diff;
@@ -89,5 +100,8 @@ export function getContextDiffView(history) {
         }
         : null;
     return { turns, latest, latestDiff: history.latestDiff ?? null };
+}
+function turnChars(turn) {
+    return turn.blocks.reduce((sum, block) => sum + block.chars, 0);
 }
 //# sourceMappingURL=context-diff-history.js.map
