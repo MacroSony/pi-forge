@@ -350,7 +350,7 @@ test("Responses input images are elided from snapshots but still change block id
 	const inputBlock = history.turns.at(-1)!.blocks.find((block) => block.key === "request-input")!;
 	assert.ok(inputBlock.text.length < 2_000, `input block retained ${inputBlock.text.length} chars`);
 	assert.doesNotMatch(inputBlock.text, /base64,/);
-	assert.match(inputBlock.text, /image\/png data omitted · 200022 chars · fp [0-9a-f]{8}/);
+	assert.match(inputBlock.text, /image\/png data omitted · 200022 chars · sha1 [0-9a-f]{16}/);
 	assert.equal(same!.blocks.find((block) => block.after?.key === "request-input")!.status, "same");
 	assert.equal(changed!.blocks.find((block) => block.after?.key === "request-input")!.status, "modified");
 });
@@ -362,7 +362,7 @@ test("bare base64 media (Anthropic/Gemini style) is elided from snapshots", () =
 		messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }] }],
 	});
 	assert.ok(!serializedPayload.includes(data));
-	assert.match(serializedPayload, /image\/png data omitted · 50000 chars · fp [0-9a-f]{8}/);
+	assert.match(serializedPayload, /image\/png data omitted · 50000 chars · sha1 [0-9a-f]{16}/);
 });
 
 test("structured media fields are elided whatever their size", () => {
@@ -386,7 +386,7 @@ test("binary byte arrays (Bedrock image source.bytes) are elided instead of seri
 		messages: [{ role: "user", content: [{ image: { format: "png", source: { bytes } } }] }],
 	});
 	assert.ok(serializedPayload.length < 2_000, `serialized ${serializedPayload.length} chars`);
-	assert.match(serializedPayload, /binary data omitted · 100000 bytes · fp [0-9a-f]{8}/);
+	assert.match(serializedPayload, /binary data omitted · 100000 bytes · sha1 [0-9a-f]{16}/);
 });
 
 test("long plain strings that only look like base64 are kept verbatim and still diff", () => {
@@ -544,4 +544,34 @@ test("Pi native image content (pi-messages providers) is elided", () => {
 	assert.ok(!serializedPayload.includes(png));
 	assert.match(serializedPayload, /image\/png data omitted · 60000 chars/);
 	assert.match(serializedPayload, /image\/jpeg data omitted · 60000 chars/);
+});
+
+test("any edit to elided media is visible to the diff", () => {
+	const image = fakeBase64(10, 2_000_000);
+	const payload = (data: string) => ({ model: "m", input: [{ role: "user", content: [{ type: "input_image", image_url: `data:image/png;base64,${data}` }] }] });
+	const history = createContextDiffHistory();
+	appendPayload(history, payload(image), "2025-01-01T00:00:00.000Z");
+	const index = 1_234_567;
+	const edited = `${image.slice(0, index)}${image[index] === "A" ? "B" : "A"}${image.slice(index + 1)}`;
+	const diff = appendPayload(history, payload(edited), "2025-01-01T00:01:00.000Z");
+	assert.equal(diff!.blocks.find((block) => block.after?.key === "request-input")!.status, "modified");
+});
+
+test("Pi native tool calls, tool definitions and Responses custom tool input are kept verbatim", () => {
+	const hex = "deadbeef".repeat(1_000);
+	const native = { type: "image", mimeType: "image/png", data: hex };
+	const url = `data:image/png;base64,${hex}`;
+	const parsed = JSON.parse(createProviderPayloadCaptureWithSerialization({
+		model: "m",
+		context: {
+			messages: [
+				{ role: "system", content: "s", toolsAdded: [{ name: "save", parameters: { type: "object", examples: [native] } }] },
+				{ role: "assistant", content: [{ type: "toolCall", id: "c", name: "save", arguments: { template: native, url } }] },
+			],
+		},
+		input: [{ type: "custom_tool_call", call_id: "c", name: "grammar", input: url }],
+	}).serializedPayload);
+	assert.deepEqual(parsed.context.messages[0].toolsAdded[0].parameters.examples[0], native);
+	assert.deepEqual(parsed.context.messages[1].content[0].arguments, { template: native, url });
+	assert.equal(parsed.input[0].input, url);
 });

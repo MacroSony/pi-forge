@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { WebEditorPayloadCapture } from "./web-editor/index.ts";
 
 const SAFE_TOKEN_METADATA_KEYS = new Set([
@@ -25,8 +26,8 @@ export interface ProviderPayloadCaptureWithSerialization {
 	 * Secret-redacted JSON without the display capture's lossy limits. Inline
 	 * media in standard provider fields (base64 data URLs, base64 `data` of
 	 * media blocks, binary byte arrays) is replaced by a compact placeholder
-	 * carrying its type, length and a sampled fingerprint. Other strings are
-	 * kept verbatim.
+	 * carrying its type, length and a content hash. Other strings are kept
+	 * verbatim.
 	 */
 	serializedPayload: string;
 }
@@ -204,20 +205,26 @@ function redactLongString(value: string): string {
 
 const DATA_URL_BASE64_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
 const BASE64_CHARSET = /^[A-Za-z0-9+/=_\-\r\n]*$/;
-const MEDIA_FINGERPRINT_SAMPLES = 4_096;
 /**
  * Subtrees that hold caller-defined data rather than request media: tool
- * definitions and tool-call arguments (Anthropic `tool_use.input`, Gemini
+ * definitions and tool-call arguments (Anthropic `tool_use.input`, Pi native
+ * `toolCall.arguments`, Responses `custom_tool_call.input`, Gemini
  * `functionCall.args`, Bedrock `toolUse.input`). Their contents are kept
- * verbatim even when they happen to look like media blocks.
+ * verbatim even when they happen to look like media blocks. Positions not
+ * listed here may still be shown as a media placeholder, but the content hash
+ * keeps every edit visible to the diff.
  */
 function isOrdinarySubtree(path: MediaPath, record: Record<string, unknown>, key: string): boolean {
-	if (key === "tools" || key === "functionDeclarations" || key === "tool_config" || key === "toolConfig") return true;
-	if (key === "input" && (record.type === "tool_use" || record.type === "server_tool_use")) return true;
+	if (TOOL_DEFINITION_KEYS.has(key)) return true;
+	if ((key === "input" || key === "arguments") && typeof record.type === "string" && TOOL_CALL_TYPES.has(record.type)) return true;
 	if (key === "args" && path.key === "functionCall") return true;
 	if (key === "input" && path.key === "toolUse") return true;
 	return false;
 }
+
+const TOOL_DEFINITION_KEYS = new Set(["tools", "toolsAdded", "functionDeclarations", "tool_config", "toolConfig"]);
+/** Block types whose `input`/`arguments` hold tool-call arguments (Anthropic, Pi native, Responses/Codex). */
+const TOOL_CALL_TYPES = new Set(["tool_use", "server_tool_use", "toolCall", "function_call", "custom_tool_call"]);
 
 /**
  * Known provider request paths that carry bare base64 media. Returns a label
@@ -251,40 +258,25 @@ function elideDataUrl(value: string): string | undefined {
 	const dataUrl = DATA_URL_BASE64_PREFIX.exec(value.slice(0, 256));
 	if (!dataUrl) return undefined;
 	const mime = dataUrl[1] || "application/octet-stream";
-	return `[pi-forge: ${mime} data omitted · ${value.length} chars · fp ${fingerprint(value.length, (index) => value.charCodeAt(index))}]`;
+	return `[pi-forge: ${mime} data omitted · ${value.length} chars · sha1 ${contentHash(value)}]`;
 }
 
 function elideBase64Media(value: string, label: string): string | undefined {
 	if (!BASE64_CHARSET.test(value)) return undefined;
-	return `[pi-forge: ${label} data omitted · ${value.length} chars · fp ${fingerprint(value.length, (index) => value.charCodeAt(index))}]`;
+	return `[pi-forge: ${label} data omitted · ${value.length} chars · sha1 ${contentHash(value)}]`;
 }
 
 /** Binary payloads (for example Bedrock image `source.bytes`) would otherwise serialize index by index. */
 function elideBinary(value: ArrayBufferView | ArrayBuffer | SharedArrayBuffer): string {
 	const bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
-	return `[pi-forge: binary data omitted · ${bytes.length} bytes · fp ${fingerprint(bytes.length, (index) => bytes[index]!)}]`;
+	return `[pi-forge: binary data omitted · ${bytes.length} bytes · sha1 ${contentHash(bytes)}]`;
 }
 
 /**
- * Approximate content fingerprint: FNV-1a over an evenly spaced sample plus
- * the tail (exact for inputs up to 8192 units). Different images practically
- * always differ at sampled positions; a same-length edit that touches only
- * unsampled positions is not detected. Hashing every byte of every image on
- * every request would cost tens of millions of iterations per turn in long
- * screenshot sessions.
+ * Content identity for elided media: SHA-1 over the complete content (native,
+ * about 0.5 ms per MB), so any edit changes the placeholder and the diff sees
+ * it. Not a security boundary.
  */
-function fingerprint(length: number, at: (index: number) => number): string {
-	let hash = 0x811c9dc5;
-	const mix = (code: number) => {
-		hash ^= code;
-		hash = Math.imul(hash, 0x01000193);
-	};
-	if (length <= MEDIA_FINGERPRINT_SAMPLES * 2) {
-		for (let index = 0; index < length; index++) mix(at(index));
-	} else {
-		const stride = length / MEDIA_FINGERPRINT_SAMPLES;
-		for (let sample = 0; sample < MEDIA_FINGERPRINT_SAMPLES; sample++) mix(at(Math.floor(sample * stride)));
-		for (let index = length - 64; index < length; index++) mix(at(index));
-	}
-	return (hash >>> 0).toString(16).padStart(8, "0");
+function contentHash(value: string | Uint8Array): string {
+	return createHash("sha1").update(value).digest("hex").slice(0, 16);
 }
