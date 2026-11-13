@@ -77,6 +77,8 @@ function redactPayload(value, depth = 0) {
         return redactLongString(value);
     if (value === null || typeof value !== "object")
         return value;
+    if (isBinary(value))
+        return elideBinary(value);
     if (Array.isArray(value)) {
         const maxItems = 80;
         const items = value.slice(0, maxItems).map((item) => redactPayload(item, depth + 1));
@@ -101,39 +103,39 @@ function redactPayload(value, depth = 0) {
 }
 /**
  * Redact credentials and elide inline media while retaining the complete
- * JSON-compatible request structure. Media is recognised by structure, never
- * by character set alone, so long identifiers, hex or URL-safe text in
- * ordinary messages are kept verbatim.
+ * JSON-compatible request structure. Bare base64 is recognised only at known
+ * provider media paths, never by field names or character set alone, so tool
+ * arguments and other ordinary data are kept verbatim.
  */
-function redactPayloadFaithfully(value, ancestors = new Set()) {
+function redactPayloadFaithfully(value, ancestors = new Set(), path = {}) {
     if (typeof value === "string")
         return elideDataUrl(value) ?? value;
     if (value === null || typeof value !== "object")
         return value;
-    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
+    if (isBinary(value))
         return elideBinary(value);
     if (ancestors.has(value))
         return "[pi-forge: circular reference]";
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(value);
     if (Array.isArray(value))
-        return value.map((item) => redactPayloadFaithfully(item, nextAncestors));
+        return value.map((item) => redactPayloadFaithfully(item, nextAncestors, path));
     const record = value;
-    const containerMime = mediaContainerMime(record);
     const result = {};
     for (const [key, raw] of Object.entries(record)) {
         if (isSecretKey(key)) {
             result[key] = "[redacted]";
             continue;
         }
-        if (typeof raw === "string" && (ALWAYS_BASE64_MEDIA_KEYS.has(key) || (containerMime !== undefined && CONTAINER_BASE64_MEDIA_KEYS.has(key)))) {
-            const elided = elideBase64Media(raw, containerMime || "base64");
+        const mediaLabel = typeof raw === "string" ? base64MediaLabel(path, record, key) : undefined;
+        if (mediaLabel !== undefined) {
+            const elided = elideBase64Media(raw, mediaLabel);
             if (elided !== undefined) {
                 result[key] = elided;
                 continue;
             }
         }
-        result[key] = redactPayloadFaithfully(raw, nextAncestors);
+        result[key] = redactPayloadFaithfully(raw, nextAncestors, { key, parentType: record.type });
     }
     return result;
 }
@@ -165,23 +167,32 @@ function redactLongString(value) {
 const DATA_URL_BASE64_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
 const BASE64_CHARSET = /^[A-Za-z0-9+/=_\-\r\n]*$/;
 const MEDIA_FINGERPRINT_SAMPLES = 4_096;
-/** Keys that hold base64 media wherever they appear. */
-const ALWAYS_BASE64_MEDIA_KEYS = new Set(["data_base64", "b64_json"]);
-/** Keys that hold base64 media inside a media block (see mediaContainerMime). */
-const CONTAINER_BASE64_MEDIA_KEYS = new Set(["data", "bytes"]);
-const MEDIA_TYPE_KEYS = ["media_type", "mediaType", "mime_type", "mimeType", "format"];
 /**
- * Media blocks carry base64 next to a type marker: Anthropic
- * `{ type: "base64", media_type, data }`, Gemini `inlineData: { mimeType, data }`,
- * OpenAI chat `input_audio: { data, format }`. Returns the declared type ("" if
- * only `type: "base64"` marks it), or undefined for ordinary objects.
+ * Known provider request paths that carry bare base64 media. Returns a label
+ * (MIME type when declared) or undefined for everything else:
+ * - Anthropic image/document blocks: `{ type: "image", source: { type: "base64", media_type, data } }`
+ * - Gemini parts: `{ inlineData: { mimeType, data } }` (also `inline_data` / `mime_type`)
+ * - OpenAI chat audio: `{ type: "input_audio", input_audio: { data, format } }`
+ * - image assets: `{ type: "image", format, data_base64 }`
  */
-function mediaContainerMime(record) {
-    for (const key of MEDIA_TYPE_KEYS) {
-        if (typeof record[key] === "string")
-            return record[key];
+function base64MediaLabel(path, record, key) {
+    const text = (value, fallback) => typeof value === "string" && value ? value : fallback;
+    if (key === "data") {
+        if (path.key === "source" && record.type === "base64" && (path.parentType === "image" || path.parentType === "document"))
+            return text(record.media_type, "base64");
+        if (path.key === "inlineData" || path.key === "inline_data")
+            return text(record.mimeType ?? record.mime_type, "base64");
+        if (path.key === "input_audio" && path.parentType === "input_audio")
+            return `audio/${text(record.format, "base64")}`;
     }
-    return record.type === "base64" ? "" : undefined;
+    if (key === "data_base64" && record.type === "image")
+        return text(record.format, "image");
+    return undefined;
+}
+function isBinary(value) {
+    return ArrayBuffer.isView(value)
+        || value instanceof ArrayBuffer
+        || (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer);
 }
 /** Replace a base64 data URL (OpenAI, Codex Responses, Mistral) with a bounded placeholder. */
 function elideDataUrl(value) {
@@ -198,7 +209,7 @@ function elideBase64Media(value, label) {
 }
 /** Binary payloads (for example Bedrock image `source.bytes`) would otherwise serialize index by index. */
 function elideBinary(value) {
-    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    const bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
     return `[pi-forge: binary data omitted · ${bytes.length} bytes · fp ${fingerprint(bytes.length, (index) => bytes[index])}]`;
 }
 /**

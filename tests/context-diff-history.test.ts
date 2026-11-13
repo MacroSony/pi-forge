@@ -442,3 +442,65 @@ test("history evicts old turns past the character budget but keeps the latest tw
 	assert.ok(history.turns.length >= 2 && history.turns.length < 5, `kept ${history.turns.length} turns`);
 	assert.ok(history.latestDiff);
 });
+
+test("tool arguments that resemble media blocks are kept verbatim and still diff", () => {
+	const hex = "deadbeef".repeat(25_000);
+	const payload = (data: string) => ({
+		model: "m",
+		messages: [{
+			role: "assistant",
+			content: [
+				{ type: "tool_use", id: "t1", name: "export", input: { format: "hex", data } },
+				{ type: "tool_use", id: "t2", name: "upload", input: { source: { type: "base64", media_type: "text/plain", data: "QUJD" } } },
+			],
+		}],
+		contents: [{ role: "model", parts: [{ functionCall: { name: "save", args: { mimeType: "text/plain", data } } }] }],
+	});
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization(payload(hex));
+	const parsed = JSON.parse(serializedPayload);
+	assert.equal(parsed.messages[0].content[0].input.data, hex);
+	assert.equal(parsed.messages[0].content[1].input.source.data, "QUJD");
+	assert.equal(parsed.contents[0].parts[0].functionCall.args.data, hex);
+
+	const history = createContextDiffHistory();
+	appendPayload(history, payload(hex), "2025-01-01T00:00:00.000Z");
+	const edited = `${hex.slice(0, 100_001)}0${hex.slice(100_002)}`;
+	const diff = appendPayload(history, payload(edited), "2025-01-01T00:01:00.000Z");
+	assert.ok(diff!.blocks.some((block) => block.status !== "same"), "an edit to tool arguments must show up in the diff");
+});
+
+test("Anthropic document blocks and tool-result images are elided", () => {
+	const pdf = fakeBase64(7, 40_000);
+	const png = fakeBase64(8, 40_000);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({
+		model: "claude",
+		messages: [{
+			role: "user",
+			content: [
+				{ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf } },
+				{ type: "tool_result", tool_use_id: "t", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }] },
+			],
+		}],
+	});
+	assert.ok(!serializedPayload.includes(pdf) && !serializedPayload.includes(png));
+	assert.match(serializedPayload, /application\/pdf data omitted · 40000 chars/);
+	assert.match(serializedPayload, /image\/png data omitted · 40000 chars/);
+});
+
+test("binary payloads are elided in the display capture and SharedArrayBuffer keeps identity", () => {
+	const bytes = new Uint8Array(2_000_000).map((_, index) => index % 7);
+	const { capture } = createProviderPayloadCaptureWithSerialization({
+		modelId: "m",
+		messages: [{ role: "user", content: [{ image: { format: "png", source: { bytes } } }] }],
+	});
+	assert.ok(capture.text.length < 2_000, `display text ${capture.text.length} chars`);
+	assert.match(capture.text, /binary data omitted · 2000000 bytes/);
+
+	const shared = (fill: number) => {
+		const buffer = new SharedArrayBuffer(1_000);
+		new Uint8Array(buffer).fill(fill);
+		return createProviderPayloadCaptureWithSerialization({ modelId: "m", bytes: buffer }).serializedPayload;
+	};
+	assert.match(shared(1), /binary data omitted · 1000 bytes/);
+	assert.notEqual(shared(1), shared(2));
+});
