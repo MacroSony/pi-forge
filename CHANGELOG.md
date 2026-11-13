@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 In 0.x development, breaking changes may occur in minor releases and will be explicitly noted.
 
+## [0.5.12] - Unreleased
+
+### Fixed
+
+- Long sessions with many images could run Pi out of memory. Forge captures every provider request for the context-diff view and kept image data verbatim; with Responses-style providers (such as OpenAI Codex) each of the 20 retained snapshots held every image in the conversation. A session with 53 screenshots (about 92 MB of base64) retained about 3.6 GB and crashed with "JavaScript heap out of memory".
+  - Snapshots now replace media in standard provider fields with a placeholder carrying its type, length and a SHA-1 of the full content, so the diff still detects content changes: base64 data URLs (OpenAI, Codex Responses images and files), base64 `data` of Anthropic image/document, Gemini inline-data and OpenAI audio blocks, Pi's native image content (pi-messages providers), and binary bytes (Bedrock). Hashing costs roughly 0.5 ms per MB of media per request.
+  - Tool definitions and tool-call arguments are never inspected for media and are kept verbatim. Elsewhere, a string that starts with a base64 data URL prefix (`data:<type>;base64,`) is treated as media in full, for example a tool result that begins with a data URL; a data URL that appears after other text stays as text. Formats not listed here are kept as before and are bounded only by the history budget below.
+  - Snapshot history also has a 16-million-character budget. Older turns are dropped first; the latest two turns are always kept, so a single very large turn can exceed the budget.
+  - In a real Pi session reading 100 screenshots (200 requests), memory stayed at the level of Pi without Forge; 0.5.11 had about 3.3 GB live by the 46th screenshot.
+- Image data no longer inflates the context-diff token estimates: an inline image used to count as hundreds of thousands of approximate tokens.
+
 ## [0.5.11] - 2026-11-08
 
 ### Changed

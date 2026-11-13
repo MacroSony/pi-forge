@@ -16,13 +16,13 @@ pi-forge provides visual context composition, tool selection, reusable configura
 
 ## Install and first run
 
-Requires Node.js **22.19 or newer**. Forge **0.5.11** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0–1.5**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
+Requires Node.js **22.19 or newer**. Forge **0.5.12** supports Pi **0.87.x, 0.99.0–0.99.2 and 1.0–1.5**; see [compatibility and migration](docs/guides/pi-1-compatibility.md).
 
 Forge requires **upstream Pi**. Forks such as oh-my-pi without `systemPromptOptions` / `context_with_system` remain unsupported. On detecting missing required prompt inputs, Forge warns once per session, declines new preset/profile application, and skips preset compilation and preview (#2). Forge continues applying its tool policy independently; detection does not abort provider dispatch or roll back earlier selections/settings.
 
 Fresh-session auto-profile settings and preset/tool selection may apply **before first-turn prompt compatibility is observed**. Detection is not a universal startup check: valid prompt options or successful hook registration cannot prove that `context_with_system` will run. Use `/preset use none` to explicitly disable the preset; a new session resets the detection latch. See [unsupported-host boundaries](docs/guides/pi-1-compatibility.md#unsupported-host-boundaries).
 
-> **Version note:** This README describes Forge **0.5.11**, a compatibility update that adds Pi 1.5 support on top of 0.5.10’s Pi 1.4 support and tool execution gate. Older installed packages do not gain the expanded peer metadata automatically; tool-policy and Capability execution semantics are unchanged. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
+> **Version note:** This README describes Forge **0.5.12**, a bug-fix update on top of 0.5.11’s Pi 1.5 support: the context-diff history no longer keeps a copy of every image in each of its recent snapshots, which could exhaust the Node heap in long screenshot-heavy sessions. Supported Pi versions, tool-policy and Capability execution semantics are unchanged. Capabilities and configurable default tools require 0.5.5; optional subagents have a separate [compatibility requirement](docs/reference/subagent-host-port.md#tool-selection-compatibility).
 
 ```bash
 pi install npm:@zihanw/pi-forge
