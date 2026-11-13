@@ -101,22 +101,39 @@ function redactPayload(value, depth = 0) {
 }
 /**
  * Redact credentials and elide inline media while retaining the complete
- * JSON-compatible request structure. Every other string is kept verbatim.
+ * JSON-compatible request structure. Media is recognised by structure, never
+ * by character set alone, so long identifiers, hex or URL-safe text in
+ * ordinary messages are kept verbatim.
  */
 function redactPayloadFaithfully(value, ancestors = new Set()) {
     if (typeof value === "string")
-        return elideInlineMedia(value) ?? value;
+        return elideDataUrl(value) ?? value;
     if (value === null || typeof value !== "object")
         return value;
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
+        return elideBinary(value);
     if (ancestors.has(value))
         return "[pi-forge: circular reference]";
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(value);
     if (Array.isArray(value))
         return value.map((item) => redactPayloadFaithfully(item, nextAncestors));
+    const record = value;
+    const containerMime = mediaContainerMime(record);
     const result = {};
-    for (const [key, raw] of Object.entries(value)) {
-        result[key] = isSecretKey(key) ? "[redacted]" : redactPayloadFaithfully(raw, nextAncestors);
+    for (const [key, raw] of Object.entries(record)) {
+        if (isSecretKey(key)) {
+            result[key] = "[redacted]";
+            continue;
+        }
+        if (typeof raw === "string" && (ALWAYS_BASE64_MEDIA_KEYS.has(key) || (containerMime !== undefined && CONTAINER_BASE64_MEDIA_KEYS.has(key)))) {
+            const elided = elideBase64Media(raw, containerMime || "base64");
+            if (elided !== undefined) {
+                result[key] = elided;
+                continue;
+            }
+        }
+        result[key] = redactPayloadFaithfully(raw, nextAncestors);
     }
     return result;
 }
@@ -146,48 +163,68 @@ function redactLongString(value) {
     return value;
 }
 const DATA_URL_BASE64_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
-const BASE64_LIKE = /^[A-Za-z0-9+/=_\-\r\n]+$/;
-const INLINE_BASE64_MIN_CHARS = 8_000;
+const BASE64_CHARSET = /^[A-Za-z0-9+/=_\-\r\n]*$/;
 const MEDIA_FINGERPRINT_SAMPLES = 4_096;
+/** Keys that hold base64 media wherever they appear. */
+const ALWAYS_BASE64_MEDIA_KEYS = new Set(["data_base64", "b64_json"]);
+/** Keys that hold base64 media inside a media block (see mediaContainerMime). */
+const CONTAINER_BASE64_MEDIA_KEYS = new Set(["data", "bytes"]);
+const MEDIA_TYPE_KEYS = ["media_type", "mediaType", "mime_type", "mimeType", "format"];
 /**
- * Replace inline binary payloads with a bounded placeholder. Returns undefined
- * for ordinary strings. Provider payloads carry images, audio and files as
- * `data:<mime>;base64,...` URLs (OpenAI, Codex Responses) or as bare base64
- * (Anthropic `source.data`, Gemini `inlineData.data`).
+ * Media blocks carry base64 next to a type marker: Anthropic
+ * `{ type: "base64", media_type, data }`, Gemini `inlineData: { mimeType, data }`,
+ * OpenAI chat `input_audio: { data, format }`. Returns the declared type ("" if
+ * only `type: "base64"` marks it), or undefined for ordinary objects.
  */
-export function elideInlineMedia(value) {
+function mediaContainerMime(record) {
+    for (const key of MEDIA_TYPE_KEYS) {
+        if (typeof record[key] === "string")
+            return record[key];
+    }
+    return record.type === "base64" ? "" : undefined;
+}
+/** Replace a base64 data URL (OpenAI, Codex Responses, Mistral) with a bounded placeholder. */
+function elideDataUrl(value) {
     const dataUrl = DATA_URL_BASE64_PREFIX.exec(value.slice(0, 256));
-    if (dataUrl) {
-        const mime = dataUrl[1] || "application/octet-stream";
-        return `[pi-forge: ${mime} data omitted · ${value.length} chars · fp ${mediaFingerprint(value)}]`;
-    }
-    if (value.length >= INLINE_BASE64_MIN_CHARS && BASE64_LIKE.test(value)) {
-        return `[pi-forge: base64 data omitted · ${value.length} chars · fp ${mediaFingerprint(value)}]`;
-    }
-    return undefined;
+    if (!dataUrl)
+        return undefined;
+    const mime = dataUrl[1] || "application/octet-stream";
+    return `[pi-forge: ${mime} data omitted · ${value.length} chars · fp ${fingerprint(value.length, (index) => value.charCodeAt(index))}]`;
+}
+function elideBase64Media(value, label) {
+    if (!BASE64_CHARSET.test(value))
+        return undefined;
+    return `[pi-forge: ${label} data omitted · ${value.length} chars · fp ${fingerprint(value.length, (index) => value.charCodeAt(index))}]`;
+}
+/** Binary payloads (for example Bedrock image `source.bytes`) would otherwise serialize index by index. */
+function elideBinary(value) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `[pi-forge: binary data omitted · ${bytes.length} bytes · fp ${fingerprint(bytes.length, (index) => bytes[index])}]`;
 }
 /**
- * Cheap content fingerprint for large blobs: FNV-1a over an evenly spaced
- * sample plus the tail. Hashing every byte of every image on every request
- * would cost tens of millions of iterations per turn in long screenshot
- * sessions; a sample is enough to tell different media apart for diffing.
+ * Approximate content fingerprint: FNV-1a over an evenly spaced sample plus
+ * the tail (exact for inputs up to 8192 units). Different images practically
+ * always differ at sampled positions; a same-length edit that touches only
+ * unsampled positions is not detected. Hashing every byte of every image on
+ * every request would cost tens of millions of iterations per turn in long
+ * screenshot sessions.
  */
-function mediaFingerprint(value) {
+function fingerprint(length, at) {
     let hash = 0x811c9dc5;
     const mix = (code) => {
         hash ^= code;
         hash = Math.imul(hash, 0x01000193);
     };
-    if (value.length <= MEDIA_FINGERPRINT_SAMPLES * 2) {
-        for (let index = 0; index < value.length; index++)
-            mix(value.charCodeAt(index));
+    if (length <= MEDIA_FINGERPRINT_SAMPLES * 2) {
+        for (let index = 0; index < length; index++)
+            mix(at(index));
     }
     else {
-        const stride = value.length / MEDIA_FINGERPRINT_SAMPLES;
+        const stride = length / MEDIA_FINGERPRINT_SAMPLES;
         for (let sample = 0; sample < MEDIA_FINGERPRINT_SAMPLES; sample++)
-            mix(value.charCodeAt(Math.floor(sample * stride)));
-        for (let index = value.length - 64; index < value.length; index++)
-            mix(value.charCodeAt(index));
+            mix(at(Math.floor(sample * stride)));
+        for (let index = length - 64; index < length; index++)
+            mix(at(index));
     }
     return (hash >>> 0).toString(16).padStart(8, "0");
 }

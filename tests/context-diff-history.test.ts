@@ -362,7 +362,55 @@ test("bare base64 media (Anthropic/Gemini style) is elided from snapshots", () =
 		messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data } }] }],
 	});
 	assert.ok(!serializedPayload.includes(data));
-	assert.match(serializedPayload, /base64 data omitted · 50000 chars · fp [0-9a-f]{8}/);
+	assert.match(serializedPayload, /image\/png data omitted · 50000 chars · fp [0-9a-f]{8}/);
+});
+
+test("structured media fields are elided whatever their size", () => {
+	const small = fakeBase64(4, 7_996);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({
+		model: "m",
+		contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: small } }] }],
+		messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: fakeBase64(5, 20_000), format: "wav" } }] }],
+		assets: { "<image-1>": { type: "image", format: "png", data_base64: fakeBase64(6, 30_000) } },
+	});
+	assert.ok(!serializedPayload.includes(small));
+	assert.match(serializedPayload, /image\/jpeg data omitted · 7996 chars/);
+	assert.match(serializedPayload, /wav data omitted · 20000 chars/);
+	assert.match(serializedPayload, /png data omitted · 30000 chars/);
+});
+
+test("binary byte arrays (Bedrock image source.bytes) are elided instead of serialized per index", () => {
+	const bytes = new Uint8Array(100_000).map((_, index) => index % 251);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({
+		modelId: "m",
+		messages: [{ role: "user", content: [{ image: { format: "png", source: { bytes } } }] }],
+	});
+	assert.ok(serializedPayload.length < 2_000, `serialized ${serializedPayload.length} chars`);
+	assert.match(serializedPayload, /binary data omitted · 100000 bytes · fp [0-9a-f]{8}/);
+});
+
+test("long plain strings that only look like base64 are kept verbatim and still diff", () => {
+	const samples = {
+		hex: "deadbeef".repeat(2_000),
+		identifier: "a".repeat(12_000),
+		urlSafe: `${"Ab0_-".repeat(2_400)}`,
+	};
+	for (const [name, text] of Object.entries(samples)) {
+		const { serializedPayload } = createProviderPayloadCaptureWithSerialization({ model: "m", messages: [{ role: "user", content: text }] });
+		assert.equal(JSON.parse(serializedPayload).messages[0].content, text, name);
+	}
+	const history = createContextDiffHistory();
+	const text = "deadbeef".repeat(25_000);
+	appendPayload(history, { model: "m", messages: [{ role: "user", content: text }] }, "2025-01-01T00:00:00.000Z");
+	const edited = `${text.slice(0, 100_001)}X${text.slice(100_002)}`;
+	const diff = appendPayload(history, { model: "m", messages: [{ role: "user", content: edited }] }, "2025-01-01T00:01:00.000Z");
+	assert.ok(diff!.blocks.some((block) => block.status !== "same"), "an edit to long plain text must show up in the diff");
+});
+
+test("a data field outside a media block is never elided", () => {
+	const text = "QUJD".repeat(5_000);
+	const { serializedPayload } = createProviderPayloadCaptureWithSerialization({ model: "m", tools: [{ name: "t", data: text }] });
+	assert.equal(JSON.parse(serializedPayload).tools[0].data, text);
 });
 
 test("ordinary long text is kept verbatim in the faithful serialization", () => {
